@@ -65,7 +65,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "tick": {"type": "integer", "minimum": 0, "maximum": 1200},
         "capability": {"enum": ["animus:play-sound", "animus:spawn-particle"], "description": "Only sound and particle capabilities run from animations."},
-        "arguments": {"type": "object"}
+        "arguments": {"type": "object", "description": "The capability's arguments. Events play at the NPC to nearby players: audience is nearby when unset, and player, at: player and audience: trigger are refused.",
+                      "properties": {"audience": {"const": "nearby"}, "at": {"const": "npc"}}, "not": {"required": ["player"]}}
       }
     }
   }

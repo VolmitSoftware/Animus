@@ -201,6 +201,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private OwnerNavigation navigation;
     private AutoCloseable ticker;
     private TriggerBridge triggers;
+    private volatile NpcRig.Events animationEvents;
     private volatile InteractionListener<P> interactions;
     private volatile InteractionObserver observer;
     private volatile String unavailable;
@@ -339,6 +340,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     @Override public void interactions(InteractionListener<P> listener) { interactions = listener; }
     @Override public void observeInteractions(InteractionObserver observer) { this.observer = observer; }
     @Override public void bindTriggers(TriggerDispatcher dispatcher) { owner(); dispatcher.hide(previews); triggers = new TriggerBridge(dispatcher, index); }
+    @Override public void animationEvents(NpcRig.Events events) { animationEvents = events; }
     @Override public String status() {
         if (!available()) return "NPC runtime " + (closed ? "closed" : unavailable);
         owner();
@@ -959,7 +961,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         RigCatalog catalog = runtime.rigs().catalog();
         value.rigGeneration = catalog.generation();
         List<String> problems = new ArrayList<>();
-        value.rig = NpcRig.bind(value.rigId, catalog, value.seat, (NpcItem item, String path, List<String> errors) -> host.item(item, path, errors), problems).orElse(null);
+        value.rig = NpcRig.bind(value.rigId, catalog, value.seat, (NpcItem item, String path, List<String> errors) -> host.item(item, path, errors), host.emptyItem(), problems).orElse(null);
         if (value.rig == null) value.rigProblem = String.join("; ", problems.subList(0, Math.min(3, problems.size())));
     }
     private static boolean walking(PersistedNpcService<?, ?>.Value value) {
@@ -983,8 +985,13 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             }
             if (value.rig == null || !value.state.snapshot().active()) continue;
             long started = sampling ? metrics.start() : 0;
-            for (RigPlayback.Finished done : value.rig.tick(tickNumber, walking(value)))
-                if (triggers != null) triggers.animationFinished(value.spec.definition().uuid(), done.animation(), done.layer());
+            value.rig.equip(value.equipment, host::copy);
+            NpcRig.Step step = value.rig.tick(tickNumber, walking(value));
+            UUID npc = value.spec.definition().uuid();
+            NpcRig.Events events = animationEvents;
+            if (events != null) for (RigPlayback.Fired fired : step.events()) events.fired(npc, fired);
+            for (RigPlayback.Finished done : step.finished())
+                if (triggers != null) triggers.animationFinished(npc, done.animation(), done.layer());
             if (sampling) metrics.npcCost(metrics.npc(value.spec.definition().uuid()), metrics.start() - started);
         }
         // Sampling new segments is cosmetic; clip endings above still fire their triggers under load.
@@ -1036,7 +1043,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             if (packetBudget <= 0 || viewer.bones + shown.displays().size() > rigSettings.maximumBones()) return 0;
             try { body.bones = packets.createBones(body.body, shown.displays()); }
             catch (RuntimeException invalid) { body.rigFailed = true; body.value.rigProblem = concise(invalid); failures.record("rig bones", context(viewer, body.value), invalid); return 0; }
-            body.rigIdentity = shown.identity(); body.view = new RigView(body.bones.count()); viewer.bones += body.bones.count();
+            body.rigIdentity = shown.identity(); body.socketRevision = shown.socketRevision(); body.view = new RigView(body.bones.count()); viewer.bones += body.bones.count();
             try {
                 packets.showBones(viewer.player, body.body, body.bones, pose(body.value), List.of(frame.targets()), shown.hideBody())
                         .whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
@@ -1047,6 +1054,17 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             return 1;
         }
         if (!body.bonesShown || rigBudget[0] <= 0) return 0;
+        if (body.socketRevision != shown.socketRevision()) {
+            int[] sockets = shown.socketIndices();
+            body.socketRevision = shown.socketRevision();
+            rigBudget[0] -= sockets.length;
+            try {
+                packets.restyleBones(viewer.player, body.bones, sockets, shown.socketDisplays()).whenComplete((Void nothing, Throwable failure) -> {
+                    if (failure != null) enqueue(viewer, () -> { if (current(viewer) && !body.retired) cosmeticFailed(viewer, "socket items", body.value, failure); });
+                });
+            } catch (RuntimeException failure) { cosmeticFailed(viewer, "socket items", body.value, failure); }
+            if (rigBudget[0] <= 0) return 0;
+        }
         int[] due = body.view.due(frame, rigBudget[0]);
         if (due.length == 0) return 0;
         long nanos = System.nanoTime();
@@ -2045,7 +2063,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         long revision = body.value.equipmentRevision;
         body.equipping = true;
         try {
-            packets.equipment(viewer.player, body.body, Map.copyOf(body.value.equipment)).whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
+            NpcRig<I> rig = body.value.rig;
+            packets.equipment(viewer.player, body.body, Map.copyOf(rig == null ? body.value.equipment : rig.bodyEquipment(body.value.equipment))).whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
                 body.equipping = false;
                 body.deliveredEquipmentRevision = revision;
                 if (failure != null && current(viewer) && !body.retired) cosmeticFailed(viewer, "equipment", body.value, failure);
@@ -2334,7 +2353,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         long deliveredPoseRevision, deliveredEquipmentRevision, deliveredLookRevision;
         List<Integer> sentRoster = List.of();
         int sentDragonPhase = DragonBody.PHASE_HOVERING;
-        BodyTransport.Bones bones; RigView view; long rigIdentity; boolean bonesShown, rigFailed;
+        BodyTransport.Bones bones; RigView view; long rigIdentity, socketRevision; boolean bonesShown, rigFailed;
         Presented(Value value, BodyTransport.Body body) { this.value = value; this.body = body; }
     }
     final class Viewer {

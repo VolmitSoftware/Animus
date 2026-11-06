@@ -174,6 +174,8 @@ public final class AnimusModRuntime {
             next.extensions.follow(next.runtime);
             ExtensionRuntime modules = next.extensions;
             next.living.observeInteractions(modules::interacted);
+            next.living.animationEvents(new art.arcane.animus.core.rig.AnimationEventRunner((art.arcane.animus.api.Capabilities.Key key, art.arcane.animus.api.NpcHandle npc, String arguments) ->
+                    modules.action(key, npc, Optional.empty(), arguments), LOGGER::info));
             next.behaviors = new BehaviorCommands(dataDirectory, next.runtime, next.extensions, LOGGER::info);
             next.runtime.catalogs(new art.arcane.animus.core.RuntimeCatalogs(new art.arcane.animus.core.RuntimeCatalogs.Parts(next.runtime, next.living::refresh,
                     () -> owner.behaviors, () -> screenService.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {}),

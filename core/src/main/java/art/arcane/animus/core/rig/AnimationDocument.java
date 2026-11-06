@@ -43,7 +43,10 @@ public record AnimationDocument(String id, long revision, String rig, int durati
     public record Track(String bone, Target target, Blend blend, List<Keyframe> keyframes) {
         public Track { Objects.requireNonNull(bone); keyframes = List.copyOf(keyframes); }
     }
-    /** A sound or particle capability run at a tick. Arguments are the capability's own JSON object. */
+    /**
+     * A sound or particle capability run at a tick. Arguments are the capability's own JSON object, with
+     * {@code "audience": "nearby"} added when unset: an animation has no triggering player.
+     */
     public record Event(int tick, String capability, String arguments) {}
     public record Result(Optional<AnimationDocument> document, List<String> problems) {
         public Result { Objects.requireNonNull(document); problems = List.copyOf(problems); }
@@ -152,12 +155,17 @@ public record AnimationDocument(String id, long revision, String rig, int durati
         RigFields.keys(event, EVENT_FIELDS, path, problems);
         int tick = RigFields.integer(event.get("tick"), 0, duration, path + ".tick", problems, 0);
         Optional<String> capability = RigFields.choice(event, "capability", path, Set.of("animus:play-sound", "animus:spawn-particle"), problems);
-        String arguments = "{}";
+        JsonObject arguments = new JsonObject();
         if (event.has("arguments")) {
             if (!event.get("arguments").isJsonObject()) problems.add(path + ".arguments: expected object");
-            else arguments = event.get("arguments").toString();
+            else arguments = event.getAsJsonObject("arguments").deepCopy();
         }
+        if (arguments.has("player") || arguments.has("at") && !"npc".equals(text(arguments.get("at")))
+                || arguments.has("audience") && !"nearby".equals(text(arguments.get("audience"))))
+            problems.add(path + ".arguments: an animation has no triggering player, so events play at the NPC to nearby players");
+        if (!arguments.has("audience")) arguments.addProperty("audience", "nearby");
         if (problems.size() != before || capability.isEmpty()) return Optional.empty();
-        return Optional.of(new Event(tick, capability.get(), arguments));
+        return Optional.of(new Event(tick, capability.get(), arguments.toString()));
     }
+    private static String text(JsonElement element) { return RigFields.string(element) ? element.getAsString() : null; }
 }

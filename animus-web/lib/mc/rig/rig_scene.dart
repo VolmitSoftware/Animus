@@ -160,7 +160,7 @@ RigScene rigScene(
       worn.add('${socket.key} on ${socket.value}');
     }
     if (worn.isNotEmpty) {
-      notes.add('Socket items (${worn.join(', ')}) show where equipment hangs. The server does not attach equipment to sockets yet.');
+      notes.add('Socket items (${worn.join(', ')}) show where equipment hangs. In game the NPC shows its own item for each socketed slot there.');
     }
   }
   return RigScene(

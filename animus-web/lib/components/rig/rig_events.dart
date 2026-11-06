@@ -11,6 +11,9 @@ import '../../logic/inspect/inspect_schemas.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/rig_edit.dart';
 
+/// Arguments the event form leaves out: events always play to nearby players.
+const Set<String> playerArguments = <String>{'audience', 'at', 'player'};
+
 /// Arguments a new event starts with, so it is valid as soon as it exists.
 JsonMap starterArguments(String capability) => capability == 'animus:spawn-particle'
     ? <String, Object?>{'particle': 'minecraft:flame', 'count': 4}
@@ -56,7 +59,11 @@ class _RigEventEditorState extends State<RigEventEditor> {
 
   int get _tick => component.event['tick'] is num ? (component.event['tick']! as num).round() : 0;
 
-  List<FieldSpec> get _fields => InspectSchemas.embedded.catalog.capability(_capability)?.arguments ?? const <FieldSpec>[];
+  /// The capability's arguments, minus those that pick a triggering player:
+  /// an animation has none, so the server refuses them.
+  List<FieldSpec> get _fields => (InspectSchemas.embedded.catalog.capability(_capability)?.arguments ?? const <FieldSpec>[])
+      .where((FieldSpec field) => !playerArguments.contains(field.key))
+      .toList();
 
   @override
   void didUpdateWidget(RigEventEditor oldComponent) {
@@ -116,7 +123,7 @@ class _RigEventEditorState extends State<RigEventEditor> {
     return dom.div(classes: 'animus-rig-keyframe animus-rig-event-editor', attributes: <String, String>{'aria-label': 'Event at tick $_tick'}, <Widget>[
       dom.strong(<Widget>[Component.text('Event at tick $_tick')]),
       const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('Saved with the animation. The server reads events but does not play them yet.'),
+        Component.text('Plays at the NPC for nearby players each time the clip reaches this tick.'),
       ]),
       _input('Tick', 'tick', '$_tick', _commitTick, number: true),
       dom.label(key: ValueKey<String>('runs:${component.index}:$_capability'), classes: 'animus-rig-field is-inline', <Widget>[

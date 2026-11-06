@@ -75,6 +75,8 @@ public record RigDocument(String id, long revision, Body body, List<Bone> bones,
     public int[] displayBones() {
         return java.util.stream.IntStream.range(0, bones.size()).filter((int i) -> bones.get(i).shown()).toArray();
     }
+    /** The same rig with no sockets, for a platform that cannot show them. */
+    public RigDocument withoutSockets() { return new RigDocument(id, revision, body, bones, Map.of(), animations, source); }
     /** The named animation, such as {@code idle} or {@code walk}. */
     public Optional<String> animation(String name) { return Optional.ofNullable(animations.get(name)); }
 
