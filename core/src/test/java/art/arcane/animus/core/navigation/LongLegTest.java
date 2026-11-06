@@ -72,7 +72,7 @@ class LongLegTest {
             }
             at = execution.position();
             if (blocked) { if (leg.blocked() == LongLeg.Next.BLOCKED) return new Run(LongLeg.Next.BLOCKED, at, plans, captures); continue; }
-            if (next == LongLeg.Next.FINAL) return new Run(next, at, plans, captures);
+            if (next == LongLeg.Next.FINAL || next == LongLeg.Next.ARRIVE) return new Run(next, at, plans, captures);
         }
         throw new AssertionError("A leg must end within 200 plans");
     }
@@ -182,6 +182,16 @@ class LongLegTest {
         assertEquals(LongLeg.Next.BLOCKED, run.outcome());
         assertTrue(run.plans() < 40, "bounded: " + run.plans());
         assertTrue(run.at().x() > 60, "it walked as far as the terrain allowed: " + run.at());
+    }
+    /** A goal no body can stand at, such as the top of a pillar, ends the leg beside it, as Citizens' distance margin does. */
+    @Test void anUnreachableGoalBesideReachableGroundEndsTheLegNextToIt() {
+        World world = (int x, int y, int z) -> y < 64 || (x == 5 && z == 0 && y < 66) ? Cell.SOLID : Cell.AIR;
+        Vec3 goal = new Vec3(5.5, 66, .5);
+        Run run = walk(world, new Vec3(.5, 64, .5), goal, WALKER);
+        assertEquals(LongLeg.Next.ARRIVE, run.outcome());
+        assertTrue(run.plans() <= 3, "bounded: " + run.plans());
+        assertTrue(Math.hypot(run.at().x() - goal.x(), run.at().z() - goal.z()) <= 1.5, "beside the pillar: " + run.at());
+        assertEquals(64, run.at().y(), 1e-9);
     }
     @Test void unloadedTerrainPausesTheLegAndItResumesOnceLoaded() {
         World world = ground((int x, int z) -> 64);

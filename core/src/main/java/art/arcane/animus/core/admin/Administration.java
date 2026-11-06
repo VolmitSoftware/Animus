@@ -109,6 +109,11 @@ public final class Administration {
                     try { lines = new ArrayList<>(dropIn.execute(Arrays.copyOfRange(args, 2, args.length))); }
                     catch (IOException | RuntimeException failure) { catalogs(dropIn.committed(), dropIn.rolledBack()); throw failure; }
                     lines.addAll(catalogs(dropIn.committed(), dropIn.rolledBack()));
+                    if (dropIn.settingsChanged()) {
+                        // accept commands and rollback edit config.toml; apply it now instead of waiting for a hotload.
+                        try { runtime.applySettings(art.arcane.animus.core.config.PluginSettings.load(runtime.documents())); }
+                        catch (IOException | RuntimeException failure) { lines.add("config.toml changed but was not applied (" + failure.getMessage() + "); it applies at the next hotload or restart"); }
+                    }
                     yield lines;
                 }
                 if (args.length < 3) throw new IOException("import citizens [apply|review|accept|rollback] | import preview <inbox-file> [converter=<namespace:name>] [oldWorld=newWorld ...] | apply <import-id> | stage <import-id> [reject|replace|duplicate <label>] | apply-plan <import-id> <application-id>");

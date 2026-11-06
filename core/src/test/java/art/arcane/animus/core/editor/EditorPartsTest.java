@@ -108,11 +108,9 @@ class EditorPartsTest {
 
     @Test
     void service_pairLinkDecodesToReachableCode() throws Exception {
-        int port;
-        try (java.net.ServerSocket socket = new java.net.ServerSocket(0)) { port = socket.getLocalPort(); }
         Path data = directory.resolve("server");
         Files.createDirectories(data);
-        Files.writeString(data.resolve("config.toml"), "statusMessage = \"Hello\"\n[editor]\nlistenerEnabled = true\nrelayEnabled = false\nport = " + port + "\n");
+        Files.writeString(data.resolve("config.toml"), "statusMessage = \"Hello\"\n[editor]\nlistenerEnabled = true\nrelayEnabled = false\nport = 0\n");
         art.arcane.animus.core.AnimusRuntime runtime = new art.arcane.animus.core.AnimusRuntime(
                 new art.arcane.animus.core.RuntimeEnvironment(art.arcane.animus.core.Platform.BUKKIT, "26.2", data));
         runtime.start();
@@ -123,7 +121,11 @@ class EditorPartsTest {
                 EditorService.PairingLink link = service.pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
                 assertTrue(link.link().startsWith("https://animus-editor.web.app/#/pair/ANM1."));
                 PairingCode code = PairingCode.decode(link.link().substring(link.link().indexOf("ANM1.")));
-                assertEquals(Optional.of("http://127.0.0.1:" + port), code.directUrl());
+                // Port 0 binds a free port, and the link carries the one actually bound.
+                String direct = code.directUrl().orElseThrow();
+                assertTrue(direct.startsWith("http://127.0.0.1:"), direct);
+                int port = Integer.parseInt(direct.substring("http://127.0.0.1:".length()));
+                assertTrue(port > 0, direct);
                 assertEquals(Optional.empty(), code.relayUrl(), "the relay is off in this config");
                 assertEquals(EditorIdentity.loadOrCreate(runtime.documents()).fingerprint(), code.fingerprint());
                 assertTrue(service.status().stream().anyMatch((String line) -> line.startsWith("Editor listener http://127.0.0.1:" + port)));
