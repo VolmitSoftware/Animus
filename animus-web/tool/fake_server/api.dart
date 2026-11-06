@@ -560,8 +560,8 @@ class FakeApi {
 
   FakeResponse _spawn(FakeRequest request, FakeToken token, List<String> segments) {
     final String id = _decode(segments[1]);
-    if (!RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,63}$').hasMatch(id)) {
-      throw ApiError('not-found', 'No NPC $id; NPC ids are group/id.');
+    if (!RegExp(r'^(?:[a-z0-9][a-z0-9_-]{0,63}/){0,8}[a-z0-9][a-z0-9_-]{0,63}$').hasMatch(id)) {
+      throw ApiError('not-found', 'No NPC $id; NPC ids are their path under npcs/, such as town/guard.');
     }
     if (documents.find(DocumentKind.npc, id) == null) throw ApiError('not-found', 'No NPC $id.');
     return FakeResponse(200, body: <String, Object?>{'id': id, 'spawned': segments[2] == 'spawn'});

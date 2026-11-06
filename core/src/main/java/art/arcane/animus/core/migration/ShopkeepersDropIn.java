@@ -1,6 +1,6 @@
 package art.arcane.animus.core.migration;
 
-import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -9,7 +9,6 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -78,7 +77,7 @@ final class ShopkeepersDropIn {
     }
 
     /** Applies a staged save, binding every Citizens shopkeeper whose NPC is installed. Adds its transaction to {@code transactions}. */
-    static List<String> apply(DocumentStore store, JsonObject state, Collection<NpcDefinition> installed, JsonArray transactions) throws IOException {
+    static List<String> apply(DocumentStore store, JsonObject state, NpcRepository.Installed installed, JsonArray transactions) throws IOException {
         JsonObject part = state.getAsJsonObject("shopkeepers");
         ShopkeepersImporter.Applied applied = new ShopkeepersImporter().apply(store, part.get("importId").getAsString(), installed);
         transactions.add(applied.transaction());
@@ -91,7 +90,7 @@ final class ShopkeepersDropIn {
     }
 
     /** Binds the pending Citizens shopkeepers of an applied save to NPCs installed since. */
-    static List<String> bindPending(DocumentStore store, JsonObject state, Collection<NpcDefinition> installed, JsonArray transactions) throws IOException {
+    static List<String> bindPending(DocumentStore store, JsonObject state, NpcRepository.Installed installed, JsonArray transactions) throws IOException {
         if (!applied(state)) return List.of();
         JsonObject part = state.getAsJsonObject("shopkeepers");
         JsonArray pending = part.has("pending") ? part.getAsJsonArray("pending") : new JsonArray();

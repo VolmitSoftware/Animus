@@ -18,7 +18,7 @@ import java.util.*;
 
 /** Local, loss-preserving conversion. Conversion status describes data, never gameplay parity. */
 public final class CitizensImporter {
-    public static final int CONVERTER_VERSION = 11;
+    public static final int CONVERTER_VERSION = 12;
     /**
      * A staged or installed imported definition path: {@code <source prefix>-<source number>}. Citizens uses the
      * {@code citizens} prefix; module converters use theirs. Groups other than {@code citizens} come from converter version 7.
@@ -171,7 +171,7 @@ public final class CitizensImporter {
                         position.addProperty("pitch", facing.pitch());
                     });
                     definition.add("position", position);
-                    definition.addProperty("group", group(world, position.get("x"), position.get("z")));
+                    definition.addProperty("group", group(world));
                     for (Map.Entry<String, JsonElement> field : presentation.fields().entrySet()) definition.add(field.getKey(), field.getValue());
                     // A skin is only drawn on a player body; any other body keeps it under citizens:review.
                     boolean skinApplied = traits.has("skintrait") && definition.get("type").getAsString().equals(BodyRules.PLAYER);
@@ -354,9 +354,8 @@ public final class CitizensImporter {
         Set<UUID> identities = new HashSet<>();
         Set<String> ids = new HashSet<>();
         Path active = store.resolve("npcs");
-        for (Path path : JsonDocumentTree.files(active)) {
-            NpcDefinition definition = NpcDefinition.parse(JsonDocuments.read(path));
-            if (!store.resolve(definition.path()).equals(path)) throw new IOException("Existing NPC path mismatch: " + path);
+        for (Path path : JsonDocumentTree.files(active, NpcPaths.TREE_DEPTH)) {
+            NpcDefinition definition = NpcDefinition.read("npcs/" + active.relativize(path).toString().replace('\\', '/'), JsonDocuments.read(path));
             if (!identities.add(definition.uuid()) || !ids.add(definition.id())) throw new IOException("Existing NPC identity collision: " + path);
         }
         if ((long) identities.size() + preview.records() > 100_000) throw new IOException("NPC definition limit exceeded: 100000");
@@ -402,28 +401,16 @@ public final class CitizensImporter {
         return store.commit(changes);
     }
 
-    /** Blocks per side of a Minecraft region file, the area one import folder covers. */
-    public static final int GROUP_AREA = 512;
-
     /**
-     * The folder an imported NPC goes in: its world after world mapping and the region file it stands in, such as
-     * {@code world-r0_-1} for {@code region/r.0.-1.mca}. The world becomes a lowercase path segment of at most 48
-     * characters. Without usable x and z coordinates the folder is the world alone, and without a world it is
-     * {@code citizens}. The same save always gives the same folders.
+     * The folder an imported NPC goes in: its world after world mapping, as a lowercase path segment of at most 48
+     * characters, or {@code citizens} without a world. Files are named by their unique {@code citizens-<id>}, so the
+     * same save always gives the same files.
      */
-    public static String group(String world, JsonElement x, JsonElement z) {
+    public static String group(String world) {
         String lowered = world.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]+", "-").replaceAll("-{2,}", "-")
                 .replaceAll("^[^a-z0-9]+", "").replaceAll("[-_]+$", "");
         if (lowered.length() > 48) lowered = lowered.substring(0, 48).replaceAll("[-_]+$", "");
-        if (lowered.isEmpty()) return "citizens";
-        if (!coordinate(x) || !coordinate(z)) return lowered;
-        long regionX = (long) Math.floor(x.getAsDouble() / GROUP_AREA), regionZ = (long) Math.floor(z.getAsDouble() / GROUP_AREA);
-        return lowered + "-r" + regionX + "_" + regionZ;
-    }
-
-    private static boolean coordinate(JsonElement value) {
-        return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber()
-                && Double.isFinite(value.getAsDouble()) && Math.abs(value.getAsDouble()) <= 30_000_000;
+        return lowered.isEmpty() ? "citizens" : lowered;
     }
 
     /** A Citizens {@code controllable} trait that is on becomes a disabled {@code animus:riding} section waiting for review. */

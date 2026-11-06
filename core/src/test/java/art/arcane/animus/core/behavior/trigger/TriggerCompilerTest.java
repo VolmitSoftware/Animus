@@ -52,6 +52,19 @@ class TriggerCompilerTest {
         assertEquals("dialogue_choice",triggers.get(11).spec().kind().jsonName());
         assertEquals(new TriggerBinding.ModuleEvent(new Capabilities.Key("sample","door_open")),triggers.get(12).spec());
     }
+    @Test void consumeCompilesAsAClickTimeConditionWithoutVariables(){
+        BehaviorCompiler.Result result=BehaviorCompiler.compile(document("""
+                [{"id":"talk","event":"interaction","consume":"context.sneaking && has_flag('npc', 'story')"}]"""));
+        assertEquals(List.of(),result.diagnostics());
+        TriggerBinding.Interaction interaction=(TriggerBinding.Interaction)result.program().orElseThrow().triggers().getFirst().spec();
+        assertEquals("context.sneaking && has_flag('npc', 'story')",interaction.consume().orElseThrow().source());
+        BehaviorCompiler.Result broken=BehaviorCompiler.compile(document("""
+                [{"id":"talk","event":"interaction","consume":"npc.colour"}]"""));
+        assertEquals("$.triggers[0].consume",broken.diagnostics().getFirst().field());
+        BehaviorCompiler.Result elsewhere=BehaviorCompiler.compile(document("""
+                [{"id":"near","event":"proximity","phase":"enter","radius":4,"consume":"true"}]"""));
+        assertEquals("$.triggers[0].consume",elsewhere.diagnostics().getFirst().field());
+    }
     @Test void animationFinishedFiltersByAnimationWhenNamed(){
         BehaviorCompiler.Result result=BehaviorCompiler.compile(document("""
                 [{"id":"any","event":"animation_finished"},{"id":"wave","event":"animation_finished","animation":"town:golem/wave"}]"""));

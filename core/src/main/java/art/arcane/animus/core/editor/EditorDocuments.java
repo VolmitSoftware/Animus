@@ -10,6 +10,7 @@ import art.arcane.animus.core.navigation.WaypointSettings;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.shop.ShopDocument;
 import art.arcane.animus.core.storage.DocumentStore;
+import art.arcane.animus.core.storage.NpcPaths;
 import art.arcane.animus.core.storage.JsonDocumentTree;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonArray;
@@ -88,7 +89,7 @@ public final class EditorDocuments {
         String folder = kind.folder() + "/";
         try {
             return switch (kind) {
-                case NPC -> path.matches("npcs/" + SEGMENT + "/" + SEGMENT + "\\.json") ? Optional.of(path.substring(5, path.length() - 5)) : Optional.empty();
+                case NPC -> NpcPaths.file(path) ? Optional.of(path.substring(5, path.length() - 5)) : Optional.empty();
                 case ROUTE -> path.matches("routes/" + SEGMENT + "\\.json") ? Optional.of(path.substring(7, path.length() - 5)) : Optional.empty();
                 case SKIN -> path.matches("skins/[a-f0-9]{64}\\.json") ? Optional.of(path.substring(6, 70)) : Optional.empty();
                 case BEHAVIOR -> Optional.of(BehaviorPath.idFor(path));
@@ -162,8 +163,10 @@ public final class EditorDocuments {
             case NPC -> {
                 try {
                     NpcDefinition definition = NpcDefinition.parse(text);
-                    if (!(definition.group() + "/" + definition.id()).equals(id))
-                        diagnostics.add(diagnostic("error", "$.id", "group/id is " + definition.group() + "/" + definition.id() + " but the document is " + id, "id-mismatch"));
+                    // The folder is the group, so only the file name must match; a stale group follows the folder on load.
+                    String path = "npcs/" + id + ".json";
+                    if (!NpcPaths.file(path) || !definition.id().equals(NpcPaths.idOf(path)))
+                        diagnostics.add(diagnostic("error", "$.id", "id is " + definition.id() + " but the document is " + id, "id-mismatch"));
                 } catch (IOException invalid) { problems(diagnostics, List.of(invalid.getMessage().split("; "))); }
             }
             case BEHAVIOR -> {

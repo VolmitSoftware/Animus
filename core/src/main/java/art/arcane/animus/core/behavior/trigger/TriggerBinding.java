@@ -1,6 +1,7 @@
 package art.arcane.animus.core.behavior.trigger;
 
 import art.arcane.animus.api.Capabilities;
+import art.arcane.animus.core.behavior.BehaviorExpression;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -16,8 +17,12 @@ public record TriggerBinding(String id, Spec spec, Optional<String> routine, Opt
     }
 
     public sealed interface Spec { TriggerKind kind(); }
-    public record Interaction(InteractionFilter action) implements Spec {
+    /** {@code consume}, when present, is checked at click time: when it holds, the click is this behavior's and Animus's default handling is skipped. */
+    public record Interaction(InteractionFilter action, Optional<BehaviorExpression> consume) implements Spec {
+        public Interaction { Objects.requireNonNull(action); Objects.requireNonNull(consume); }
+        public Interaction(InteractionFilter action) { this(action, Optional.empty()); }
         @Override public TriggerKind kind() { return TriggerKind.INTERACTION; }
+        boolean accepts(TriggerEvent.Action input) { return action == InteractionFilter.ANY || action.name().equals(input.name()); }
     }
     public record Proximity(Phase phase, double radius) implements Spec {
         @Override public TriggerKind kind() { return TriggerKind.PROXIMITY; }
@@ -63,8 +68,7 @@ public record TriggerBinding(String id, Spec spec, Optional<String> routine, Opt
     /** key is the {@code behavior#trigger} name proximity events use to select one binding. */
     boolean matches(TriggerEvent event, String key) {
         return switch (spec) {
-            case Interaction interaction -> event instanceof TriggerEvent.Interaction input
-                    && (interaction.action() == InteractionFilter.ANY || interaction.action().name().equals(input.action().name()));
+            case Interaction interaction -> event instanceof TriggerEvent.Interaction input && interaction.accepts(input.action());
             case Proximity ignored -> event instanceof TriggerEvent.Proximity input && input.binding().equals(key);
             case Lifecycle lifecycle -> event.kind() == lifecycle.kind();
             case Waypoint waypoint -> event instanceof TriggerEvent.Waypoint input

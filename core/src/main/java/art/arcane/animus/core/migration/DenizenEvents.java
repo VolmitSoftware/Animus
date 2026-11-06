@@ -15,15 +15,19 @@ import java.util.TreeMap;
  * World script event names as server triggers. An event such as {@code on player chats message:hello*} becomes the
  * trigger fields ({@code "event": "player_chat", "pattern": "hello*"}), the conditions its other switches add around
  * the routine ({@code flagged:}, {@code permission:}, {@code in:}), and the {@code context.*} keys its script may read.
- * An event or switch without an Animus equivalent gives the reason instead. The browser converter has a line-for-line
- * copy.
+ * A right click on an NPC is an NPC event instead: an {@code interaction} trigger of a behavior bound to every NPC,
+ * whose run reads the NPC as {@code context.entity}. An event or switch without an Animus equivalent gives the reason
+ * instead. The browser converter has a line-for-line copy.
  */
 final class DenizenEvents {
     private DenizenEvents() {}
 
-    /** A mapped event: trigger fields without id and routine, wrapping conditions, readable context keys; or a reason. */
-    record Mapped(JsonObject trigger, List<Cond> guards, Map<String, String> context, String reason) {
-        static Mapped fail(String reason) { return new Mapped(null, List.of(), Map.of(), reason); }
+    /**
+     * A mapped event: trigger fields without id and routine, wrapping conditions, readable context keys, and whether it is
+     * an NPC event; or a reason. The context key {@code entity} maps to {@code npc}: the clicked entity is the NPC.
+     */
+    record Mapped(JsonObject trigger, List<Cond> guards, Map<String, String> context, boolean npc, String reason) {
+        static Mapped fail(String reason) { return new Mapped(null, List.of(), Map.of(), false, reason); }
     }
 
     /** The phrase of an event key without its {@code on}/{@code after} word and switches, for routine names and reports. */
@@ -51,7 +55,7 @@ final class DenizenEvents {
         String phrase = String.join(" ", words);
         JsonObject trigger = new JsonObject();
         TreeMap<String, String> context = new TreeMap<>();
-        boolean player = true;
+        boolean player = true, npc = false;
         String event;
         switch (phrase) {
             case "player joins", "player join", "player logs in" -> event = "player_join";
@@ -61,6 +65,14 @@ final class DenizenEvents {
             case "player dies", "player death" -> { event = "player_death"; context.put("message", "message"); }
             case "player respawns" -> event = "player_respawn";
             case "delta time secondly", "delta time minutely", "delta time hourly" -> { event = "timer"; player = false; }
+            case "player right clicks entity", "player right clicks npc" -> {
+                event = "interaction";
+                npc = true;
+                trigger.addProperty("action", "interact");
+                context.put("entity", "npc");
+                context.put("hand", "hand");
+                context.put("sneaking", "sneaking");
+            }
             default -> {
                 if (phrase.startsWith("player changes world")) {
                     event = "player_world_change";
@@ -96,7 +108,7 @@ final class DenizenEvents {
             String name = option[0], value = option[1];
             switch (name) {
                 case "every" -> { if (!event.equals("timer")) return Mapped.fail("switch every: belongs to delta time"); }
-                case "priority", "ignorecancelled" -> { /* order and cancellation have no meaning without cancellation */ }
+                case "priority", "bukkit_priority", "ignorecancelled" -> { /* order and cancellation have no meaning without cancellation */ }
                 case "cancelled" -> { if (!value.equals("false")) return Mapped.fail("switch cancelled:" + value + " has no Animus equivalent; Animus triggers see no cancelled events"); }
                 case "message" -> {
                     if (!event.equals("player_chat")) return Mapped.fail("switch message: belongs to player chats");
@@ -127,7 +139,7 @@ final class DenizenEvents {
                 default -> { return Mapped.fail("event switch " + name + ": has no Animus equivalent"); }
             }
         }
-        return new Mapped(fields, guards, context, null);
+        return new Mapped(fields, guards, context, npc, null);
     }
 
     /** The context keys of a command script's run. */
