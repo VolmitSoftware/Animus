@@ -115,7 +115,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   "kinds": {
     "npc": {"folder": "npcs", "applyScope": "apply:npcs", "schema": "generated/npc.schema.json"},
     "route": {"folder": "routes", "applyScope": "apply:npcs", "schema": null},
+    "recording": {"folder": "recordings", "applyScope": "apply:npcs", "schema": "recording-v1.schema.json"},
     "skin": {"folder": "skins", "applyScope": "apply:npcs", "schema": null},
+    "group": {"folder": "groups", "applyScope": "apply:npcs", "schema": "group-v1.schema.json"},
     "behavior": {"folder": "behaviors", "applyScope": "apply:behaviors", "schema": "generated/behavior.schema.json"},
     "pack": {"folder": "packs", "applyScope": "apply:behaviors", "schema": "generated/pack.schema.json"},
     "shop": {"folder": "shops", "applyScope": "apply:gui", "schema": "shop-v1.schema.json"},
@@ -180,7 +182,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "protocol": {"const": 1},
     "scope": {"enum": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs", "import", "spawn", "admin"]},
     "kind": {
-      "enum": ["npc", "route", "skin", "behavior", "pack", "shop", "inventory", "menu", "hologram", "text-animation", "presets", "rig", "animation"],
+      "enum": ["npc", "route", "recording", "skin", "group", "behavior", "pack", "shop", "inventory", "menu", "hologram", "text-animation", "presets", "rig", "animation"],
       "description": "Document kinds. Folders and apply scopes are listed in editor-v1.endpoints.json."
     },
     "documentId": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[a-z0-9_.:/-]+$", "description": "The kind's own id: group/id for NPCs, namespace:path for behaviors, shops, GUIs, rigs and animations, the SHA-256 for skins, the relative path for menus."},
@@ -8266,6 +8268,17 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "maxItems": 32,
       "uniqueItems": true
     },
+    "groups": {
+      "type": "array",
+      "description": "Trait groups under groups/ whose values this NPC takes, in merge order; the NPC's own fields win.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+      },
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true
+    },
     "rig": {
       "type": "object",
       "description": "The rig under rigs/ this NPC's body shows.",
@@ -8324,10 +8337,45 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "description": "Order sequence only: start again from the first point."
             },
             "waitTicks": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 12000
+                },
+                {
+                  "type": "array",
+                  "description": "[min, max] in ticks, min not above max.",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 12000
+                  }
+                }
+              ],
+              "description": "Wait before the first leg and after each arrival: ticks, or [min, max] drawn per arrival."
+            },
+            "seed": {
+              "enum": [
+                "npc",
+                "random"
+              ],
+              "description": "npc (default): choices stable per NPC and route, across restarts. random: mixed with the clock."
+            },
+            "startOffset": {
+              "enum": [
+                "first",
+                "random"
+              ],
+              "description": "random: start at a random point after a random 0..waitTicks wait. first by default."
+            },
+            "jitter": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 12000,
-              "description": "Wait before the first leg and after each arrival."
+              "maximum": 8,
+              "description": "Leg goals move by a random whole-block x/z offset within this radius."
             },
             "points": {
               "type": "array",
@@ -8358,10 +8406,62 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     "maximum": 29999984
                   },
                   "waitTicks": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 12000
+                      },
+                      {
+                        "type": "array",
+                        "description": "[min, max] in ticks, min not above max.",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 12000
+                        }
+                      }
+                    ],
+                    "description": "Wait after arriving here, instead of the route's."
+                  },
+                  "jitter": {
                     "type": "integer",
                     "minimum": 0,
-                    "maximum": 12000,
-                    "description": "Wait after arriving here, instead of the route's."
+                    "maximum": 8,
+                    "description": "Jitter radius of this point, instead of the route's."
+                  },
+                  "weight": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "description": "Order random only: how often this point is chosen."
+                  },
+                  "next": {
+                    "type": "array",
+                    "description": "Order sequence only: after this point, the next point is drawn from these by weight.",
+                    "minItems": 1,
+                    "maxItems": 8,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "to"
+                      ],
+                      "properties": {
+                        "to": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 255
+                        },
+                        "weight": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1000
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -8486,6 +8586,21 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         "required": [
                           "wander"
                         ]
+                      },
+                      {
+                        "required": [
+                          "seed"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "startOffset"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "jitter"
+                        ]
                       }
                     ]
                   }
@@ -8588,6 +8703,91 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 "required": [
                   "order"
                 ]
+              }
+            },
+            {
+              "if": {
+                "not": {
+                  "properties": {
+                    "order": {
+                      "const": "random"
+                    }
+                  },
+                  "required": [
+                    "order"
+                  ]
+                }
+              },
+              "then": {
+                "properties": {
+                  "points": {
+                    "items": {
+                      "not": {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "weight"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "order"
+                ],
+                "not": {
+                  "properties": {
+                    "order": {
+                      "const": "sequence"
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "points": {
+                    "items": {
+                      "not": {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "next"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "order": {
+                    "const": "wander"
+                  }
+                },
+                "required": [
+                  "order"
+                ]
+              },
+              "then": {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "jitter"
+                      ]
+                    }
+                  ]
+                }
               }
             }
           ]
@@ -13984,6 +14184,58 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   }
 }
 ''',
+  'group-v1.schema.json': r'''
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://animus.volmitsoftware.com/schema/group-v1.schema.json",
+  "title": "Animus trait group",
+  "description": "groups/<id>.json. Definition values that NPCs listing this group take before their own fields. The Java validator (GroupDocument) also checks every value with the NPC field validators; this schema checks the shape.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "revision", "id", "values"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "revision": {"type": "integer", "minimum": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$", "description": "Matches the file name."},
+    "description": {"type": "string", "maxLength": 256},
+    "values": {
+      "type": "object",
+      "description": "Any optional NPC definition field, plus skins. Identity and state fields are refused, and a group cannot list other groups.",
+      "propertyNames": {
+        "not": {"enum": ["schemaVersion", "revision", "uuid", "id", "group", "name", "type", "spawned", "position", "owner", "migration", "groups"]}
+      },
+      "properties": {
+        "modules": {"type": "object", "description": "Module settings keyed by namespace:name; merged key by key with the NPC's."},
+        "behaviors": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9_-]+:[a-z0-9_/-]+$"}, "description": "Appended before the NPC's own, without duplicates."},
+        "tags": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"}},
+        "equipment": {"type": "object"},
+        "hologram": {"type": "object"},
+        "nameplate": {"type": "object"},
+        "pose": {"type": "string"},
+        "poses": {"type": "object"},
+        "movement": {"type": "object"},
+        "rig": {"type": "object"},
+        "armorStand": {"type": "object"},
+        "glowing": {"type": "boolean"},
+        "teamColor": {"type": "string"},
+        "baby": {"type": "boolean"},
+        "usingItem": {"type": "boolean"},
+        "listed": {"type": "boolean"},
+        "gravity": {"type": "boolean"},
+        "skin": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "skins": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "description": "A pool of skin hashes; each NPC takes one by a stable hash of its UUID unless it sets skin itself."
+        }
+      }
+    }
+  }
+}
+''',
   'gui-inventory-v1.schema.json': r'''
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -15245,6 +15497,114 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           }
         }
       ]
+    }
+  }
+}
+''',
+  'recording-v1.schema.json': r'''
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://animus.volmitsoftware.com/schema/recording-v1.schema.json",
+  "title": "Animus performance recording",
+  "description": "recordings/<id>.json. A player's movement captured as frames relative to origin, plus arm swings, equipment changes and door uses. Rules a schema cannot express (frame ticks strictly increasing from 0 to durationTicks, at most durationTicks / sampleTicks + 1 frames, event ticks at most durationTicks, events sorted by tick then type, the id matching the file name, the file at most [recordings] maximumFileBytes) are checked by RecordingDocument; see dev/recording-groups-routes.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "revision", "id", "recordedBy", "world", "origin", "sampleTicks", "durationTicks", "frames", "events"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "revision": {"type": "integer", "minimum": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$", "description": "Matches the file name."},
+    "recordedBy": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "description": "UUID of the player who recorded it."},
+    "world": {"type": "string", "minLength": 1, "pattern": "\\S", "description": "The world the recording was made in."},
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z", "yaw", "pitch"],
+      "properties": {
+        "x": {"$ref": "#/$defs/coordinate"},
+        "y": {"$ref": "#/$defs/coordinate"},
+        "z": {"$ref": "#/$defs/coordinate"},
+        "yaw": {"$ref": "#/$defs/yaw"},
+        "pitch": {"$ref": "#/$defs/pitch"}
+      }
+    },
+    "sampleTicks": {"type": "integer", "minimum": 1, "maximum": 20, "description": "Ticks between two captured frames."},
+    "durationTicks": {"type": "integer", "minimum": 1, "maximum": 72000, "description": "The tick of the last frame."},
+    "frames": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 72001,
+      "description": "[tick, dx, dy, dz, yaw, pitch, flags]. Position relative to origin, rounded to 0.01 blocks; absolute yaw and pitch rounded to 0.5 degrees. Flags: 1 onGround, 2 sneaking, 4 sprinting, 8 swimming, 16 gliding, 32 jumping.",
+      "items": {
+        "type": "array",
+        "minItems": 7,
+        "maxItems": 7,
+        "prefixItems": [
+          {"type": "integer", "minimum": 0, "maximum": 72000},
+          {"$ref": "#/$defs/offset"},
+          {"$ref": "#/$defs/offset"},
+          {"$ref": "#/$defs/offset"},
+          {"$ref": "#/$defs/yaw"},
+          {"$ref": "#/$defs/pitch"},
+          {"type": "integer", "minimum": 0, "maximum": 63}
+        ]
+      }
+    },
+    "events": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {"oneOf": [{"$ref": "#/$defs/swing"}, {"$ref": "#/$defs/equipment"}, {"$ref": "#/$defs/use"}]}
+    }
+  },
+  "$defs": {
+    "coordinate": {"type": "number", "minimum": -30000000, "maximum": 30000000},
+    "offset": {"type": "number", "minimum": -30000000, "maximum": 30000000},
+    "yaw": {"type": "number", "minimum": -360, "maximum": 360},
+    "pitch": {"type": "number", "minimum": -90, "maximum": 90},
+    "tick": {"type": "integer", "minimum": 0, "maximum": 72000},
+    "block": {"type": "integer", "minimum": -30000000, "maximum": 30000000},
+    "swing": {
+      "type": "object",
+      "description": "The main arm swung.",
+      "additionalProperties": false,
+      "required": ["tick", "type"],
+      "properties": {"tick": {"$ref": "#/$defs/tick"}, "type": {"const": "swing"}}
+    },
+    "equipment": {
+      "type": "object",
+      "description": "A slot changed; item null means the slot was emptied.",
+      "additionalProperties": false,
+      "required": ["tick", "type", "slot", "item"],
+      "properties": {
+        "tick": {"$ref": "#/$defs/tick"},
+        "type": {"const": "equipment"},
+        "slot": {"enum": ["main_hand", "off_hand", "head", "chest", "legs", "feet"]},
+        "item": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/item"}]}
+      }
+    },
+    "use": {
+      "type": "object",
+      "description": "The recorder opened or closed the door, fence gate or trapdoor at this block.",
+      "additionalProperties": false,
+      "required": ["tick", "type", "x", "y", "z", "block"],
+      "properties": {
+        "tick": {"$ref": "#/$defs/tick"},
+        "type": {"const": "use"},
+        "x": {"$ref": "#/$defs/block"},
+        "y": {"$ref": "#/$defs/block"},
+        "z": {"$ref": "#/$defs/block"},
+        "block": {"type": "string", "maxLength": 128, "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"}
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": {"type": "string", "maxLength": 128, "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"},
+        "count": {"type": "integer", "minimum": 1, "maximum": 99},
+        "components": {"type": "string", "maxLength": 4096, "pattern": "^\\[[\\s\\S]*\\]$"}
+      }
     }
   }
 }

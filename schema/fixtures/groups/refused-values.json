@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "refused-values",
+  "values": {
+    "equipment": {
+      "head": {
+        "id": "minecraft:iron_helmet",
+        "count": 500
+      }
+    }
+  }
+}

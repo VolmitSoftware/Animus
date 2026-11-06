@@ -9,7 +9,7 @@ import java.util.TreeSet;
 
 /**
  * The data files a hotload watches: {@code config.toml}, the JSON documents of every editor kind (NPCs, behaviors,
- * packs, routes, skins, shops, chest GUIs, menus, holograms, text animations, presets, rigs, animations) and the
+ * packs, routes, recordings, skins, groups, shops, chest GUIs, menus, holograms, text animations, presets, rigs, animations) and the
  * schematics. {@code state/}, {@code backups/}, {@code logs/}, {@code imports/}, generated output and editor temporary
  * files are never watched.
  */

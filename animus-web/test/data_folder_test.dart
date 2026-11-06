@@ -17,6 +17,8 @@ void main() {
     expect(locateDocument('npcs/world/town/market/smith.json'), const DocumentLocation(DocumentKind.npc, 'world/town/market/smith'));
     expect(locateDocument('behaviors/town/greet/morning.json'), const DocumentLocation(DocumentKind.behavior, 'town:greet/morning'));
     expect(locateDocument('packs/quest/pack.json'), const DocumentLocation(DocumentKind.pack, 'quest'));
+    expect(locateDocument('recordings/market-loop.json'), const DocumentLocation(DocumentKind.recording, 'market-loop'));
+    expect(locateDocument('recordings/town/market.json'), isNull);
     expect(locateDocument('packs/quest/behaviors/quest/giver.json'), const DocumentLocation(DocumentKind.behavior, 'quest:giver'));
     expect(locateDocument('shops/town/baker.json'), const DocumentLocation(DocumentKind.shop, 'town:baker'));
     expect(locateDocument('gui/inventories/town/menu.json'), const DocumentLocation(DocumentKind.inventory, 'town:menu'));
