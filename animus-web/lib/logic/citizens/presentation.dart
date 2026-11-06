@@ -518,11 +518,12 @@ class _Presentation {
         converted.add('$path/$axis');
       }
     }
-    final List<String> kept = <String>[
-      for (final String key in const <String>['marker', 'gravity'])
-        if (stand.has(key)) key,
-    ];
-    if (kept.isNotEmpty) warnings.add('/traits/armorstandtrait: ${kept.join(' and ')}${kept.length == 1 ? ' is' : ' are'} kept for review');
+    final bool? gravity = _bool(stand.get('gravity'));
+    if (gravity != null) {
+      if (!gravity) fields.addBool('gravity', false);
+      converted.add('/traits/armorstandtrait/gravity');
+    }
+    if (stand.has('marker')) warnings.add('/traits/armorstandtrait: marker is kept for review');
     fields.add('armorStand', look);
   }
 

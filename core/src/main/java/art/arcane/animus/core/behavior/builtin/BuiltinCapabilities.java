@@ -88,7 +88,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private static final long MAXIMUM_EXPIRY_SECONDS = 31_536_000L;
     private static final int MAXIMUM_ITEMS = 6400;
     /** Capabilities that need an NPC body or NPC presence; a server behavior's run refuses them as no-npc. */
-    private static final Set<String> NPC_ONLY = Set.of("say", "look", "navigate", "stop-navigation", "play-recording", "resume-patrol", "set-appearance", "set-equipment", "combat-control",
+    private static final Set<String> NPC_ONLY = Set.of("say", "look", "navigate", "stop-navigation", "play-recording", "resume-patrol", "set-appearance", "set-equipment", "set-attribute", "combat-control",
             "build", "play-animation", "stop-animation", "npc-state", "player-in-range", "choices");
     /** Whether a capability needs an NPC body or NPC presence, so a server behavior cannot run it. */
     public static boolean npcOnly(Key key) { return key.namespace().equals(NAMESPACE) && NPC_ONLY.contains(key.name()); }

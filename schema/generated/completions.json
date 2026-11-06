@@ -935,7 +935,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
-      "reach": "both",
+      "reach": "npc",
       "arguments": {
         "attribute": {
           "type": "string",
