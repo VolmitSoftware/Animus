@@ -193,6 +193,11 @@ class _SuggestInputState extends State<SuggestInput> {
           id: _popupId,
           classes: 'animus-select-popup${_placement.classes}',
           styles: dom.Styles(raw: _placement.styles),
+          events: <String, void Function(web.Event)>{
+            'click': (web.Event event) => event
+              ..preventDefault()
+              ..stopPropagation(),
+          },
           <Widget>[
             SelectListbox(
               baseId: _baseId,

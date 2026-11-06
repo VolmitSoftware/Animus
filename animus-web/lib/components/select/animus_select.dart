@@ -242,7 +242,10 @@ class _AnimusSelectState extends State<AnimusSelect> {
           classes: 'animus-select-scrim',
           attributes: const <String, String>{'aria-hidden': 'true'},
           events: <String, void Function(web.Event)>{
-            'click': (web.Event _) {
+            'click': (web.Event event) {
+              event
+                ..preventDefault()
+                ..stopPropagation();
               _setState(const SelectState(), scope);
               _focus(_baseId);
             },
@@ -254,6 +257,13 @@ class _AnimusSelectState extends State<AnimusSelect> {
           id: _popupId,
           classes: 'animus-select-popup${_placement.classes}',
           styles: dom.Styles(raw: _placement.styles),
+          // A click inside the list must not activate an enclosing <label>,
+          // which would click the trigger again and reopen the list.
+          events: <String, void Function(web.Event)>{
+            'click': (web.Event event) => event
+              ..preventDefault()
+              ..stopPropagation(),
+          },
           <Widget>[
             if (_placement.sheet) dom.div(classes: 'animus-select-sheet-title', attributes: const <String, String>{'aria-hidden': 'true'}, <Widget>[Component.text(_name)]),
             if (_searchable)
