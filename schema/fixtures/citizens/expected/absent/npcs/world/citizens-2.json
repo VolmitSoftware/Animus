@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000102",
+  "id": "citizens-2",
+  "group": "world",
+  "name": "Absent 2",
+  "type": "minecraft:llama",
+  "spawned": false,
+  "migration": {
+    "importId": "61ff927202b9166f3ee29a1f98a87796df80a6cd033cff814ba243e33cfdbbbc",
+    "citizensId": 2,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 2,
+    "y": 64,
+    "z": 2,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "citizens:review": {
+      "type": "LLAMA",
+      "location": {
+        "world": "world",
+        "x": 2,
+        "y": 64,
+        "z": 2
+      },
+      "sleeptrait": {
+        "value": 3.5,
+        "list": [
+          "a"
+        ]
+      },
+      "slimesize": "text",
+      "withertrait": {
+        "nested": {
+          "flag": false,
+          "count": 2
+        }
+      },
+      "wolfmodifiers": {
+        "enabled": true
+      },
+      "woolcolor": [
+        1,
+        2
+      ],
+      "allaytrait": {
+        "value": 3.5,
+        "list": [
+          "a"
+        ]
+      },
+      "areaeffectcloudtrait": "text",
+      "armadillotrait": {
+        "nested": {
+          "flag": false,
+          "count": 2
+        }
+      },
+      "axolotltrait": {
+        "enabled": true
+      },
+      "beetrait": [
+        1,
+        2
+      ],
+      "boattrait": {
+        "value": 3.5,
+        "list": [
+          "a"
+        ]
+      },
+      "bossbar": "text",
+      "cameltrait": {
+        "nested": {
+          "flag": false,
+          "count": 2
+        }
+      },
+      "cattrait": {
+        "enabled": true
+      },
+      "chickentrait": [
+        1,
+        2
+      ],
+      "coppergolemtrait": {
+        "value": 3.5,
+        "list": [
+          "a"
+        ]
+      }
+    }
+  }
+}

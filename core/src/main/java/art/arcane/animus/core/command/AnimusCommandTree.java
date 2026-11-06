@@ -121,13 +121,13 @@ public final class AnimusCommandTree extends CommandGroup {
     }
 
     @Director(description = "Create a dormant NPC definition")
-    void create(@Param(name = "id", description = "The new NPC id") String id,
+    void create(@Param(name = "id", description = "The new NPC id; its file is npcs/<group>/<id>.json") String id,
                 @Param(name = "type", description = "The entity type, such as minecraft:player") String type,
                 @Param(name = "world", description = "The world it stands in") String world,
                 @Param(name = "x", description = "X position") double x,
                 @Param(name = "y", description = "Y position") double y,
                 @Param(name = "z", description = "Z position") double z,
-                @Param(name = "group", description = "The group it belongs to") String group,
+                @Param(name = "group", description = "The folder under npcs/ it lives in, such as world/town; group= for npcs/ itself") String group,
                 @Param(name = "name", description = "Its display name; quote it to use spaces") String name) {
         CommandActor actor = actor();
         files(actor, () -> { String line = administration().create(id, type, world, x, y, z, group, name); living().refresh(); return List.of(Palette.success(line)); });

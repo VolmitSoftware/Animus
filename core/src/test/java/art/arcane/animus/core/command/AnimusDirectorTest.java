@@ -222,6 +222,18 @@ class AnimusDirectorTest {
         assertEquals(0.5, AnimusCommandTree.blockCenter(0));
     }
 
+    @Test void npcReferencesResolveThroughNestedFolders() throws Exception {
+        art.arcane.animus.core.npc.NpcDefinition smith = art.arcane.animus.core.npc.NpcDefinition.parse("{\"schemaVersion\":1,\"revision\":1,\"uuid\":\""
+                + UUID.randomUUID() + "\",\"id\":\"smith\",\"type\":\"minecraft:player\",\"group\":\"world/town/market\",\"name\":\"Smith\",\"spawned\":false,"
+                + "\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}}");
+        java.util.function.Function<String, Optional<art.arcane.animus.core.npc.NpcDefinition>> find = (String id) -> id.equals("smith") ? Optional.of(smith) : Optional.empty();
+        assertEquals(Optional.of("smith"), CommandGroup.located(find, "world/town/market/smith"));
+        assertEquals(Optional.of("smith"), CommandGroup.located(find, "npcs/world/town/market/smith.json"));
+        assertEquals(Optional.empty(), CommandGroup.located(find, "world/town/smith"), "another folder is a different NPC");
+        assertEquals(Optional.empty(), CommandGroup.located(find, "npcs/../smith.json"));
+        assertEquals(Optional.empty(), CommandGroup.located(find, "world/town/market/ghost"));
+    }
+
     private static void collect(DirectorRuntimeNode node, List<DirectorRuntimeNode> out) {
         if (node.isInvocable()) out.add(node);
         for (DirectorRuntimeNode child : node.getChildren()) collect(child, out);

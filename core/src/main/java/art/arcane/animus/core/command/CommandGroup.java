@@ -1,13 +1,16 @@
 package art.arcane.animus.core.command;
 
 import art.arcane.animus.core.AnimusRuntime;
+import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.runtime.NpcRuntime;
+import art.arcane.animus.core.storage.NpcPaths;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.volmlib.util.director.help.DirectorMiniMenu;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /** What every {@code /animus} command group shares: the services, file-lane work, owner hops and paged listings. */
@@ -28,13 +31,37 @@ abstract class CommandGroup {
 
     boolean stopping() { return services.stopping().getAsBoolean(); }
 
-    /** The NPC id a command names; {@link #SELECTED} is the player's selection. Empty after telling the actor why. */
+    /**
+     * The NPC id a command names. It may be the bare id, the id with its folders ({@code world/town/smith}) or the file
+     * path ({@code npcs/world/town/smith.json}); {@link #SELECTED} is the player's selection. Empty after telling the
+     * actor why.
+     */
     Optional<String> npc(CommandActor actor, String id) {
+        if (id.indexOf('/') >= 0) return qualified(actor, id);
         if (!id.equalsIgnoreCase(SELECTED)) return Optional.of(id);
         if (actor.player().isEmpty()) { actor.tell(Palette.error("The console has no selection; name the NPC id.")); return Optional.empty(); }
         Optional<String> selected = living().selection(actor.player().get());
         if (selected.isEmpty()) actor.tell(Palette.error("No NPC selected; use /animus select <npc> or interact with a visible NPC."));
         return selected;
+    }
+
+    private Optional<String> qualified(CommandActor actor, String reference) {
+        Optional<String> id = located(runtime().npcs()::find, reference);
+        if (id.isEmpty()) actor.tell(Palette.error("No NPC at " + reference));
+        return id;
+    }
+
+    /**
+     * The id of the NPC a folder-qualified id or file path names, only when that NPC lives exactly there; a moved or
+     * mistyped folder finds nothing.
+     */
+    static Optional<String> located(Function<String, Optional<NpcDefinition>> find, String reference) {
+        int slash = reference.lastIndexOf('/');
+        String path = reference.startsWith("npcs/") && reference.endsWith(".json") ? reference
+                : slash < 0 ? NpcPaths.path("", reference) : NpcPaths.path(reference.substring(0, slash), reference.substring(slash + 1));
+        if (!NpcPaths.file(path)) return Optional.empty();
+        String id = NpcPaths.idOf(path);
+        return find.apply(id).filter((NpcDefinition definition) -> definition.path().equals(path)).map(NpcDefinition::id);
     }
 
     @FunctionalInterface interface Work { List<String> run() throws IOException; }

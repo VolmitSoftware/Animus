@@ -8,6 +8,7 @@ import art.arcane.animus.core.migration.CitizensDropIn;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.storage.NpcPaths;
 import art.arcane.animus.core.editor.transport.EditorEventSink;
 import art.arcane.animus.core.editor.transport.EditorEventStream;
 import art.arcane.animus.core.editor.transport.EditorRequest;
@@ -378,11 +379,11 @@ public final class EditorApi implements EditorRequestHandler {
     }
 
     private static boolean visible(EditorTokens.Token token, DocumentKind kind, String id) {
-        return kind != DocumentKind.NPC || token.group(id.substring(0, Math.max(0, id.indexOf('/'))));
+        return kind != DocumentKind.NPC || token.group(id.substring(0, Math.max(0, id.lastIndexOf('/'))));
     }
 
     private static void group(EditorTokens.Token token, DocumentKind kind, String id) throws EditorError {
-        if (!visible(token, kind, id)) throw new EditorError(EditorError.Code.GROUP_DENIED, "This token cannot reach NPC group " + id.substring(0, Math.max(0, id.indexOf('/'))) + ".");
+        if (!visible(token, kind, id)) throw new EditorError(EditorError.Code.GROUP_DENIED, "This token cannot reach NPC folder npcs/" + id.substring(0, Math.max(0, id.lastIndexOf('/'))) + ".");
     }
 
     private static String decode(String segment) throws EditorError {
@@ -476,7 +477,7 @@ public final class EditorApi implements EditorRequestHandler {
             audit("preview", Optional.of(token.id()), token.admin(), request, names(changes), refused.code().wireName());
             throw refused;
         }
-        List<String> ids = npcs.stream().map((NpcDefinition npc) -> npc.group() + "/" + npc.id()).toList();
+        List<String> ids = npcs.stream().map((NpcDefinition npc) -> npc.qualifiedId()).toList();
         EditorPreviews.Preview started = parts.previews().start(replace, token.id(), viewer, ids, parts.settings().previewsPerServer(),
                 Duration.ofMinutes(parts.settings().previewMinutes()));
         audit("preview", Optional.of(token.id()), token.admin(), request, names(changes), "running");
@@ -511,10 +512,10 @@ public final class EditorApi implements EditorRequestHandler {
         LinkedHashSet<String> hidden = new LinkedHashSet<>();
         for (NpcDefinition candidate : candidates) {
             NpcDefinition same = live.get(candidate.id());
-            if (same != null) { hidden.add(same.group() + "/" + same.id()); continue; }
+            if (same != null) { hidden.add(same.qualifiedId()); continue; }
             UUID uuid = candidate.uuid();
             for (NpcDefinition existing : live.values())
-                if (existing.uuid().equals(uuid)) { hidden.add(existing.group() + "/" + existing.id()); break; }
+                if (existing.uuid().equals(uuid)) { hidden.add(existing.qualifiedId()); break; }
         }
         return List.copyOf(hidden);
     }
@@ -775,9 +776,9 @@ public final class EditorApi implements EditorRequestHandler {
     private CompletionStage<EditorResponse> spawn(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
         String id = decode(segments[1]);
         boolean spawn = segments[2].equals("spawn");
-        if (!id.matches("[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,63}")) throw new EditorError(EditorError.Code.NOT_FOUND, "No NPC " + id + "; NPC ids are group/id.");
+        if (!NpcPaths.file("npcs/" + id + ".json")) throw new EditorError(EditorError.Code.NOT_FOUND, "No NPC " + id + "; NPC ids are their path under npcs/, such as town/guard.");
         group(token, DocumentKind.NPC, id);
-        String shortId = id.substring(id.indexOf('/') + 1);
+        String shortId = id.substring(id.lastIndexOf('/') + 1);
         CompletableFuture<EditorResponse> answer = new CompletableFuture<>();
         CompletionStage<EditorResponse> prepared = files(() -> {
             NpcRepository repository = parts.npcs().get();
@@ -785,7 +786,7 @@ public final class EditorApi implements EditorRequestHandler {
             try { before = repository.draft(shortId); }
             catch (IOException unknown) { throw new EditorError(EditorError.Code.NOT_FOUND, "No NPC " + id + "."); }
             NpcDefinition current = repository.find(shortId).orElseThrow(() -> new EditorError(EditorError.Code.NOT_FOUND, "No NPC " + id + "."));
-            if (!(current.group() + "/" + current.id()).equals(id)) throw new EditorError(EditorError.Code.NOT_FOUND, "No NPC " + id + ".");
+            if (!current.qualifiedId().equals(id)) throw new EditorError(EditorError.Code.NOT_FOUND, "No NPC " + id + ".");
             JsonObject document = before.document();
             document.addProperty("spawned", spawn);
             NpcDefinition candidate = NpcDefinition.parse(JsonDocuments.write(document));
