@@ -77,7 +77,6 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Function;
 import java.util.logging.Level;
-import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -509,26 +508,6 @@ public final class AnimusPlugin extends JavaPlugin {
     }
 
     private void printSplash(String splash) {
-        StringBuilder colored = new StringBuilder();
-        ChatColor previous = null;
-        for (int index = 0; index < splash.length(); index++) {
-            char glyph = splash.charAt(index);
-            ChatColor color;
-            if (glyph == '█') {
-                color = ChatColor.DARK_GRAY;
-            } else if (glyph >= '─' && glyph <= '╿') {
-                color = ChatColor.GOLD;
-            } else {
-                color = ChatColor.GRAY;
-            }
-            if (color != previous) {
-                colored.append(color);
-                previous = color;
-            }
-            colored.append(glyph);
-        }
-        getServer().getConsoleSender().sendMessage(colored.toString()
-                .replace("Startup: READY", "Startup: " + ChatColor.GREEN + "READY" + ChatColor.GRAY)
-                + ChatColor.RESET);
+        getServer().getConsoleSender().sendMessage(AnimusSplash.colored(splash));
     }
 }

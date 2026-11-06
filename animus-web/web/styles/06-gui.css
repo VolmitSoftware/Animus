@@ -271,7 +271,7 @@ button.animus-chest-slot:focus-visible {
 }
 
 .animus-gui-input:focus-visible {
-  outline: 2px solid var(--ring, #4d8ef7);
+  outline: 2px solid var(--ring, #ff5fa8);
   outline-offset: 1px;
 }
 
