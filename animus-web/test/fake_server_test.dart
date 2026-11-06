@@ -415,6 +415,80 @@ void main() {
     expect(missing.status, 404);
   });
 
+  /// A change set moving [current] (a document-response) to npc [id].
+  Map<String, Object?> moveTo(Map<String, Object?> current, String id, String idempotencyKey) {
+    final int slash = id.lastIndexOf('/');
+    final Map<String, Object?> source = Map<String, Object?>.of(current['source']! as Map<String, Object?>)..['group'] = slash < 0 ? '' : id.substring(0, slash);
+    return <String, Object?>{
+      'idempotencyKey': idempotencyKey,
+      'documents': <Object?>[
+        <String, Object?>{
+          'kind': 'npc',
+          'id': id,
+          'from': <String, Object?>{'id': current['id']},
+          'baseRevision': current['revision'],
+          'baseHash': current['hash'],
+          'source': source,
+        },
+      ],
+    };
+  }
+
+  test('a move writes the new path, drops the old one and keeps the revision chain', () async {
+    final String token = await pairToken();
+    final Frames events = await directEvents(token);
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    final Map<String, Object?> greeter = await document(token, 'npc', 'examples/greeter');
+    final Map<String, Object?> set = moveTo(greeter, 'town/market/greeter', key('move1'));
+    expectMessage('change-set', set);
+    final Reply applied = await call('POST', '/animus/v1/changes', token: token, body: set);
+    expect(applied.status, 200, reason: jsonEncode(applied.body));
+    expectMessage('change-applied', applied.body);
+    final Map<String, Object?> version = (applied.json['documents']! as List<Object?>).single! as Map<String, Object?>;
+    expect(version['id'], 'town/market/greeter');
+    expect(version['from'], <String, Object?>{'id': 'examples/greeter'});
+    expect(version['revision'], (greeter['revision']! as int) + 1);
+    final Map<String, Object?> moved = await document(token, 'npc', 'town/market/greeter');
+    expect(moved['path'], 'npcs/town/market/greeter.json');
+    expect((await call('GET', '/animus/v1/documents/npc/examples%2Fgreeter', token: token)).status, 404);
+    final Map<String, Object?> catalog = await events.nextOf('catalog');
+    expectMessage('event', catalog);
+    expect(((catalog['documents']! as List<Object?>).single! as Map<String, Object?>)['id'], 'town/market/greeter');
+    expect(catalog['deleted'], <Object?>[<String, Object?>{'kind': 'npc', 'id': 'examples/greeter'}]);
+    final Reply undone = await call('POST', '/animus/v1/changes/${applied.json['changeId']}/undo', token: token, body: <String, Object?>{'idempotencyKey': key('move2')});
+    expect(undone.status, 200, reason: jsonEncode(undone.body));
+    expectMessage('change-applied', undone.body);
+    expect(undone.json['documents'], <Object?>[
+      <String, Object?>{'kind': 'npc', 'id': 'examples/greeter', 'revision': greeter['revision'], 'hash': greeter['hash'], 'from': <String, Object?>{'id': 'town/market/greeter'}},
+    ]);
+    expect((await document(token, 'npc', 'examples/greeter'))['hash'], greeter['hash']);
+    expect((await call('GET', '/animus/v1/documents/npc/town%2Fmarket%2Fgreeter', token: token)).status, 404);
+  });
+
+  test('a move conflicts on a changed base and on an occupied target', () async {
+    final String token = await pairToken();
+    final Map<String, Object?> greeter = await document(token, 'npc', 'examples/greeter');
+    await call('POST', '/animus/v1/changes', token: token, body: rename(greeter, 'Changed', key('movec1')));
+    final Reply stale = await call('POST', '/animus/v1/changes', token: token, body: moveTo(greeter, 'town/greeter', key('movec2')));
+    expect(stale.status, 409);
+    expectMessage('change-conflict', stale.body);
+    expect(((stale.json['conflicts']! as List<Object?>).single! as Map<String, Object?>)['id'], 'examples/greeter');
+    final Map<String, Object?> current = await document(token, 'npc', 'examples/greeter');
+    final Reply occupied = await call('POST', '/animus/v1/changes', token: token, body: moveTo(current, 'examples/shopkeeper', key('movec3')));
+    expect(occupied.status, 409);
+    expectMessage('change-conflict', occupied.body);
+    final Map<String, Object?> conflict = (occupied.json['conflicts']! as List<Object?>).single! as Map<String, Object?>;
+    expect(conflict['id'], 'examples/shopkeeper');
+    expect(conflict['baseRevision'], isNull);
+    final Reply refused = await call('POST', '/animus/v1/changes', token: token, body: <String, Object?>{
+      'idempotencyKey': key('movec4'),
+      'documents': <Object?>[
+        <String, Object?>{'kind': 'npc', 'id': 'town/greeter', 'from': <String, Object?>{'id': 'examples/greeter'}, 'baseRevision': null, 'baseHash': null, 'source': <String, Object?>{}},
+      ],
+    });
+    expect(refused.status, 400);
+  });
+
   test('a replayed counter is refused', () async {
     final String token = await pairToken();
     final Map<String, Object?> body = <String, Object?>{

@@ -121,8 +121,10 @@ class MiniServer {
     final List<Map<String, Object?>> changes = <Map<String, Object?>>[for (final Object? raw in body['documents']! as List<Object?>) raw! as Map<String, Object?>];
     final List<Object?> conflicts = <Object?>[];
     for (final Map<String, Object?> change in changes) {
-      final Map<String, Object?>? current = documents['${change['kind']}:${change['id']}'];
-      if (current?['hash'] != change['baseHash']) {
+      final Object? from = change['from'];
+      final String baseKey = '${change['kind']}:${from is Map<String, Object?> ? from['id'] : change['id']}';
+      final Map<String, Object?>? current = documents[baseKey];
+      if (current?['hash'] != change['baseHash'] || (from != null && documents.containsKey('${change['kind']}:${change['id']}'))) {
         conflicts.add(<String, Object?>{
           'kind': change['kind'],
           'id': change['id'],
@@ -145,7 +147,14 @@ class MiniServer {
       final String id = change['id']! as String;
       final String documentKey = '${kind.wireName}:$id';
       receipt[documentKey] = documents[documentKey];
-      if (change['delete'] == true) {
+      final Object? from = change['from'];
+      if (from is Map<String, Object?>) {
+        final String oldKey = '${kind.wireName}:${from['id']}';
+        receipt[oldKey] = documents[oldKey];
+        final int revision = documents.remove(oldKey)!['revision']! as int;
+        put(kind, id, Map<String, Object?>.of(change['source']! as Map<String, Object?>)..remove('revision'), revision: revision + 1);
+        written.add(<String, Object?>{'kind': kind.wireName, 'id': id, 'revision': revision + 1, 'hash': documents[documentKey]!['hash'], 'from': <String, Object?>{'id': from['id']}});
+      } else if (change['delete'] == true) {
         final int revision = documents.remove(documentKey)!['revision']! as int;
         written.add(<String, Object?>{'kind': kind.wireName, 'id': id, 'revision': revision, 'hash': null});
       } else {
@@ -407,6 +416,37 @@ void main() {
     expect(server.documents.containsKey('npc:town/baker'), isFalse);
     expect(server.documents.containsKey('npc:town/smith'), isTrue);
     expect(store.workspace!.server!.bases.keys, unorderedEquals(<String>['npc:town/guard', 'npc:town/smith']));
+    expect(session.drafts, isEmpty);
+  });
+
+  test('should send a moved NPC as one move and undo it back', () async {
+    server.put(DocumentKind.npc, 'town/crier', <String, Object?>{'schemaVersion': 1, 'uuid': '3b5d1f0e-8c2a-4e7b-9a61-0c4d2e8f1a35', 'id': 'crier', 'group': 'town', 'name': 'Crier'});
+    await session.loadCatalog();
+    await session.openDocuments(session.catalog);
+    final AnimusDocument crier = store.document(DocumentKind.npc, 'town/crier')!;
+    final Map<String, Object?> moved = <String, Object?>{...crier.json! as Map<String, Object?>, 'group': 'town/market'};
+    await store.commit(documents: <DocumentChange>[
+      const DocumentChange(DocumentKind.npc, 'town/crier', null),
+      DocumentChange(DocumentKind.npc, 'town/market/crier', prettyJson(moved), path: 'npcs/town/market/crier.json'),
+    ]);
+    final DraftChange draft = session.drafts.single;
+    expect(draft.state, DraftState.moved);
+    expect(draft.from, 'town/crier');
+    expect(draft.change!['from'], <String, Object?>{'id': 'town/crier'});
+    expect(draft.change!['baseRevision'], 1);
+    expect(session.stateOf(DocumentKind.npc, 'town/market/crier'), DraftState.moved);
+    await session.apply();
+    expect(server.documents.containsKey('npc:town/crier'), isFalse);
+    expect(server.documents['npc:town/market/crier']!['revision'], 2);
+    expect(store.workspace!.server!.bases.keys, isNot(contains('npc:town/crier')));
+    expect(store.workspace!.server!.bases['npc:town/market/crier']!.revision, 2);
+    expect(session.drafts, isEmpty);
+    expect(session.log.last.message, contains('1 moved'));
+    await session.undo(store.workspace!.server!.history.last.changeId);
+    expect(server.documents.containsKey('npc:town/crier'), isTrue);
+    expect(server.documents.containsKey('npc:town/market/crier'), isFalse);
+    expect(store.document(DocumentKind.npc, 'town/crier'), isNotNull);
+    expect(store.document(DocumentKind.npc, 'town/market/crier'), isNull);
     expect(session.drafts, isEmpty);
   });
 
