@@ -1,5 +1,6 @@
 package art.arcane.animus.core.runtime;
 
+import art.arcane.animus.core.command.CombatControl;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -110,14 +111,14 @@ class CombatModuleLiveSettingsTest {
             assertFalse(module.active());
             assertFalse(module.running(), "With no helpers in flight the engine closes at once");
             assertTrue(module.status().contains("disabled in config.toml"), module.status());
-            assertThrows(IllegalStateException.class, () -> module.execute(new String[] {"combat", "guard", "status"}));
+            assertThrows(IllegalStateException.class, () -> module.command("guard", CombatControl.Operation.STATUS, Optional.empty()));
             assertFalse(module.guards(NPC, UUID.randomUUID()));
 
             hotload(budgets(true, 256));
             tick(module, 3);
             assertTrue(module.active());
             assertTrue(module.engine().registered(NPC), "The new engine registers the combat NPC again");
-            assertTrue(module.execute(new String[] {"combat", "guard", "status"}).contains("APPLIED"));
+            assertTrue(module.command("guard", CombatControl.Operation.STATUS, Optional.empty()).contains("APPLIED"));
         }
     }
 

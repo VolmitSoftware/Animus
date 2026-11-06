@@ -37,9 +37,6 @@ import java.util.function.*;
  */
 public final class BehaviorCommands implements AutoCloseable {
     public enum State { DISABLED, WAITING_MODULES, LOADING, READY, FAILED, CLOSED }
-    public static final List<String> OPERATIONS=List.of("status","list","validate","reload","schema","packs","run","inspect","trace","cancel","triggers","state");
-    private static final List<String> STATE_OPERATIONS=List.of("status","purge");
-    private static final List<String> PURGE_TARGETS=List.of("behavior","npc","player","relationship","all");
     private static final int PAGE_SIZE=20,MAX_LINES=24,MAX_LINE_CHARS=2048;
     private static final BehaviorCatalog.Snapshot EMPTY_CATALOG=new BehaviorCatalog.Snapshot(0,Map.of(),Map.of(),List.of());
     private final Path dataDirectory;
@@ -57,6 +54,8 @@ public final class BehaviorCommands implements AutoCloseable {
     private final AtomicBoolean schemaPending=new AtomicBoolean(),reloadAgain=new AtomicBoolean();
     /** Behavior ids a committed change deleted on purpose; the next reload forgets their retained programs and checkpoints. */
     private final Set<String> removedSources=ConcurrentHashMap.newKeySet();
+    /** Completions of {@link #reload} calls; the next catalog reload to start takes them and completes them when it ends. */
+    private final Queue<CompletableFuture<Void>> reloadWaiters=new ConcurrentLinkedQueue<>();
     private final BehaviorRuntime coordinator;
     private final TriggerDispatcher triggers;
     private final ServerTriggerDispatcher servers;
@@ -86,6 +85,7 @@ public final class BehaviorCommands implements AutoCloseable {
         servers.behaviorsEnabled(settings.enabled());
         extensions.connectTriggers(new ModuleTriggers(triggers,servers));
         coordinator=new BehaviorRuntime(runtimeLimits(settings),settings.engine(),repository::snapshot,this::catalogSnapshot,extensions.behaviorInvoker(),triggers,servers,behaviorState);
+        triggers.consumption(behaviorState,coordinator.facts());
     }
     private static BehaviorRuntime.Limits runtimeLimits(BehaviorSettings settings){
         return new BehaviorRuntime.Limits(settings.maximumOperations(),settings.operationsPerTick(),settings.tickMillis(),settings.deliveryBudgetMillis());
@@ -120,86 +120,66 @@ public final class BehaviorCommands implements AutoCloseable {
         if(!initializationSeen.compareAndSet(false,true)||!settings.enabled()||!publishState(State.LOADING))return;
         submitCatalog(null,false,true,Optional.empty());
     }
-    public boolean execute(CommandActor sender,String[] args){
-        if(!sender.permitted("animus.admin")){if(!closed.get())sender.reply(()->{if(!closed.get())sender.tell("You do not have permission to use this command.");});return true;}
-        try{
-            String operation=args.length>1?args[1].toLowerCase(Locale.ROOT):"status";
-            switch(operation){
-                case "status"->{arity(args,1,2,"behaviors status");reply(sender,statusLines());}
-                case "list"->{arity(args,2,3,"behaviors list [page]");int page=args.length==3?Integer.parseInt(args[2]):1;reply(sender,listLines(page));}
-                case "validate"->{
-                    arity(args,2,3,"behaviors validate [behavior-id]");Optional<String> only=args.length==3?Optional.of(args[2]):Optional.empty();
-                    only.ifPresent(BehaviorPath::forId);if(!catalogAdmission(sender,operation))return true;submitCatalog(sender,true,false,only);
-                }
-                case "reload"->{arity(args,2,2,"behaviors reload");if(!catalogAdmission(sender,operation))return true;submitCatalog(sender,false,false,Optional.empty());}
-                case "schema"->{arity(args,2,2,"behaviors schema");if(!catalogAdmission(sender,operation))return true;schema(sender);}
-                case "packs"->{arity(args,2,3,"behaviors packs [page]");int page=args.length==3?Integer.parseInt(args[2]):1;reply(sender,packLines(page));}
-                case "run"->{
-                    arity(args,4,4,"behaviors run <npc-id> <behavior-id>");BehaviorRuntime runtime=ready(sender,"run",false);if(runtime==null)return true;
-                    String npc=args[2],behavior=args[3];Optional<UUID> player=sender.player();
-                    runtime.run(npc,behavior,player).whenComplete((outcome,error)->{
-                        if(error!=null)reply(sender,List.of("Behavior run: FAILED | result-delivery"));
-                        else reply(sender,outcomeLines("Behavior run",outcome,outcome.value().map(id->"execution="+id+" | npc="+npc+" | behavior="+behavior).orElse("")));
-                    });
-                }
-                case "trace"->{
-                    arity(args,3,3,"behaviors trace <npc-id-or-uuid>");BehaviorRuntime runtime=ready(sender,"trace",true);if(runtime==null)return true;
-                    String npc=args[2];
-                    runtime.observeNpc(npc).whenComplete((outcome,error)->{
-                        if(error!=null)reply(sender,List.of("Behavior trace: FAILED | result-delivery"));
-                        else if(outcome.value().isEmpty())reply(sender,outcomeLines("Behavior trace",outcome,"npc="+npc));
-                        else reply(sender,traceLines(npc,outcome.value().orElseThrow()));
-                    });
-                }
-                case "state"->state(sender,args);
-                case "inspect"->{
-                    arity(args,3,3,"behaviors inspect <execution-uuid>");BehaviorRuntime runtime=coordinator;UUID id=UUID.fromString(args[2]);
-                    if(runtime==null){reply(sender,List.of("Behavior inspect: UNAVAILABLE | state="+state));return true;}
-                    runtime.observe(id).whenComplete((outcome,error)->{
-                        if(error!=null)reply(sender,List.of("Behavior inspect: FAILED | result-delivery"));
-                        else reply(sender,outcome.value().map(BehaviorCommands::executionLines).orElse(List.of("Behavior inspect: "+outcome.status()+" | execution="+id)));
-                    });
-                }
-                case "cancel"->{
-                    arity(args,3,3,"behaviors cancel <execution-uuid>");BehaviorRuntime runtime=ready(sender,"cancel",true);if(runtime==null)return true;UUID id=UUID.fromString(args[2]);
-                    runtime.cancel(id).whenComplete((outcome,error)->{
-                        if(error!=null)reply(sender,List.of("Behavior cancel: FAILED | result-delivery"));
-                        else reply(sender,outcomeLines("Behavior cancel",outcome,"execution="+id+outcome.value().map(value->" | cancelled="+value).orElse("")));
-                    });
-                }
-                case "triggers"->{arity(args,2,3,"behaviors triggers [page]");int page=args.length==3?Integer.parseInt(args[2]):1;reply(sender,triggerLines(page));}
-                default->throw new IllegalArgumentException("behaviors status|list [page]|validate [behavior-id]|reload|schema|packs [page]|run <npc-id> <behavior-id>|inspect <execution-uuid>|trace <npc-id-or-uuid>|cancel <execution-uuid>|triggers [page]|state status|state purge <target>");
-            }
-        }catch(RuntimeException invalid){reply(sender,List.of("Animus behaviors: "+Objects.toString(invalid.getMessage(),invalid.getClass().getSimpleName())));}
-        return true;
+    public void status(CommandActor sender){reply(sender,statusLines());}
+    public void list(CommandActor sender,int page){guarded(sender,()->reply(sender,listLines(page)));}
+    /** Validates every behavior, or only the named one. */
+    public void validate(CommandActor sender,Optional<String> only){
+        guarded(sender,()->{only.ifPresent(BehaviorPath::forId);if(catalogAdmission(sender,"validate"))submitCatalog(sender,true,false,only);});
     }
-    private void state(CommandActor sender,String[] args){
-        String operation=args.length>2?args[2].toLowerCase(Locale.ROOT):"status";
-        switch(operation){
-            case "status"->{arity(args,2,3,"behaviors state status");reply(sender,stateLines());}
-            case "purge"->{
-                BehaviorStateStore.Purge selector=purgeSelector(args);
-                StateTask task=new StateTask(sender,selector);
-                try{files.execute(task);}
-                catch(RejectedExecutionException rejected){task.failed("file-queue-unavailable");}
-            }
-            default->throw new IllegalArgumentException("behaviors state status|purge behavior <id>|purge npc <id-or-uuid>|purge player <uuid>|purge relationship <npc-id-or-uuid> <player-uuid>|purge all confirm");
-        }
+    public void reload(CommandActor sender){if(catalogAdmission(sender,"reload"))submitCatalog(sender,false,false,Optional.empty());}
+    public void schemaCommand(CommandActor sender){if(catalogAdmission(sender,"schema"))schema(sender);}
+    public void packs(CommandActor sender,int page){guarded(sender,()->reply(sender,packLines(page)));}
+    public void run(CommandActor sender,String npc,String behavior){
+        BehaviorRuntime runtime=ready(sender,"run",false);if(runtime==null)return;Optional<UUID> player=sender.player();
+        runtime.run(npc,behavior,player).whenComplete((outcome,error)->{
+            if(error!=null)reply(sender,List.of("Behavior run: FAILED | result-delivery"));
+            else reply(sender,outcomeLines("Behavior run",outcome,outcome.value().map(id->"execution="+id+" | npc="+npc+" | behavior="+behavior).orElse("")));
+        });
     }
-    private BehaviorStateStore.Purge purgeSelector(String[] args){
-        String target=args.length>3?args[3].toLowerCase(Locale.ROOT):"";
-        return switch(target){
-            case "behavior"->{arity(args,5,5,"behaviors state purge behavior <behavior-id>");BehaviorPath.forId(args[4]);yield BehaviorStateStore.Purge.behavior(args[4]);}
-            case "npc"->{arity(args,5,5,"behaviors state purge npc <npc-id-or-uuid>");yield BehaviorStateStore.Purge.npc(npcIdentity(args[4]));}
-            case "player"->{arity(args,5,5,"behaviors state purge player <player-uuid>");yield BehaviorStateStore.Purge.player(UUID.fromString(args[4]));}
-            case "relationship"->{arity(args,6,6,"behaviors state purge relationship <npc-id-or-uuid> <player-uuid>");yield BehaviorStateStore.Purge.relationship(npcIdentity(args[4]),UUID.fromString(args[5]));}
-            case "all"->{
-                if(args.length!=5||!args[4].equals("confirm"))throw new IllegalArgumentException("behaviors state purge all confirm removes every stored behavior variable");
-                yield BehaviorStateStore.Purge.all();
-            }
-            default->throw new IllegalArgumentException("behaviors state purge behavior|npc|player|relationship|all");
-        };
+    public void trace(CommandActor sender,String npc){
+        BehaviorRuntime runtime=ready(sender,"trace",true);if(runtime==null)return;
+        runtime.observeNpc(npc).whenComplete((outcome,error)->{
+            if(error!=null)reply(sender,List.of("Behavior trace: FAILED | result-delivery"));
+            else if(outcome.value().isEmpty())reply(sender,outcomeLines("Behavior trace",outcome,"npc="+npc));
+            else reply(sender,traceLines(npc,outcome.value().orElseThrow()));
+        });
     }
+    public void inspect(CommandActor sender,UUID id){
+        BehaviorRuntime runtime=coordinator;
+        if(runtime==null){reply(sender,List.of("Behavior inspect: UNAVAILABLE | state="+state));return;}
+        runtime.observe(id).whenComplete((outcome,error)->{
+            if(error!=null)reply(sender,List.of("Behavior inspect: FAILED | result-delivery"));
+            else reply(sender,outcome.value().map(BehaviorCommands::executionLines).orElse(List.of("Behavior inspect: "+outcome.status()+" | execution="+id)));
+        });
+    }
+    public void cancel(CommandActor sender,UUID id){
+        BehaviorRuntime runtime=ready(sender,"cancel",true);if(runtime==null)return;
+        runtime.cancel(id).whenComplete((outcome,error)->{
+            if(error!=null)reply(sender,List.of("Behavior cancel: FAILED | result-delivery"));
+            else reply(sender,outcomeLines("Behavior cancel",outcome,"execution="+id+outcome.value().map(value->" | cancelled="+value).orElse("")));
+        });
+    }
+    public void triggers(CommandActor sender,int page){guarded(sender,()->reply(sender,triggerLines(page)));}
+    public void stateStatus(CommandActor sender){reply(sender,stateLines());}
+    /** The stored variables of one behavior, one NPC (id or UUID), one player, one NPC and player pair, or everything. */
+    public void purgeBehavior(CommandActor sender,String behavior){guarded(sender,()->{BehaviorPath.forId(behavior);purge(sender,BehaviorStateStore.Purge.behavior(behavior));});}
+    public void purgeNpc(CommandActor sender,String npc){guarded(sender,()->purge(sender,BehaviorStateStore.Purge.npc(npcIdentity(npc))));}
+    public void purgePlayer(CommandActor sender,UUID player){purge(sender,BehaviorStateStore.Purge.player(player));}
+    public void purgeRelationship(CommandActor sender,String npc,UUID player){guarded(sender,()->purge(sender,BehaviorStateStore.Purge.relationship(npcIdentity(npc),player)));}
+    public void purgeAll(CommandActor sender){purge(sender,BehaviorStateStore.Purge.all());}
+    private void purge(CommandActor sender,BehaviorStateStore.Purge selector){
+        StateTask task=new StateTask(sender,selector);
+        try{files.execute(task);}
+        catch(RejectedExecutionException rejected){task.failed("file-queue-unavailable");}
+    }
+    /** An invalid id or page is answered like every other behavior refusal. */
+    private void guarded(CommandActor sender,Runnable work){
+        try{work.run();}
+        catch(RuntimeException invalid){reply(sender,List.of("Animus behaviors: "+Objects.toString(invalid.getMessage(),invalid.getClass().getSimpleName())));}
+    }
+    /** Ids for completion: loaded behaviors, NPC definitions and the executions running now. */
+    public List<String> behaviorIds(){return catalogSnapshot().byId().keySet().stream().sorted().limit(100).toList();}
+    public List<String> executionIds(){BehaviorRuntime runtime=coordinator;return runtime==null?List.of():runtime.snapshot().executions().keySet().stream().map(UUID::toString).sorted().limit(100).toList();}
     /** A deleted NPC has no definition left; its stored state stays reachable through the UUID. */
     private UUID npcIdentity(String npc){
         NpcDefinition definition=repository.snapshot().get(npc);
@@ -241,36 +221,12 @@ public final class BehaviorCommands implements AutoCloseable {
         }
         return rows;
     }
-    public List<String> complete(String[] args){
-        if(closed.get())return List.of();
-        if(args.length==2)return matching(OPERATIONS,args[1].toLowerCase(Locale.ROOT));
-        if(args.length==3&&args[1].equalsIgnoreCase("state"))return matching(STATE_OPERATIONS,args[2].toLowerCase(Locale.ROOT));
-        if(args.length==4&&args[1].equalsIgnoreCase("state")&&args[2].equalsIgnoreCase("purge"))return matching(PURGE_TARGETS,args[3].toLowerCase(Locale.ROOT));
-        if(args.length==5&&args[1].equalsIgnoreCase("state")&&args[2].equalsIgnoreCase("purge")){
-            return switch(args[3].toLowerCase(Locale.ROOT)){
-                case "behavior"->matching(stateBehaviors(),args[4]);
-                case "npc","relationship"->matching(repository.snapshot().keySet(),args[4]);
-                case "all"->matching(List.of("confirm"),args[4]);
-                default->List.of();
-            };
-        }
-        if(args.length==3&&args[1].equalsIgnoreCase("validate"))return matching(catalogSnapshot().byId().keySet(),args[2]);
-        if(args.length==3&&args[1].equalsIgnoreCase("trace"))return matching(repository.snapshot().keySet(),args[2]);
-        if(args.length==3&&args[1].equalsIgnoreCase("run"))return matching(repository.snapshot().keySet(),args[2]);
-        BehaviorCatalog current=catalog;
-        if(args.length==4&&args[1].equalsIgnoreCase("run")&&current!=null)return matching(current.snapshot().byId().keySet(),args[3]);
-        BehaviorRuntime runtime=coordinator;
-        if(args.length==3&&List.of("inspect","cancel").contains(args[1].toLowerCase(Locale.ROOT))&&runtime!=null)return matching(runtime.snapshot().executions().keySet().stream().map(UUID::toString).toList(),args[2]);
-        return List.of();
-    }
     /** Behavior IDs plus the flag and quest state of their namespaces, which purge reaches by these names. */
-    private List<String> stateBehaviors(){
+    public List<String> stateBehaviors(){
         Set<String> ids=new TreeSet<>(catalogSnapshot().byId().keySet());
         for(String id:List.copyOf(ids)){String namespace=id.substring(0,id.indexOf(':'));ids.add("animus:flags/"+namespace);ids.add("animus:quests/"+namespace);}
         return List.copyOf(ids);
     }
-    private static List<String> matching(Collection<String> candidates,String prefix){return candidates.stream().filter(value->value.startsWith(prefix)).sorted().limit(100).toList();}
-    private static void arity(String[] args,int minimum,int maximum,String usage){if(args.length<minimum||args.length>maximum)throw new IllegalArgumentException(usage);}
     private boolean catalogAdmission(CommandActor sender,String operation){
         if(closed.get()||!settings.enabled()||!initializationSeen.get()){
             reply(sender,List.of("Behaviors "+operation+": UNAVAILABLE | state="+state));return false;
@@ -286,12 +242,24 @@ public final class BehaviorCommands implements AutoCloseable {
     /**
      * The reload after a committed change. {@code removed} names behaviors whose sources the change deleted on purpose: their
      * retained programs and last-valid checkpoints go too, so nothing reports them missing. Pending catalog work runs it again after.
+     * The reload runs as its own task on the file lane, so a caller on the lane must chain on the result and never wait for it there.
+     *
+     * @return completes once a catalog reload that started after this call has ended, published or refused; at once when none is admitted
      */
-    public void reload(CommandActor sender,Set<String> removed){
+    public CompletableFuture<Void> reload(CommandActor sender,Set<String> removed){
         removedSources.addAll(removed);
-        if(!catalogAdmission(sender,"reload"))return;
+        if(!catalogAdmission(sender,"reload"))return CompletableFuture.completedFuture(null);
+        CompletableFuture<Void> done=new CompletableFuture<>();reloadWaiters.add(done);
         submitCatalog(sender,false,false,Optional.empty(),true);
+        if(closed.get())releaseWaiters(drainWaiters());
+        return done;
     }
+    private List<CompletableFuture<Void>> drainWaiters(){
+        List<CompletableFuture<Void>> drained=new ArrayList<>();
+        for(CompletableFuture<Void> waiter;(waiter=reloadWaiters.poll())!=null;)drained.add(waiter);
+        return drained;
+    }
+    private static void releaseWaiters(List<CompletableFuture<Void>> waiters){for(CompletableFuture<Void> waiter:waiters)waiter.complete(null);}
     private void submitCatalog(CommandActor sender,boolean validate,boolean initial,Optional<String> only){submitCatalog(sender,validate,initial,only,false);}
     private void submitCatalog(CommandActor sender,boolean validate,boolean initial,Optional<String> only,boolean follow){
         BehaviorCatalog current=catalog;CatalogTask task=new CatalogTask(sender,validate,initial,current==null?0:current.snapshot().generation(),only);
@@ -299,12 +267,12 @@ public final class BehaviorCommands implements AutoCloseable {
             if(follow){reloadAgain.set(true);return;}
             if(sender!=null)reply(sender,List.of("Behaviors "+(validate?"validate":"reload")+": BUSY | catalog-work=pending"));return;
         }
-        if(closed.get()){fileTask.compareAndSet(task,null);return;}
+        if(closed.get()){fileTask.compareAndSet(task,null);releaseWaiters(drainWaiters());return;}
         try{files.execute(task);}
-        catch(RejectedExecutionException rejected){fileTask.compareAndSet(task,null);task.failed("file-queue-unavailable");}
+        catch(RejectedExecutionException rejected){fileTask.compareAndSet(task,null);task.failed("file-queue-unavailable");releaseWaiters(drainWaiters());}
     }
     private void fileEvent(Runnable task,MutationLane.EngineTaskEvent event,Throwable error){
-        if(task instanceof CatalogTask owned&&fileTask.compareAndSet(owned,null))owned.failed(event==MutationLane.EngineTaskEvent.CANCELLED?"file-task-cancelled":"file-task-failed");
+        if(task instanceof CatalogTask owned&&fileTask.compareAndSet(owned,null)){owned.failed(event==MutationLane.EngineTaskEvent.CANCELLED?"file-task-cancelled":"file-task-failed");releaseWaiters(drainWaiters());}
         if(task instanceof SchemaTask owned&&schemaPending.compareAndSet(true,false))owned.failed(event==MutationLane.EngineTaskEvent.CANCELLED?"file-task-cancelled":"file-task-failed");
     }
     /** Removal tokens for accepted programs of {@code ids} whose source file is gone. */
@@ -342,6 +310,7 @@ public final class BehaviorCommands implements AutoCloseable {
         final CommandActor sender;final boolean validate,initial;final long generation;final Optional<String> only;
         CatalogTask(CommandActor sender,boolean validate,boolean initial,long generation,Optional<String> only){this.sender=sender;this.validate=validate;this.initial=initial;this.generation=generation;this.only=only;}
         public void run(){
+            List<CompletableFuture<Void>> served=validate?List.of():drainWaiters();
             try{
                 if(closed.get())return;
                 BehaviorCatalog current=catalog;
@@ -366,7 +335,10 @@ public final class BehaviorCommands implements AutoCloseable {
                 // Startup reports every line: a malformed source kept on its last-valid program must name its exact errors.
                 if(initial)messages.forEach(report);else reply(sender,messages);
             }catch(IOException | RuntimeException | LinkageError | AssertionError error){failed("catalog-operation: "+error.getClass().getSimpleName());}
-            finally{fileTask.compareAndSet(this,null);if(reloadAgain.compareAndSet(true,false)&&!closed.get())submitCatalog(null,false,false,Optional.empty(),true);}
+            finally{
+                fileTask.compareAndSet(this,null);releaseWaiters(served);
+                if(reloadAgain.compareAndSet(true,false)&&!closed.get())submitCatalog(null,false,false,Optional.empty(),true);
+            }
         }
         void failed(String reason){
             if(closed.get())return;failure=reason;failedState();
@@ -540,5 +512,6 @@ public final class BehaviorCommands implements AutoCloseable {
         AutoCloseable listening=subscription;
         if(listening!=null){try{listening.close();}catch(Exception ignored){/* The runtime's listener list is in memory; removal cannot fail. */}}
         BehaviorRuntime runtime=coordinator;if(runtime!=null)runtime.close();
+        releaseWaiters(drainWaiters());
     }
 }

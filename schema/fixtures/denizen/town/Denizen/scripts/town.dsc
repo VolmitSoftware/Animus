@@ -90,6 +90,7 @@ greet_task:
         - default:
             - narrate "Again."
     - title title:"Guard" subtitle:"<player.name>" fade_in:1s stay:2s fade_out:1s
+    - title title:<&sp> subtitle:"Mind the gate" stay:1s
     - actionbar "<&e>Visit logged" targets:<player>
     - run greet_task path:extra
     - foreach <server.online_players> as:target:
@@ -177,6 +178,13 @@ town_guide:
     text:
     - Welcome to town, <player.name>.
     - The gate closes at dusk.
+
+notice_board:
+    type: book
+    title: Gate notice
+    author: <&sp>
+    text:
+    - Keep the road clear.
 
 lantern_token:
     type: item

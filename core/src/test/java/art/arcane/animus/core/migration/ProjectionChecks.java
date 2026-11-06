@@ -42,7 +42,7 @@ public final class ProjectionChecks {
             Path input=Files.writeString(temp.resolve("saves.yml"),source);
             var preview=new CitizensImporter().preview(input,temp.resolve("data"),Map.of());
             List<NpcDefinition> original=new ArrayList<>();
-            for(int id=1;id<=2;id++)original.add(NpcDefinition.parse(Files.readString(preview.directory().resolve("npcs/world-r0_0/citizens-"+id+".json"))));
+            for(int id=1;id<=2;id++)original.add(NpcDefinition.parse(Files.readString(preview.directory().resolve("npcs/world/citizens-"+id+".json"))));
             String firstBefore=original.getFirst().serialize();
             String id=preview.id();
             var fresh=ImportProjection.project(id,original,List.of(),ImportProjection.Mode.REJECT,null);
@@ -58,7 +58,12 @@ public final class ProjectionChecks {
             NpcDefinition mismatched=with(edited,"uuid",new JsonPrimitive(UUID.randomUUID().toString()));
             rejects(()->ImportProjection.project(id,original,List.of(mismatched),ImportProjection.Mode.REPLACE,null),"retain the existing UUID");
             NpcDefinition elsewhere=with(edited,"group",new JsonPrimitive("elsewhere"));
-            rejects(()->ImportProjection.project(id,original,List.of(elsewhere),ImportProjection.Mode.REPLACE,null),"another path");
+            var relocated=ImportProjection.project(id,original,List.of(elsewhere),ImportProjection.Mode.REPLACE,null);
+            check(relocated.replacedPaths().equals(Set.of("npcs/elsewhere/citizens-1.json")) && relocated.definitions().getFirst().path().equals("npcs/elsewhere/citizens-1.json"),"a moved NPC is replaced where it lives");
+            rejects(()->ImportProjection.project(id,original,List.of(elsewhere),ImportProjection.Mode.REJECT,null),"collision");
+            NpcDefinition impostor=with(with(elsewhere,"uuid",new JsonPrimitive(UUID.randomUUID().toString())),"id",new JsonPrimitive("someone-else"));
+            NpcDefinition sameUuid=with(impostor,"uuid",new JsonPrimitive(original.getFirst().uuid().toString()));
+            rejects(()->ImportProjection.project(id,original,List.of(sameUuid),ImportProjection.Mode.REPLACE,null),"another path");
             NpcDefinition exhausted=with(edited,"revision",new JsonPrimitive(Long.MAX_VALUE));
             rejects(()->ImportProjection.project(id,original,List.of(exhausted),ImportProjection.Mode.REPLACE,null),"Revision exhausted");
             NpcDefinition noProvenance=with(edited,"migration",JsonNull.INSTANCE);

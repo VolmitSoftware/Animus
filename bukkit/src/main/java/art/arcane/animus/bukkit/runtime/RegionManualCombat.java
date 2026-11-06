@@ -48,7 +48,6 @@ import org.bukkit.util.Vector;
  * NPC's own defense applies. Nothing reads an entity or a chunk another region owns. Results go to the server log.
  */
 public final class RegionManualCombat implements AutoCloseable {
-    public static final String USAGE = "attack <npc-id> <target-uuid> [damage] | target <npc-id> <mob-uuid>|stop";
     /** NPCs with a hit in flight at once, and controlled mobs on the whole server. */
     static final int MAXIMUM_ATTACKERS = 64, MAXIMUM_MOBS = 32;
     /** How far an NPC may have moved between its strike and the hit landing, or a mob's hit and its arrival. */
@@ -85,27 +84,38 @@ public final class RegionManualCombat implements AutoCloseable {
                 + (mobUnavailable == null ? "" : " | " + mobUnavailable);
     }
 
-    /** {@code attack} and {@code target} from a command on any thread. Checks run where their subject lives; results go to the log. */
-    public String execute(String[] args) {
+    /** One manual hit, from a command on any thread. The checks run where the NPC and the target live; the result goes to the log. */
+    public String attack(String npc, UUID target, double damage) {
+        RegionActor actor = actor(npc);
+        return attack(npc, actor, living(target), new AttackProfile(damage, AttackProfile.DEFAULT.reach(), AttackProfile.DEFAULT.cooldownTicks()));
+    }
+    /** Lends a mob to the NPC, from a command on any thread. The mob's own region takes it over; the result goes to the log. */
+    public String control(String npc, UUID mob) {
+        RegionActor actor = actor(npc);
+        if (!(living(mob) instanceof Mob controlled)) throw new IllegalArgumentException("Target control requires an existing supported mob");
+        return control(npc, actor, controlled);
+    }
+    /** Ends every mob control the NPC holds; each mob is let go on its own region. */
+    public String releaseMobs(String npc) {
+        available();
+        return stop(npc);
+    }
+
+    private void available() {
         if (closed) throw new IllegalStateException("Combat has stopped");
         if (unavailable != null) throw new IllegalStateException("Manual attack and mob control are unavailable: " + unavailable);
-        if (args.length == 3 && args[0].equals("target") && args[2].equals("stop")) return stop(args[1]);
-        if (args.length < 3 || args.length > 4 || args[0].equals("target") && args.length != 3) throw new IllegalArgumentException(USAGE);
-        RegionActor actor = actor(args[1]);
-        UUID targetId = CombatModule.uuid(args[2]);
+    }
+    /** Only a handle: an entity's type is known on any thread, its state only on its own region. */
+    private LivingEntity living(UUID id) {
         Entity entity;
-        try { entity = host.plugin.getServer().getEntity(targetId); }
+        try { entity = host.plugin.getServer().getEntity(id); }
         catch (RuntimeException unavailableHandle) { entity = null; }
         if (!(entity instanceof LivingEntity target)) throw new IllegalArgumentException("Target must be a loaded living entity");
-        if (args[0].equals("attack")) {
-            double amount = args.length == 4 ? Double.parseDouble(args[3]) : AttackProfile.DEFAULT.damage();
-            return attack(args[1], actor, target, new AttackProfile(amount, AttackProfile.DEFAULT.reach(), AttackProfile.DEFAULT.cooldownTicks()));
-        }
-        if (!args[0].equals("target") || !(target instanceof Mob mob)) throw new IllegalArgumentException("Target control requires an existing supported mob");
-        return control(args[1], actor, mob);
+        return target;
     }
 
     private RegionActor actor(String id) {
+        available();
         NpcDefinition definition = host.runtime.npcs().find(id).orElseThrow(() -> new IllegalArgumentException("Unknown NPC: " + id));
         if (!CombatModule.manualAllowed(definition)) throw new IllegalStateException("NPC combat is disabled or its migration review has not been accepted");
         RegionActor actor = host.actors.get(id);

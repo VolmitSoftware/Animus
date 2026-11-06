@@ -436,6 +436,8 @@ class _Expressions {
   }
 
   _Result<_Expr> fallback(_Expr expr, String raw, _Scope scope, _Pending pending) {
+    // A flag test and a constant never fail, so their fallback is never used.
+    if (expr.flag == null && expr.kind == 'b' && (expr.text == 'true' || expr.text.startsWith('has_flag('))) return _Result<_Expr>.ok(expr);
     if (expr.flag == null) return const _Result<_Expr>.fail('the || fallback works only on a flag read; other tags have no unset value');
     final _Result<_Expr> value = this.value(raw, scope, pending);
     if (value.failed) return value;
@@ -450,17 +452,17 @@ class _Expressions {
     if (base.isEmpty && first.parameter != null) return definition(first.parameter!, scope);
     switch (base) {
       case 'player':
-        return first.parameter != null ? const _Result<_Step>.fail('tags of another player have no Animus expression') : player(parts, scope);
+        return first.parameter != null ? const _Result<_Step>.fail('tags of another player have no Animus expression') : player(parts, scope, pending);
       case 'npc':
         if (first.parameter != null) return const _Result<_Step>.fail('tags of another NPC have no Animus expression');
         if (scope.server) return _Result<_Step>.fail('$label needs an NPC; server behaviors have none');
-        return npc(parts);
+        return npc(parts, scope, pending);
       case 'server':
-        return server(parts);
+        return server(parts, scope, pending);
       case 'util':
         return util(parts, scope, pending);
       case 'context':
-        return context(parts, scope);
+        return context(parts, scope, pending);
       case 'element':
         if (first.parameter == null) return const _Result<_Step>.fail('element without a value');
         final _Result<_Expr> value = this.value(first.parameter!, scope, pending);
@@ -518,21 +520,42 @@ class _Expressions {
     return _Result<_Step>.ok(_Step(_Expr(text.toString(), 'a'), 1));
   }
 
-  _Result<_Step> flagRead(String scope, DenizenPart part, int next) {
+  _Result<_Step> flagRead(String scope, DenizenPart part, int next, _Scope from, _Pending pending) {
     final String? parameter = part.parameter;
     if (parameter == null) return const _Result<_Step>.fail('flag tag without a name');
-    final String? name = _flagName(parameter);
-    if (parameter.contains('<') || name == null) return _Result<_Step>.fail('flag name $parameter cannot be an Animus flag name');
-    final String prefix = 'flag(${_quote(scope)}, ${_quote(name)}, ';
-    if (part.name.toLowerCase() == 'has_flag') return _Result<_Step>.ok(_Step(_Expr('has_flag(${_quote(scope)}, ${_quote(name)})', 'b'), next));
+    final _Result<String> name = flagNameExpression(parameter, from, pending);
+    if (name.failed) return _Result<_Step>.fail(name.reason!);
+    final String prefix = 'flag(${_quote(scope)}, ${name.value}, ';
+    if (part.name.toLowerCase() == 'has_flag') return _Result<_Step>.ok(_Step(_Expr('has_flag(${_quote(scope)}, ${name.value})', 'b'), next));
     return _Result<_Step>.ok(_Step(_Expr("$prefix'')", 'a', prefix), next));
   }
 
-  _Result<_Step> player(List<DenizenPart> parts, _Scope scope) {
+  /// A flag name as an expression: a literal Animus flag name, or written text joined with tags such as
+  /// `npc_done_<npc.id>`, whose written parts are mapped as literal names are.
+  _Result<String> flagNameExpression(String raw, _Scope scope, _Pending pending) {
+    if (!raw.contains('<')) {
+      final String? name = _flagName(raw);
+      return name == null ? _Result<String>.fail('flag name $raw cannot be an Animus flag name') : _Result<String>.ok(_quote(name));
+    }
+    final StringBuffer mapped = StringBuffer();
+    for (final DenizenSegment segment in denizenSegments(raw)) {
+      if (segment.tag) {
+        mapped.write('<${segment.text}>');
+        continue;
+      }
+      final String lowered = segment.text.toLowerCase();
+      if (!_full('[a-z0-9_.]*', lowered)) return _Result<String>.fail('flag name $raw cannot be an Animus flag name');
+      mapped.write(lowered.replaceAll('.', '-'));
+    }
+    final _Result<_Expr> name = value(mapped.toString(), scope, pending);
+    return name.failed ? _Result<String>.fail(name.reason!) : _Result<String>.ok(_textual(name.value!));
+  }
+
+  _Result<_Step> player(List<DenizenPart> parts, _Scope scope, _Pending pending) {
     if (parts.length == 1) return const _Result<_Step>.ok(_Step(_Expr('player.uuid', 's'), 1));
     final DenizenPart part = parts[1];
     final String attribute = part.name.toLowerCase();
-    if (attribute == 'flag' || attribute == 'has_flag') return flagRead('player', part, 2);
+    if (attribute == 'flag' || attribute == 'has_flag') return flagRead('player', part, 2, scope, pending);
     if (attribute == 'has_permission') return const _Result<_Step>.fail('has_permission works only as an if condition');
     if (part.parameter != null) return _Result<_Step>.fail('tag player.$attribute has no Animus expression');
     final String? next = _attributeName(parts, 2);
@@ -556,7 +579,7 @@ class _Expressions {
       case 'is_op':
         return _fact('player.op', 'b', 2);
       case 'is_sneaking':
-        return _fact('player.sneaking', 'b', 2);
+        return _fact(scope.context.containsKey('sneaking') ? 'context.sneaking' : 'player.sneaking', 'b', 2);
       case 'is_flying':
         return _fact('player.flying', 'b', 2);
       case 'is_online':
@@ -574,11 +597,11 @@ class _Expressions {
     }
   }
 
-  _Result<_Step> npc(List<DenizenPart> parts) {
+  _Result<_Step> npc(List<DenizenPart> parts, _Scope scope, _Pending pending) {
     if (parts.length == 1) return const _Result<_Step>.ok(_Step(_Expr('npc.uuid', 's'), 1));
     final DenizenPart part = parts[1];
     final String attribute = part.name.toLowerCase();
-    if (attribute == 'flag' || attribute == 'has_flag') return flagRead('npc', part, 2);
+    if (attribute == 'flag' || attribute == 'has_flag') return flagRead('npc', part, 2, scope, pending);
     if (part.parameter != null) return _Result<_Step>.fail('tag npc.$attribute has no Animus expression');
     final String? next = _attributeName(parts, 2);
     return switch (attribute) {
@@ -593,11 +616,11 @@ class _Expressions {
     };
   }
 
-  _Result<_Step> server(List<DenizenPart> parts) {
+  _Result<_Step> server(List<DenizenPart> parts, _Scope scope, _Pending pending) {
     if (parts.length == 1) return const _Result<_Step>.fail('tag server has no Animus expression');
     final DenizenPart part = parts[1];
     final String attribute = part.name.toLowerCase();
-    if (attribute == 'flag' || attribute == 'has_flag') return flagRead('global', part, 2);
+    if (attribute == 'flag' || attribute == 'has_flag') return flagRead('global', part, 2, scope, pending);
     final String? next = _attributeName(parts, 2);
     return switch (attribute) {
       'online_players' => next == 'size' || next == 'count'
@@ -655,11 +678,18 @@ class _Expressions {
     return _Result<_Step>.fail('tag util.$attribute has no Animus expression');
   }
 
-  _Result<_Step> context(List<DenizenPart> parts, _Scope scope) {
+  _Result<_Step> context(List<DenizenPart> parts, _Scope scope, _Pending pending) {
     if (parts.length < 2 || parts[1].parameter != null) return const _Result<_Step>.fail('tag context has no Animus expression');
     final String key = parts[1].name.toLowerCase();
     final String? mapped = scope.context[key];
     if (mapped == null) return _Result<_Step>.fail('context.$key is not passed by the Animus trigger for this event');
+    // The clicked entity of an NPC event is always the NPC, and Denizen writes the hand as mainhand or offhand.
+    if (key == 'entity' && mapped == 'npc') {
+      if (_attributeName(parts, 2) == 'is_npc') return _fact('true', 'b', 3);
+      final _Result<_Step> npc = this.npc(parts.sublist(1), scope, pending);
+      return npc.failed ? npc : _Result<_Step>.ok(_Step(npc.value!.expr, npc.value!.next + 1));
+    }
+    if (key == 'hand' && mapped == 'hand') return _fact("replace(context.hand, '_', '')", 's', 2);
     int next = 2;
     if ((key == 'origin_world' || key == 'destination_world') && _attributeName(parts, 2) == 'name') next = 3;
     final String kind = _contextKinds[mapped] ?? 's';

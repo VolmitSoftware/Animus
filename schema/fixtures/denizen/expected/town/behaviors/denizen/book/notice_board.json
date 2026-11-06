@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:book/notice_board",
+  "server": true,
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:give-book",
+      "arguments": {
+        "title": "Gate notice",
+        "author": "Server",
+        "pages": [
+          "Keep the road clear."
+        ]
+      }
+    }
+  }
+}

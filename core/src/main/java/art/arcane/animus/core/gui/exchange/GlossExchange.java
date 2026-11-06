@@ -181,52 +181,48 @@ public final class GlossExchange {
         while (animation.find()) if (animation.group(1).contains(":")) found.add("|animation." + animation.group(1) + "|");
     }
 
-    /** {@code /animus gui import ...} and {@code /animus gui export ...}; {@code reload} runs after an import wrote files. */
-    public void command(CommandActor actor, String[] arguments, Runnable reload) {
-        String usage = "gui import gloss <kind|all> [id|all] [namespace=<ns>] [replace=true] | gui import file <name> [namespace=<ns>] [replace=true]"
-                + " | gui export gloss <kind|all> [id|all] [replace=true] | gui export file <name> [format=folder|bundle]";
-        if (arguments.length < 3) { actor.tell(usage); return; }
-        boolean importing = arguments[1].equalsIgnoreCase("import");
-        String target = arguments[2].toLowerCase(Locale.ROOT);
-        List<String> positional = new ArrayList<>();
-        Map<String, String> options = new HashMap<>();
-        for (int index = 3; index < arguments.length; index++) {
-            int equals = arguments[index].indexOf('=');
-            if (equals > 0) options.put(arguments[index].substring(0, equals).toLowerCase(Locale.ROOT), arguments[index].substring(equals + 1));
-            else positional.add(arguments[index]);
-        }
-        for (String option : options.keySet())
-            if (!Set.of("namespace", "replace", "format").contains(option)) { actor.tell("Unknown option " + option + "=; " + usage); return; }
-        boolean replace = Boolean.parseBoolean(options.getOrDefault("replace", "false"));
-        String namespace = options.getOrDefault("namespace", GlossIds.DEFAULT_NAMESPACE);
+    /** A GUI kind word, or empty for {@code all}. */
+    public static Optional<GuiKind> kind(String word) {
+        if (word.equalsIgnoreCase("all")) return Optional.empty();
+        return Optional.of(GuiKind.word(word.toLowerCase(Locale.ROOT))
+                .orElseThrow(() -> new IllegalArgumentException("Unknown kind " + word + "; use inventory, menu, hologram, animation or all")));
+    }
+
+    /** Copies Gloss's live documents into Animus; {@code reload} runs after files were written. */
+    public void importGloss(CommandActor actor, Optional<GuiKind> kind, Optional<String> id, String namespace, boolean replace, Runnable reload) {
+        transfer(actor, true, true, kind, id, "", namespace, replace, "folder", reload);
+    }
+
+    /** Imports a Gloss folder or {@code .json} bundle from {@code imports/inbox/}. */
+    public void importFile(CommandActor actor, String name, String namespace, boolean replace, Runnable reload) {
+        if (!name.matches(NAME + "(\\.json)?")) { actor.tell("GUI import: name a folder or .json bundle directly under imports/inbox/"); return; }
+        transfer(actor, true, false, Optional.empty(), Optional.empty(), name, namespace, replace, "folder", reload);
+    }
+
+    /** Writes Animus documents into Gloss's live folders. */
+    public void exportGloss(CommandActor actor, Optional<GuiKind> kind, Optional<String> id, boolean replace) {
+        transfer(actor, false, true, kind, id, "", GlossIds.DEFAULT_NAMESPACE, replace, "folder", () -> {});
+    }
+
+    /** Writes a folder or a {@code .json} bundle under {@code exports/gui/}; the format follows the name unless given. */
+    public void exportFile(CommandActor actor, String name, Optional<String> format) {
+        if (!name.matches(NAME + "(\\.json)?")) { actor.tell("GUI export: name a folder or .json bundle directly under exports/gui/"); return; }
+        String chosen = format.orElse(name.endsWith(".json") ? "bundle" : "folder").toLowerCase(Locale.ROOT);
+        if (!Set.of("folder", "bundle").contains(chosen)) { actor.tell("GUI export: format is folder or bundle"); return; }
+        transfer(actor, false, false, Optional.empty(), Optional.empty(), name, GlossIds.DEFAULT_NAMESPACE, false, chosen, () -> {});
+    }
+
+    private void transfer(CommandActor actor, boolean importing, boolean live, Optional<GuiKind> chosenKind, Optional<String> chosenId, String name,
+                          String namespace, boolean replace, String format, Runnable reload) {
         GlossBridge<?> gloss = bridge.get();
-        if (target.equals("gloss") && gloss.unavailable() != null) { actor.tell(gloss.unavailable()); return; }
-        Optional<GuiKind> kind = Optional.empty();
-        Optional<String> id = Optional.empty();
-        if (target.equals("gloss")) {
-            if (positional.isEmpty() || positional.size() > 2) { actor.tell(usage); return; }
-            if (!positional.get(0).equalsIgnoreCase("all")) {
-                kind = GuiKind.word(positional.get(0).toLowerCase(Locale.ROOT));
-                if (kind.isEmpty()) { actor.tell("Unknown kind " + positional.get(0) + "; use inventory, menu, hologram, animation or all"); return; }
-            }
-            if (positional.size() == 2 && !positional.get(1).equalsIgnoreCase("all")) {
-                if (kind.isEmpty()) { actor.tell("Name a kind to pick one id"); return; }
-                id = Optional.of(positional.get(1));
-            }
-        } else if (target.equals("file")) {
-            if (positional.size() != 1 || !positional.get(0).matches(NAME + "(\\.json)?")) { actor.tell("Name a folder or .json bundle directly under " + (importing ? "imports/inbox/" : "exports/gui/") + "; " + usage); return; }
-        } else { actor.tell(usage); return; }
-        Optional<GuiKind> chosenKind = kind;
-        Optional<String> chosenId = id;
-        String name = positional.isEmpty() ? "" : positional.get(0);
-        String format = options.getOrDefault("format", name.endsWith(".json") ? "bundle" : "folder").toLowerCase(Locale.ROOT);
-        if (!Set.of("folder", "bundle").contains(format)) { actor.tell("format is folder or bundle"); return; }
+        if (live && gloss.unavailable() != null) { actor.tell(gloss.unavailable()); return; }
+        if (chosenId.isPresent() && chosenKind.isEmpty()) { actor.tell("Name a kind to pick one id"); return; }
         try {
             files.execute(() -> {
                 try {
                     Report report;
                     if (importing) {
-                        GlossSources.Batch batch = target.equals("gloss")
+                        GlossSources.Batch batch = live
                                 ? new GlossSources.Batch(GlossFolders.readLive(gloss.folder(), chosenKind, chosenId), List.of())
                                 : GlossSources.read(data.resolve("imports/inbox").resolve(name));
                         if (batch.documents().isEmpty() && batch.skipped().isEmpty()) { answer(actor, "Nothing to import."); return; }
@@ -234,7 +230,7 @@ public final class GlossExchange {
                     } else {
                         List<Exported> exported = new ArrayList<>();
                         report = collect(chosenKind, chosenId, exported);
-                        if (target.equals("gloss")) report = report.plus(GlossFolders.writeLive(gloss.folder(), exported, replace));
+                        if (live) report = report.plus(GlossFolders.writeLive(gloss.folder(), exported, replace));
                         else if (format.equals("bundle")) {
                             GlossBundle.write(data.resolve("exports/gui").resolve(name.endsWith(".json") ? name : name + ".json"), exported);
                             Report.Builder written = new Report.Builder();
@@ -249,14 +245,6 @@ public final class GlossExchange {
         } catch (RejectedExecutionException full) { actor.tell("Animus file queue is full; retry shortly."); }
     }
 
-    /** Tab completion for the words after {@code gui import} or {@code gui export}. */
-    public List<String> complete(String[] arguments) {
-        if (arguments.length == 3) return matching(List.of("gloss", "file"), arguments[2]);
-        if (arguments.length == 4 && arguments[2].equalsIgnoreCase("gloss")) return matching(List.of("all", "inventory", "menu", "hologram", "animation"), arguments[3]);
-        if (arguments.length >= 4) return matching(arguments[1].equalsIgnoreCase("import") ? List.of("namespace=", "replace=true") : List.of("replace=true", "format=folder", "format=bundle"), arguments[arguments.length - 1]);
-        return List.of();
-    }
-
     private void tell(CommandActor actor, String summary, Report report) {
         List<String> lines = new ArrayList<>();
         lines.add(summary);
@@ -268,9 +256,4 @@ public final class GlossExchange {
     }
 
     private void answer(CommandActor actor, String message) { if (!actor.reply(() -> actor.tell(message))) log.accept(message); }
-
-    private static List<String> matching(List<String> options, String prefix) {
-        String lowered = prefix.toLowerCase(Locale.ROOT);
-        return options.stream().filter((String option) -> option.startsWith(lowered)).toList();
-    }
 }

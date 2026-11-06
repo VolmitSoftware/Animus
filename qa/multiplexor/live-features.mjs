@@ -2102,7 +2102,7 @@ async function blockIs(x, y, z, id) {
 }
 async function buildStatus(id) {
   const pattern = new RegExp(`Build ${id}: [^\\n]*|No build for ${id}[^\\n]*|Animus build: [^\\n]*|Builds unavailable: [^\\n]*`);
-  return plain(await server.capture(`animus build ${id} status`, pattern, 150)).match(pattern)[0];
+  return plain(await server.capture(`animus build status build=${id}`, pattern, 150)).match(pattern)[0];
 }
 // The next chest window after `from`, with the contents the server sent for it.
 async function windowOpened(client, from, timeout = 10_000) {
@@ -2376,7 +2376,7 @@ async function foliaManual(owner, at) {
   const npcAt = at(4, -10);
   const uuid = await server.npc('fmanual', 'minecraft:player', ...npcAt, 'Duelist');
   await owner.body(uuid);
-  const attack = async (target, damage) => foliaLog(`animus attack fmanual ${target} ${damage}`, /Attack fmanual: (?!QUEUED)[^\n]*/);
+  const attack = async (target, damage) => foliaLog(`animus attack fmanual ${target} damage=${damage}`, /Attack fmanual: (?!QUEUED)[^\n]*/);
   await check('Folia: attack hits a mob on its region', async () => {
     // A cow has no armor, so the whole hit lands.
     const cow = await summon(31, 'minecraft:cow', npcAt[0] + 1.5, npcAt[1], npcAt[2], 'NoAI:1b,Health:10f');
@@ -2439,7 +2439,7 @@ async function foliaBuilds(owner, at) {
   const file = path.join(data, 'schematics', SCAFFOLD.file);
   const area = `${ox - 16} ${oy} ${oz - 4} ${ox + 8} ${oy + 18} ${oz + 10}`;
   const startPattern = new RegExp(`Started build ${SCAFFOLD.npc}[^\\n]*|Cannot start build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*`);
-  const startCommand = `animus build start ${SCAFFOLD.npc} ${SCAFFOLD.file} at=${ox},${oy},${oz} anchor=corner materials=creative interval=2 timeout=30`;
+  const startCommand = `animus build start ${SCAFFOLD.npc} schematic=${SCAFFOLD.file} at=${ox},${oy},${oz} anchor=corner materials=creative interval=2 timeout=30`;
   let created = false, helper = false;
   await check('Folia: builds run on region turns', async () => {
     const status = plain(await server.capture('animus build', /Builds [^\n]*/)).match(/Builds [^\n]*/)[0];
@@ -2502,7 +2502,7 @@ async function foliaBuilds(owner, at) {
       assert(crossed >= 2, 'the rigger never left its first chunk column');
       const turns = plain(await server.capture('animus build', /Builds [^\n]*/)).match(/region-turns=(\d+) out=\d+ lost=(\d+)/);
       assert(turns && Number(turns[1]) > 0 && turns[2] === '0', `region turns: ${turns?.[0]}`);
-      const undo = await foliaLog(`animus build ${SCAFFOLD.npc} undo`, new RegExp(`Undoing \\d+ changes of build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*`));
+      const undo = await foliaLog(`animus build undo ${SCAFFOLD.npc}`, new RegExp(`Undoing \\d+ changes of build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*`));
       assert.match(undo, new RegExp(`^Undoing \\d+ changes of build ${SCAFFOLD.npc}`));
       const undone = await until(async () => { const s = await buildStatus(SCAFFOLD.npc); return { ok: /: undone /.test(s), s }; }, 30_000, 'undo did not finish');
       assert.match(undone.s, /restored=\d+ kept=0/);
@@ -2526,13 +2526,13 @@ async function foliaBuilds(owner, at) {
       await until(async () => { const n = await inspect('fhelper'); return { ok: /: active/.test(n.line), line: n.line.slice(0, 160) }; }, 15_000, 'helper never became active');
       const restarted = await foliaLog(startCommand, startPattern);
       assert.match(restarted, /^Started build rigger/);
-      const added = await foliaLog(`animus build ${SCAFFOLD.npc} team add fhelper`, /Added fhelper to build[^\n]*|Animus build: [^\n]*/);
+      const added = await foliaLog(`animus build team add ${SCAFFOLD.npc} fhelper`, /Added fhelper to build[^\n]*|Animus build: [^\n]*/);
       assert.match(added, /Added fhelper to build rigger; team=rigger,fhelper/);
       const routed = await until(async () => {
-        const line = plain(await server.capture('animus navigation fhelper status', /Navigation fhelper:[^\n]*/)).match(/Navigation fhelper:[^\n]*/)?.[0] ?? '';
+        const line = plain(await server.capture('animus navigation status fhelper', /Navigation fhelper:[^\n]*/)).match(/Navigation fhelper:[^\n]*/)?.[0] ?? '';
         return { ok: /route=/.test(line), line };
       }, 30_000, 'the helper never got a route from the build');
-      const cancel = await foliaLog(`animus build ${SCAFFOLD.npc} cancel`, /Cancelled build rigger[^\n]*|Animus build: [^\n]*/);
+      const cancel = await foliaLog(`animus build cancel ${SCAFFOLD.npc}`, /Cancelled build rigger[^\n]*|Animus build: [^\n]*/);
       assert.match(cancel, /^Cancelled build rigger/);
       return `${added}; ${routed.line.slice(0, 120)}; ${cancel}`;
     } finally {

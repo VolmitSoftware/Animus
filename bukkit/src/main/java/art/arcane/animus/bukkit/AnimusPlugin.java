@@ -50,7 +50,11 @@ import art.arcane.animus.core.behavior.trigger.TriggerSink;
 import art.arcane.animus.core.behavior.SnapshotFacts;
 import art.arcane.animus.core.behavior.trigger.ServerTriggerDispatcher;
 import art.arcane.animus.core.virtual.VirtualNpcState;
-import art.arcane.animus.core.command.AnimusCommands;
+import art.arcane.animus.core.command.AnimusCommandTree;
+import art.arcane.animus.core.command.AnimusDirector;
+import art.arcane.animus.core.command.CommandServices;
+import art.arcane.animus.core.command.ProofControl;
+import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.command.BehaviorCommands;
 import art.arcane.animus.core.command.CommandActor;
 import art.arcane.animus.core.editor.EditorCommands;
@@ -72,7 +76,6 @@ import java.util.UUID;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonObject;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -101,7 +104,7 @@ public final class AnimusPlugin extends JavaPlugin {
     private ExtensionRuntime extensions;
     private volatile BehaviorCommands behaviors;
     private BuiltinCapabilities builtins;
-    private volatile AnimusCommands animusCommands;
+    private volatile AnimusDirector director;
     private BukkitScreens screens;
     private volatile ShopService<Player, ItemStack> shops;
     private volatile HoloService<Player, ItemStack> guis;
@@ -228,17 +231,13 @@ public final class AnimusPlugin extends JavaPlugin {
             serverBehaviors = new BukkitServerBehaviors(this, scheduling, servers, facts, (String message) -> getLogger().info(message));
             behaviors.facts(facts);
             serverBehaviors.start();
-            Map<String, AnimusCommands.Extra> extras = new HashMap<>();
-            extras.put("proof", new ProofCommand());
-            extras.put("shop", shops.shopCommand());
-            extras.put("gui", guis.command());
-            if (foliaProof != null) extras.put("foliaproof", new FoliaProofCommand());
-            extras.put("build", new BuildCommands(() -> builds, () -> Optional.ofNullable(buildsRefusal())));
-            extras.put("editor", new EditorCommands(() -> editor, commands));
             AnimusRuntime measuredRuntime = runtime;
-            extras.put("debug", new DebugCommands(() -> metrics, debugWatch,
+            DebugCommands debugCommands = new DebugCommands(() -> metrics, debugWatch,
                     (String id) -> measuredRuntime.isRunning() ? measuredRuntime.npcs().find(id).map(NpcDefinition::uuid) : Optional.empty(),
-                    () -> { EditorService active = editor; return active == null ? List.of("Editor: off") : active.status(); }));
+                    () -> { EditorService active = editor; return active == null ? List.of("Editor: off") : active.status(); });
+            CommandServices commandServices = new CommandServices(runtime, commands, living, () -> behaviors, extensions, builtins, combat.control(), shops, guis,
+                    new BuildCommands(() -> builds, () -> Optional.ofNullable(buildsRefusal())), new EditorCommands(() -> editor, commands), debugCommands,
+                    new BukkitProof(), () -> getServer().getOnlinePlayers().stream().map(Player::getName).toList(), () -> stopping);
             measured.extra("combat.waiting", combat::waiting);
             measured.extra("combat.load", combat::load);
             measured.extra("editor.streams", () -> { EditorService active = editor; return active == null ? 0 : active.eventStreams(); });
@@ -247,8 +246,7 @@ public final class AnimusPlugin extends JavaPlugin {
             metricsTicks = ownerTicks.apply(measured::serverTick);
             getServer().getPluginManager().registerEvents(new ReactWatcher(), this);
             bindReact();
-            animusCommands = new AnimusCommands(new AnimusCommands.Services(runtime, commands, living, () -> behaviors, extensions, builtins,
-                    combat::execute, extras, () -> stopping));
+            director = new AnimusCommandTree(commandServices).director();
             extensions.start();
             startEditor(modulePlatform);
             printSplash(AnimusSplash.render(environment, getServer().getVersion(), true));
@@ -283,7 +281,7 @@ public final class AnimusPlugin extends JavaPlugin {
         EditorService activeEditor = editor;
         editor = null;
         if (activeEditor != null) activeEditor.close();
-        animusCommands = null;
+        director = null;
         ReactBridge bridge = react;
         react = null;
         if (bridge != null) bridge.close();
@@ -312,16 +310,17 @@ public final class AnimusPlugin extends JavaPlugin {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] arguments) {
-        AnimusCommands active = animusCommands;
-        if (stopping || active == null) { sender.sendMessage("Animus is not running."); return true; }
-        active.execute(new BukkitActor(sender, replies), arguments);
+        AnimusDirector active = director;
+        BukkitActor actor = new BukkitActor(sender, replies);
+        if (stopping || active == null || runtime == null || !runtime.isRunning()) { actor.tell(Palette.error("Animus is not running.")); return true; }
+        active.execute(actor, arguments);
         return true;
     }
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] arguments) {
-        AnimusCommands active = animusCommands;
-        if (active == null) return List.of();
+        AnimusDirector active = director;
+        if (stopping || active == null) return List.of();
         return active.complete(new BukkitActor(sender, replies), arguments);
     }
 
@@ -432,52 +431,38 @@ public final class AnimusPlugin extends JavaPlugin {
 
     private static CommandSender sender(CommandActor actor) { return ((BukkitActor) actor).sender(); }
 
-    /** Preview packet tools for administrators; never reaches persisted NPCs. */
-    private final class ProofCommand implements AnimusCommands.Extra {
-        @Override public List<String> complete(CommandActor actor, String[] arguments) {
-            if (arguments.length != 2) return List.of();
-            return List.of("status", "spawn", "move", "path", "control", "mount", "clear").stream().filter((String option) -> option.startsWith(arguments[1].toLowerCase(Locale.ROOT))).toList();
+    /** The packet previews: {@code /animus proof} reaches persisted NPCs never, {@code foliaproof} runs on Folia only. */
+    private final class BukkitProof implements ProofControl {
+        /** The player viewer, or empty after telling the console that previews belong to a player. */
+        private Optional<Player> viewer(CommandActor actor) {
+            if (sender(actor) instanceof Player player) return Optional.of(player);
+            actor.tell(Palette.error("Proof presentation requires a player viewer."));
+            return Optional.empty();
         }
-        @Override public void execute(CommandActor actor, String[] arguments) {
-            CommandSender sender = sender(actor);
-            try {
-                String operation = arguments.length < 2 ? "status" : arguments[1].toLowerCase(Locale.ROOT);
-                if (operation.equals("status")) { sender.sendMessage(proof.status(sender instanceof Player player ? player : null)); return; }
-                if (!(sender instanceof Player player)) { sender.sendMessage("Proof presentation requires a player viewer."); return; }
-                switch (operation) {
-                    case "clear" -> { proof.clear(player); sender.sendMessage("Proof cleared"); }
-                    case "control" -> {
-                        if (arguments.length != 3) throw new IllegalArgumentException("proof control <entity-id>|stop|status");
-                        if (arguments[2].equalsIgnoreCase("stop")) proof.stopControl(player);
-                        else if (arguments[2].equalsIgnoreCase("status")) player.sendMessage(proof.controlStatus(player));
-                        else proof.control(player, Integer.parseInt(arguments[2]));
-                    }
-                    case "mount" -> {
-                        if (arguments.length < 3 || arguments.length > 11) throw new IllegalArgumentException("proof mount <vehicle-id> [rider-id...]");
-                        List<Integer> riders = new ArrayList<>();
-                        for (int i = 3; i < arguments.length; i++) riders.add(Integer.parseInt(arguments[i]));
-                        proof.mount(player, Integer.parseInt(arguments[2]), riders);
-                    }
-                    case "move" -> {
-                        if (arguments.length != 6) throw new IllegalArgumentException("proof move <entity-id> <dx> <dy> <dz>");
-                        proof.move(player, Integer.parseInt(arguments[2]), Double.parseDouble(arguments[3]), Double.parseDouble(arguments[4]), Double.parseDouble(arguments[5]));
-                    }
-                    case "path" -> {
-                        if (arguments.length != 6) throw new IllegalArgumentException("proof path <entity-id> <dx> <dy> <dz>");
-                        proof.path(player, Integer.parseInt(arguments[2]), Integer.parseInt(arguments[3]), Integer.parseInt(arguments[4]), Integer.parseInt(arguments[5]));
-                    }
-                    case "spawn" -> spawn(player, arguments);
-                    default -> throw new IllegalArgumentException("proof status | spawn <type> [skin-hash] | move <id> <dx> <dy> <dz> | path <id> <dx> <dy> <dz> | control <id>|stop|status | mount <vehicle-id> [rider-id...] | clear");
-                }
-            } catch (RuntimeException e) { sender.sendMessage("Animus proof: " + e.getMessage()); }
+
+        private void run(CommandActor actor, Runnable work) {
+            try { work.run(); }
+            catch (RuntimeException e) { actor.tell(Palette.error("Proof: " + e.getMessage())); }
         }
-        private void spawn(Player player, String[] arguments) {
-            if (arguments.length < 3 || arguments.length > 4) throw new IllegalArgumentException("proof spawn <namespace:type> [skin-hash]");
-            if (arguments.length == 3) { proof.spawn(player, arguments[2], null, null); return; }
-            if (!arguments[3].matches("[a-f0-9]{64}")) throw new IllegalArgumentException("Skin reference must be a SHA-256 hash");
+
+        @Override public void status(CommandActor actor) { actor.tell(proof.status(sender(actor) instanceof Player player ? player : null)); }
+        @Override public void spawn(CommandActor actor, String type, Optional<String> skin) {
+            viewer(actor).ifPresent((Player player) -> run(actor, () -> {
+                if (skin.isEmpty()) proof.spawn(player, type, null, null);
+                else spawnSkinned(player, type, skin.get());
+            }));
+        }
+        @Override public void move(CommandActor actor, int entity, double dx, double dy, double dz) { viewer(actor).ifPresent((Player player) -> run(actor, () -> proof.move(player, entity, dx, dy, dz))); }
+        @Override public void path(CommandActor actor, int entity, int dx, int dy, int dz) { viewer(actor).ifPresent((Player player) -> run(actor, () -> proof.path(player, entity, dx, dy, dz))); }
+        @Override public void control(CommandActor actor, int entity) { viewer(actor).ifPresent((Player player) -> run(actor, () -> proof.control(player, entity))); }
+        @Override public void stopControl(CommandActor actor) { viewer(actor).ifPresent((Player player) -> run(actor, () -> proof.stopControl(player))); }
+        @Override public void controlStatus(CommandActor actor) { viewer(actor).ifPresent((Player player) -> run(actor, () -> actor.tell(proof.controlStatus(player)))); }
+        @Override public void mount(CommandActor actor, int vehicle, List<Integer> riders) { viewer(actor).ifPresent((Player player) -> run(actor, () -> proof.mount(player, vehicle, riders))); }
+        @Override public void clear(CommandActor actor) { viewer(actor).ifPresent((Player player) -> run(actor, () -> { proof.clear(player); actor.tell(Palette.success("Proof cleared")); })); }
+
+        private void spawnSkinned(Player player, String type, String skinHash) {
             AnimusRuntime active = runtime;
             PacketProofService.SkinRequest request = proof.beginSkinLoad(player);
-            String skinHash = arguments[3], type = arguments[2];
             try { commands.execute(() -> {
                 try {
                     String content = active.documents().read("skins/" + skinHash + ".json");
@@ -487,41 +472,30 @@ public final class AnimusPlugin extends JavaPlugin {
                     String signature = skin.has("signature") && !skin.get("signature").isJsonNull() ? skin.get("signature").getAsString() : null;
                     if (!stopping) replies.reply(player, () -> {
                         try { if (!stopping && proof.finishSkinLoad(player, request)) proof.spawn(player, type, texture, signature); }
-                        catch (RuntimeException e) { player.sendMessage("Animus proof: " + e.getMessage()); }
+                        catch (RuntimeException e) { player.sendMessage(Palette.error("Proof: " + e.getMessage())); }
                     });
                 } catch (IOException | RuntimeException e) {
                     if (!stopping) replies.reply(player, () -> {
-                        if (proof.finishSkinLoad(player, request)) player.sendMessage("Cannot load proof skin: " + e.getMessage());
+                        if (proof.finishSkinLoad(player, request)) player.sendMessage(Palette.error("Cannot load proof skin: " + e.getMessage()));
                     });
                 }
             }); } catch (RejectedExecutionException e) { proof.finishSkinLoad(player, request); throw e; }
         }
-    }
 
-    /** Folia's stationary packet preview. */
-    private final class FoliaProofCommand implements AnimusCommands.Extra {
-        @Override public List<String> complete(CommandActor actor, String[] arguments) {
-            if (arguments.length != 2) return List.of();
-            return List.of("status", "spawn", "clear").stream().filter((String option) -> option.startsWith(arguments[1].toLowerCase(Locale.ROOT))).toList();
+        private boolean folia(CommandActor actor) {
+            if (foliaProof != null && foliaProof.available()) return true;
+            actor.tell(foliaProof == null ? "Folia stationary proof requires Folia." : foliaProof.status());
+            return false;
         }
-        @Override public void execute(CommandActor actor, String[] arguments) {
-            CommandSender sender = sender(actor);
-            if (foliaProof == null || !foliaProof.available()) {
-                sender.sendMessage(foliaProof == null ? "Folia stationary proof requires Folia." : foliaProof.status());
-                return;
-            }
-            String operation = arguments.length == 1 ? "status" : arguments[1].toLowerCase(Locale.ROOT);
-            if (!List.of("status", "spawn", "clear").contains(operation)
-                    || arguments.length > (operation.equals("spawn") ? 3 : 2)) {
-                sender.sendMessage("foliaproof status | spawn [skin-hash] | clear");
-                return;
-            }
-            if (!(sender instanceof Player player)) {
-                sender.sendMessage(operation.equals("status") ? foliaProof.status() : "This proof belongs to a player viewer.");
-                return;
-            }
-            if (!foliaProof.execute(player, operation, arguments.length == 3 ? arguments[2] : null))
-                sender.sendMessage("Folia proof admission queue is full or unavailable; retry shortly.");
+
+        @Override public void foliaStatus(CommandActor actor) { if (folia(actor)) actor.tell(foliaProof.status()); }
+        @Override public void foliaSpawn(CommandActor actor, Optional<String> skin) { folia(actor, "spawn", skin.orElse(null)); }
+        @Override public void foliaClear(CommandActor actor) { folia(actor, "clear", null); }
+
+        private void folia(CommandActor actor, String operation, String skin) {
+            if (!folia(actor)) return;
+            if (!(sender(actor) instanceof Player player)) { actor.tell(Palette.error("This proof belongs to a player viewer.")); return; }
+            if (!foliaProof.execute(player, operation, skin)) actor.tell(Palette.error("Folia proof admission queue is full or unavailable; retry shortly."));
         }
     }
 

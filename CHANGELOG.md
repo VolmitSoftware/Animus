@@ -112,6 +112,17 @@
 - Server-wide behaviors with join, quit, chat, command, start, timer, death, respawn, world-change and module triggers, plus Animus-managed commands.
 - Message, title, actionbar, teleport, give-item, take-item and give-book actions, and a player override on player actions.
 - Flags hold any value and can expire; durable state stores lists, maps and expiry.
+- A short route leg whose goal can't be reached ends beside it when close enough.
+- Denizen `sentinel` commands and `trait state sentinel` convert to combat control.
+- `/animus import citizens accept commands` adds the command namespaces converted behaviors need to config.toml.
+- `[editor] port = 0` binds any free port.
+- NPC files can sit directly in `npcs/` or in up to 8 nested folders; the folder becomes the group.
+- Interaction triggers take a `consume` condition; a matched click skips shops, hiring, GUIs, riding and selection.
+- Click runs read `context.sneaking` and `context.hand`.
+- Denizen right clicks on NPCs convert, with sneak, hand and NPC checks, `ratelimit`, built flag names and `run <npc.flag[...]>`.
+- `@selected` for the selected NPC wherever a command takes an NPC id.
+- Commands that take an NPC also accept its folder-qualified id or its `npcs/.../<id>.json` path.
+- `/animus debug mode` and `animus.debug.mode`; per-NPC route, activation and packet diagnostics are summarized every five minutes unless debug mode is on.
 
 ### Changed
 
@@ -175,6 +186,18 @@
 - The editor theme uses a pink accent on near-black or light-grey surfaces, with redrawn icons.
 - User documentation moved to the central docs wiki; developer notes live in `dev/`.
 - The Denizen converter (version 2) converts definitions, conditions, loops, flags, procedures, world, command, data, book and inventory scripts, and the common tags.
+- Import preview and review name the command namespaces converted behaviors need.
+- Skins on non-player NPCs are explained as never shown by Citizens.
+- Citizens imports go in `npcs/<world>/` without region folders (converter v12).
+- Re-importing updates a moved NPC in place rather than installing it again.
+- Denizen converter v3; world click events become `denizen:world-npc/*` behaviors bound to every NPC.
+- `/animus` runs on VolmLib's Director, the same on Bukkit, Folia and mod servers, with clickable paged help and permission-filtered tab completion.
+- Optional command values are always `key=value`; stray words and unknown keys are refused with the usage line.
+- Many commands have new shapes: `navigation`, `combat`, `build`, `import citizens preview`, `worlds=old:new`, comma-separated `accept` (including `commands`), `page=`, `player=` and `debug summary`.
+- `/animus navigate` treats whole-number x and z as the centre of that block.
+
+### Removed
+- The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
 
 ### Fixed
 
@@ -211,6 +234,18 @@
 - Death-trigger routines can speak, play sounds and show particles for the NPC that died.
 - The editor theme toggle switches themes without a reload.
 - Assignments whose only content was `on assignment` now give their NPCs a behavior.
+- Imported Citizens waypoints that name the ground block are walked on top of it instead of failing.
+- Stuck NPCs teleport onto the waypoint's surface instead of inside the block.
+- Waypoint sets with no points are no longer counted as kept but not run.
+- The editor pairing test no longer races for a port.
+- One import apply no longer erases Shopkeepers shops from NPCs that also get Denizen behaviors.
+- Import edits made from an outdated NPC copy are refused instead of overwriting newer changes.
+- Titles, subtitles and action bars of only spaces no longer invalidate converted behaviors.
+- Converted books with a blank title or author fall back to the script name or Server.
+- Clicking an already selected NPC no longer repeats "Selected ... via INTERACT".
+- Hotload notices wait until edited behaviors, shops, GUIs, holograms and menus are live.
+- Hotload no longer reports numerically equal values, such as `0.0` and `0`, as changed.
+- Plain command replies carry the `[Animus]` prefix, refusals show in red and successes in green.
 
 ### Notes
 

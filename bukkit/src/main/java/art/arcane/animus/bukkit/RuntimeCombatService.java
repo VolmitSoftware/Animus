@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit;
 
+import art.arcane.animus.core.command.CombatControl;
 import art.arcane.animus.core.hire.CombatGuarding;
 import art.arcane.animus.core.hire.HireDesk;
 import art.arcane.animus.bukkit.runtime.RegionManualCombat;
@@ -67,7 +68,6 @@ import org.bukkit.scheduler.BukkitTask;
  */
 final class RuntimeCombatService implements Listener, AutoCloseable {
     private record Registration(String id, VirtualNpcState state, BukkitCombatBridge.Combatant combatant) {}
-    private static final String USAGE = CombatModule.MODULE_USAGE + " | attack <npc-id> <target-uuid> [damage] | target <npc-id> <mob-uuid>|stop";
     /** How often targetable NPCs look for idle mobs, how far, how many mobs one NPC draws at once, and NPCs per pass. */
     static final int TARGETABLE_SCAN_TICKS = 20, TARGETABLE_PER_NPC = 3, TARGETABLE_NPCS_PER_PASS = 32;
     static final double TARGETABLE_RANGE = 16;
@@ -90,7 +90,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     /** Why region combat cannot run, or null while it runs. */
     private final String regionUnavailable;
     /** Folia: manual attack and mob control on each subject's region; null elsewhere. */
-    private final RegionManualCombat manual;
+    private final RegionManualCombat regionManual;
 
     /** {@code living} is the main-thread runtime and null on Folia, where {@code regions} runs combat on each NPC's owner. */
     RuntimeCombatService(JavaPlugin plugin, AnimusRuntime runtime, PersistedNpcService<Player, ItemStack> living, String version, boolean folia, RegionNpcRuntime regions) {
@@ -100,7 +100,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
         protectionName = flags == null ? "none installed" : flags.describe("all combat damage is denied");
         this.regions = folia ? regions : null;
         regionUnavailable = this.regions == null ? null : this.regions.enableCombat(adapter, protectionName);
-        manual = this.regions == null ? null : new RegionManualCombat(this.regions, version, adapter);
+        regionManual = this.regions == null ? null : new RegionManualCombat(this.regions, version, adapter);
         world = folia ? null : new BukkitCombatWorld(plugin, living);
         module = new CombatModule(runtime, living, world, adapter, folia ? (regionUnavailable == null ? "runs on each NPC's region on Folia" : regionUnavailable) : null,
                 (String message) -> plugin.getLogger().warning(message), (UUID id) -> plugin.getServer().getPlayer(id) != null);
@@ -115,7 +115,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     String status() {
         if (regions != null) {
             if (regionUnavailable != null) return "Combat unavailable: " + regionUnavailable + " | protection=" + protectionName;
-            return regions.combatStatus() + " | " + manual.status();
+            return regions.combatStatus() + " | " + regionManual.status();
         }
         String modulePart = module.status() + " | protection=" + protectionName;
         BukkitCombatBridge.Capabilities capability = bridge.capabilities();
@@ -126,45 +126,58 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
                 + (capability.mobControlUnavailableReason() == null ? "" : " | " + capability.mobControlUnavailableReason());
     }
 
-    String execute(String[] args) {
-        if (args.length > 0 && args[0].equals("combat")) {
-            if (args.length == 1 || args.length == 2 && args[1].equals("status")) return status();
-            if (regions != null) {
-                if (regionUnavailable != null) throw new IllegalStateException("Combat module " + regionUnavailable);
-                return regions.combatCommand(args);
+    /** The platform side of {@code /animus combat}, {@code attack} and {@code target}. Owner thread only. */
+    CombatControl control() {
+        return new CombatControl() {
+            @Override public String status() { return RuntimeCombatService.this.status(); }
+            @Override public String npc(String npc, Operation operation, Optional<UUID> target) {
+                if (regions != null) {
+                    if (regionUnavailable != null) throw new IllegalStateException("Combat module " + regionUnavailable);
+                    return regions.combatCommand(npc, operation, target);
+                }
+                return module.command(npc, operation, target);
             }
-            return module.execute(args);
-        }
-        if (regions != null) return manual.execute(args);
+            @Override public String attack(String npc, UUID target, double damage) {
+                if (regions != null) return regionManual.attack(npc, target, damage);
+                LivingEntity victim = manual(target);
+                AttackProfile attack = new AttackProfile(damage, AttackProfile.DEFAULT.reach(), AttackProfile.DEFAULT.cooldownTicks());
+                BukkitCombatBridge.AttackResult result = registration(npc).combatant().attack(victim, attack);
+                return "Attack " + npc + ": " + result.status() + " applied=" + result.appliedDamage()
+                        + " health-before=" + result.healthBefore() + " health-after=" + result.healthAfter();
+            }
+            @Override public String control(String npc, UUID mob) {
+                if (regions != null) return regionManual.control(npc, mob);
+                if (!(manual(mob) instanceof Mob controlled)) throw new IllegalArgumentException("Target control requires an existing supported mob");
+                BukkitCombatBridge.MobLease lease = registration(npc).combatant().control(controlled, MobProfile.DEFAULT);
+                leases.put(mob, lease);
+                return "Mob control started npc=" + npc + " mob=" + mob + " lifetime-ticks=" + MobProfile.DEFAULT.lifetimeTicks();
+            }
+            @Override public String releaseMobs(String npc) {
+                if (regions != null) return regionManual.releaseMobs(npc);
+                manualAvailable();
+                int released = 0;
+                for (Registration registration : List.copyOf(registrations.values())) if (registration.id().equals(npc)) {
+                    for (Map.Entry<UUID, BukkitCombatBridge.MobLease> entry : List.copyOf(leases.entrySet())) if (entry.getValue().npcId().equals(registration.combatant().npcId())) {
+                        BukkitCombatBridge.MobLease previous = entry.getValue();
+                        previous.close(); leases.remove(entry.getKey(), previous); released++;
+                    }
+                }
+                return "Released " + released + " mob control leases for " + npc;
+            }
+        };
+    }
+
+    /** Manual attack and mob control on the main-thread bridge; Folia uses {@link RegionManualCombat} instead. */
+    private void manualAvailable() {
         if (!bridge.available()) throw new IllegalStateException(status());
         prune();
-        if (args.length == 3 && args[0].equals("target") && args[2].equals("stop")) {
-            int released = 0;
-            for (Registration registration : List.copyOf(registrations.values())) if (registration.id().equals(args[1])) {
-                for (Map.Entry<UUID, BukkitCombatBridge.MobLease> entry : List.copyOf(leases.entrySet())) if (entry.getValue().npcId().equals(registration.combatant().npcId())) {
-                    BukkitCombatBridge.MobLease previous = entry.getValue();
-                    previous.close(); leases.remove(entry.getKey(), previous); released++;
-                }
-            }
-            return "Released " + released + " mob control leases for " + args[1];
-        }
-        if (args.length < 3 || args.length > 4 || args[0].equals("target") && args.length != 3) throw new IllegalArgumentException(USAGE);
-        UUID targetId = CombatModule.uuid(args[2]);
-        Entity entity = plugin.getServer().getEntity(targetId);
-        if (!(entity instanceof LivingEntity target)) throw new IllegalArgumentException("Target must be a loaded living entity");
-        if (args[0].equals("attack")) {
-            double amount = args.length == 4 ? Double.parseDouble(args[3]) : AttackProfile.DEFAULT.damage();
-            AttackProfile attack = new AttackProfile(amount, AttackProfile.DEFAULT.reach(), AttackProfile.DEFAULT.cooldownTicks());
-            Registration npc = registration(args[1]);
-            BukkitCombatBridge.AttackResult result = npc.combatant().attack(target, attack);
-            return "Attack " + args[1] + ": " + result.status() + " applied=" + result.appliedDamage()
-                    + " health-before=" + result.healthBefore() + " health-after=" + result.healthAfter();
-        }
-        if (!args[0].equals("target") || !(target instanceof Mob mob)) throw new IllegalArgumentException("Target control requires an existing supported mob");
-        Registration npc = registration(args[1]);
-        BukkitCombatBridge.MobLease lease = npc.combatant().control(mob, MobProfile.DEFAULT);
-        leases.put(targetId, lease);
-        return "Mob control started npc=" + args[1] + " mob=" + targetId + " lifetime-ticks=" + MobProfile.DEFAULT.lifetimeTicks();
+    }
+
+    private LivingEntity manual(UUID target) {
+        manualAvailable();
+        Entity entity = plugin.getServer().getEntity(target);
+        if (!(entity instanceof LivingEntity living)) throw new IllegalArgumentException("Target must be a loaded living entity");
+        return living;
     }
 
     /** Behavior operations. A refusal carries the reason back to the behavior. Owner thread only. */
@@ -374,7 +387,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     /** Removes every helper arrow and ends all combat before the NPC runtime closes. */
     @Override public void close() {
         if (task != null) task.cancel();
-        if (manual != null) manual.close();
+        if (regionManual != null) regionManual.close();
         if (module.supported()) HandlerList.unregisterAll(this);
         module.close();
         bridge.close(); registrations.clear(); leases.clear();
