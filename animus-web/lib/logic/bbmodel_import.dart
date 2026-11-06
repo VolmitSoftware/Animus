@@ -1,4 +1,4 @@
-/// Blockbench `.bbmodel` import (docs/editor-design.md, "Resource pack
+/// Blockbench `.bbmodel` import (dev/editor-design.md, "Resource pack
 /// models"): every group becomes a bone, the group's cubes become one item
 /// model drawn by an item display on that bone, and every Blockbench
 /// animation becomes an animation document.

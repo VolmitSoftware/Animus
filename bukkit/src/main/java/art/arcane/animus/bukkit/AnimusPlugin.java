@@ -332,7 +332,7 @@ public final class AnimusPlugin extends JavaPlugin {
                 }
                 @Override public void unregister(Object provider) { getServer().getServicesManager().unregister(provider); }
             });
-            getLogger().info("React metrics: published as source " + ReactMetricCatalog.SOURCE_ID + " (" + ReactMetricCatalog.SPECS.size() + " metrics; see docs/react.md)");
+            getLogger().info("React metrics: published as source " + ReactMetricCatalog.SOURCE_ID + " (" + ReactMetricCatalog.SPECS.size() + " metrics; see the Animus debug and React metrics docs)");
         } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
             getLogger().warning("React is installed but its metric API is unavailable: " + failure.getClass().getSimpleName() + ": " + failure.getMessage());
         }

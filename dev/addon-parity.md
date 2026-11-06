@@ -13,8 +13,8 @@ Status words:
 Design words:
 
 - **module**: a section under `modules["animus:..."]` in the NPC definition JSON, checked field by field like `animus:combat`.
-- **action** / **condition**: a built-in behavior capability, as in [behaviors.md](behaviors.md#built-in-capabilities).
-- **GUI**: a server-side inventory screen that Animus opens for a player. Animus has a chest screen framework that reads Gloss's inventory format ([chest GUIs](gui.md)); shops use it and Constructor can too.
+- **action** / **condition**: a built-in behavior capability, as in [behaviors.md](https://github.com/VolmitSoftware/docs/blob/master/animus/07-behaviors.md#built-in-capabilities).
+- **GUI**: a server-side inventory screen that Animus opens for a player. Animus has a chest screen framework that reads Gloss's inventory format ([chest GUIs](https://github.com/VolmitSoftware/docs/blob/master/animus/11-guis-holograms-menus.md)); shops use it and Constructor can too.
 - **pack file**: a JSON file in a behavior pack, outside the NPC definition, for data shared by many NPCs.
 
 ## 1. dtlTraders (shops)
@@ -41,7 +41,7 @@ A Citizens NPC with the `trader` trait opens its linked shop on right click. Lef
 
 | Feature | What it does | Animus status | Proposed Animus design |
 | --- | --- | --- | --- |
-| NPC opens a shop on click | Right click opens the linked shop; left click can be enabled | covered | `modules["animus:shop"]` with `shop` and `openOn`; see [shops](shops.md) |
+| NPC opens a shop on click | Right click opens the linked shop; left click can be enabled | covered | `modules["animus:shop"]` with `shop` and `openOn`; see [shops](https://github.com/VolmitSoftware/docs/blob/master/animus/10-shops.md) |
 | Shop definitions | Named shop shared by many NPCs, with title, permission and enabled modes | covered | `shops/<namespace>/<path>.json`, checked field by field |
 | Pages | Several pages per shop, each with a name, size and optional permission; pages a player cannot use are skipped | covered | `pages` with `permission`; hidden pages are skipped |
 | Buy, sell and trade modes | Three grids per page, with a mode switch button | covered | `buy`, `sell` and `trade` grids; mode switch in the bottom row |
@@ -109,7 +109,7 @@ Format quirks to accept: the discount duration and confirmation flags are read a
 
 ### Implementation order
 
-Steps 1 to 7 are built; see [shops](shops.md) and [chest GUIs](gui.md). Step 8 remains.
+Steps 1 to 7 are built; see [shops](https://github.com/VolmitSoftware/docs/blob/master/animus/10-shops.md) and [chest GUIs](https://github.com/VolmitSoftware/docs/blob/master/animus/11-guis-holograms-menus.md). Step 8 remains.
 
 1. Inventory screen framework (pages, buttons, click types, safe close, no item theft through shift, number keys or the offhand key).
 2. Economy adapter with Vault, transactional withdraw and deposit, and failure reporting.
@@ -122,7 +122,7 @@ Steps 1 to 7 are built; see [shops](shops.md) and [chest GUIs](gui.md). Step 8 r
 
 ## 2. Sentinel (combat)
 
-Animus has a Sentinel-style combat module ([combat.md](combat.md)) and a field-by-field importer ([compatibility.md](compatibility.md#sentinel-settings)). This section lists what each Sentinel feature maps to and what is still missing. Sentinel is open source; facts below come from the pinned commit [96672f1](https://github.com/mcmonkeyprojects/Sentinel/tree/96672f1b03f2182d11f8e3188cae24b9cdaf14a8) used in [upstream-inventory.md](upstream-inventory.md), its [README](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/README.md) and [plugin.yml](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/src/main/resources/plugin.yml).
+Animus has a Sentinel-style combat module ([combat.md](https://github.com/VolmitSoftware/docs/blob/master/animus/08-combat.md)) and a field-by-field importer ([compatibility.md](compatibility.md#sentinel-settings)). This section lists what each Sentinel feature maps to and what is still missing. Sentinel is open source; facts below come from the pinned commit [96672f1](https://github.com/mcmonkeyprojects/Sentinel/tree/96672f1b03f2182d11f8e3188cae24b9cdaf14a8) used in [upstream-inventory.md](upstream-inventory.md), its [README](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/README.md) and [plugin.yml](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/src/main/resources/plugin.yml).
 
 ### Import defects (fixed)
 
@@ -209,7 +209,7 @@ The linked source repository, github.com/Weefle/Constructor, is not available. C
 
 | Feature | What it does | Animus status | Proposed Animus design |
 | --- | --- | --- | --- |
-| Schematic files | Builder: `.schematic`. Constructor: Sponge `.schem` and structure `.nbt`, own reader as a fallback | covered | Animus reads Sponge `.schem` versions 1 to 3 and vanilla `.nbt` with bounded parsing, no WorldEdit needed. Legacy MCEdit `.schematic` is refused with a message: save it again as `.schem`. See [building](building.md#schematic-files) |
+| Schematic files | Builder: `.schematic`. Constructor: Sponge `.schem` and structure `.nbt`, own reader as a fallback | covered | Animus reads Sponge `.schem` versions 1 to 3 and vanilla `.nbt` with bounded parsing, no WorldEdit needed. Legacy MCEdit `.schematic` is refused with a message: save it again as `.schem`. See [building](https://github.com/VolmitSoftware/docs/blob/master/animus/09-building.md#schematic-files) |
 | Multi-part builds (Constructor) | A YAML file lists parts built in order with offsets | missing | `build` pack file with `parts` and offsets; YAML layout not confirmed |
 | Build module | NPC has a loaded schematic, an origin and options | covered | `animus:builder` definition section with `schematic`, `origin`, `options`; `/animus build start <npc-id>` runs it |
 | Origin | NPC position, player position, a set point, or the schematic's own origin. Builder centres X and Z on the origin and trims empty bottom layers | covered | The leader's block or `at=`; `anchor` `center` (Builder's rule, the default), `corner` or `schematic`; `offset` and `yoffset` |
@@ -248,7 +248,7 @@ Builder: `/builder (id) <help|reload|list|load <name>|origin [clear|schematic|me
 
 Constructor: `/constructor load|build [-ignoreAir] [-ignoreLiquid] [-ignoreProtection] [-excavate]|cancel|undo|preview [seconds]|team add|remove|clear|list|npc|list|excavated|info|survey|reload|timeout|supply`. Permissions `constructor.<command>`; `info`, `survey` and `donate` are given to all players by default. Source: [listing](https://api.spiget.org/v2/resources/79683).
 
-Animus equivalents, as built: `/animus build start <npc-id> [schematic] [at=...] [option=value...]` and `/animus build <build> status|pause|resume|cancel|undo|survey|donate|team add|remove <npc-id>`, plus `list`, `schematics` and `inspect`, under `animus.admin`. `donate` needs only `animus.build.donate`, given to everyone by default. There is no `preview` or `mark`. See [building](building.md#commands).
+Animus equivalents, as built: `/animus build start <npc-id> [schematic] [at=...] [option=value...]` and `/animus build <build> status|pause|resume|cancel|undo|survey|donate|team add|remove <npc-id>`, plus `list`, `schematics` and `inspect`, under `animus.admin`. `donate` needs only `animus.build.donate`, given to everyone by default. There is no `preview` or `mark`. See [building](https://github.com/VolmitSoftware/docs/blob/master/animus/09-building.md#commands).
 
 ### Import mapping
 
@@ -281,7 +281,7 @@ Files: Builder schematics are in `plugins/Builder/schematics/` (setting `Schemat
 
 ### Implementation order
 
-Done: the schematic reader, the planner with phase order, layers, patterns, rotation, mirroring and ignore options, skip-matching, the block placer with per-tick limits, loaded chunks only and a protection check per block, `/animus build` commands, walking with the move timeout, saved state and resume, excavation, the undo record, donated and container materials, survey, teams, the `build_finished` and `build_paused` triggers, the `animus:build` action and the Builder trait importer. See [building](building.md).
+Done: the schematic reader, the planner with phase order, layers, patterns, rotation, mirroring and ignore options, skip-matching, the block placer with per-tick limits, loaded chunks only and a protection check per block, `/animus build` commands, walking with the move timeout, saved state and resume, excavation, the undo record, donated and container materials, survey, teams, the `build_finished` and `build_paused` triggers, the `animus:build` action and the Builder trait importer. See [building](https://github.com/VolmitSoftware/docs/blob/master/animus/09-building.md).
 
 Still open:
 
@@ -311,7 +311,7 @@ A shopkeeper has a shop type and a shop object. Admin shops (`admin`) trade with
 | Old Bukkit item meta | partial | Type and amount convert; meta is kept in `imported` and the offer only shows |
 | Trade permission (`tradePerm`) | covered | Shop `permission` |
 | Closed shops (`open: false`) | partial | Offers show and do not trade |
-| Selling, buying and trading player shops | covered | [Container shops](shops.md#container-shops): stock taken from and earnings put into the owner's containers, atomic on both sides |
+| Selling, buying and trading player shops | covered | [Container shops](https://github.com/VolmitSoftware/docs/blob/master/animus/10-shops.md#container-shops): stock taken from and earnings put into the owner's containers, atomic on both sides |
 | Currency and high currency | covered | Read from `config.yml`; prices become the same currency item stacks Shopkeepers asks for |
 | Separate stock and earnings containers | partial | All containers form one pool |
 | Container protection | covered | WorldGuard `build` and `chest-access` for the owner on Bukkit |
@@ -328,13 +328,13 @@ A shopkeeper has a shop type and a shop object. Admin shops (`admin`) trade with
 
 ### Import mapping
 
-`/animus import citizens` finds the save and imports it with the Citizens save; see [migrating from Citizens](migrating-from-citizens.md#shopkeepers) for the full mapping and [compatibility](compatibility.md) for the reference counts.
+`/animus import citizens` finds the save and imports it with the Citizens save; see [migrating from Citizens](https://github.com/VolmitSoftware/docs/blob/master/animus/13-migrating-from-citizens.md#shopkeepers) for the full mapping and [compatibility](compatibility.md) for the reference counts.
 
 ## Shared work
 
 All three add-ons need the same pieces. Building them once avoids three versions:
 
-- An inventory screen framework (shops, materials lists, excavated items, editors). Built: [chest GUIs](gui.md).
+- An inventory screen framework (shops, materials lists, excavated items, editors). Built: [chest GUIs](https://github.com/VolmitSoftware/docs/blob/master/animus/11-guis-holograms-menus.md).
 - An economy adapter (shops; not needed by the other two). Built: Vault on Bukkit.
 - A protection adapter for block changes, next to the existing combat protection adapter.
 - A per-player and per-NPC state store for limits, build progress and undo data, reusing behavior state.

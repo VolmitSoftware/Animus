@@ -7,7 +7,7 @@ import 'package:animus_editor/model/animus_document.dart';
 import 'package:animus_editor/model/document_kind.dart';
 import 'package:test/test.dart';
 
-/// The settings example from docs/combat.md.
+/// The settings example from wiki animus/08-combat.
 const String _documented = '''
 {
   "enabled": true,

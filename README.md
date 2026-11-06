@@ -2,9 +2,11 @@
 
 A Manager for all things NPC.
 
-Animus provides durable JSON NPC definitions, administration commands, staged imports, a bounded virtual NPC runtime, JSON behaviors, navigation, combat, shops, chest GUIs and a browser editor on Paper, Spigot and Folia, and on Fabric, NeoForge and Forge servers. Create and import leave NPCs dormant; explicit spawn activates a validated definition. On Folia, riding, mounts, combat and builds are unavailable. The editor runs at https://animus-editor.web.app; see [deployment](docs/deployment.md). See the [runtime guide](docs/runtime.md) for commands and [implementation evidence](docs/implementation.md) for the exact tested artifacts.
+- [Documentation](https://github.com/VolmitSoftware/docs/blob/master/animus.md)
 
-The target releases are Minecraft **26.1.2, 26.2, and 26.3**, using **Java 25**. Fabric, NeoForge and Forge servers run the same runtime as a server-side mod; see [mod servers](docs/mod-servers.md). API compilation is not gameplay certification. See [compatibility](docs/compatibility.md) and [implementation evidence](docs/implementation.md).
+Animus provides durable JSON NPC definitions, administration commands, staged imports, a bounded virtual NPC runtime, JSON behaviors, navigation, combat, shops, chest GUIs and a browser editor on Paper, Spigot and Folia, and on Fabric, NeoForge and Forge servers. Create and import leave NPCs dormant; explicit spawn activates a validated definition. On Folia, riding, mounts, combat and builds are unavailable. The editor runs at https://animus-editor.web.app; see [deployment](dev/deployment.md). See the [runtime guide](https://github.com/VolmitSoftware/docs/blob/master/animus/04-npc-definitions.md) for commands and [implementation evidence](dev/implementation.md) for the exact tested artifacts.
+
+The target releases are Minecraft **26.1.2, 26.2, and 26.3**, using **Java 25**. Fabric, NeoForge and Forge servers run the same runtime as a server-side mod; see [mod servers](https://github.com/VolmitSoftware/docs/blob/master/animus/16-mod-servers.md). API compilation is not gameplay certification. See [compatibility](dev/compatibility.md) and [implementation evidence](dev/implementation.md).
 
 ## Build
 
@@ -25,15 +27,15 @@ export JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home
 
 Use the supported Bukkit deliverable in `build/distributions/`: `Animus v0.1.0 [CraftBukkit] 26.1.2-26.3.jar`. The converter is in `converter/build/install/converter/`, with archives under `converter/build/distributions/`. `build/artifacts.json` records the distribution's exact platforms and versions (or all platform distributions when opted in).
 
-The Java extension API, sources and JavaDoc are prepared separately in `build/api/`. See [trusted modules](docs/modules.md) and the [reference module](examples/modules/reference/README.md). NPCs can open [shops](docs/shops.md) and [chest GUIs](docs/gui.md) written in Gloss's inventory format; a dtlTraders importer converts existing shops. Module loading passes live checks on every Paper, Spigot and Folia target.
+The Java extension API, sources and JavaDoc are prepared separately in `build/api/`. See [trusted modules](https://github.com/VolmitSoftware/docs/blob/master/animus/99-java-modules-api.md) and the [reference module](examples/modules/reference/README.md). NPCs can open [shops](https://github.com/VolmitSoftware/docs/blob/master/animus/10-shops.md) and [chest GUIs](https://github.com/VolmitSoftware/docs/blob/master/animus/11-guis-holograms-menus.md) written in Gloss's inventory format; a dtlTraders importer converts existing shops. Module loading passes live checks on every Paper, Spigot and Folia target.
 
-For isolated builds, artifact delivery, managed server checks and client scenarios, follow the [Multiplexor verification guide](docs/multiplexor.md). [Benchmark preparation](docs/benchmark.md) supplies reproducible synthetic workloads; no performance has been measured yet. Native packet checks use exact-version clients attached to Multiplexor-managed servers where its standard client lacks protocol data.
+For isolated builds, artifact delivery, managed server checks and client scenarios, follow the [Multiplexor verification guide](dev/multiplexor.md). [Benchmark preparation](dev/benchmark.md) supplies reproducible synthetic workloads; no performance has been measured yet. Native packet checks use exact-version clients attached to Multiplexor-managed servers where its standard client lacks protocol data.
 
 The build automatically uses a sibling/ancestor VolmLib checkout. Override with `-PlocalVolmLibDirectory=/path/to/VolmLib`, `VOLMLIB_DIR`, or `-PuseLocalVolmLib=false` for published dependencies.
 
 ## Citizens import
 
-To move a server from Citizens, follow [migrating from Citizens](docs/migrating-from-citizens.md): put `saves.yml` in `plugins/Animus/imports/` (or leave `plugins/Citizens/saves.yml` after removing Citizens), then run `/animus import citizens`, `/animus import citizens apply` and `/animus import citizens accept all`. The rest of this section is the lower-level converter.
+To move a server from Citizens, follow [migrating from Citizens](https://github.com/VolmitSoftware/docs/blob/master/animus/13-migrating-from-citizens.md): put `saves.yml` in `plugins/Animus/imports/` (or leave `plugins/Citizens/saves.yml` after removing Citizens), then run `/animus import citizens`, `/animus import citizens apply` and `/animus import citizens accept all`. The rest of this section is the lower-level converter.
 
 Keep private saves and generated bundles outside the repository. The converter accepts at most 16 MiB of UTF-8 YAML, with a maximum nesting depth of 64. It rejects duplicate keys, aliases, unsafe construction, and non-finite values. It never changes the source file.
 
@@ -46,7 +48,7 @@ Preview writes `imports/<import-id>/` containing:
 - `source.yml`: original input, preserved exactly for valid UTF-8.
 - `records/<citizens-id>.json`: every original NPC record.
 - `reports/<citizens-id>.json`: per-field data classification and exact definition errors.
-- `npcs/<world>-r<x>_<z>/citizens-<id>.json`: individually editable candidate definitions, one folder per world (after world mapping) and region file, such as `npcs/world-r0_-1/` for `region/r.0.-1.mca`; see [where the files go](docs/migrating-from-citizens.md#where-the-files-go).
+- `npcs/<world>-r<x>_<z>/citizens-<id>.json`: individually editable candidate definitions, one folder per world (after world mapping) and region file, such as `npcs/world-r0_-1/` for `region/r.0.-1.mca`; see [where the files go](https://github.com/VolmitSoftware/docs/blob/master/animus/13-migrating-from-citizens.md#where-the-files-go).
 - `skins/<sha256>.json`: deduplicated complete skin traits, including texture and signature.
 - `report.json`: counts, trait/Sentinel inventories, UUID mapping, world mapping, and a document hash manifest.
 
@@ -64,7 +66,7 @@ converter/build/install/converter/bin/converter validate /path/to/Animus
 converter/build/install/converter/bin/converter rollback /path/to/Animus <transaction-id>
 ```
 
-Apply installs definitions with `spawned: false` and imported combat disabled. Unknown traits, Denizen flags/assignments, and unimplemented settings remain preserved. Denizen scripts convert through `/animus import citizens` or `converter denizen-preview`; see [migrating from Citizens](docs/migrating-from-citizens.md#denizen). Version 2 remaps known spawn, waypoint, Sentinel, and sitting locations and resolves known mount/guard references through the UUID map. Unknown references remain preserved with diagnostics. Reviewable transformed traits live in `modules["citizens:review"]`; original records remain unchanged in the archive. Sentinel historical statistics are separated from settings. These data transformations do not execute behavior.
+Apply installs definitions with `spawned: false` and imported combat disabled. Unknown traits, Denizen flags/assignments, and unimplemented settings remain preserved. Denizen scripts convert through `/animus import citizens` or `converter denizen-preview`; see [migrating from Citizens](https://github.com/VolmitSoftware/docs/blob/master/animus/13-migrating-from-citizens.md#denizen). Version 2 remaps known spawn, waypoint, Sentinel, and sitting locations and resolves known mount/guard references through the UUID map. Unknown references remain preserved with diagnostics. Reviewable transformed traits live in `modules["citizens:review"]`; original records remain unchanged in the archive. Sentinel historical statistics are separated from settings. These data transformations do not execute behavior.
 
 A repeated identical preview reuses its versioned import ID. Version 1 bundles remain readable; version 2 conversion uses a distinct identity. Repeated default apply reports `already-applied`; other identity/path collisions are rejected. A modified candidate fails hash verification; import it first, then edit installed definitions through the validation service. Rollback refuses to overwrite subsequent edits and removes the receipt, allowing a fresh apply afterward.
 
@@ -76,13 +78,13 @@ converter/build/install/converter/bin/converter stage /path/to/Animus <import-id
 converter/build/install/converter/bin/converter apply-plan /path/to/Animus <import-id> <application-id>
 ```
 
-Replacement retains the existing path, UUID and readable ID, increments its revision, and installs it dormant with imported combat disabled. Duplication requires a label and creates fresh deterministic identities, remapping known normalized references within the copied collection. Original archives and unknown review data remain untouched. Staging changes no active definitions. Apply verifies the plan and current hashes; an intervening edit requires a new plan. See [import application plans](docs/import-applications.md) for limits, server commands and rollback details.
+Replacement retains the existing path, UUID and readable ID, increments its revision, and installs it dormant with imported combat disabled. Duplication requires a label and creates fresh deterministic identities, remapping known normalized references within the copied collection. Original archives and unknown review data remain untouched. Staging changes no active definitions. Apply verifies the plan and current hashes; an intervening edit requires a new plan. See [import application plans](https://github.com/VolmitSoftware/docs/blob/master/animus/13-migrating-from-citizens.md) for limits, server commands and rollback details.
 
 The local CLI cannot open a running server's data directory: both hold the same exclusive lock. Use server commands while online. Archive and transaction files may contain private data; they are not public fixtures.
 
 ## Server commands
 
-`animus.status` is available by default; `animus.admin` and `animus.debug` default to operators. `/animus debug` shows what Animus measured on this server: `network [player]` for packets and estimated bytes by kind and viewer, `performance` for server time per subsystem over 1, 10 and 60 seconds, `npc <id>` for one NPC's share, and `watch` to toggle a live action-bar line. [docs/react.md](docs/react.md) lists the metrics Animus publishes to React. Commands, imports and API edits share one serial file worker, with 32 admitted operations by default. Separate bounded workers deliver API results. Replies use the Bukkit scheduler or Folia player/global scheduler. Commands are also usable from the console.
+`animus.status` is available by default; `animus.admin` and `animus.debug` default to operators. `/animus debug` shows what Animus measured on this server: `network [player]` for packets and estimated bytes by kind and viewer, `performance` for server time per subsystem over 1, 10 and 60 seconds, `npc <id>` for one NPC's share, and `watch` to toggle a live action-bar line. [Debug and React metrics](https://github.com/VolmitSoftware/docs/blob/master/animus/17-debug-react-metrics.md) lists the metrics Animus publishes to React. Commands, imports and API edits share one serial file worker, with 32 admitted operations by default. Separate bounded workers deliver API results. Replies use the Bukkit scheduler or Folia player/global scheduler. Commands are also usable from the console.
 
 ```text
 /animus status
@@ -114,7 +116,7 @@ The local CLI cannot open a running server's data directory: both hold the same 
 
 Place server import files in `plugins/Animus/imports/inbox/`. Create/clone produce dormant definitions. Spawn validates live world/type/name capabilities before saving activation intent. A player can select an ID or click a visible NPC; spawn/despawn/inspect/delete accept the selected ID when omitted. Console commands require explicit IDs. Edit applies a top-level JSON patch, increments the revision, and preserves unspecified fields. Identity and file-path changes require a dedicated future operation. Status and inspect distinguish active runtime state, dormant definitions, and unavailable capabilities.
 
-Accepted definitions have durable last-valid recovery across restart. Invalid source edits remain untouched and visible in diagnostics; deleting a source still deletes its NPC. See [storage and rollback](docs/storage.md) for recovery, conflict handling and read-only CLI validation.
+Accepted definitions have durable last-valid recovery across restart. Invalid source edits remain untouched and visible in diagnostics; deleting a source still deletes its NPC. See [storage and rollback](https://github.com/VolmitSoftware/docs/blob/master/animus/12-storage-recovery.md) for recovery, conflict handling and read-only CLI validation.
 
 ## Plugin settings
 
@@ -146,17 +148,17 @@ invocationTimeoutMillis = 1000
 deliveryBudgetMillis = 250
 ```
 
-Existing TOML files and comments are preserved. On first startup with only a legacy `config.json`, Animus validates it, archives it under `backups/config-<hash>.json`, and writes TOML only if a lossless conversion is possible. The original JSON remains unchanged; subsequent startup reads TOML. Invalid TOML prevents startup rather than falling back to legacy settings. Saved changes to plugin settings apply live; see [hand edits apply live](docs/runtime.md#hand-edits-apply-live). Older TOML files without `[npcs]` use these defaults without rewriting comments. Limits and live behavior are described in the [runtime guide](docs/runtime.md).
+Existing TOML files and comments are preserved. On first startup with only a legacy `config.json`, Animus validates it, archives it under `backups/config-<hash>.json`, and writes TOML only if a lossless conversion is possible. The original JSON remains unchanged; subsequent startup reads TOML. Invalid TOML prevents startup rather than falling back to legacy settings. Saved changes to plugin settings apply live; see [hand edits apply live](https://github.com/VolmitSoftware/docs/blob/master/animus/04-npc-definitions.md#hand-edits-apply-live). Older TOML files without `[npcs]` use these defaults without rewriting comments. Limits and live behavior are described in the [runtime guide](https://github.com/VolmitSoftware/docs/blob/master/animus/04-npc-definitions.md).
 
 NPC definitions, behavior packs, skins, migration bundles/reports, state, and generated data use **JSON**. Original import sources are archived in their original format for recovery.
 
-Older files use defaults for missing `[files]` and `[modules]` tables. See [module and file-work budgets](docs/modules.md) for limits and shutdown semantics. Java modules load from `modules/` at startup; changing a module jar requires a server restart, while `[modules]` settings apply live.
+Older files use defaults for missing `[files]` and `[modules]` tables. See [module and file-work budgets](https://github.com/VolmitSoftware/docs/blob/master/animus/99-java-modules-api.md) for limits and shutdown semantics. Java modules load from `modules/` at startup; changing a module jar requires a server restart, while `[modules]` settings apply live.
 
 ## Experimental packet proof
 
 Set `packetProofEnabled = true` in TOML and restart an isolated Bukkit/Paper test server. The proof requires `animus.admin`, is viewer-only, and expires after two minutes. It does not activate persisted definitions. Folia reports it unavailable; use the Folia preview below, or saved NPCs.
 
-Folia has a separate, limited `/animus foliaproof` stationary player preview. See [Folia preview commands and limits](docs/folia-preview.md) and the exact verification status in [implementation evidence](docs/implementation.md). Saved NPCs on Folia run on the region that owns their chunk, including riding, mounted groups and combat. See [persisted NPCs on Folia](docs/folia-runtime.md).
+Folia has a separate, limited `/animus foliaproof` stationary player preview. See [Folia preview commands and limits](https://github.com/VolmitSoftware/docs/blob/master/animus/15-folia.md) and the exact verification status in [implementation evidence](dev/implementation.md). Saved NPCs on Folia run on the region that owns their chunk, including riding, mounted groups and combat. See [persisted NPCs on Folia](https://github.com/VolmitSoftware/docs/blob/master/animus/15-folia.md).
 
 ```text
 /animus proof status
@@ -178,7 +180,7 @@ Interactions use server position and view direction, a virtual hitbox, reach/rat
 
 Definitions live at `npcs/<group>/<id>.json`. IDs are globally unique, even across groups; UUIDs are stable and unique. Documents include `schemaVersion` and `revision`. Unknown module data is preserved. Health/cooldowns/execution stacks do not belong in these definitions. Only schema version 1 is supported; future schemas are rejected rather than guessed.
 
-`validate` does not change the registry. `reload` publishes an entire valid snapshot; any invalid document, duplicate identity, path mismatch, or decreasing revision leaves the previous snapshot active. Hand edits can retain the revision, but byte hashes still invalidate older drafts. Accepted files have durable last-valid checkpoints: a malformed edit at startup retains the previous accepted definition without changing the invalid bytes. Repair the source and reload before editing through commands again. New malformed files, duplicate identities and corrupt checkpoints fail startup explicitly. Deleting the source removes the NPC. See [storage and recovery](docs/storage.md); file watching and automatic schema upgrades remain future work.
+`validate` does not change the registry. `reload` publishes an entire valid snapshot; any invalid document, duplicate identity, path mismatch, or decreasing revision leaves the previous snapshot active. Hand edits can retain the revision, but byte hashes still invalidate older drafts. Accepted files have durable last-valid checkpoints: a malformed edit at startup retains the previous accepted definition without changing the invalid bytes. Repair the source and reload before editing through commands again. New malformed files, duplicate identities and corrupt checkpoints fail startup explicitly. Deleting the source removes the NPC. See [storage and recovery](https://github.com/VolmitSoftware/docs/blob/master/animus/12-storage-recovery.md); file watching and automatic schema upgrades remain future work.
 
 Writes use atomic replacements, a forced transaction journal, directory synchronization, and backups of previous/next contents. Large transactions reference immutable payload objects; retain the backup metadata together with `state/objects/transaction-data/`. After interruption, startup rolls the journal forward before loading definitions. If an outside edit or missing payload conflicts with recovery, startup stops and preserves `state/pending.json`. Preserve the journal, backups and objects while resolving the conflict. Do not delete the journal to bypass recovery.
 
@@ -195,6 +197,6 @@ Transactions are capped at 10,000 entries including checkpoints/receipts, a 16 M
 | `adapters/` | Experimental mod-loader scaffold; no NPC gameplay |
 | `gradle/` | Build matrix, packaging, artifact and Multiplexor declarations |
 | `qa/` | Reproducible platform scenarios |
-| `docs/` | Compatibility, evidence, and remaining work |
+| `dev/` | Developer records: compatibility inventory, editor contracts and design, verification evidence |
 
 Never register an NPC body as a world entity. NMS and future packet adapters belong outside the core.

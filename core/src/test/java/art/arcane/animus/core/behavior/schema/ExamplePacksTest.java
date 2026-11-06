@@ -26,6 +26,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class ExamplePacksTest {
     private static final List<String> PACKS = List.of("dialogue", "greeter", "patrol", "personal-guard", "quest", "shop", "town-guard");
@@ -128,7 +129,9 @@ class ExamplePacksTest {
     }
 
     @Test void theMigrationSectionShowsDocumentsThatCompile() throws Exception {
-        String documentation = Files.readString(RepositoryFiles.root().resolve("docs/behaviors.md"));
+        Path page = RepositoryFiles.wikiPage("07-behaviors.md");
+        assumeTrue(Files.isRegularFile(page), "docs checkout not beside the repository");
+        String documentation = Files.readString(page);
         int start = documentation.indexOf("## Moving imported flags and assignments");
         assertTrue(start >= 0, "migration section is missing");
         int end = documentation.indexOf("\n## ", start + 1);

@@ -1,7 +1,7 @@
 /// The editor side of `/v1/imports`: upload a Citizens saves.yml, a
 /// Shopkeepers save.yml and config.yml and dtlTraders files to a paired
 /// server, stage them, and apply, accept and roll back the server's drop-in
-/// import (docs/migrating-from-citizens.md). Every answer is the server's
+/// import (wiki animus/13-migrating-from-citizens). Every answer is the server's
 /// `import-review`.
 library;
 
