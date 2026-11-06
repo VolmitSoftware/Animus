@@ -245,6 +245,8 @@
 - Web editor: an Attributes section for NPCs and groups, with range hints, defaults and sources; the preview shows `scale`.
 - Web editor: a Conversation tab builds a behavior's lines, questions, conditions and actions as a tree by keyboard, writes the routines, `animus:choices` actions and `dialogue_choice` triggers with ids it keeps, opens matching hand-written behaviors, plays the conversation in the browser and attaches it to NPCs and groups in one undoable step.
 - Web editor: New conversation in the sidebar and the command palette, and a Conversation behavior template.
+- Web editor: dropdowns that pick a rig, animation, route, recording, group, behavior, skin, shop, chest GUI or menu end with "+ New" (opens the create form with the typed text as the name and the current folder, then returns with the new document picked) and "Manage" (lists that kind). Recordings show how to record one in game instead.
+- Web editor: sidebar sections and NPC folders collapse from their headers, with Collapse all and Expand all; the state is kept per workspace.
 
 ### Changed
 
@@ -345,6 +347,7 @@
 - Shopkeepers imports open in the trading screen (`"style": "native"`), and villager profession and level move from the review section to `animus:shop` `villager`; the importer version is 2.
 - `gravity: false` stays the hover switch and wins over the `gravity` attribute, which sets how fast a body falls.
 - Citizens converter version 13: the attribute trait converts to `attributes` instead of only `movement.stepHeight`, and an armor stand without gravity converts to `gravity: false`.
+- Web editor: every select and suggestion list is the editor's own square dropdown. Lists longer than eight entries have a search field, the keyboard works as in a native select, and phones get a full-width sheet with 44 px rows.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.

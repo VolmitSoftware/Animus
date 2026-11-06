@@ -12,7 +12,7 @@ import '../../logic/inspect/schema_fields.dart';
 import '../../logic/npc/npc_attributes.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
-import '../inspect/inspect_fields.dart';
+import '../select/suggest_input.dart';
 
 class AttributesEditor extends StatefulWidget {
   const AttributesEditor({required this.value, required this.specs, required this.onChanged, this.diagnostics = const <Diagnostic>[], super.key});

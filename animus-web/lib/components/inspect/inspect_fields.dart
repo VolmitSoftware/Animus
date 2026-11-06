@@ -14,11 +14,11 @@ import 'package:web/web.dart' as web;
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../model/animus_document.dart';
+import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
 import '../../logic/help_text.dart';
 import '../info_tip.dart';
-
-int _nextListId = 0;
+import '../select/suggest_input.dart';
 
 /// A label with a required marker; keys read as words (`waitTicks` is "Wait ticks").
 String fieldLabel(FieldSpec field, {String? label}) => '${label ?? humanizeKey(field.key)}${field.required ? ' *' : ''}';
@@ -136,6 +136,7 @@ class InspectControl extends StatelessWidget {
     this.diagnostics = const <Diagnostic>[],
     this.suggestions = const <FieldOption>[],
     this.schema,
+    this.references,
     super.key,
   });
 
@@ -146,6 +147,9 @@ class InspectControl extends StatelessWidget {
   final List<Diagnostic> diagnostics;
   final List<FieldOption> suggestions;
   final SchemaView? schema;
+
+  /// The document kind a text value names, for "+ New" and "Manage".
+  final DocumentKind? references;
 
   @override
   Widget build(BuildContext context) {
@@ -162,6 +166,7 @@ class InspectControl extends StatelessWidget {
           return SuggestInput(
             value: current is String ? current : '',
             label: field.key,
+            references: references,
             suggestions: <FieldOption>[...field.options, ...suggestions],
             onChanged: (String next) => onChanged(next.isEmpty && !field.required ? null : next),
           );
@@ -198,6 +203,7 @@ class InspectControl extends StatelessWidget {
           return SuggestInput(
             value: current as String? ?? '',
             label: field.key,
+            references: references,
             suggestions: suggestions,
             placeholder: field.bounds.isEmpty ? null : field.bounds,
             onChanged: (String next) => onChanged(next.isEmpty && !field.required ? null : next),
@@ -283,67 +289,6 @@ class InspectObject extends StatelessWidget {
             problems: diagnosticsAt(diagnostics, childPath(path, entry.key), nested: true),
             child: KeptJsonEditor(value: entry.value, label: entry.key, onChanged: (Object? next) => put(entry.key, next)),
           ),
-    ]);
-  }
-}
-
-/// A text field that offers [suggestions] through the browser's list.
-class SuggestInput extends StatefulWidget {
-  const SuggestInput({
-    required this.value,
-    required this.onChanged,
-    this.suggestions = const <FieldOption>[],
-    this.label,
-    this.placeholder,
-    super.key,
-  });
-
-  final String value;
-  final void Function(String value) onChanged;
-  final List<FieldOption> suggestions;
-  final String? label;
-  final String? placeholder;
-
-  @override
-  State<SuggestInput> createState() => _SuggestInputState();
-}
-
-class _SuggestInputState extends State<SuggestInput> {
-  final String _list = 'animus-suggest-${_nextListId++}';
-
-  /// The text while focused, kept over slower saves.
-  String? _typed;
-
-  @override
-  Widget build(BuildContext context) {
-    final bool listed = component.suggestions.isNotEmpty;
-    return dom.div(classes: 'animus-gui-text', <Widget>[
-      dom.input(
-        classes: 'animus-gui-input',
-        value: _typed ?? component.value,
-        attributes: <String, String>{
-          'autocomplete': 'off',
-          'spellcheck': 'false',
-          'aria-label': ?component.label,
-          'placeholder': ?component.placeholder,
-          if (listed) 'list': _list,
-        },
-        events: <String, void Function(web.Event)>{
-          'input': (web.Event event) {
-            final String text = (event.target! as web.HTMLInputElement).value;
-            _typed = text;
-            component.onChanged(text);
-          },
-          'blur': (web.Event _) {
-            if (mounted) setState(() => _typed = null);
-          },
-        },
-      ),
-      if (listed)
-        dom.datalist(id: _list, <Widget>[
-          for (final FieldOption option in component.suggestions)
-            dom.option(value: option.label, label: option.description ?? option.label, const <Widget>[]),
-        ]),
     ]);
   }
 }

@@ -1,8 +1,7 @@
-/// The conversation editor's dropdowns: [ConversationPicker] picks one value
-/// from a listbox, [ConversationMenu] runs one action from a menu. Both open
-/// under their button, move with the arrow keys, Home and End, pick with
-/// Enter or Space, and close with Escape or Tab, giving focus back to the
-/// button. They are kept small so a shared dropdown can replace them.
+/// The conversation editor's pickers: [ConversationPicker] picks one value
+/// with the editor's dropdown, [ConversationMenu] runs one action from a
+/// menu that opens under its button, moves with the arrow keys, Home and
+/// End, and closes with Escape or Tab, giving focus back to the button.
 library;
 
 import 'dart:js_interop';
@@ -11,6 +10,9 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
+
+import '../../logic/select/select_model.dart';
+import '../select/animus_select.dart';
 
 int _nextPickerId = 0;
 
@@ -137,9 +139,10 @@ abstract class _PopState<T extends StatefulWidget> extends State<T> {
   int get openFocus => 0;
 }
 
-/// A dropdown that picks one of [options]. The button shows the picked
-/// label, or [placeholder] when [value] is not among them.
-class ConversationPicker extends StatefulWidget {
+/// A dropdown that picks one of [options], drawn by the editor's one
+/// dropdown ([AnimusSelect]). It shows the picked label, or [placeholder]
+/// when [value] is not among them.
+class ConversationPicker extends StatelessWidget {
   const ConversationPicker({required this.label, required this.options, required this.onPick, this.value, this.placeholder = 'Pick one', this.id, super.key});
 
   /// The accessible name, such as "Start".
@@ -149,83 +152,20 @@ class ConversationPicker extends StatefulWidget {
   final String placeholder;
   final void Function(String value) onPick;
 
-  /// The button's element id, for a `<label for>`.
+  /// The trigger's element id, for a `<label for>`.
   final String? id;
 
   @override
-  State<ConversationPicker> createState() => _ConversationPickerState();
-}
-
-class _ConversationPickerState extends _PopState<ConversationPicker> {
-  String get _buttonId => component.id ?? id;
-
-  @override
-  String get itemSelector => '[role="option"]';
-
-  @override
-  int get openFocus => component.options.indexWhere((PickOption option) => option.value == component.value).clamp(0, component.options.length);
-
-  @override
-  void close({required bool refocus}) {
-    super.close(refocus: false);
-    if (refocus) (web.document.getElementById(_buttonId) as web.HTMLElement?)?.focus();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final PickOption? picked = component.options.where((PickOption option) => option.value == component.value).firstOrNull;
-    return dom.span(
-      id: '$id-wrap',
-      classes: 'animus-menu-wrap animus-pick',
-      events: <String, void Function(web.Event)>{'keydown': keys},
-      <Widget>[
-        Button.outline(
-          id: _buttonId,
-          label: picked?.label ?? component.placeholder,
-          icon: ArcaneIcon.chevronDown(size: IconSize.sm),
-          iconPosition: ButtonIconPosition.trailing,
-          size: ButtonSize.small,
-          attributes: <String, String>{
-            'aria-haspopup': 'listbox',
-            'aria-expanded': '$open',
-            'aria-controls': popId,
-            'aria-label': '${component.label}: ${picked?.label ?? component.placeholder}',
-            'data-picker': component.label,
-          },
-          onPressed: () => open ? close(refocus: false) : show(focus: openFocus),
-        ),
-        if (open)
-          dom.div(
-            id: popId,
-            classes: 'animus-menu animus-pick-list',
-            attributes: <String, String>{'role': 'listbox', 'aria-label': component.label},
-            <Widget>[
-              for (final PickOption option in component.options)
-                dom.button(
-                  classes: 'animus-menu-item',
-                  attributes: <String, String>{
-                    'type': 'button',
-                    'role': 'option',
-                    'tabindex': '-1',
-                    'aria-selected': '${option.value == component.value}',
-                    'data-value': option.value,
-                  },
-                  events: <String, void Function(web.Event)>{
-                    'click': (web.Event _) {
-                      close(refocus: true);
-                      component.onPick(option.value);
-                    },
-                  },
-                  <Widget>[
-                    dom.span(<Widget>[Component.text(option.label)]),
-                    if (option.hint != null) dom.span(classes: 'animus-menu-hint', <Widget>[Component.text(option.hint!)]),
-                  ],
-                ),
-            ],
-          ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => AnimusSelect(
+        id: id,
+        hiddenLabel: label,
+        value: value,
+        placeholder: placeholder,
+        options: <SelectOption>[
+          for (final PickOption option in options) SelectOption(value: option.value, label: option.label, description: option.hint),
+        ],
+        onChanged: onPick,
+      );
 }
 
 /// A button that opens a menu of [actions]. With [icon] and no visible

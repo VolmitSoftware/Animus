@@ -109,6 +109,7 @@ class _AnimusAppState extends State<AnimusApp> {
       NpcListRoute(:final String workspaceId) => workspaceId,
       RecordingListRoute(:final String workspaceId) => workspaceId,
       NewDocumentRoute(:final String workspaceId) => workspaceId,
+      KindListRoute(:final String workspaceId) => workspaceId,
       SyncRoute(:final String workspaceId) => workspaceId,
       _ => null,
     };

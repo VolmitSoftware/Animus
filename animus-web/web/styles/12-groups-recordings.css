@@ -141,7 +141,7 @@
     grid-template-columns: 4rem minmax(0, 1fr);
   }
 
-  .animus-npc-group-assign-fields select {
+  .animus-npc-group-assign-fields .animus-select {
     width: 100%;
     min-width: 0;
   }

@@ -344,6 +344,68 @@
   color: var(--animus-muted);
 }
 
+.animus-tree-head h3 {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A section or folder header: the whole row folds its list. */
+.animus-tree-toggle {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  width: 100%;
+  min-height: var(--animus-control-h-sm);
+  padding: 0 0.25rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: start;
+  color: var(--animus-muted);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.animus-tree-toggle:hover {
+  color: var(--foreground);
+  background: var(--card-hover, #222024);
+}
+
+.animus-tree-toggle.is-folder {
+  font-weight: 400;
+  color: var(--foreground);
+}
+
+.animus-tree-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.animus-tree-chevron {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .animus-tree-chevron {
+    transition: transform 120ms ease-out;
+  }
+}
+
+.animus-tree-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.animus-tree-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
 .animus-tree-browse {
   margin-inline-start: auto;
   display: inline-flex;
@@ -624,6 +686,7 @@
 
   #arcane-root .arcane-button,
   .animus-tree-item,
+  .animus-tree-toggle,
   .animus-tree-browse,
   .animus-menu-item,
   .animus-palette-option {

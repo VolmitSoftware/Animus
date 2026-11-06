@@ -9,6 +9,8 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component, ValueKey;
 
 import '../../logic/rig_edit.dart';
+import '../../model/document_kind.dart';
+import '../gui/gui_fields.dart';
 import 'rig_inspector.dart';
 
 class RigAnimationsPanel extends StatefulWidget {
@@ -107,11 +109,12 @@ class _RigAnimationsPanelState extends State<RigAnimationsPanel> {
         if (own.isNotEmpty)
           dom.label(classes: 'animus-rig-field', <Widget>[
             const dom.span(classes: 'animus-sr-only', <Widget>[Component.text('Animation for the new name')]),
-            ArcaneSelect(
-              size: ComponentSize.sm,
+            GuiSelect(
               value: _newAnimation.isEmpty ? own.first : _newAnimation,
-              options: <ArcaneSelectOption>[for (final String id in own) ArcaneSelectOption(label: id, value: id)],
-              onChanged: (String value) => setState(() => _newAnimation = value),
+              options: own,
+              hiddenLabel: 'Animation for the new name',
+              references: DocumentKind.animation,
+              onChanged: (String? value) => setState(() => _newAnimation = value ?? ''),
             ),
           ]),
         Button.secondary(
@@ -144,14 +147,15 @@ class _RigAnimationsPanelState extends State<RigAnimationsPanel> {
         ),
         dom.label(key: ValueKey<String>('animation:$name:$id'), classes: 'animus-rig-field', <Widget>[
           dom.span(classes: 'animus-sr-only', <Widget>[Component.text('Animation for $name')]),
-          ArcaneSelect(
-            size: ComponentSize.sm,
+          GuiSelect(
             value: id,
-            options: <ArcaneSelectOption>[
-              for (final String option in own) ArcaneSelectOption(label: option, value: option),
-              if (!own.contains(id)) ArcaneSelectOption(label: '$id (${exists ? 'other rig' : 'missing'})', value: id),
-            ],
-            onChanged: (String value) => component.onEdit((JsonMap json) => setAnimationName(json, name, value)),
+            options: <String>[...own, if (!own.contains(id)) id],
+            labels: <String, String>{if (!own.contains(id)) id: '$id (${exists ? 'other rig' : 'missing'})'},
+            hiddenLabel: 'Animation for $name',
+            references: DocumentKind.animation,
+            onChanged: (String? value) {
+              if (value != null) component.onEdit((JsonMap json) => setAnimationName(json, name, value));
+            },
           ),
         ]),
         Button.ghost(

@@ -14,6 +14,7 @@ import '../../logic/npc/group_model.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
+import '../select/skin_faces.dart';
 
 /// Skin hashes as the server stores them.
 final RegExp _skinHash = RegExp(r'^[a-f0-9]{64}$');
@@ -85,6 +86,7 @@ class NpcGroupsList extends StatelessWidget {
           dom.div(classes: 'animus-row', <Widget>[
             const dom.label(classes: 'animus-sr-only', attributes: <String, String>{'for': addId}, <Widget>[Component.text('Add a group')]),
             GuiSelect(
+              references: DocumentKind.group,
               id: addId,
               value: null,
               options: available,
@@ -215,9 +217,11 @@ class _GroupSkinPoolState extends State<GroupSkinPool> {
           if (offered.isNotEmpty) ...<Widget>[
             const dom.label(classes: 'animus-sr-only', attributes: <String, String>{'for': pickId}, <Widget>[Component.text('Add a workspace skin to the pool')]),
             GuiSelect(
+              references: DocumentKind.skin,
               id: pickId,
               value: null,
               options: offered,
+              skinFaces: skinFacesOf(offered),
               noneLabel: 'Add a workspace skin',
               onChanged: (String? hash) {
                 if (hash != null && pool.length < _poolLimit) put(<String>[...pool, hash]);
