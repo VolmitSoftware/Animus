@@ -33,7 +33,7 @@ class DocumentLocation {
 }
 
 /// Top-level folders that hold editable documents.
-const Set<String> documentRoots = <String>{'npcs', 'routes', 'skins', 'behaviors', 'packs', 'shops', 'gui', 'rigs', 'animations'};
+const Set<String> documentRoots = <String>{'npcs', 'routes', 'skins', 'groups', 'behaviors', 'packs', 'shops', 'gui', 'rigs', 'animations'};
 
 final RegExp _segment = RegExp(r'^[a-z0-9_-]{1,64}$');
 
@@ -50,6 +50,8 @@ DocumentLocation? locateDocument(String path) {
       return parts.length == 3 && valid(parts.sublist(1)) ? DocumentLocation(DocumentKind.npc, '${parts[1]}/${parts[2]}') : null;
     case 'routes':
       return parts.length == 2 && valid(parts.sublist(1)) ? DocumentLocation(DocumentKind.route, parts[1]) : null;
+    case 'groups':
+      return parts.length == 2 && valid(parts.sublist(1)) ? DocumentLocation(DocumentKind.group, parts[1]) : null;
     case 'skins':
       return parts.length == 2 && RegExp(r'^[a-f0-9]{64}$').hasMatch(parts[1]) ? DocumentLocation(DocumentKind.skin, parts[1]) : null;
     case 'behaviors':

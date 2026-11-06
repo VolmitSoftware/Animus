@@ -122,7 +122,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
     });
     final String candidate = switch (kind) {
       DocumentKind.npc => '${slug(_group, fallback: 'local')}/$base',
-      DocumentKind.route || DocumentKind.pack => base,
+      DocumentKind.route || DocumentKind.pack || DocumentKind.group => base,
       DocumentKind.animation => '${_rig ?? '$_namespace:rig'}/$base',
       _ => '$_namespace:$base',
     };
@@ -213,6 +213,8 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
           await _write(changes, kind, id);
         case DocumentKind.pack:
           await _write(<DocumentChange>[_change(kind, id, newPack(id, name: _title, description: _name))], kind, id);
+        case DocumentKind.group:
+          await _write(<DocumentChange>[_change(kind, id, newGroup(id))], kind, id);
         case DocumentKind.route:
           await _write(<DocumentChange>[_change(kind, id, newRoute(origin: (_x.toDouble(), _y.toDouble(), _z.toDouble()), mode: _mode))], kind, id);
         case DocumentKind.shop:
@@ -349,6 +351,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
           OfflineTextField(label: 'Name', value: _title, onChanged: (String value) => setState(() => _title = value)),
           OfflineTextField(label: 'Description', value: _name, onChanged: (String value) => setState(() => _name = value)),
         ],
+      DocumentKind.group => <Widget>[_idField(kind)],
       DocumentKind.route => <Widget>[
           OfflineTextField(label: 'Name', value: _name, onChanged: (String value) => setState(() => _name = value)),
           _idField(kind),

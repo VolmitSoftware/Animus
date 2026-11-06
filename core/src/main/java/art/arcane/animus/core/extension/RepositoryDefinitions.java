@@ -70,7 +70,7 @@ public final class RepositoryDefinitions implements DefinitionGateway,AutoClosea
     }
     private DefinitionSnapshot snapshot(NpcDefinition definition)throws IOException{
         NpcRepository.Draft draft=repository.draft(definition.id());
-        return new DefinitionSnapshot(new NpcHandle(definition.uuid()),definition.id(),definition.group(),new RevisionToken(draft.expectedRevision(),draft.expectedHash()),definition.serialize());
+        return new DefinitionSnapshot(new NpcHandle(definition.uuid()),definition.id(),definition.group(),new RevisionToken(draft.expectedRevision(),draft.expectedHash()),art.arcane.animus.core.storage.JsonDocuments.write(draft.document()));
     }
     private static <T> Outcome<T> failure(IOException error){
         boolean conflict=String.valueOf(error.getMessage()).toLowerCase(Locale.ROOT).contains("conflict");

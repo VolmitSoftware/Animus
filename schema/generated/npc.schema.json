@@ -118,6 +118,17 @@
       "maxItems": 32,
       "uniqueItems": true
     },
+    "groups": {
+      "type": "array",
+      "description": "Trait groups under groups/ whose values this NPC takes, in merge order; the NPC's own fields win.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+      },
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true
+    },
     "rig": {
       "type": "object",
       "description": "The rig under rigs/ this NPC's body shows.",

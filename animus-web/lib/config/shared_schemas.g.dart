@@ -116,6 +116,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "npc": {"folder": "npcs", "applyScope": "apply:npcs", "schema": "generated/npc.schema.json"},
     "route": {"folder": "routes", "applyScope": "apply:npcs", "schema": null},
     "skin": {"folder": "skins", "applyScope": "apply:npcs", "schema": null},
+    "group": {"folder": "groups", "applyScope": "apply:npcs", "schema": "group-v1.schema.json"},
     "behavior": {"folder": "behaviors", "applyScope": "apply:behaviors", "schema": "generated/behavior.schema.json"},
     "pack": {"folder": "packs", "applyScope": "apply:behaviors", "schema": "generated/pack.schema.json"},
     "shop": {"folder": "shops", "applyScope": "apply:gui", "schema": "shop-v1.schema.json"},
@@ -180,7 +181,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "protocol": {"const": 1},
     "scope": {"enum": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs", "import", "spawn", "admin"]},
     "kind": {
-      "enum": ["npc", "route", "skin", "behavior", "pack", "shop", "inventory", "menu", "hologram", "text-animation", "presets", "rig", "animation"],
+      "enum": ["npc", "route", "skin", "group", "behavior", "pack", "shop", "inventory", "menu", "hologram", "text-animation", "presets", "rig", "animation"],
       "description": "Document kinds. Folders and apply scopes are listed in editor-v1.endpoints.json."
     },
     "documentId": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[a-z0-9_.:/-]+$", "description": "The kind's own id: group/id for NPCs, namespace:path for behaviors, shops, GUIs, rigs and animations, the SHA-256 for skins, the relative path for menus."},
@@ -8253,6 +8254,17 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "maxItems": 32,
       "uniqueItems": true
     },
+    "groups": {
+      "type": "array",
+      "description": "Trait groups under groups/ whose values this NPC takes, in merge order; the NPC's own fields win.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+      },
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true
+    },
     "rig": {
       "type": "object",
       "description": "The rig under rigs/ this NPC's body shows.",
@@ -13968,6 +13980,58 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "supported": ["command", "sound", "message", "title", "actionbar", "close", "navigate", "inventory", "setSession", "give", "take", "economy", "delay", "sequence", "if", "switch", "chance", "cooldown", "stop", "call", "teleport", "bossbar", "broadcast", "effect", "particle", "parallel", "repeat"],
     "animus": ["animus:open-shop"],
     "refused": ["connect", "surface", "prompt", "dialog", "book", "emit", "setState", "addState", "clearState", "sky", "camera", "glow"]
+  }
+}
+''',
+  'group-v1.schema.json': r'''
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://animus.volmitsoftware.com/schema/group-v1.schema.json",
+  "title": "Animus trait group",
+  "description": "groups/<id>.json. Definition values that NPCs listing this group take before their own fields. The Java validator (GroupDocument) also checks every value with the NPC field validators; this schema checks the shape.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "revision", "id", "values"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "revision": {"type": "integer", "minimum": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$", "description": "Matches the file name."},
+    "description": {"type": "string", "maxLength": 256},
+    "values": {
+      "type": "object",
+      "description": "Any optional NPC definition field, plus skins. Identity and state fields are refused, and a group cannot list other groups.",
+      "propertyNames": {
+        "not": {"enum": ["schemaVersion", "revision", "uuid", "id", "group", "name", "type", "spawned", "position", "owner", "migration", "groups"]}
+      },
+      "properties": {
+        "modules": {"type": "object", "description": "Module settings keyed by namespace:name; merged key by key with the NPC's."},
+        "behaviors": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9_-]+:[a-z0-9_/-]+$"}, "description": "Appended before the NPC's own, without duplicates."},
+        "tags": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"}},
+        "equipment": {"type": "object"},
+        "hologram": {"type": "object"},
+        "nameplate": {"type": "object"},
+        "pose": {"type": "string"},
+        "poses": {"type": "object"},
+        "movement": {"type": "object"},
+        "rig": {"type": "object"},
+        "armorStand": {"type": "object"},
+        "glowing": {"type": "boolean"},
+        "teamColor": {"type": "string"},
+        "baby": {"type": "boolean"},
+        "usingItem": {"type": "boolean"},
+        "listed": {"type": "boolean"},
+        "gravity": {"type": "boolean"},
+        "skin": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "skins": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "description": "A pool of skin hashes; each NPC takes one by a stable hash of its UUID unless it sets skin itself."
+        }
+      }
+    }
   }
 }
 ''',
