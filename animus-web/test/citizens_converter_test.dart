@@ -274,11 +274,11 @@ void main() {
     });
 
     test('group folders', () {
-      expect(citizensGroup('World Nether', JInt.of(-1), JInt.of(600)), 'world-nether-r-1_1');
-      expect(citizensGroup('__spawn__', null, null), 'spawn');
-      expect(citizensGroup(r'$$$', JInt.of(0), JInt.of(0)), 'citizens');
-      expect(citizensGroup('world', const JString('1'), JInt.of(0)), 'world');
-      expect(citizensGroup('a' * 80, null, null).length, 48);
+      expect(citizensGroup('World Nether'), 'world-nether');
+      expect(citizensGroup('__spawn__'), 'spawn');
+      expect(citizensGroup(r'$$$'), 'citizens');
+      expect(citizensGroup('world'), 'world');
+      expect(citizensGroup('a' * 80).length, 48);
     });
   });
 }

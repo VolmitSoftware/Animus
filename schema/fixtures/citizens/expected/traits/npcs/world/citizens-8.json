@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-0000000000aa",
+  "id": "citizens-8",
+  "group": "world",
+  "name": "Twin A",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "422e5c989fcb1593adb1b901b20abf74f3d8a2644d1153d3524dc7b9d67adff0",
+    "citizensId": 8,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 8,
+    "y": 64,
+    "z": 8,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "world",
+        "x": 8,
+        "y": 64,
+        "z": 8
+      }
+    }
+  }
+}

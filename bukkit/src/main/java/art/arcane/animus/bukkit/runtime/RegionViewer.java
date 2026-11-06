@@ -343,10 +343,13 @@ final class RegionViewer {
                 || !actor.owner.owned() || actor.state.snapshot().revision() != validated.npc().revision() || !actor.presentable()) return;
         host.accepted.incrementAndGet();
         TriggerDispatcher dispatcher = host.triggers;
-        if (dispatcher != null) dispatcher.publish(new TriggerEvent.Interaction(actor.uuid, id,
-                action == VirtualNpcInteractionEvent.Action.ATTACK ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT));
+        boolean consumed = dispatcher != null && dispatcher.click(new TriggerEvent.Interaction(actor.uuid, id,
+                action == VirtualNpcInteractionEvent.Action.ATTACK ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT,
+                input.secondaryAction(), TriggerEvent.Interaction.hand(input.hand())));
         NpcRuntime.InteractionObserver observer = host.observer;
         if (observer != null) observer.accepted(actor.uuid, id, action == VirtualNpcInteractionEvent.Action.ATTACK, validated.distance(), false);
+        // A behavior that consumes the click owns it: modules, riding and selection never see it.
+        if (consumed) return;
         NpcRuntime.InteractionListener<Player> listener = host.interactions;
         if (listener != null && listener.interacted(player, actor.uuid, action == VirtualNpcInteractionEvent.Action.ATTACK, input.secondaryAction())) return;
         // A sneaking interaction keeps its administrative meaning, so a rideable NPC can still be selected.
@@ -356,10 +359,8 @@ final class RegionViewer {
             else attach(body, actor);
             return;
         }
-        if (player.hasPermission("animus.admin")) {
-            host.selections.put(id, actor.id);
-            player.sendMessage("Selected " + actor.id + " via " + action);
-        }
+        // Click selection tells an administrator once; clicking the selected NPC again, as play does, stays quiet.
+        if (player.hasPermission("animus.admin") && !actor.id.equals(host.selections.put(id, actor.id))) player.sendMessage("Selected " + actor.id + " via " + action);
     }
 
     /** Player owner only: this viewer presents the NPC now. */

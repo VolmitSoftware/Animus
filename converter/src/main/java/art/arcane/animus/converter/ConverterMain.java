@@ -42,7 +42,7 @@ public final class ConverterMain {
             try (DocumentStore store = new DocumentStore(Path.of(args[1]))) {
                 NpcRepository repository = new NpcRepository(store);
                 repository.reload();
-                ShopkeepersImporter.Applied applied = new ShopkeepersImporter().apply(store, args[2], repository.stored());
+                ShopkeepersImporter.Applied applied = new ShopkeepersImporter().apply(store, args[2], repository.installed());
                 return "Shopkeepers import transaction: " + applied.transaction() + "\nBound to installed Citizens NPCs: " + applied.bound() + "; waiting for their NPC: " + applied.waiting()
                         + (applied.problems().isEmpty() ? "" : "\nNot bound: " + String.join("; ", applied.problems()));
             }

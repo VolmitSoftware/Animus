@@ -277,15 +277,19 @@ public final class CitizensDropIn {
         List<String> lines = citizensPending ? applyCitizens(state) : new ArrayList<>();
         JsonArray transactions = state.has("transactions") ? state.getAsJsonArray("transactions") : new JsonArray();
         try {
-            if (shopkeepersPending) lines.addAll(ShopkeepersDropIn.apply(store, state, npcs.stored(), transactions));
-            else lines.addAll(ShopkeepersDropIn.bindPending(store, state, npcs.stored(), transactions));
+            if (shopkeepersPending) lines.addAll(ShopkeepersDropIn.apply(store, state, npcs.installed(), transactions));
+            else lines.addAll(ShopkeepersDropIn.bindPending(store, state, npcs.installed(), transactions));
         } catch (IOException | RuntimeException failure) {
             if (!citizensPending) throw failure;
             lines.add("Shopkeepers import failed and nothing of it was installed: " + failure.getMessage() + ". The Citizens import stays applied; fix the cause and run /animus import citizens apply again.");
             return lines;
         }
         if (denizenPending) {
-            try { lines.addAll(DenizenDropIn.apply(store, state, npcs.stored(), transactions)); }
+            // The Denizen part edits the definitions the Shopkeepers part may just have bound, so it reads them again.
+            try {
+                npcs.reload();
+                lines.addAll(DenizenDropIn.apply(store, state, npcs.installed(), transactions));
+            }
             catch (IOException | RuntimeException failure) {
                 state.add("transactions", transactions);
                 writeState(state);
@@ -436,9 +440,10 @@ public final class CitizensDropIn {
         Map<String, Integer> accepted = new LinkedHashMap<>();
         categories.forEach((String category) -> accepted.put(category, 0));
         List<String> problems = new ArrayList<>();
-        for (NpcDefinition definition : imported(state)) {
+        NpcRepository.Installed installed = npcs.installed();
+        for (NpcDefinition definition : imported(state, installed.definitions())) {
             // Waiting is read from the effective definition; a setting a factored group holds is accepted in the group.
-            JsonObject effective = definition.json(), json = npcs.draft(definition.id()).document();
+            JsonObject json = definition.json(), effective = npcs.find(definition.id()).map(NpcDefinition::json).orElse(json);
             boolean edited = false;
             for (String category : categories) {
                 if (!waiting(effective, category)) continue;
@@ -452,7 +457,7 @@ public final class CitizensDropIn {
             json.addProperty("revision", definition.revision() + 1);
             try {
                 changed.add(NpcDefinition.parse(JsonDocuments.write(json)));
-                expected.put(definition.path(), store.hash(definition.path()));
+                expected.put(definition.path(), installed.expectedHash(definition));
             } catch (IOException invalid) { problems.add(definition.id() + ": " + invalid.getMessage()); }
         }
         List<String> lines = new ArrayList<>();
@@ -711,11 +716,13 @@ public final class CitizensDropIn {
                 + CommandAllowList.advice(store, List.of("citizens")));
     }
 
-    private List<NpcDefinition> imported(JsonObject state) {
+    private List<NpcDefinition> imported(JsonObject state) { return imported(state, npcs.all()); }
+
+    private static List<NpcDefinition> imported(JsonObject state, java.util.Collection<NpcDefinition> definitions) {
         Set<String> importIds = new java.util.HashSet<>();
         if (state.has("importId")) importIds.add(state.get("importId").getAsString());
         if (ShopkeepersDropIn.applied(state)) ShopkeepersDropIn.importId(state).ifPresent(importIds::add);
-        return npcs.all().stream().filter((NpcDefinition definition) -> {
+        return definitions.stream().filter((NpcDefinition definition) -> {
             JsonObject json = definition.json();
             return json.has("migration") && json.get("migration").isJsonObject() && json.getAsJsonObject("migration").has("importId")
                     && importIds.contains(json.getAsJsonObject("migration").get("importId").getAsString());

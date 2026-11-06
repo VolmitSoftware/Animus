@@ -2,6 +2,7 @@ package art.arcane.animus.core.npc;
 
 import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.storage.NpcPaths;
 import art.arcane.animus.core.control.RideSettings;
 import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.navigation.WaypointSettings;
@@ -47,6 +48,21 @@ public final class NpcDefinition {
         return new NpcDefinition(object);
     }
 
+    /**
+     * The definition stored at {@code path}. The file name must be its id; the folder it sits in is its group, so a file
+     * the owner moved to another folder keeps working and its {@code group} follows on the next save.
+     */
+    public static NpcDefinition read(String path, String json) throws IOException {
+        if (!NpcPaths.file(path)) throw new IOException("$.id/group: " + path + " is not npcs/<folders>/<id>.json with at most " + NpcPaths.MAX_FOLDERS + " folders");
+        NpcDefinition definition = parse(json);
+        if (!definition.id().equals(NpcPaths.idOf(path))) throw new IOException("$.id: must match the file name " + NpcPaths.idOf(path) + ".json");
+        String folder = NpcPaths.folderOf(path);
+        if (definition.group().equals(folder)) return definition;
+        JsonObject moved = definition.json();
+        moved.addProperty("group", folder);
+        return new NpcDefinition(moved);
+    }
+
     public static List<String> validate(JsonObject object) {
         List<String> errors = new ArrayList<>();
         integer(object, "schemaVersion", 1, 1, errors);
@@ -54,10 +70,10 @@ public final class NpcDefinition {
         String uuid = string(object, "uuid", errors);
         try { if (!UUID.fromString(uuid).toString().equals(uuid)) throw new IllegalArgumentException(); }
         catch (IllegalArgumentException e) { errors.add("$.uuid: expected canonical UUID"); }
-        for (String key : List.of("id", "group")) {
-            if (!string(object, key, errors).matches("[a-z0-9][a-z0-9_-]{0,63}"))
-                errors.add("$." + key + ": expected 1–64 lowercase letters, digits, _ or -");
-        }
+        if (!string(object, "id", errors).matches(NpcPaths.SEGMENT))
+            errors.add("$.id: expected 1–64 lowercase letters, digits, _ or -");
+        if (!string(object, "group", errors).matches(NpcPaths.FOLDER))
+            errors.add("$.group: expected the folder under npcs/: empty, or up to " + NpcPaths.MAX_FOLDERS + " names of 1–64 lowercase letters, digits, _ or - joined by /");
         if (!NpcAppearance.displayText(string(object, "name", errors)))
             errors.add("$.name: expected at most " + NpcAppearance.MAX_TEXT + " characters without control characters");
         if (!string(object, "type", errors).matches("[a-z0-9_]+:[a-z0-9_/]+"))
@@ -173,7 +189,9 @@ public final class NpcDefinition {
     /** The owning player, when one is recorded. Plugins and modules may use it for their own permission rules. */
     public Optional<UUID> owner() { return data.has("owner") ? Optional.of(UUID.fromString(data.get("owner").getAsString())) : Optional.empty(); }
     public long revision() { return data.get("revision").getAsLong(); }
-    public String path() { return "npcs/" + group() + "/" + id() + ".json"; }
+    public String path() { return NpcPaths.path(group(), id()); }
+    /** The id with its folder, {@code world/town/blacksmith}, or the bare id for a file directly in {@code npcs/}. */
+    public String qualifiedId() { return group().isEmpty() ? id() : group() + "/" + id(); }
     public boolean spawned() { return spawned; }
     /** True for a definition installed by an import, which keeps its {@code migration} record. */
     public boolean imported() { return imported; }

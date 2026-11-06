@@ -80,7 +80,7 @@ class ServerTriggerRuntimeTest {
         eventually(() -> dispatcher.snapshot().active() == 1);
         enabled.set(new ServerBehaviorList(2, List.of(), List.of()));
         eventually(() -> dispatcher.snapshot().active() == 0);
-        BehaviorRuntime.Execution execution = runtime.snapshot().executions().values().iterator().next();
-        assertEquals(BehaviorEngine.State.CANCELLED, execution.report().state());
+        // The dispatcher releases its slot before the runtime publishes the cancelled report.
+        eventually(() -> runtime.snapshot().executions().values().iterator().next().report().state() == BehaviorEngine.State.CANCELLED);
     }
 }

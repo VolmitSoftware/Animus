@@ -201,6 +201,17 @@ class BuiltinCapabilitiesTest {
         assertTrue(platform.calls.isEmpty());
     }
 
+    @Test void titlesAndActionBarsMayBeWhitespaceButNotEmpty() throws Exception {
+        start();
+        for (String blank : List.of("{\"title\":\" \"}", "{\"subtitle\":\" \"}", "{\"title\":\" \",\"subtitle\":\"Welcome\"}"))
+            assertTrue(builtins.validate(key("title"), blank).isEmpty(), blank + ": " + builtins.validate(key("title"), blank));
+        assertTrue(builtins.validate(key("actionbar"), "{\"text\":\" \"}").isEmpty(), builtins.validate(key("actionbar"), "{\"text\":\" \"}").toString());
+        assertFalse(builtins.validate(key("title"), "{\"title\":\"\"}").isEmpty());
+        assertFalse(builtins.validate(key("actionbar"), "{\"text\":\"\"}").isEmpty());
+        assertFalse(builtins.validate(key("title"), "{\"title\":\"bad\\u0007bell\"}").isEmpty());
+        assertFalse(builtins.validate(key("give-book"), "{\"title\":\"Notes\",\"author\":\" \",\"pages\":[\"Hi\"]}").isEmpty(), "a book author must not be blank");
+    }
+
     @Test void validActionsReachThePlatform() throws Exception {
         start();
         String target = UUID.randomUUID().toString();

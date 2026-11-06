@@ -35,6 +35,14 @@ class HotloadDiffTest {
         assertTrue(HotloadDiff.diff("npcs/town/guard.json", "{\"a\": 1}", "{ \"a\":1 }").isEmpty(), "formatting alone is no change");
     }
 
+    @Test void numericallyEqualNumbersAreNoChange() {
+        assertTrue(HotloadDiff.diff("npcs/town/guard.json", "{\"position\":{\"x\":0.0,\"y\":64,\"z\":1.50}}", "{\"position\":{\"x\":0,\"y\":64.0,\"z\":1.5}}").isEmpty());
+        assertTrue(HotloadDiff.diff("config.toml", "[npcs]\nscale = 1.0\n", "[npcs]\nscale = 1\n").isEmpty());
+        assertEquals(List.of(new HotloadDiff.Change("position.x", "0.0", "0.5")),
+                HotloadDiff.diff("npcs/town/guard.json", "{\"position\":{\"x\":0.0}}", "{\"position\":{\"x\":0.5}}"));
+        assertEquals(List.of(new HotloadDiff.Change("id", "1", "\"1\"")), HotloadDiff.diff("npcs/town/guard.json", "{\"id\":1}", "{\"id\":\"1\"}"));
+    }
+
     @Test void valuesAreCompactedToOneBoundedLine() {
         assertEquals("a\\nb", HotloadDiff.compact("a\nb", 120));
         String compact = HotloadDiff.compact("x".repeat(500), 120);

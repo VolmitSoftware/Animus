@@ -100,7 +100,7 @@ public final class EditorPreviews {
             refusals.forEach(diagnostics::add);
             if (EditorDocuments.hasErrors(diagnostics)) documents.add(EditorChanges.documentDiagnostics(change.kind(), change.id(), diagnostics));
             else if (change.kind() == DocumentKind.NPC) {
-                try { npcs.add(NpcDefinition.parse(JsonDocuments.write(source))); }
+                try { npcs.add(NpcDefinition.read("npcs/" + change.id() + ".json", JsonDocuments.write(source))); }
                 catch (IOException unreachable) { throw new EditorError(EditorError.Code.INTERNAL, "A validated NPC no longer parses."); }
             }
         }

@@ -187,7 +187,7 @@ final class RegionActor implements RegionOwner.Body {
         yaw = spec.yaw(); pitch = spec.pitch(); onGround = true;
         displayName = spec.name(); displaySkin = skin;
         equipment.clear(); equipment.putAll(NpcPresentation.equipment(spec, ItemStack::clone)); equipmentRevision++; appearance++; pose++;
-        waypoints = WaypointSettings.parse(spec.definition()).map(this::progress).orElse(null);
+        waypoints = WaypointSettings.parse(spec.definition()).map((WaypointSettings declared) -> progress(declared, WaypointProgress.INLINE)).orElse(null);
         routeReadWanted = waypoints == null && routeSource != null;
         rigId = RigReference.parse(spec.definition().json()).orElse(null);
         rig = null; rigProblem = null; rigGeneration = -1;
@@ -396,7 +396,7 @@ final class RegionActor implements RegionOwner.Body {
     /** Restarts the definition's own patrol, if nothing else moves the NPC. */
     void resumePatrol() {
         if (!navigable() || route != null || routeRead != null) return;
-        waypoints = WaypointSettings.parse(spec.definition()).map(this::progress).orElse(null);
+        waypoints = WaypointSettings.parse(spec.definition()).map((WaypointSettings declared) -> progress(declared, WaypointProgress.INLINE)).orElse(null);
         if (waypoints != null) beginLeg(waypoints.start(state.snapshot().position().point()));
         else if (routeSource != null) routeReadWanted = true;
     }
@@ -832,6 +832,7 @@ final class RegionActor implements RegionOwner.Body {
     }
     /** Terrain blocks the leg for good: logged once per NPC with the leg, then the route fails as any failed leg does. */
     private void blockLeg(Route current, String reason) {
+        if (exactPoint(current, reason)) return;
         if (!blockedWarned) {
             blockedWarned = true;
             host.plugin.getLogger().warning(PersistedNpcService.blockedLeg(id, current.waypoint, current.origin, current.goal, reason,
@@ -912,7 +913,7 @@ final class RegionActor implements RegionOwner.Body {
         if (next.isPresent()) beginLeg(next);
         else finishWatch();
     }
-    private WaypointProgress progress(WaypointSettings declared) { return WaypointProgress.of(declared, spec.position().point(), uuid); }
+    private WaypointProgress progress(WaypointSettings declared, String route) { return WaypointProgress.of(declared, spec.position().point(), uuid, route); }
     /** Same leg rules as {@link PersistedNpcService}: a pause leg holds the route until its wait ends. */
     private void beginLeg(Optional<WaypointProgress.Leg> next) {
         WaypointProgress progress = waypoints;
@@ -925,6 +926,7 @@ final class RegionActor implements RegionOwner.Body {
         if (!leg.pause()) {
             try { PersistedNpcService.validateLeg(at, goal, settings.mode(), speed, hullWidth(), hullHeight()); }
             catch (IllegalArgumentException invalid) {
+                if (leg.jittered()) { beginLeg(progress.exact(leg)); return; }
                 navigationStatus = "invalid waypoint " + leg.arrival() + ": " + invalid.getMessage(); failWatch(navigationStatus);
                 Optional<WaypointProgress.Leg> retry = progress.failed(leg);
                 if (retry.isPresent()) beginLeg(retry);
@@ -938,13 +940,26 @@ final class RegionActor implements RegionOwner.Body {
     }
     /** A leg that cannot finish: random and wander routes pause and choose again, every other route halts. */
     private void failLeg(Route current, String reason) {
-        if (teleportStuck(current)) return;
+        if (exactPoint(current, reason) || teleportStuck(current)) return;
         WaypointProgress progress = waypoints;
         stopRoute(reason);
         if (progress == null || current.leg == null || !progress.retries() || route != null || !navigable()) return;
         String failure = navigationStatus;
         beginLeg(progress.failed(current.leg));
         if (route != null) routeStatus(route, "waiting to retry", "after " + failure);
+    }
+    /** Same jitter fallback as {@link PersistedNpcService}: a jittered goal that cannot finish walks to the exact point once. */
+    private boolean exactPoint(Route current, String reason) {
+        WaypointProgress progress = waypoints;
+        if (current.leg == null || !current.leg.jittered() || progress == null || route != current || !state.snapshot().active()) return false;
+        Optional<WaypointProgress.Leg> exact = progress.exact(current.leg);
+        if (exact.isEmpty()) return false;
+        if (current.plan != null) current.plan.cancel();
+        if (current.execution != null) current.execution.cancel();
+        route = null;
+        beginLeg(exact);
+        if (route != null) routeStatus(route, "queued", "exact point after " + reason);
+        return true;
     }
     /** Same stuck rule as {@link PersistedNpcService}: a waypoint leg ends at its point and the route goes on. */
     private boolean teleportStuck(Route current) {
@@ -1034,7 +1049,7 @@ final class RegionActor implements RegionOwner.Body {
         if (routeWatch != null && settings.endless()) { navigationStatus = "invalid: a looping route never finishes"; failWatch(navigationStatus); return; }
         if (waypoints != null && !waypoints.reload(settings)) return;
         stopRoute("replaced by reusable route reload");
-        if (waypoints == null) waypoints = progress(settings);
+        if (waypoints == null) waypoints = progress(settings, read.reference);
         beginLeg(waypoints.start(state.snapshot().position().point()));
     }
     private void readAppearance(String reference) {

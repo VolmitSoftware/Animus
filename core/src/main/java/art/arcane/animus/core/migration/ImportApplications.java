@@ -134,7 +134,7 @@ public final class ImportApplications {
         Map<String,String> result=new TreeMap<>();
         for(var entry:documents.entrySet()) {
             String path=entry.getKey();
-            if(!path.matches("(?:npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,63}|skins/[a-f0-9]{64})\\.json") && !path.matches(CitizensImporter.BEHAVIOR_PATH) && !path.matches(GroupFactoring.GROUP_PATH))throw new IOException("Invalid application target: "+path);
+            if(!NpcPaths.file(path) && !path.matches("skins/[a-f0-9]{64}\\.json") && !path.matches(CitizensImporter.BEHAVIOR_PATH) && !path.matches(GroupFactoring.GROUP_PATH))throw new IOException("Invalid application target: "+path);
             JsonObject descriptor=object(documents,path);String hash=string(descriptor,"objectHash"), before=string(descriptor,"expectedHash");
             if(!before.equals("missing") && !before.matches("[a-f0-9]{64}"))throw new IOException("Invalid expected hash: "+path);
             String encoded=store.immutableJson(OBJECTS,hash);budget.charge(encoded);
@@ -150,9 +150,10 @@ public final class ImportApplications {
     }
     private static Map<String,Existing> active(DocumentStore store,LoadBudget budget) throws IOException {
         Map<String,Existing> definitions=new LinkedHashMap<>();Set<String> ids=new HashSet<>();Set<UUID> uuids=new HashSet<>();
-        for(Path path:JsonDocumentTree.files(store.resolve("npcs"))) {
-            String raw=JsonDocuments.read(path);budget.charge(raw);NpcDefinition npc=NpcDefinition.parse(raw);
-            if(!path.equals(store.resolve(npc.path())))throw new IOException("Existing NPC path mismatch: "+path);
+        Path directory=store.resolve("npcs");
+        for(Path path:JsonDocumentTree.files(directory,NpcPaths.TREE_DEPTH)) {
+            String raw=JsonDocuments.read(path);budget.charge(raw);
+            NpcDefinition npc=NpcDefinition.read("npcs/"+directory.relativize(path).toString().replace('\\','/'),raw);
             if(!ids.add(npc.id()) || !uuids.add(npc.uuid()))throw new IOException("Existing NPC identity collision: "+path);
             definitions.put(npc.path(),new Existing(npc,JsonDocuments.hash(raw)));
         }
