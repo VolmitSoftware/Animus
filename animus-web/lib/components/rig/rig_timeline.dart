@@ -8,7 +8,7 @@ import 'dart:js_interop';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
+import 'package:jaspr/jaspr.dart' show Component, ValueKey;
 import 'package:web/web.dart' as web;
 
 import '../../logic/rig_edit.dart';
@@ -122,6 +122,7 @@ class RigTimeline extends StatefulWidget {
 class _RigTimelineState extends State<RigTimeline> {
   String? _duration;
   int? _trim;
+  bool _namesOpen = false;
   String? _focus;
   (int, int)? _dragging;
   double? _dragTick;
@@ -187,9 +188,17 @@ class _RigTimelineState extends State<RigTimeline> {
           Button.secondary(label: 'New animation', icon: ArcaneIcon.plus(), size: ButtonSize.small, onPressed: component.onCreate),
         ]),
       ]),
-      dom.details(classes: 'animus-rig-names-box', <Widget>[
-        const dom.summary(<Widget>[Component.text('Animation names (idle, walk and the names behaviors play)')]),
-        component.names,
+      dom.div(classes: 'animus-rig-names-box', <Widget>[
+        dom.button(
+          classes: 'animus-rig-names-toggle',
+          attributes: <String, String>{'type': 'button', 'aria-expanded': '$_namesOpen', 'aria-controls': 'animus-rig-names'},
+          events: <String, void Function(web.Event)>{'click': (web.Event _) => setState(() => _namesOpen = !_namesOpen)},
+          <Widget>[
+            dom.span(classes: 'animus-rig-names-caret', attributes: const <String, String>{'aria-hidden': 'true'}, <Widget>[Component.text(_namesOpen ? '-' : '+')]),
+            const Component.text('Animation names (idle, walk and the names behaviors play)'),
+          ],
+        ),
+        if (_namesOpen) dom.div(id: 'animus-rig-names', <Widget>[component.names]),
       ]),
       if (animation == null)
         const dom.p(classes: 'animus-muted', <Widget>[
@@ -229,7 +238,7 @@ class _RigTimelineState extends State<RigTimeline> {
             onChanged: (String value) => component.onSpeed(double.parse(value)),
           ),
         ]),
-        dom.label(classes: 'animus-rig-field is-inline', <Widget>[
+        dom.label(key: ValueKey<String>('loop:$loop'), classes: 'animus-rig-field is-inline', <Widget>[
           const dom.span(<Widget>[Component.text('Loop')]),
           ArcaneSelect(
             size: ComponentSize.sm,
@@ -279,7 +288,7 @@ class _RigTimelineState extends State<RigTimeline> {
           const dom.span(classes: 'animus-rig-lane-label animus-muted', <Widget>[Component.text('Tick')]),
           dom.div(classes: 'animus-rig-ruler', attributes: const <String, String>{'aria-hidden': 'true'}, <Widget>[
             for (int tick = 0; tick <= span; tick += rulerStep(span))
-              dom.span(classes: 'animus-rig-ruler-mark', styles: _at(tick.toDouble(), span), <Widget>[Component.text('$tick')]),
+              dom.span(classes: 'animus-rig-ruler-mark${tick + rulerStep(span) > span ? ' is-end' : ''}', styles: _at(tick.toDouble(), span), <Widget>[Component.text('$tick')]),
             for (final JsonMap event in events)
               dom.span(classes: 'animus-rig-ruler-event', styles: _at(_number(event['tick']), span), const <Widget>[]),
             _playhead(time, span),

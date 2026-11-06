@@ -158,21 +158,12 @@ html.light {
   }
 }
 
+/* The stage's accessible description, shown as a quiet line so keyboard
+   users find the keys too. */
 .animus-mc-keys {
   margin: 0;
   font-size: 0.8125rem;
   color: var(--animus-muted);
-}
-
-/* The key list is the stage's accessible description; it shows on screen
-   while the stage or its handles have focus. */
-.animus-mc-stage-frame:not(:focus-within) .animus-mc-keys {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
 }
 
 .animus-mc-status {

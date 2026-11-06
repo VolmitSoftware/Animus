@@ -5,7 +5,7 @@ library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
+import 'package:jaspr/jaspr.dart' show Component, ValueKey;
 
 import '../../logic/inspect/inspect_schemas.dart';
 import '../../logic/inspect/schema_fields.dart';
@@ -119,7 +119,7 @@ class _RigEventEditorState extends State<RigEventEditor> {
         Component.text('Saved with the animation. The server reads events but does not play them yet.'),
       ]),
       _input('Tick', 'tick', '$_tick', _commitTick, number: true),
-      dom.label(classes: 'animus-rig-field is-inline', <Widget>[
+      dom.label(key: ValueKey<String>('runs:${component.index}:$_capability'), classes: 'animus-rig-field is-inline', <Widget>[
         const dom.span(<Widget>[Component.text('Runs')]),
         ArcaneSelect(
           size: ComponentSize.sm,
