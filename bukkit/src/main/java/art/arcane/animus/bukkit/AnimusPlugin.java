@@ -231,7 +231,7 @@ public final class AnimusPlugin extends JavaPlugin {
                 else servers.unavailable(living.status());
             }
             if (behaviors.diagnosticRuntime() != null) {
-                Function<UUID, Optional<VirtualNpcState.Snapshot>> states = owners::published;
+                Function<UUID, Optional<VirtualNpcState.Snapshot>> states = owners::state;
                 AnimusRuntime definitions = runtime;
                 SnapshotFacts facts = new SnapshotFacts(SnapshotFacts.npcs(() -> definitions.npcs().snapshot(), states));
                 serverBehaviors = new BukkitServerBehaviors(this, scheduling, servers, facts, (String message) -> getLogger().info(message));

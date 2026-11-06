@@ -68,7 +68,7 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     void select(UUID viewer, String id);
     Optional<ActiveNpc> active(UUID npc);
     /** The NPC's last published state, from any thread, for behavior facts. Empty when it is not active. */
-    default Optional<VirtualNpcState.Snapshot> published(UUID npc) { return active(npc).map(ActiveNpc::state); }
+    default Optional<VirtualNpcState.Snapshot> state(UUID npc) { return active(npc).map(ActiveNpc::state); }
     /** Also finds a combat NPC that has died while its definition stays spawned; without combat it is {@link #active}. */
     default Optional<ActiveNpc> combatant(UUID npc) { return active(npc); }
     /** Who may still speak, sound and show particles: an active NPC, or a combat NPC whose death routine is running. */

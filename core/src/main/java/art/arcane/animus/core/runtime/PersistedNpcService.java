@@ -426,7 +426,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     }
 
     /** Thread-safe: the spatial index holds every active NPC's last published state. */
-    @Override public Optional<VirtualNpcState.Snapshot> published(UUID npc) { return available() ? index.find(npc) : Optional.empty(); }
+    @Override public Optional<VirtualNpcState.Snapshot> state(UUID npc) { return index.find(npc); }
 
     @Override public Optional<ActiveNpc> active(UUID npc) {
         if (!available()) return Optional.empty();
