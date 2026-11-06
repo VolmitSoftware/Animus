@@ -8,6 +8,7 @@ import art.arcane.animus.core.behavior.catalog.ServerBehaviorList;
 import java.util.*;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -81,6 +82,7 @@ public final class ServerTriggerDispatcher {
     private volatile Index index = Index.EMPTY;
     private volatile Commands commands = Commands.EMPTY;
     private volatile Consumption consumption;
+    private volatile Function<String, Optional<String>> worlds;
     /** The areas each tracked player stands in, by area name and world. Each player's entry is written on that player's owner. */
     private final Map<UUID, Set<String>> inside = new java.util.concurrent.ConcurrentHashMap<>();
     private volatile Diagnostic lastStartFailure;
@@ -90,6 +92,7 @@ public final class ServerTriggerDispatcher {
     // Behavior owner only.
     private BehaviorCatalog.Snapshot observedCatalog;
     private ServerBehaviorList observedEnabled;
+    private Function<String, Optional<String>> observedWorlds;
     private boolean startFired, stateCleared;
     private final Map<String, Stats> stats = new HashMap<>();
     private final ArrayDeque<Pending> queue = new ArrayDeque<>();
@@ -111,6 +114,12 @@ public final class ServerTriggerDispatcher {
     public boolean available() { return reason() == null; }
     public String availability() { String reason = reason(); return reason == null ? "available" : reason; }
     public ServerTriggerSettings settings() { return settings; }
+    /**
+     * The platform's world resolver: the key its events report for a definition's world name, dimension key or UUID, or
+     * empty when no such world is loaded. Every world a trigger names binds through it, so Bukkit names and dimension
+     * keys match on every platform. Until one is set, worlds bind as written.
+     */
+    public void worlds(Function<String, Optional<String>> resolver) { worlds = Objects.requireNonNull(resolver); }
 
     /** Quick and nonblocking. True means the event was queued because an enabled trigger listens for its kind. */
     public Outcome<Boolean> publish(ServerEvent event) {
@@ -258,16 +267,17 @@ public final class ServerTriggerDispatcher {
     private void refresh() {
         BehaviorCatalog.Snapshot currentCatalog = catalog.get();
         ServerBehaviorList currentEnabled = enabled.get();
-        if (currentCatalog == observedCatalog && currentEnabled == observedEnabled) return;
-        observedCatalog = currentCatalog; observedEnabled = currentEnabled;
-        rebuild(currentCatalog, currentEnabled);
+        Function<String, Optional<String>> currentWorlds = worlds;
+        if (currentCatalog == observedCatalog && currentEnabled == observedEnabled && currentWorlds == observedWorlds) return;
+        observedCatalog = currentCatalog; observedEnabled = currentEnabled; observedWorlds = currentWorlds;
+        rebuild(currentCatalog, currentEnabled, currentWorlds);
         if (!startFired && currentCatalog.generation() > 0 && currentEnabled.loaded()) {
             startFired = true;
             admit(ServerEvent.serverStart());
         }
     }
 
-    private void rebuild(BehaviorCatalog.Snapshot behaviors, ServerBehaviorList list) {
+    private void rebuild(BehaviorCatalog.Snapshot behaviors, ServerBehaviorList list, Function<String, Optional<String>> resolver) {
         Problems problems = new Problems();
         list.problems().forEach(problems::add);
         Map<TriggerKind, List<Binding>> byKind = new EnumMap<>(TriggerKind.class);
@@ -285,8 +295,9 @@ public final class ServerTriggerDispatcher {
             BehaviorCatalog.Accepted accepted = resolution.accepted().orElseThrow();
             if (!accepted.program().server()) { problems.add("server-behavior-not-server", field, "Listed behavior is not a server behavior (\"server\": true); skipped"); continue; }
             listed.add(id);
-            for (TriggerBinding trigger : accepted.program().triggers()) {
-                String triggerField = "trigger=" + id + "#" + trigger.id();
+            for (TriggerBinding declared : accepted.program().triggers()) {
+                String triggerField = "trigger=" + id + "#" + declared.id();
+                TriggerBinding trigger = canonical(declared, resolver, problems, triggerField);
                 if (trigger.spec() instanceof TriggerBinding.Timer timer && timer.intervalTicks() < settings.minimumTimerTicks()) {
                     problems.add("server-timer-budget", triggerField, "Interval is below behaviors.server.minimumTimerTicks"); continue;
                 }
@@ -309,6 +320,26 @@ public final class ServerTriggerDispatcher {
         index = new Index(Collections.unmodifiableMap(frozen), List.copyOf(ordered), Set.copyOf(listed), problems.list(), Map.copyOf(byWorld));
         if (!registered.equals(commands.commands())) commands = new Commands(commands.generation() + 1, registered);
         rebuildTimers();
+    }
+    /** The trigger with every world it names replaced by the key the platform's events report. */
+    private static TriggerBinding canonical(TriggerBinding trigger, Function<String, Optional<String>> resolver, Problems problems, String field) {
+        if (resolver == null) return trigger;
+        TriggerBinding.Spec spec = switch (trigger.spec()) {
+            case TriggerBinding.Area area -> new TriggerBinding.Area(area.phase(), area.area(), world(area.world(), resolver, problems, field), area.shape(), area.bounds());
+            case TriggerBinding.WorldChange change -> new TriggerBinding.WorldChange(change.from().map((String world) -> world(world, resolver, problems, field)),
+                    change.to().map((String world) -> world(world, resolver, problems, field)));
+            default -> trigger.spec();
+        };
+        return spec == trigger.spec() ? trigger : new TriggerBinding(trigger.id(), spec, trigger.routine(), trigger.cooldownTicks());
+    }
+    /** An unknown world binds as written, so a world loaded later under exactly that name still matches. */
+    private static String world(String reference, Function<String, Optional<String>> resolver, Problems problems, String field) {
+        Optional<String> key;
+        try { key = resolver.apply(reference); }
+        catch (RuntimeException failure) { key = Optional.empty(); }
+        if (key.isPresent()) return key.get();
+        problems.add(new Diagnostic(Diagnostic.Severity.WARNING, "server-world-unknown", field, "World " + reference + " is not loaded; the trigger matches only a world reported by exactly that name"));
+        return reference;
     }
     /** A name or alias another enabled command already uses, and every command past the maximum, stays unregistered. */
     private boolean command(String behavior, TriggerBinding trigger, TriggerBinding.Command command, List<Command> registered, Set<String> labels, Problems problems, String field) {

@@ -10,6 +10,8 @@ import art.arcane.animus.core.behavior.ServerNpc;
 import art.arcane.animus.core.behavior.builtin.MemoryBehaviorState;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import art.arcane.animus.core.behavior.catalog.ServerBehaviorList;
+import art.arcane.animus.core.platform.BukkitWorlds;
+import art.arcane.animus.core.platform.ModWorlds;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -115,6 +117,51 @@ class ServerWorldEventTest {
         assertTrue(codes.contains("server-area-conflict"), codes.toString());
         assertTrue(codes.contains("server-area-capacity"), codes.toString());
         assertEquals(1, dispatcher.snapshot().bindings());
+    }
+
+    private static final Set<String> DIMENSIONS = Set.of("minecraft:overworld", "minecraft:the_nether", "minecraft:the_end");
+    private void modWorlds() { dispatcher.worlds((String reference) -> ModWorlds.resolve(reference, "world", DIMENSIONS)); pump(); }
+
+    @Test void bukkitWorldNamesOfAreasMatchModDimensionKeys() {
+        setup(ServerTriggerSettings.DEFAULT, "[{\"id\":\"in\",\"event\":\"player_area\",\"phase\":\"enter\",\"area\":\"camp\",\"world\":\"world\",\"cuboid\":[0,0,0,9,9,9]},"
+                + "{\"id\":\"hot\",\"event\":\"player_area\",\"phase\":\"enter\",\"area\":\"camp\",\"world\":\"world_nether\",\"cuboid\":[0,0,0,9,9,9]}]");
+        modWorlds();
+        dispatcher.position(alex, "minecraft:overworld", 5, 5, 5);
+        dispatcher.position(alex, "minecraft:the_nether", 5, 5, 5);
+        pump();
+        assertEquals(List.of("in", "hot"), fired());
+        assertEquals("minecraft:overworld", started.getFirst().event().get("world"));
+    }
+
+    @Test void bukkitWorldNamesOfWorldChangesMatchModDimensionKeys() {
+        setup(ServerTriggerSettings.DEFAULT, "[{\"id\":\"down\",\"event\":\"player_world_change\",\"from\":\"world\",\"to\":\"world_nether\"},"
+                + "{\"id\":\"end\",\"event\":\"player_world_change\",\"to\":\"minecraft:the_end\"}]");
+        modWorlds();
+        dispatcher.publish(ServerEvent.worldChange(alex, "minecraft:overworld", "minecraft:the_nether"));
+        dispatcher.publish(ServerEvent.worldChange(alex, "minecraft:the_nether", "minecraft:overworld"));
+        dispatcher.publish(ServerEvent.worldChange(alex, "minecraft:overworld", "minecraft:the_end"));
+        pump();
+        assertEquals(List.of("down", "end"), fired());
+    }
+
+    @Test void dimensionKeysOfAreasMatchBukkitWorldNames() {
+        setup(ServerTriggerSettings.DEFAULT, "[{\"id\":\"in\",\"event\":\"player_area\",\"phase\":\"enter\",\"area\":\"camp\",\"world\":\"minecraft:overworld\",\"cuboid\":[0,0,0,9,9,9]}]");
+        List<BukkitWorlds.Loaded> loaded = List.of(new BukkitWorlds.Loaded("world", UUID.randomUUID(), "minecraft:overworld"));
+        dispatcher.worlds((String reference) -> BukkitWorlds.resolve(reference, loaded));
+        pump();
+        dispatcher.position(alex, "world", 5, 5, 5);
+        pump();
+        assertEquals(List.of("in"), fired());
+    }
+
+    @Test void unknownWorldsAreReportedWhenTheyBind() {
+        setup(ServerTriggerSettings.DEFAULT, "[{\"id\":\"in\",\"event\":\"player_area\",\"phase\":\"enter\",\"area\":\"camp\",\"world\":\"skylands\",\"cuboid\":[0,0,0,9,9,9]},"
+                + "{\"id\":\"go\",\"event\":\"player_world_change\",\"from\":\"world\",\"to\":\"skylands\"}]");
+        modWorlds();
+        List<Diagnostic> unknown = dispatcher.snapshot().diagnostics().stream().filter((Diagnostic diagnostic) -> diagnostic.code().equals("server-world-unknown")).toList();
+        assertEquals(2, unknown.size(), dispatcher.snapshot().diagnostics().toString());
+        assertTrue(unknown.getFirst().message().contains("skylands"), unknown.toString());
+        assertEquals(Diagnostic.Severity.WARNING, unknown.getFirst().severity());
     }
 
     @Test void schemaSettingsAcceptMaximumAreas() {
