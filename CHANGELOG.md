@@ -112,6 +112,15 @@
 - Server-wide behaviors with join, quit, chat, command, start, timer, death, respawn, world-change and module triggers, plus Animus-managed commands.
 - Message, title, actionbar, teleport, give-item, take-item and give-book actions, and a player override on player actions.
 - Flags hold any value and can expire; durable state stores lists, maps and expiry.
+- Editor: Redo (Ctrl+Shift+Z or Ctrl+Y) beside Undo, kept across reloads; both notices say what they reverted.
+- Editor: a command palette (Ctrl+K) to open documents, switch workspaces, export, undo, redo and change the theme.
+- Editor: keyboard shortcuts for undo, redo and the document search (Ctrl+F or /), and arrow keys in the document list and view tabs.
+- Editor: a documents drawer and a More menu on phones.
+- Editor: a skip link to the document.
+- Editor: a banner when the browser keeps no workspaces between visits, and a request to keep this site's storage.
+- Editor: tabs of one browser follow each other's saves and deletes, and each open workspace is locked to one tab.
+- Editor: closing the tab asks first while an edit is not stored or Code text is not applied.
+- Editor: the Animus mark in the top bar, the boot splash and the home page, with a message when the editor does not load.
 
 ### Changed
 
@@ -175,6 +184,14 @@
 - The editor theme uses a pink accent on near-black or light-grey surfaces, with redrawn icons.
 - User documentation moved to the central docs wiki; developer notes live in `dev/`.
 - The Denizen converter (version 2) converts definitions, conditions, loops, flags, procedures, world, command, data, book and inventory scripts, and the common tags.
+- Editor icons are the Animus mark (triangle, stripe and diamond) instead of the temporary letter tile.
+- The editor home page leads with Start a workspace and lists the three ways to start as rows.
+- The editor top bar groups Undo and Redo, the Open, Import and Export menus, and the app controls.
+- Editor buttons, inputs and tabs use Geist; ids, paths and code stay in Geist Mono.
+- The selected view tab is a raised grey with a pink underline, and disabled buttons are grey.
+- The editor theme follows the system until it is chosen.
+- The converter button reads Convert a Citizens, Shopkeepers, dtlTraders or Denizen save.
+- Legacy colour codes show as plain text in the sidebar, the document heading and the New page.
 
 ### Fixed
 
@@ -211,6 +228,11 @@
 - Death-trigger routines can speak, play sounds and show particles for the NPC that died.
 - The editor theme toggle switches themes without a reload.
 - Assignments whose only content was `on assignment` now give their NPCs a behavior.
+- A save the browser refuses keeps the edit on screen and says why, with Save again and Export zip.
+- Another tab's save reloads this tab's copy with a plain message instead of a generation number.
+- Escape cancels only the confirmation that has focus.
+- Long document titles and paths no longer widen the page on phones.
+- Error and empty states name the cause and offer a way back, and "1 documents need repair" reads correctly.
 
 ### Notes
 
