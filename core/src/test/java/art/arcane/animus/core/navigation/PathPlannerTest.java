@@ -73,6 +73,31 @@ class PathPlannerTest {
         assertEquals(FOUND, result.status()); assertEquals(2, result.path().size()); assertEquals(FALL, result.path().getLast().motion());
         assertEquals(UNREACHABLE, plan(builder.build(), from, goal, safe).status());
     }
+    /**
+     * Citizens' fall distance counts levels, the blocks a body stands on, as the game's pathfinder does. With a fall of 1
+     * a body drops from a ledge onto a slab or path one level down although it falls more than a block, and still
+     * may not drop two levels to the floor or step off a raised slab to the floor below.
+     */
+    @Test void theFallLimitCountsLevelsNotTheExactDrop() {
+        var fallOfOne = new MovementProfile(Set.of(WALK), 0.6, 1.8, 0.6, 1.25, 1, false);
+        BlockPos ledge = new BlockPos(3, 3, 2), floor = new BlockPos(9, 1, 2);
+        for (VoxelSnapshot.Cell landing : List.of(VoxelSnapshot.Cell.layer(0.5), VoxelSnapshot.Cell.layer(0.9375))) {
+            var builder = corridor();
+            builder.set(6, 1, 2, landing);
+            assertEquals(FOUND, plan(builder.build(), ledge, floor, fallOfOne).status(), "onto " + landing);
+        }
+        assertEquals(UNREACHABLE, plan(corridor().build(), ledge, floor, fallOfOne).status(), "two levels straight to the floor");
+        var raisedSlab = corridor();
+        for (int x = 1; x < 6; x++) raisedSlab.set(x, 2, 2, VoxelSnapshot.Cell.layer(0.5));
+        assertEquals(UNREACHABLE, plan(raisedSlab.build(), ledge, floor, fallOfOne).status(), "off a raised slab: two levels");
+    }
+    /** A one-wide corridor along x: a two-block ledge for x 1..5, then the floor. */
+    private static VoxelSnapshot.Builder corridor() {
+        var builder = room(12, 7, 5);
+        for (int x = 1; x < 11; x++) for (int y = 1; y < 6; y++) { builder.set(x, y, 1, SOLID); builder.set(x, y, 3, SOLID); }
+        for (int x = 1; x < 6; x++) { builder.set(x, 1, 2, SOLID); builder.set(x, 2, 2, SOLID); }
+        return builder;
+    }
     @Test void unknownChunksOrUncapturedCellsSuspendInsteadOfBecomingAir() {
         var builder = new VoxelSnapshot.Builder("world", 0, 0, 0, 32, 5, 5).fill(AIR).availableChunk(0, 0);
         for (int x = 0; x < 32; x++) for (int z = 0; z < 5; z++) builder.set(x, 0, z, SOLID);
