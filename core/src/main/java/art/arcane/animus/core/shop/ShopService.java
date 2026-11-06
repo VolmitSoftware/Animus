@@ -2,6 +2,7 @@ package art.arcane.animus.core.shop;
 
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.config.ShopSettings;
 import art.arcane.animus.core.gui.GuiDocument;
 import art.arcane.animus.core.gui.GuiScreen;
@@ -207,9 +208,9 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
     /** Shop ids, for completion. */
     public List<String> shopIds() { return catalog.shops().keySet().stream().sorted().limit(100).toList(); }
 
-    public void list(CommandActor actor) {
-        actor.tell("Shops: " + catalog.shops().size());
-        catalog.shops().values().stream().limit(50).forEach((ShopDocument shop) -> actor.tell(shop.id() + " | " + RichText.plain(shop.title()) + " | pages=" + shop.pages().size()));
+    /** {@code id | title | pages}, one row per loaded shop, for a paged listing. */
+    public List<String> rows() {
+        return catalog.shops().values().stream().map((ShopDocument shop) -> shop.id() + " | " + RichText.plain(shop.title()) + " | " + shop.pages().size() + " pages").toList();
     }
 
     public void reloadCommand(CommandActor actor) {
@@ -226,22 +227,22 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
         Optional<UUID> player = Optional.empty();
         if (named.isPresent()) {
             player = playerNamed.apply(named.get()).or(() -> { try { return Optional.of(UUID.fromString(named.get())); } catch (IllegalArgumentException invalid) { return Optional.empty(); } });
-            if (player.isEmpty()) { actor.tell("Unknown player: " + named.get()); return; }
+            if (player.isEmpty()) { actor.tell(Palette.error("Unknown player " + named.get())); return; }
         }
         store.ledger().reset(shop, player);
-        actor.tell("Cleared limits and stock of " + shop + player.map((UUID id) -> " for " + id).orElse(""));
+        actor.tell(Palette.success("Cleared limits and stock of " + shop + player.map((UUID id) -> " for " + id).orElse("")));
     }
 
     /** Reads a dtlTraders or Shopkeepers folder from {@code imports/inbox/}, with an optional saves file there too. */
     public void importPreview(CommandActor actor, String folder, Optional<String> saves) {
         if (!folder.matches("[A-Za-z0-9_-]{1,64}") || saves.isPresent() && !saves.get().matches("[A-Za-z0-9_-]{1,64}\\.yml")) {
-            actor.tell("Shop import: name a folder and an optional .yml file directly under imports/inbox/");
+            actor.tell(Palette.error("Shop import takes a folder and an optional .yml file directly under imports/inbox/"));
             return;
         }
         fileWork(actor, () -> {
             Optional<Path> savesFile = saves.isPresent() ? Optional.of(runtime.documents().resolve("imports/inbox/" + saves.get())) : Optional.empty();
             ShopImporter.Preview preview = new ShopImporter().preview(runtime.documents().resolve("imports/inbox/" + folder), savesFile, runtime.documents());
-            answer(actor, "Shop import " + preview.id() + ": " + preview.shops() + " shops, " + preview.entries() + " entries, "
+            answer(actor, "Shop preview " + preview.id() + ": " + preview.shops() + " shops, " + preview.entries() + " entries, "
                     + preview.issues() + " issues, limit data " + preview.limitStatus());
             answer(actor, "Review " + preview.directory().resolve("report.json") + ", then /animus shop import apply " + preview.id());
         });
@@ -250,8 +251,8 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
     public void importApply(CommandActor actor, String importId) {
         fileWork(actor, () -> {
             String transaction = new ShopImporter().apply(runtime.documents(), importId);
-            answer(actor, "Shop import applied; transaction " + transaction + ". Reloading shops.");
-            reload((ShopCatalog next) -> answer(actor, "Loaded " + next.shops().size() + " shops; " + next.problems().size() + " problems. Restart to load imported limit counts."));
+            answer(actor, Palette.success("Shop import applied; tx " + transaction));
+            reload((ShopCatalog next) -> answer(actor, "Loaded " + next.shops().size() + " shops, " + next.problems().size() + " problems; imported limit counts load at restart"));
         });
     }
 
@@ -261,21 +262,18 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
         try {
             files.execute(() -> {
                 try { work.run(); }
-                catch (IOException | RuntimeException failure) { answer(actor, "Shop import: " + failure.getMessage()); }
+                catch (IOException | RuntimeException failure) { answer(actor, Palette.error("Shop import: " + failure.getMessage())); }
             });
-        } catch (RejectedExecutionException full) { actor.tell("Animus file queue is full; retry shortly."); }
+        } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
-    public void problems(CommandActor actor) {
-        List<String> problems = catalog.problems();
-        actor.tell("Shop and GUI problems: " + problems.size());
-        problems.stream().limit(30).forEach(actor::tell);
-    }
+    /** The shop and chest GUI files that failed to load, for a paged listing. */
+    public List<String> problemRows() { return catalog.problems(); }
 
     private void deliver(CommandActor actor, Optional<String> named, Consumer<P> work) {
         Optional<UUID> target = named.isPresent() ? playerNamed.apply(named.get()) : actor.player();
-        if (target.isEmpty()) { actor.tell(named.map((String name) -> "Unknown player: " + name).orElse("Name a player when running this from the console.")); return; }
-        if (!living.players().deliver(target.get(), work)) actor.tell("That player is not online.");
+        if (target.isEmpty()) { actor.tell(Palette.error(named.map((String name) -> "Unknown player " + name).orElse("Give player= from the console"))); return; }
+        if (!living.players().deliver(target.get(), work)) actor.tell(Palette.error("That player is not online"));
     }
 
     private void answer(CommandActor actor, String message) { if (!closed && !actor.reply(() -> actor.tell(message))) log.accept(message); }

@@ -230,6 +230,9 @@
 - `[npcs] simulationPerTick` bounds idle fall and rig animation steps per tick (per region on Folia).
 - `[npcs] queuePerViewer` bounds the packet operations one player may have waiting; cosmetic updates stop first when it fills.
 - `[npcs] degradedIntervalTicks`: while a simulation, route or behavior budget runs short, cosmetic updates and distant NPC moves slow down; `/animus status` shows `presentation=degraded`.
+- Chat replies carry click chips: links show as **[Open]** and **[Click to copy]**, wiki pointers as **[Docs]**, transaction ids as a short id that copies the full one plus **[Undo]**, and long status text behind **[Details]**. The console gets the plain values. `ChatLine` and `DocsLink` are shared for other code to use.
+- `/animus editor pair` replies with **[Open editor]** and **[Click to copy]** instead of printing the link, and a token line with **[Revoke]**.
+- Completion values for `type`, `world` and `group` in `/animus create`, and for the build options.
 
 ### Changed
 
@@ -326,6 +329,11 @@
 - Look-close players, fight and chat witnesses, hologram placement and per-NPC viewer lookups use chunk indexes instead of scanning every player, watcher, hologram or viewer.
 - Mob targeting of NPCs reads the definitions again only after they change.
 - On Folia, chat reaches combat watchers from the speaker's region, so only watchers near the speaker hear it.
+- Every `/animus` reply, error and report is one or two lines with one `[Animus]` prefix; errors are red, finished changes green. Transactions read `tx <id>`.
+- `/animus status` and `/animus editor status` show one headline; counters and budgets move to **[Details]** for players and to two extra lines for the console.
+- `/animus inspect` shows a two-line summary with the id and position as copy chips and the JSON behind **[JSON]** and **[Merged]**, instead of printing the JSON.
+- Shop and GUI lists page with `page=`; long build, hotload and import reports are clipped with a count of the rest.
+- Startup logs one `Enabled` line with the time taken, plus warnings only for parts that are down. A repeated failure logs its stack trace once, then one line.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
@@ -364,6 +372,7 @@
 - GUI editor: changing an action's type keeps nested lists the new type has and asks before dropping others.
 - GUI editor: refusal messages for presets, icons and components use the server's wording.
 - Web editor: groups and recordings are listed in the sidebar; a renamed recording or group rewrites its `id`.
+- The startup banner.
 
 ### Fixed
 

@@ -59,7 +59,7 @@ class ShopkeepersDropInTest {
             assertEquals(Optional.of(false), shop(npcs, "citizens-0").map((JsonObject module) -> module.get("reviewAccepted").getAsBoolean()));
             assertTrue(npcs.all().stream().anyMatch((NpcDefinition definition) -> definition.id().equals("shopkeeper-3")));
             String review = joined(dropIn(store, npcs).reviewApplied());
-            assertTrue(review.contains("shops: 3 waiting"), review);
+            assertTrue(review.contains("Waiting: ") && review.contains(" shops 3, builder "), review);
             dropIn(store, npcs).acceptCategories(List.of("shops"));
             assertEquals(Optional.of(true), shop(npcs, "citizens-0").map((JsonObject module) -> module.get("reviewAccepted").getAsBoolean()));
             dropIn(store, npcs).rollbackApplied();

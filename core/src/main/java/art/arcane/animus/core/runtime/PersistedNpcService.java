@@ -1,5 +1,6 @@
 package art.arcane.animus.core.runtime;
 
+import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.building.BuildNpcs;
@@ -2220,14 +2221,14 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         // A sneaking interaction keeps its administrative meaning, so a rideable NPC can still be selected.
         if (body.value.ride != null && action == RuntimeHost.Interaction.INTERACT && !input.secondaryAction() && "MAIN_HAND".equals(input.hand())) {
             String refusal = riders.request(viewer.player, mountRuntime.vehicle(body.value));
-            if (refusal != null) host.tell(viewer.player, "Cannot ride " + body.value.spec.name() + ": " + refusal);
+            if (refusal != null) host.tell(viewer.player, Palette.error("Cannot ride " + body.value.spec.name() + ": " + refusal));
             return;
         }
         // Click selection tells an administrator once; clicking the selected NPC again, as play does, stays quiet.
         String id = body.value.spec.definition().id();
         if (host.permitted(viewer.player, "animus.admin") && !selection(host.id(viewer.player)).filter(id::equals).isPresent()) {
             select(host.id(viewer.player), id);
-            host.tell(viewer.player, "Selected " + id + " via " + action);
+            host.tell(viewer.player, Palette.reply("Selected " + id));
         }
     }
 

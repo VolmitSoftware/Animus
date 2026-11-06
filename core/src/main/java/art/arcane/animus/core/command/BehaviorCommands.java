@@ -176,7 +176,7 @@ public final class BehaviorCommands implements AutoCloseable {
     /** An invalid id or page is answered like every other behavior refusal. */
     private void guarded(CommandActor sender,Runnable work){
         try{work.run();}
-        catch(RuntimeException invalid){reply(sender,List.of("Animus behaviors: "+Objects.toString(invalid.getMessage(),invalid.getClass().getSimpleName())));}
+        catch(RuntimeException invalid){reply(sender,List.of("Behaviors: "+Objects.toString(invalid.getMessage(),invalid.getClass().getSimpleName())));}
     }
     /** Ids for completion: loaded behaviors, NPC definitions and the executions running now. */
     public List<String> behaviorIds(){return catalogSnapshot().byId().keySet().stream().sorted().limit(100).toList();}
