@@ -259,7 +259,7 @@ public final class HotloadService implements AutoCloseable {
             case SKIN -> 1;
             case ROUTE -> 2;
             case RIG, ANIMATION -> 3;
-            case BEHAVIOR, PACK -> 4;
+            case BEHAVIOR, PACK, SERVER_BEHAVIORS -> 4;
             case NPC -> 5;
             default -> 6;
         };
