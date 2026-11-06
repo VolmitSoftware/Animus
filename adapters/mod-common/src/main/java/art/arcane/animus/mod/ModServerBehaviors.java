@@ -69,6 +69,7 @@ final class ModServerBehaviors {
     ModServerBehaviors(MinecraftServer server, ServerTriggerDispatcher servers, SnapshotFacts facts, Consumer<String> log) {
         this.server = Objects.requireNonNull(server); this.servers = Objects.requireNonNull(servers);
         this.facts = Objects.requireNonNull(facts); this.log = Objects.requireNonNull(log);
+        servers.worlds((String reference) -> ModWorldKeys.resolve(server, reference));
     }
 
     void tick() {

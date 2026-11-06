@@ -28,6 +28,15 @@ class ModWorldsTest {
         assertEquals(Optional.empty(), ModWorlds.resolve("mining", "world", LOADED));
     }
 
+    @Test void aliasesAreEveryReferenceThatResolvesToTheKey() {
+        assertEquals(Set.of("minecraft:overworld", "overworld", "world"), ModWorlds.aliases("minecraft:overworld", "world"));
+        assertEquals(Set.of("minecraft:the_nether", "the_nether", "world_nether"), ModWorlds.aliases("minecraft:the_nether", "world"));
+        assertEquals(Set.of("minecraft:the_end", "the_end", "survival_the_end"), ModWorlds.aliases("minecraft:the_end", "survival"));
+        assertEquals(Set.of("example:mining"), ModWorlds.aliases("example:mining", "world"));
+        for (String key : LOADED) for (String alias : ModWorlds.aliases(key, "world"))
+            assertEquals(Optional.of(key), ModWorlds.resolve(alias, "world", LOADED), alias);
+    }
+
     @Test void unusableReferencesResolveToNothing() {
         assertEquals(Optional.empty(), ModWorlds.resolve("1f3c1b0e-5d7a-4a2f-9a0c-111111111111", "world", LOADED));
         assertEquals(Optional.empty(), ModWorlds.resolve("", "world", LOADED));

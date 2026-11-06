@@ -28,4 +28,18 @@ public final class ModWorlds {
         else return Optional.empty();
         return loaded.contains(key) ? Optional.of(key) : Optional.empty();
     }
+
+    /** Every reference {@link #resolve} maps to this loaded world key: the key, its bare vanilla path and its Bukkit folder name. */
+    public static Set<String> aliases(String key, String levelName) {
+        Set<String> aliases = new java.util.HashSet<>();
+        aliases.add(key);
+        if (key.startsWith("minecraft:")) aliases.add(key.substring("minecraft:".length()));
+        switch (key) {
+            case OVERWORLD -> aliases.add(levelName);
+            case NETHER -> aliases.add(levelName + "_nether");
+            case END -> aliases.add(levelName + "_the_end");
+            default -> {}
+        }
+        return Set.copyOf(aliases);
+    }
 }
