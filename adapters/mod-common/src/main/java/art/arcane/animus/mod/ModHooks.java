@@ -7,6 +7,7 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Input;
+import net.minecraft.world.level.Level;
 
 /**
  * Where the shared mixins report. Every hook is a no-op while no runtime is running, so the mod costs nothing on a
@@ -51,9 +52,15 @@ public final class ModHooks {
         AnimusModRuntime active = runtime;
         if (active != null) active.quit(player);
     }
-    public static void respawned(ServerPlayer player) {
+    /** Respawn replaces the player object; {@code old} still names the world the player died in. */
+    public static void respawned(ServerPlayer old, ServerPlayer player) {
         AnimusModRuntime active = runtime;
-        if (active != null) active.respawned(player);
+        if (active != null) active.respawned(old, player);
+    }
+    /** After a teleport; {@code from} is the level the player was in before it. */
+    public static void teleportedFrom(ServerPlayer player, Level from) {
+        AnimusModRuntime active = runtime;
+        if (active != null && from != null && from != player.level()) active.worldChanged(player, from);
     }
     public static void died(ServerPlayer player) {
         AnimusModRuntime active = runtime;
