@@ -1,5 +1,6 @@
 package art.arcane.animus.core.runtime;
 
+import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.control.ControlInbox;
 import art.arcane.animus.core.control.RideLedger;
 import art.arcane.animus.core.control.RideSession;
@@ -238,7 +239,7 @@ final class RiderService<P, I> implements AutoCloseable {
         restoring = true;
         try {
             if (!host.teleport(player, target, host.yaw(player), host.pitch(player)))
-                host.warn("Dismount teleport was cancelled for " + host.name(player));
+                AnimusLog.shared().routine("dismount teleports cancelled", host.name(player), "Dismount teleport was cancelled for " + host.name(player), host::warn);
         } catch (RuntimeException failure) {
             host.warn("Dismount teleport failed for " + host.name(player) + ": " + failure.getMessage());
         } finally { restoring = false; }

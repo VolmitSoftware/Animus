@@ -80,6 +80,8 @@ class ServerTriggerRuntimeTest {
         eventually(() -> dispatcher.snapshot().active() == 1);
         enabled.set(new ServerBehaviorList(2, List.of(), List.of()));
         eventually(() -> dispatcher.snapshot().active() == 0);
+        // The dispatcher forgets the run before the engine publishes its final report, so wait for the report too.
+        eventually(() -> runtime.snapshot().executions().values().iterator().next().report().state() == BehaviorEngine.State.CANCELLED);
         BehaviorRuntime.Execution execution = runtime.snapshot().executions().values().iterator().next();
         assertEquals(BehaviorEngine.State.CANCELLED, execution.report().state());
     }

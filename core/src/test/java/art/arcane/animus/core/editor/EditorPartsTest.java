@@ -143,16 +143,16 @@ class EditorPartsTest {
 
     @Test
     void pairOptions_keyedValues() {
-        EditorTokens.Grant grant = EditorCommands.grant(actor(EditorHarness.ADMIN), new String[]{"laptop", "scopes=read,validate", "groups=town,harbor", "expires=12h"}, 7);
+        EditorTokens.Grant grant = EditorCommands.grant(actor(EditorHarness.ADMIN), "laptop", "read,validate", "town,harbor", "12h", 7);
         assertEquals("laptop", grant.label());
         assertEquals(List.of(EditorScope.READ, EditorScope.VALIDATE), grant.scopes());
         assertEquals(List.of("town", "harbor"), grant.groups());
         assertEquals(Duration.ofHours(12), grant.lifetime());
         assertEquals(Optional.of(EditorHarness.ADMIN), grant.admin());
-        EditorTokens.Grant defaults = EditorCommands.grant(actor(null), new String[0], 7);
+        EditorTokens.Grant defaults = EditorCommands.grant(actor(null), "", "", "", "", 7);
         assertEquals(EditorScope.DEFAULT_PAIRING, defaults.scopes());
         assertEquals(Duration.ofDays(7), defaults.lifetime());
-        assertThrows(IllegalArgumentException.class, () -> EditorCommands.grant(actor(null), new String[]{"scopes=root"}, 7));
-        assertThrows(IllegalArgumentException.class, () -> EditorCommands.grant(actor(null), new String[]{"expires=forever"}, 7));
+        assertThrows(IllegalArgumentException.class, () -> EditorCommands.grant(actor(null), "", "root", "", "", 7));
+        assertThrows(IllegalArgumentException.class, () -> EditorCommands.grant(actor(null), "", "", "", "forever", 7));
     }
 }

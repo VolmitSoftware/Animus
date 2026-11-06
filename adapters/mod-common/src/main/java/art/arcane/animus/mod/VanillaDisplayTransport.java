@@ -1,5 +1,6 @@
 package art.arcane.animus.mod;
 
+import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.Load;
 import art.arcane.animus.core.metrics.PacketKind;
@@ -240,6 +241,7 @@ final class VanillaDisplayTransport implements DisplayTransport<ServerPlayer> {
     private void report(RuntimeException failure) {
         if (reportedFailure) return;
         reportedFailure = true;
-        warnings.accept("Display packet failed: " + failure.getClass().getSimpleName() + ": " + failure.getMessage());
+        AnimusLog.shared().routine("viewers had display packet failures", String.valueOf(System.identityHashCode(this)),
+                "Display packet failed: " + failure.getClass().getSimpleName() + ": " + failure.getMessage(), warnings);
     }
 }
