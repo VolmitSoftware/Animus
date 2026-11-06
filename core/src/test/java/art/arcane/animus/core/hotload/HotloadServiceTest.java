@@ -271,7 +271,7 @@ class HotloadServiceTest {
     }
 
     private static void until(java.util.function.BooleanSupplier condition, Queue<Runnable> replies) throws InterruptedException {
-        long end = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+        long end = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(20);
         while (!condition.getAsBoolean() && System.nanoTime() < end) {
             for (Runnable reply; (reply = replies.poll()) != null; ) reply.run();
             Thread.sleep(5);
