@@ -10,6 +10,11 @@ public interface BuildCrew {
     record Member(String id, UUID uuid, WorldPosition position, double width, double height) {}
 
     Optional<Member> member(String npc);
+    /**
+     * The active NPC can be moved and changed from this thread now. On Folia an NPC on another region is active but not
+     * here: it keeps its claim and scaffolding and works when the build's turn reaches its region.
+     */
+    default boolean here(String npc) { return true; }
     /** The NPC is following a route right now. */
     boolean routing(String npc);
     /** Starts walking; throws {@link IllegalArgumentException} or {@link IllegalStateException} when refused. */

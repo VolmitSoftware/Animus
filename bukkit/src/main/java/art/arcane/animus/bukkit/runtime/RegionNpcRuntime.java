@@ -488,7 +488,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     Geometry geometry(String type) { return geometries.get(type); }
     World world(String id) { return regions.world(id); }
     /** On the changed block's region thread: marks the NPCs standing on it, each checks its footing on its own owner tick. */
-    private void terrainChanged(String world, BlockPos at) {
+    void terrainChanged(String world, BlockPos at) {
         if (!available()) return;
         for (UUID npc : IdleFall.standingOn(index, world, at)) {
             RegionActor actor = byUuid.get(npc);
