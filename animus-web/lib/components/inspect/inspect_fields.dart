@@ -160,6 +160,7 @@ class InspectControl extends StatelessWidget {
         if (!textual) break;
         if (field.openChoice) {
           return SuggestInput(
+            id: controlId(path),
             value: current is String ? current : '',
             label: field.key,
             suggestions: <FieldOption>[...field.options, ...suggestions],
@@ -186,20 +187,21 @@ class InspectControl extends StatelessWidget {
       case FieldKind.integer || FieldKind.number:
         if (current is num || current == null) {
           return GuiNumberInput(
+            id: controlId(path),
             value: current as num?,
             integer: field.kind == FieldKind.integer,
             label: field.key,
-            placeholder: field.bounds.isEmpty ? null : field.bounds,
+            digits: field.digits,
             onChanged: onChanged,
           );
         }
       case FieldKind.string:
         if (current is String || current == null) {
           return SuggestInput(
+            id: controlId(path),
             value: current as String? ?? '',
             label: field.key,
             suggestions: suggestions,
-            placeholder: field.bounds.isEmpty ? null : field.bounds,
             onChanged: (String next) => onChanged(next.isEmpty && !field.required ? null : next),
           );
         }
@@ -295,9 +297,12 @@ class SuggestInput extends StatefulWidget {
     this.suggestions = const <FieldOption>[],
     this.label,
     this.placeholder,
+    this.id,
     super.key,
   });
 
+  /// The element id; a row label with the same `for` names it.
+  final String? id;
   final String value;
   final void Function(String value) onChanged;
   final List<FieldOption> suggestions;
@@ -319,6 +324,7 @@ class _SuggestInputState extends State<SuggestInput> {
     final bool listed = component.suggestions.isNotEmpty;
     return dom.div(classes: 'animus-gui-text', <Widget>[
       dom.input(
+        id: component.id,
         classes: 'animus-gui-input',
         value: _typed ?? component.value,
         attributes: <String, String>{

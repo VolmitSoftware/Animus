@@ -300,7 +300,7 @@ class _GuiTextInputState extends State<GuiTextInput> {
 
 /// A number field; empty clears the value.
 class GuiNumberInput extends StatefulWidget {
-  const GuiNumberInput({required this.value, required this.onChanged, this.integer = true, this.label, this.placeholder, this.id, super.key});
+  const GuiNumberInput({required this.value, required this.onChanged, this.integer = true, this.label, this.placeholder, this.digits, this.id, super.key});
 
   /// The element id; a [GuiRow] with the same `forId` labels it.
   final String? id;
@@ -309,6 +309,9 @@ class GuiNumberInput extends StatefulWidget {
   final bool integer;
   final String? label;
   final String? placeholder;
+
+  /// Characters of the widest allowed value; the field is sized to fit them.
+  final int? digits;
 
   @override
   State<GuiNumberInput> createState() => _GuiNumberInputState();
@@ -330,6 +333,7 @@ class _GuiNumberInputState extends State<GuiNumberInput> {
         if (component.integer) 'step': '1' else 'step': 'any',
         'aria-label': ?component.label,
         'placeholder': ?component.placeholder,
+        if (component.digits != null) 'style': '--animus-digits: ${component.digits}',
       },
       events: <String, void Function(web.Event)>{
         'input': (web.Event event) {

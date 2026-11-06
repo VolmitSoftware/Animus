@@ -222,11 +222,24 @@ button.animus-chest-slot:focus-visible {
   min-width: 0;
 }
 
+/* One field layout everywhere: the label, then the control with its short
+   hint under it. The control moves under the label whenever its column
+   would drop below 12rem, so a narrow panel or a deep nesting level never
+   squeezes it. The label is the first child, alone or wrapped with its tip. */
 .animus-gui-row {
-  display: grid;
-  grid-template-columns: 8.5rem minmax(0, 1fr);
-  gap: 0.5rem;
-  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  align-items: flex-start;
+}
+
+.animus-gui-row > :first-child {
+  flex: 0 0 8.5rem;
+  min-width: 0;
+}
+
+.animus-gui-row > .animus-gui-control {
+  flex: 1 1 12rem;
 }
 
 .animus-gui-label {
@@ -296,7 +309,10 @@ button.animus-chest-slot:focus-visible {
 }
 
 .animus-gui-input.is-number {
-  width: 7rem;
+  /* As wide as the widest value the field allows, plus padding and the
+     step arrows; --animus-digits comes from the field's range. */
+  width: calc(var(--animus-digits, 8) * 1ch + 2.75rem);
+  max-width: 100%;
   flex: 0 0 auto;
 }
 
@@ -463,8 +479,8 @@ button.animus-chest-slot:focus-visible {
 }
 
 @media (max-width: 520px) {
-  .animus-gui-row {
-    grid-template-columns: minmax(0, 1fr);
+  .animus-gui-row > :first-child {
+    flex-basis: 100%;
   }
 
   /* Thumb-sized targets: a 9-wide window scrolls inside its frame rather
