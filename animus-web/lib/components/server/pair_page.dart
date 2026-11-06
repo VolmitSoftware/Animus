@@ -121,16 +121,19 @@ class _PairPageState extends State<PairPage> {
             ),
             dom.div(classes: 'animus-pair-remember', <Widget>[
               ArcaneToggleSwitch(
+                id: 'animus-pair-remember-switch',
                 value: _remember,
-                label: 'Remember this browser',
+                ariaLabel: 'Remember this browser',
                 size: ComponentSize.sm,
                 onChanged: (bool value) => setState(() => _remember = value),
               ),
-              const InfoTip(
-                text: 'On keeps the token after this tab closes. Leave it off on a shared computer.',
-                topic: 'Remember this browser',
-                docs: Docs.pairing,
-              ),
+              const dom.label(htmlFor: 'animus-pair-remember-switch', <Widget>[
+                InfoTip(
+                  tip: 'On keeps the token after this tab closes. Leave it off on a shared computer.',
+                  docs: Docs.pairing,
+                  child: Component.text('Remember this browser'),
+                ),
+              ]),
             ]),
             dom.div(classes: 'animus-row', <Widget>[
               Button.primary(label: _busy ? 'Pairing' : 'Pair', loading: _busy, disabled: _busy, onPressed: _pair),

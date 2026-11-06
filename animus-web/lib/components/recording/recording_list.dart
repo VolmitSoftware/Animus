@@ -29,15 +29,10 @@ class RecordingList extends StatelessWidget {
         if (document.kind == DocumentKind.recording) document,
     ]..sort((AnimusDocument a, AnimusDocument b) => a.id.compareTo(b.id));
     return dom.section(classes: 'animus-panel animus-recording-list', attributes: const <String, String>{'aria-labelledby': mainHeadingId}, <Widget>[
-      labelWithTip(
-        dom.h1(id: mainHeadingId, attributes: const <String, String>{'tabindex': '-1'}, <Widget>[
-          const Component.text('Recordings'),
-          dom.span(classes: 'animus-count', <Widget>[Component.text('${recordings.length}')]),
-        ]),
-        'Made in game with /animus record. Only rename and delete apply here.',
-        'Recordings',
-        docs: Docs.recordings,
-      ),
+      dom.h1(id: mainHeadingId, attributes: const <String, String>{'tabindex': '-1'}, <Widget>[
+        const InfoTip(tip: 'Made in game with /animus record. Only rename and delete apply here.', docs: Docs.recordings, child: Component.text('Recordings')),
+        dom.span(classes: 'animus-count', <Widget>[Component.text('${recordings.length}')]),
+      ]),
       if (recordings.isEmpty)
         const dom.p(classes: 'animus-muted', attributes: <String, String>{'data-recording': 'list-empty'}, <Widget>[
           Component.text('No recordings in this workspace. Record one in game with /animus record start <id>.'),

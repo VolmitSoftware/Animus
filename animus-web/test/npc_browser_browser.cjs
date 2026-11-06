@@ -487,7 +487,7 @@ async function local(browser, viewport, tag, theme) {
   await hologram.getByLabel('Hologram line 1', {exact: true}).fill('&aHello there');
   await hologram.getByLabel('Hologram line 1', {exact: true}).blur();
   await hologram.locator('.animus-hologram-preview').getByText('Hello there').waitFor();
-  await hologram.getByLabel('Billboard', {exact: true}).selectOption('vertical');
+  await hologram.getByRole('combobox', {name: 'Billboard', exact: true}).selectOption('vertical');
   await settle(page);
   await shot(page, `${tag}-08-appearance`);
   json = await codeOf(page);
