@@ -1,6 +1,7 @@
 .animus-document {
   display: grid;
   gap: 0.75rem;
+  min-width: 0;
 }
 
 .animus-document-header {
@@ -9,26 +10,66 @@
   justify-content: space-between;
   gap: 0.75rem;
   align-items: flex-end;
+  min-width: 0;
 }
 
-.animus-document-header h2 {
-  margin: 0.125rem 0;
+.animus-document-title {
+  display: grid;
+  gap: 0.125rem;
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+/* Titles and paths are long ids and hashes: they wrap instead of pushing
+   the page sideways. */
+.animus-document-header h1 {
+  margin: 0;
   font-size: 1.25rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.animus-document-path {
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
 }
 
 .animus-eyebrow {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 0.8125rem;
   color: var(--animus-muted);
 }
 
+/* Tabs: a quiet strip; the selected one is raised with a pink underline
+   (the colours come from the stylesheet so every lane's tabs match). */
+.animus-tabs,
 .animus-segmented {
   display: inline-flex;
+  flex-wrap: wrap;
   gap: 0.25rem;
   padding: 0.25rem;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.animus-tab {
+  min-height: 2.25rem;
+  padding: 0.25rem 0.875rem;
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--animus-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.animus-tab:hover {
+  color: var(--foreground, inherit);
+  background: color-mix(in srgb, var(--card-hover, #222024) 60%, transparent);
+}
+
+.animus-tab:active {
+  background: var(--accent, #2a272b);
 }
 
 .animus-ok {
@@ -36,14 +77,24 @@
   color: var(--animus-ok);
 }
 
+.animus-draft-error,
+.animus-schema-note {
+  margin: 0;
+}
+
+.animus-draft-error {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--animus-error);
+}
+
 .animus-diagnostics {
   list-style: none;
   margin: 0;
   padding: 0.75rem;
   border: 1px solid var(--animus-error);
-  border-radius: var(--animus-radius);
   display: grid;
   gap: 0.25rem;
+  overflow-wrap: anywhere;
 }
 
 .animus-diagnostics li.is-warning,
@@ -54,6 +105,7 @@
 .animus-views {
   display: grid;
   gap: 0.75rem;
+  min-width: 0;
 }
 
 .animus-views.is-split {
@@ -76,7 +128,7 @@
 }
 
 .animus-fields th {
-  width: 12rem;
+  width: min(12rem, 35%);
   font-family: var(--font-mono);
   font-weight: 400;
   color: var(--animus-muted);
@@ -84,13 +136,14 @@
 
 .animus-preview dl {
   display: grid;
-  grid-template-columns: max-content 1fr;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
   gap: 0.375rem 1rem;
   margin: 0;
 }
 
 .animus-preview dt {
   color: var(--animus-muted);
+  overflow-wrap: anywhere;
 }
 
 .animus-preview dd {
@@ -111,6 +164,37 @@
 
 @media (max-width: 1100px) {
   .animus-views.is-split {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Phones: label above value in the field table and the preview facts. */
+@media (max-width: 520px) {
+  .animus-fields tr {
+    display: grid;
+  }
+
+  .animus-fields th {
+    width: auto;
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+
+  .animus-preview dl {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.125rem;
+  }
+
+  .animus-preview dd + dt {
+    margin-top: 0.5rem;
+  }
+
+  .animus-tabs {
+    display: flex;
+  }
+
+  .animus-tab {
+    flex: 1 1 0;
+    min-height: 44px;
   }
 }

@@ -13,6 +13,7 @@
   <script src="/bootstrap.js"></script>
   <link rel="preload" href="/assets/fonts/geist/Geist-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/assets/fonts/geist/Geist-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/assets/fonts/geist/GeistMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/styles/01-foundations.css">
   <link rel="stylesheet" href="/styles/02-shell.css">
   <link rel="stylesheet" href="/styles/03-documents.css">
@@ -26,7 +27,11 @@
   <link rel="stylesheet" href="/styles/11-offline.css">
 </head>
 <body>
-  <div class="animus-boot" id="loading"><div class="animus-boot-spinner"></div></div>
+  <div class="animus-boot" id="loading" role="status" aria-label="Loading the Animus editor">
+    <img class="animus-boot-mark" src="/assets/brand/animus-mark.svg" width="72" height="72" alt="" fetchpriority="high">
+    <div class="animus-boot-line" aria-hidden="true"><span></span></div>
+    <p class="animus-boot-message" id="animus-boot-message"></p>
+  </div>
   <div id="app"></div>
   <noscript>Animus Editor requires JavaScript.</noscript>
   <script defer src="/main.client.dart.js"></script>

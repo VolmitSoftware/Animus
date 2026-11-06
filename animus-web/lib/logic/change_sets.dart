@@ -17,15 +17,22 @@ enum DraftState {
 
   /// Removed in this browser; the server still has it.
   deleted,
+
+  /// Moved to another id in this browser (an NPC to another folder); the
+  /// server has it at [DraftChange.from]. Edits made with the move go along.
+  moved,
 }
 
 class DraftChange {
-  const DraftChange(this.key, this.kind, this.id, this.state, this.change, {this.problem});
+  const DraftChange(this.key, this.kind, this.id, this.state, this.change, {this.problem, this.from});
 
   final String key;
   final DocumentKind kind;
   final String id;
   final DraftState state;
+
+  /// For a move, the id the server has the document at.
+  final String? from;
 
   /// The `change` entry for a change set; null when [problem] blocks it.
   final Map<String, Object?>? change;
@@ -40,33 +47,67 @@ DraftState draftState(AnimusDocument? document, ServerBase? base) {
   return jsonEquals(document.json, base.source) ? DraftState.clean : DraftState.modified;
 }
 
+/// NPCs that moved in this browser: the new document key to the key of the
+/// server base it came from. An NPC keeps its `uuid` wherever its file goes,
+/// so a workspace NPC with no base whose uuid is that of a base no longer in
+/// the workspace is that base, moved. Undo and redo of a folder move need no
+/// bookkeeping: the pairing follows the documents.
+Map<String, String> draftMoves(List<AnimusDocument> documents, ServerBinding binding) {
+  final Set<String> present = <String>{for (final AnimusDocument document in documents) documentKey(document.kind, document.id)};
+  final Map<String, String> left = <String, String>{};
+  for (final MapEntry<String, ServerBase> entry in binding.bases.entries) {
+    if (present.contains(entry.key) || !entry.key.startsWith('${DocumentKind.npc.wireName}:')) continue;
+    final Object? source = entry.value.source;
+    final Object? uuid = source is Map<String, Object?> ? source['uuid'] : null;
+    if (uuid is String && uuid.isNotEmpty) left[uuid] = entry.key;
+  }
+  if (left.isEmpty) return const <String, String>{};
+  final Map<String, String> moves = <String, String>{};
+  for (final AnimusDocument document in documents) {
+    if (document.kind != DocumentKind.npc) continue;
+    final String key = documentKey(document.kind, document.id);
+    if (binding.bases.containsKey(key)) continue;
+    final Object? json = document.json;
+    final Object? uuid = json is Map<String, Object?> ? json['uuid'] : null;
+    final String? origin = uuid is String ? left.remove(uuid) : null;
+    if (origin != null) moves[key] = origin;
+  }
+  return moves;
+}
+
 /// Every draft that differs from its server base, as `change` entries in
-/// workspace order, deletions last. [only] limits it to those keys.
-List<DraftChange> pendingDrafts(List<AnimusDocument> documents, ServerBinding binding, {Set<String>? only}) {
+/// workspace order, deletions last. A moved NPC ([draftMoves]) goes as one
+/// move from its old id. [only] limits it to those keys.
+List<DraftChange> pendingDrafts(List<AnimusDocument> documents, ServerBinding binding, {Set<String>? only, Map<String, String>? moves}) {
+  final Map<String, String> moved = moves ?? draftMoves(documents, binding);
+  final Set<String> origins = moved.values.toSet();
   final List<DraftChange> drafts = <DraftChange>[];
   final Set<String> present = <String>{};
   for (final AnimusDocument document in documents) {
     final String key = documentKey(document.kind, document.id);
     present.add(key);
     if (only != null && !only.contains(key)) continue;
-    final ServerBase? base = binding.bases[key];
-    final DraftState state = draftState(document, base);
+    final String? origin = moved[key];
+    final ServerBase? base = binding.bases[origin ?? key];
+    final DraftState state = origin != null ? DraftState.moved : draftState(document, base);
     if (state == DraftState.clean) continue;
+    final String? from = origin == null ? null : parseDocumentKey(origin)?.$2;
     final Object? json = document.json;
     if (json is! Map<String, Object?>) {
-      drafts.add(DraftChange(key, document.kind, document.id, state, null, problem: 'The draft is not a JSON object.'));
+      drafts.add(DraftChange(key, document.kind, document.id, state, null, problem: 'The draft is not a JSON object.', from: from));
       continue;
     }
-    drafts.add(DraftChange(key, document.kind, document.id, state, <String, Object?>{
+    drafts.add(DraftChange(key, document.kind, document.id, state, from: from, <String, Object?>{
       'kind': document.kind.wireName,
       'id': document.id,
+      if (from != null) 'from': <String, Object?>{'id': from},
       'baseRevision': base?.revision,
       'baseHash': base?.hash,
       'source': json,
     }));
   }
   for (final MapEntry<String, ServerBase> entry in binding.bases.entries) {
-    if (present.contains(entry.key) || (only != null && !only.contains(entry.key))) continue;
+    if (present.contains(entry.key) || origins.contains(entry.key) || (only != null && !only.contains(entry.key))) continue;
     final (DocumentKind, String)? parsed = parseDocumentKey(entry.key);
     if (parsed == null) continue;
     drafts.add(DraftChange(entry.key, parsed.$1, parsed.$2, DraftState.deleted, <String, Object?>{
@@ -104,7 +145,13 @@ sealed class ChangeOutcome {
           <AppliedDocument>[
             for (final Object? raw in (body['documents'] as List<Object?>?) ?? const <Object?>[])
               if (raw is Map<String, Object?>)
-                AppliedDocument(DocumentKind.parse('${raw['kind']}')!, '${raw['id']}', (raw['revision']! as num).toInt(), raw['hash'] as String?),
+                AppliedDocument(
+                  DocumentKind.parse('${raw['kind']}')!,
+                  '${raw['id']}',
+                  (raw['revision']! as num).toInt(),
+                  raw['hash'] as String?,
+                  from: raw['from'] is Map<String, Object?> ? '${(raw['from']! as Map<String, Object?>)['id']}' : null,
+                ),
           ],
         );
       case 'conflict':
@@ -123,7 +170,7 @@ sealed class ChangeOutcome {
 }
 
 class AppliedDocument {
-  const AppliedDocument(this.kind, this.id, this.revision, this.hash);
+  const AppliedDocument(this.kind, this.id, this.revision, this.hash, {this.from});
 
   final DocumentKind kind;
   final String id;
@@ -132,7 +179,13 @@ class AppliedDocument {
   /// Null after a delete.
   final String? hash;
 
+  /// Set when the document moved here from this id, which is gone now.
+  final String? from;
+
   String get key => documentKey(kind, id);
+
+  /// The key it left, for a move.
+  String? get fromKey => from == null ? null : documentKey(kind, from!);
 }
 
 class ChangeApplied extends ChangeOutcome {
@@ -199,6 +252,8 @@ ServerBinding recordApplied(
   final Map<String, ServerBase> bases = Map<String, ServerBase>.of(binding.bases);
   for (final AppliedDocument document in applied.documents) {
     final String? hash = document.hash;
+    final String? left = document.fromKey;
+    if (left != null) bases.remove(left);
     if (hash == null) {
       bases.remove(document.key);
       continue;
@@ -214,7 +269,9 @@ ServerBinding recordApplied(
       AppliedChange(
         changeId: applied.changeId,
         idempotencyKey: applied.idempotencyKey,
-        documents: <String>[for (final AppliedDocument document in applied.documents) document.key],
+        documents: <String>[
+          for (final AppliedDocument document in applied.documents) ...<String>[document.key, if (document.fromKey != null) document.fromKey!],
+        ],
         appliedAt: at ?? DateTime.now().toUtc(),
         undoOf: undoOf,
       ),

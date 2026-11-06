@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:assignment/npc_story",
+  "entry": "on-click",
+  "routines": {
+    "on-click": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "expression": "has_flag('player', ('story_done_' + text(npc.citizens_id)))",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": "A story for you."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": null,
+            "scope": "player"
+          },
+          "expressions": {
+            "/name": "('story_done_' + text(npc.citizens_id))"
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "on-click",
+      "event": "interaction",
+      "action": "interact",
+      "routine": "on-click"
+    }
+  ]
+}

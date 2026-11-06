@@ -2,6 +2,7 @@ package art.arcane.animus.core.runtime;
 
 import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.AnimusRuntime;
+import art.arcane.animus.core.building.BuildNpcs;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerEvent;
 import art.arcane.animus.core.combat.CombatSettings;
@@ -111,7 +112,7 @@ import java.util.function.Predicate;
  * @param <P> the platform's online player
  * @param <I> the platform's item stack
  */
-public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
+public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildNpcs<P, I> {
     public record Settings(boolean enabled, double viewDistance, int maximumVisible, int maximumViewers, int updatesPerTick,
                            int packetsPerTick, int pendingSpawnsPerViewer, int lookUpdatesPerTick) {
         public static final Settings DEFAULT = from(NpcRuntimeSettings.DEFAULT);
@@ -615,6 +616,23 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         value.poseRevision++;
         if (triggers != null) triggers.activated(npc);
         return true;
+    }
+    /**
+     * Where a stationary NPC stands guard: its definition's position, which no fight or route changes. Empty for an NPC
+     * that patrols waypoints, a reusable route or a recording, or that is not active.
+     */
+    public Optional<WorldPosition> post(String id) {
+        if (!available()) return Optional.empty();
+        owner(); Entry entry = entries.get(id); Value value = entry == null ? null : entry.value;
+        if (value == null || !value.state.snapshot().active() || value.routeSource != null || value.recordingSource != null
+                || WaypointSettings.parse(value.spec.definition()).isPresent())
+            return Optional.empty();
+        return Optional.of(value.spec.position());
+    }
+    /** Turns the NPC back to its definition's facing, standing. */
+    public void restorePose(String id) {
+        Value value = navigable(id);
+        setPose(value, value.spec.yaw(), value.spec.pitch(), true);
     }
     /**
      * Restarts the definition's own patrol if nothing else moves the NPC: a recording stopped earlier continues from its

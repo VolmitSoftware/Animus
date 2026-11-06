@@ -101,7 +101,7 @@ const Map<String, String> _colors = <String, String>{
   'white': 'f', 'magic': 'k', 'bold': 'l', 'strikethrough': 'm', 'underline': 'n',
   'italic': 'o', 'reset': 'r',
 };
-const Map<String, String> _contextKinds = <String, String>{'args': 'l', 'first': 'b'};
+const Map<String, String> _contextKinds = <String, String>{'args': 'l', 'first': 'b', 'damage': 'n'};
 const List<String> _operators = <String>['==', '!=', '<', '<=', '>', '>=', 'contains', 'in', 'matches'];
 
 // ---- Literals ----
@@ -248,6 +248,11 @@ List<String> _conditionTokens(List<String> raw) {
   return tokens;
 }
 
+/// A world fact gives a Bukkit name or a dimension key by platform, so a comparison with one resolves both sides.
+bool _world(_Expr expr) => expr.text == 'player.world' || expr.text == 'npc.world' || expr.text == 'context.world';
+
+String _equality(_Expr left, _Expr right) => _world(left) || _world(right) ? 'same_world' : 'same';
+
 /// Denizen's advanced matcher for the simple forms: alternatives with `|` and `*` at either end, ignoring case.
 _Result<_Cond> _matcher(_Expr value, String pattern) {
   final List<String> tests = <String>[];
@@ -269,7 +274,7 @@ _Result<_Cond> _matcher(_Expr value, String pattern) {
     } else if (end) {
       tests.add('starts_with($subject, ${_quote(core)})');
     } else {
-      tests.add('same(${_textual(value)}, ${_quote(core)})');
+      tests.add('${_equality(value, value)}(${_textual(value)}, ${_quote(core)})');
     }
   }
   return _Result<_Cond>.ok(_Atom(tests.length == 1 ? tests.first : '(${tests.join(' || ')})'));
@@ -497,13 +502,15 @@ class _Expressions {
     }
   }
 
-  /// `<[name]>`: a loop's own value, or the execution variable `d_<name>`; dots inside walk map keys.
+  /// `<[name]>`: a loop's own value, or the execution variable `d_<name>`; dots inside walk map keys. A loop value
+  /// written `@variable` is that variable, such as the player of a fan-out.
   _Result<_Step> definition(String raw, _Scope scope) {
     if (raw.contains('<')) return const _Result<_Step>.fail('a computed definition name has no Animus expression');
     final List<String> path = raw.split('.');
     final String name = path[0].toLowerCase();
     final String? override = scope.definitions[name];
     final StringBuffer text = StringBuffer();
+    if (override != null && override.startsWith('@') && path.length == 1) return _Result<_Step>.ok(_Step(_Expr(override.substring(1), 'a'), 1));
     if (override != null) {
       if (path.length > 1) return _Result<_Step>.fail('definition $name is a loop counter, not a map');
       return _Result<_Step>.ok(_Step(_Expr(override, 'n'), 1));
@@ -606,7 +613,7 @@ class _Expressions {
     final String? next = _attributeName(parts, 2);
     return switch (attribute) {
       'name' => _fact('npc.name', 's', 2),
-      'id' => _fact('npc.id', 'a', 2),
+      'id' => _fact('npc.citizens_id', 'a', 2),
       'uuid' => _fact('npc.uuid', 's', 2),
       'is_spawned' => _fact('npc.spawned', 'b', 2),
       'health' => _fact('npc.health', 'n', 2),
@@ -625,7 +632,7 @@ class _Expressions {
     return switch (attribute) {
       'online_players' => next == 'size' || next == 'count'
           ? _fact('server.online_players', 'n', 3)
-          : const _Result<_Step>.fail('server.online_players is a list of players; behaviors read only their number'),
+          : _fact('server.players', 'l', 2),
       'max_players' => _fact('server.max_players', 'n', 2),
       'current_time_millis' => _fact('server.time_millis', 'n', 2),
       'current_tick' => _fact('server.tick', 'n', 2),
@@ -690,8 +697,46 @@ class _Expressions {
       return npc.failed ? npc : _Result<_Step>.ok(_Step(npc.value!.expr, npc.value!.next + 1));
     }
     if (key == 'hand' && mapped == 'hand') return _fact("replace(context.hand, '_', '')", 's', 2);
+    final String? attribute = _attributeName(parts, 2);
+    // A world event passes keys and coordinates rather than Denizen objects; the common attributes read those.
+    switch (mapped) {
+      case 'inventory_type':
+        if (attribute == 'inventory_type') return _fact('upper(context.inventory_type)', 's', 3);
+        return const _Result<_Step>.fail('context.inventory is an inventory; Animus passes only its type, as context.inventory.inventory_type');
+      case 'location':
+        if (attribute == null) return _fact('context.location', 's', 2);
+        return switch (attribute) {
+          'x' || 'y' || 'z' || 'block_x' || 'block_y' || 'block_z' => _fact('context.${attribute.substring(attribute.length - 1)}', 'n', 3),
+          'world' => _fact('context.world', 's', _attributeName(parts, 3) == 'name' ? 4 : 3),
+          // Every event that passes a location is a block event, which passes the block too.
+          'material' => _fact("replace(context.block, 'minecraft:', '')", 's', _attributeName(parts, 3) == 'name' ? 4 : 3),
+          _ => _Result<_Step>.fail('tag attribute $attribute of context.location has no Animus expression'),
+        };
+      case 'item':
+      case 'block':
+      case 'damager':
+        if (attribute == 'material' || attribute == 'name' || attribute == 'entity_type') {
+          return _fact("replace(context.$mapped, 'minecraft:', '')", 's', attribute == 'material' && _attributeName(parts, 3) == 'name' ? 4 : 3);
+        }
+        return _fact('context.$mapped', 's', 2);
+      case 'entity':
+        if (attribute == null) return _fact('context.entity', 's', 2);
+        return switch (attribute) {
+          'is_npc' => _fact('false', 'b', 3),
+          'is_player' => _fact("same(context.entity, 'minecraft:player')", 'b', 3),
+          'uuid' => _fact('context.entity_uuid', 's', 3),
+          'entity_type' || 'name' => _fact("replace(context.entity, 'minecraft:', '')", 's', 3),
+          _ => _Result<_Step>.fail('tag attribute $attribute of context.entity has no Animus expression'),
+        };
+      case 'slot':
+        return _fact('(context.slot + 1)', 'n', 2);
+      case 'click':
+        return _fact(key == 'click_type' ? "(upper(context.click) + '_CLICK_BLOCK')" : 'upper(context.click)', 's', 2);
+      default:
+        break;
+    }
     int next = 2;
-    if ((key == 'origin_world' || key == 'destination_world') && _attributeName(parts, 2) == 'name') next = 3;
+    if ((key == 'origin_world' || key == 'destination_world') && attribute == 'name') next = 3;
     final String kind = _contextKinds[mapped] ?? 's';
     return _Result<_Step>.ok(_Step(_Expr('context.$mapped', kind[0]), next));
   }
@@ -844,9 +889,30 @@ class _Expressions {
 
   // ---- Attributes ----
 
+  /// Attributes of a value holding a player: the fact player_info reads, its value when the player is offline, and the
+  /// kind.
+  static const Map<String, List<String>> _playerAttributes = <String, List<String>>{
+    'name': <String>['name', "''", 's'], 'is_online': <String>['online', 'false', 'b'], 'is_op': <String>['op', 'false', 'b'],
+    'health': <String>['health', '0', 'n'], 'world': <String>['world', "''", 's'], 'location': <String>['location', "''", 's'],
+    'gamemode': <String>['gamemode', "''", 's'],
+  };
+
   _Result<_Step> attribute(_Expr expr, List<DenizenPart> parts, int index, _Scope scope, _Pending pending) {
     final DenizenPart part = parts[index];
     final String name = part.name.toLowerCase();
+    // A value holding a player, such as a fan-out's or a loop's player, reads that player's flags and facts.
+    if ((name == 'has_flag' || name == 'flag') && part.parameter != null) {
+      final _Result<String> flag = flagNameExpression(part.parameter!, scope, pending);
+      if (flag.failed) return _Result<_Step>.fail(flag.reason!);
+      if (name == 'has_flag') return _expressionStep('player_has_flag(${expr.text}, ${flag.value})', 'b', index + 1);
+      final String prefix = 'player_flag(${expr.text}, ${flag.value}, ';
+      return _Result<_Step>.ok(_Step(_Expr("$prefix'')", 'a', prefix), index + 1));
+    }
+    final List<String>? fact = _playerAttributes[name];
+    if (part.parameter == null && expr.kind != 's' && expr.kind != 'l' && fact != null) {
+      return _expressionStep("get(player_info(${expr.text}), '${fact[0]}', ${fact[1]})", fact[2], index + 1);
+    }
+    if (part.parameter == null && name == 'uuid' && expr.kind != 'l') return _expressionStep("replace(text(${expr.text}), 'p@', '')", 's', index + 1);
     _Expr? parameter;
     if (part.parameter != null) {
       final _Result<_Expr> value = this.value(part.parameter!, scope, pending);
@@ -924,7 +990,7 @@ class _Expressions {
       case 'include':
         return _expressionStep('append($e, $p)', 'l', next);
       case 'equals':
-        return _expressionStep('same($e, $p)', 'b', next);
+        return _expressionStep('${_equality(expr, parameter)}($e, $p)', 'b', next);
       case 'get':
         return parameter.kind == 'n' ? _expressionStep('get($e, ${_numeric(parameter)} - 1)', 'a', next) : _expressionStep('get($e, $p)', 'a', next);
       case 'substring':
@@ -1066,8 +1132,8 @@ class _Expressions {
     final _Expr l = left.value!;
     final _Expr r = right.value!;
     return _Result<_Cond>.ok(_Atom(switch (operator) {
-      '==' => 'same(${l.text}, ${r.text})',
-      '!=' => '!same(${l.text}, ${r.text})',
+      '==' => '${_equality(l, r)}(${l.text}, ${r.text})',
+      '!=' => '!${_equality(l, r)}(${l.text}, ${r.text})',
       'contains' => 'contains(${l.text}, ${r.text})',
       'in' => 'contains(${r.text}, ${l.text})',
       _ => '${_numeric(l)} $operator ${_numeric(r)}',

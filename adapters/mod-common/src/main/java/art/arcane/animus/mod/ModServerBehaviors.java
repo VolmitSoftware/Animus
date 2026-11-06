@@ -6,6 +6,7 @@ import art.arcane.animus.core.behavior.trigger.ServerCommandSync;
 import art.arcane.animus.core.behavior.trigger.ServerEvent;
 import art.arcane.animus.core.behavior.trigger.ServerTriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerKind;
+import art.arcane.animus.core.platform.ModWorlds;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -17,16 +18,38 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
+import art.arcane.animus.mod.mixin.ContainerMenuAccess;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientGamePacketListener;
+import net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.stats.Stats;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageType;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * Server behaviors on the mod server thread: player events published to the server dispatcher, Animus-managed commands in
@@ -44,18 +67,27 @@ final class ModServerBehaviors {
     private ServerCommandSync sync;
     private List<Diagnostic> logged = List.of();
     private long ticks;
+    /** The loaded dimension keys, refreshed with the fact snapshots, so fact readers on any thread resolve worlds without the server. */
+    private volatile Set<String> dimensions;
 
     ModServerBehaviors(MinecraftServer server, ServerTriggerDispatcher servers, SnapshotFacts facts, Consumer<String> log) {
         this.server = Objects.requireNonNull(server); this.servers = Objects.requireNonNull(servers);
         this.facts = Objects.requireNonNull(facts); this.log = Objects.requireNonNull(log);
+        servers.worlds((String reference) -> ModWorldKeys.resolve(server, reference));
+        dimensions = ModWorldKeys.loaded(server);
+        String levelName = server.getWorldData().getLevelName();
+        facts.worlds((String reference) -> ModWorlds.resolve(reference, levelName, dimensions));
     }
 
     void tick() {
         ticks++;
         if (ticks % SnapshotFacts.REFRESH_TICKS == 0) {
+            dimensions = ModWorldKeys.loaded(server);
             List<ServerPlayer> online = List.copyOf(server.getPlayerList().getPlayers());
             for (ServerPlayer player : online) refresh(player);
-            facts.server(SnapshotFacts.server(online.size(), server.getPlayerList().getMaxPlayers(), server.getTickCount(), System.currentTimeMillis()));
+            List<UUID> ids = new java.util.ArrayList<>(online.size());
+            for (ServerPlayer player : online) ids.add(player.getUUID());
+            facts.server(SnapshotFacts.server(online.size(), server.getPlayerList().getMaxPlayers(), server.getTickCount(), System.currentTimeMillis(), ids));
         }
         if (ticks % COMMAND_TICKS == 0) syncCommands();
     }
@@ -86,6 +118,7 @@ final class ModServerBehaviors {
     }
     void quit(ServerPlayer player) {
         facts.forget(player.getUUID());
+        servers.departed(player.getUUID());
         if (listens(TriggerKind.PLAYER_QUIT)) servers.publish(ServerEvent.quit(player.getUUID()));
     }
     void chat(ServerPlayer player, String message) {
@@ -104,6 +137,133 @@ final class ModServerBehaviors {
     }
     private boolean listens(TriggerKind kind) { return servers.listens(kind); }
 
+    /*
+     * World events. Each answers true when a trigger cancels the action; the mixin then stops it and resyncs the client.
+     * Nothing is built unless a trigger listens, and players a loader fakes (not in the player list) never publish.
+     */
+
+    boolean opening(ServerPlayer player, AbstractContainerMenu menu) {
+        return wants(TriggerKind.PLAYER_INVENTORY_OPEN, player)
+                && servers.decide(ServerEvent.inventory(TriggerKind.PLAYER_INVENTORY_OPEN, player.getUUID(), inventoryType(menu)));
+    }
+    void closing(ServerPlayer player) {
+        if (wants(TriggerKind.PLAYER_INVENTORY_CLOSE, player))
+            servers.publish(ServerEvent.inventory(TriggerKind.PLAYER_INVENTORY_CLOSE, player.getUUID(), inventoryType(player.containerMenu)));
+    }
+    /** Only clicks vanilla would carry out: the open menu, a living non-spectator, a valid slot. A drag counts once, when it ends. */
+    boolean clicking(ServerPlayer player, int containerId, int slot, int button, ContainerInput input) {
+        if (!wants(TriggerKind.PLAYER_INVENTORY_CLICK, player)) return false;
+        AbstractContainerMenu menu = player.containerMenu;
+        if (menu.containerId != containerId || player.isSpectator() || player.isDeadOrDying() || !menu.stillValid(player) || !menu.isValidSlotIndex(slot)) return false;
+        if (input == ContainerInput.QUICK_CRAFT && AbstractContainerMenu.getQuickcraftHeader(button) != 2) return false;
+        ItemStack item = input == ContainerInput.QUICK_CRAFT ? menu.getCarried() : slot >= 0 ? menu.getSlot(slot).getItem() : ItemStack.EMPTY;
+        return servers.decide(ServerEvent.inventoryClick(player.getUUID(), inventoryType(menu), click(input, button), slot < 0 ? -1 : slot, itemKey(item)));
+    }
+    boolean dropping(ServerPlayer player, boolean all) {
+        if (!wants(TriggerKind.PLAYER_ITEM_DROP, player)) return false;
+        ItemStack selected = player.getInventory().getSelectedItem();
+        if (selected.isEmpty()) return false;
+        return servers.decide(ServerEvent.item(TriggerKind.PLAYER_ITEM_DROP, player.getUUID(), itemKey(selected), all ? selected.getCount() : 1));
+    }
+    /** After the delay and owner checks; a full inventory takes nothing, so it publishes nothing. */
+    boolean pickingUp(ServerPlayer player, ItemStack stack) {
+        if (stack.isEmpty() || !wants(TriggerKind.PLAYER_ITEM_PICKUP, player) || player.isSpectator()) return false;
+        if (player.getInventory().getFreeSlot() < 0 && player.getInventory().getSlotWithRemainingSpace(stack) < 0) return false;
+        return servers.decide(ServerEvent.item(TriggerKind.PLAYER_ITEM_PICKUP, player.getUUID(), itemKey(stack), stack.getCount()));
+    }
+    boolean consuming(ServerPlayer player, ItemStack stack) {
+        if (!stack.has(DataComponents.CONSUMABLE) || !wants(TriggerKind.PLAYER_ITEM_CONSUME, player)) return false;
+        return servers.decide(ServerEvent.item(TriggerKind.PLAYER_ITEM_CONSUME, player.getUUID(), itemKey(stack), 1));
+    }
+    boolean clickingBlock(ServerPlayer player, boolean left, InteractionHand hand, BlockPos pos) {
+        if (!wants(TriggerKind.PLAYER_BLOCK_CLICK, player) || player.isSpectator() || !player.isWithinBlockInteractionRange(pos, 1.0)) return false;
+        BlockState state = player.level().getBlockState(pos);
+        if (state.isAir()) return false;
+        return servers.decide(ServerEvent.blockClick(player.getUUID(), left ? "left" : "right", hand == InteractionHand.OFF_HAND ? "off_hand" : "main_hand",
+                blockKey(state.getBlock()), ModWorldKeys.key(player.level()), pos.getX(), pos.getY(), pos.getZ()));
+    }
+    boolean placing(ServerPlayer player, Block block, BlockPos pos) {
+        return wants(TriggerKind.PLAYER_BLOCK_PLACE, player) && servers.decide(ServerEvent.block(TriggerKind.PLAYER_BLOCK_PLACE, player.getUUID(), blockKey(block),
+                ModWorldKeys.key(player.level()), pos.getX(), pos.getY(), pos.getZ()));
+    }
+    boolean breaking(ServerPlayer player, BlockPos pos) {
+        if (!wants(TriggerKind.PLAYER_BLOCK_BREAK, player)) return false;
+        BlockState state = player.level().getBlockState(pos);
+        return !state.isAir() && servers.decide(ServerEvent.block(TriggerKind.PLAYER_BLOCK_BREAK, player.getUUID(), blockKey(state.getBlock()),
+                ModWorldKeys.key(player.level()), pos.getX(), pos.getY(), pos.getZ()));
+    }
+    /** A player taking damage, and a player's own hit on another living entity; either trigger can cancel. Damage vanilla would ignore publishes nothing. */
+    boolean hurting(LivingEntity victim, ServerLevel level, DamageSource source, float amount) {
+        boolean damaged = victim instanceof ServerPlayer && listens(TriggerKind.PLAYER_DAMAGED);
+        boolean dealt = source.getEntity() instanceof ServerPlayer && listens(TriggerKind.PLAYER_DAMAGE_ENTITY);
+        if (!damaged && !dealt || victim.isInvulnerableTo(level, source) || victim.isDeadOrDying()) return false;
+        boolean cancel = false;
+        if (damaged && victim instanceof ServerPlayer player && online(player)) {
+            Entity damager = source.getEntity();
+            cancel = servers.decide(ServerEvent.damaged(player.getUUID(), damageCause(source), amount, damager == null ? "" : entityKey(damager)));
+        }
+        if (source.getEntity() instanceof ServerPlayer attacker && source.getDirectEntity() == attacker && attacker != victim
+                && dealt && online(attacker)) {
+            cancel = servers.decide(ServerEvent.damageEntity(attacker.getUUID(), entityKey(victim), victim.getUUID(), damageCause(source), amount)) || cancel;
+        }
+        return cancel;
+    }
+    /** The killer is the player behind the fatal damage, or else the player credited with the kill. */
+    void killed(LivingEntity victim, DamageSource source) {
+        if (!listens(TriggerKind.PLAYER_KILL)) return;
+        ServerPlayer killer = source.getEntity() instanceof ServerPlayer direct ? direct : victim.getKillCredit() instanceof ServerPlayer credited ? credited : null;
+        if (killer != null && killer != victim && online(killer)) servers.publish(ServerEvent.kill(killer.getUUID(), entityKey(victim), victim.getUUID()));
+    }
+
+    private boolean wants(TriggerKind kind, ServerPlayer player) { return servers.listens(kind) && online(player); }
+    private boolean online(ServerPlayer player) { return server.getPlayerList().getPlayer(player.getUUID()) == player; }
+
+    /** Bukkit InventoryType style: chest, dispenser, workbench, player and so on; other mods' menus keep their full key. */
+    static String inventoryType(AbstractContainerMenu menu) {
+        MenuType<?> type = menu instanceof InventoryMenu ? null : ((ContainerMenuAccess) menu).animus$menuType();
+        if (type == null) return "player";
+        Identifier key = BuiltInRegistries.MENU.getKey(type);
+        if (key == null) return "unknown";
+        if (!key.getNamespace().equals("minecraft")) return key.toString();
+        return switch (key.getPath()) {
+            case "generic_9x1", "generic_9x2", "generic_9x3", "generic_9x4", "generic_9x5", "generic_9x6" -> "chest";
+            case "generic_3x3" -> "dispenser";
+            case "crafter_3x3" -> "crafter";
+            case "crafting" -> "workbench";
+            case "enchantment" -> "enchanting";
+            case "brewing_stand" -> "brewing";
+            case "cartography_table" -> "cartography";
+            default -> key.getPath();
+        };
+    }
+    /** Bukkit ClickType style names. */
+    static String click(ContainerInput input, int button) {
+        return switch (input) {
+            case PICKUP -> button == 1 ? "right" : "left";
+            case QUICK_MOVE -> button == 1 ? "shift_right" : "shift_left";
+            case SWAP -> button == 40 ? "swap_offhand" : "number_key";
+            case CLONE -> "middle";
+            case THROW -> button == 1 ? "control_drop" : "drop";
+            case QUICK_CRAFT -> "drag";
+            case PICKUP_ALL -> "double_click";
+        };
+    }
+    private static String damageCause(DamageSource source) {
+        return source.typeHolder().unwrapKey().map((ResourceKey<DamageType> key) -> key.identifier())
+                .map((Identifier key) -> key.getNamespace().equals("minecraft") ? key.getPath() : key.toString()).orElse("generic");
+    }
+    private static String itemKey(ItemStack stack) { return BuiltInRegistries.ITEM.getKey(stack.getItem()).toString(); }
+    private static String blockKey(Block block) { return BuiltInRegistries.BLOCK.getKey(block).toString(); }
+    private static String entityKey(Entity entity) { return BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString(); }
+
+    /** Undoes a client's predicted change to one block, block entity data included. */
+    static void resendBlock(ServerPlayer player, BlockPos pos) {
+        player.connection.send(new ClientboundBlockUpdatePacket(player.level(), pos));
+        BlockEntity entity = player.level().getBlockEntity(pos);
+        Packet<ClientGamePacketListener> data = entity == null ? null : entity.getUpdatePacket();
+        if (data != null) player.connection.send(data);
+    }
+
     private void refresh(ServerPlayer player) {
         net.minecraft.world.phys.Vec3 at = player.position();
         ItemStack held = player.getMainHandItem();
@@ -111,6 +271,7 @@ final class ModServerBehaviors {
                 player.getFoodData().getFoodLevel(), player.experienceLevel, ModWorldKeys.key(player.level()), at.x(), at.y(), at.z(),
                 player.gameMode().getName(), server.getPlayerList().isOp(player.nameAndId()), player.isShiftKeyDown(), player.getAbilities().flying,
                 BuiltInRegistries.ITEM.getKey(held.getItem()).toString(), held.getCount()));
+        servers.position(player.getUUID(), ModWorldKeys.key(player.level()), at.x(), at.y(), at.z());
     }
 
     /** The commands this sync added to one dispatcher. Every label also answers through {@link #labels}, so a node that could not be removed goes quiet. */

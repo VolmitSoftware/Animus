@@ -346,7 +346,8 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
                 budget(server, "concurrentTotal", defaults.concurrentTotal(), 1, 128, "server"),
                 budget(server, "defaultCooldownTicks", defaults.defaultCooldownTicks(), 0, 72000, "server"),
                 budget(server, "minimumTimerTicks", defaults.minimumTimerTicks(), 20, 72000, "server"),
-                budget(server, "maximumCommands", defaults.maximumCommands(), 0, 64, "server"));
+                budget(server, "maximumCommands", defaults.maximumCommands(), 0, 64, "server"),
+                budget(server, "maximumAreas", defaults.maximumAreas(), 0, 4096, "server"));
     }
 
     private static BuiltinActionSettings actions(JsonObject actions, BuiltinActionSettings defaults) {

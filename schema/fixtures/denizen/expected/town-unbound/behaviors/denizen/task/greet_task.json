@@ -12,6 +12,10 @@
       "type": "any",
       "initial": ""
     },
+    "d_target": {
+      "type": "any",
+      "initial": ""
+    },
     "i_1": {
       "type": "integer",
       "initial": 0
@@ -127,6 +131,23 @@
         {
           "type": "call",
           "routine": "task-greet_task-extra"
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "server.players"
+          },
+          "as": "d_target",
+          "body": {
+            "type": "action",
+            "capability": "animus:message",
+            "arguments": {
+              "text": null
+            },
+            "templates": {
+              "/text": "{{ get(player_info(d_target), 'name', '') }}"
+            }
+          }
         },
         {
           "type": "foreach",

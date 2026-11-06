@@ -1,5 +1,7 @@
 package art.arcane.animus.bukkit.combat;
 
+import art.arcane.animus.bukkit.BukkitWorldLookup;
+
 import art.arcane.animus.core.behavior.builtin.DialogueFormat;
 import art.arcane.animus.core.virtual.VirtualNpcState;
 import art.arcane.animus.core.runtime.PersistedNpcService;
@@ -285,10 +287,7 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
         if (experience > 0) world.spawn(place, ExperienceOrb.class, (ExperienceOrb orb) -> orb.setExperience(experience));
     }
 
-    private World world(String id) {
-        try { return plugin.getServer().getWorld(UUID.fromString(id)); }
-        catch (IllegalArgumentException name) { return plugin.getServer().getWorld(id); }
-    }
+    private World world(String id) { return BukkitWorldLookup.find(plugin.getServer(), id); }
     private static Location location(World world, Vec3 point) { return new Location(world, point.x(), point.y(), point.z()); }
     private static Vector vector(Vec3 point) { return new Vector(point.x(), point.y(), point.z()); }
 }

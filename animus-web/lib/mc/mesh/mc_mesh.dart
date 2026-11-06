@@ -115,7 +115,7 @@ final class McMeshBuilder {
   /// Four corners in winding order (CLOCKWISE seen from outside, so the
   /// geometric normal points inward), four matching `[u, v]` pairs, one shade
   /// and one tint for the whole quad. Every mesher in `lib/mc` follows this
-  /// convention, so the GL pass must keep `CULL_FACE` disabled — spec 3.5
+  /// convention, so the GL pass must keep `CULL_FACE` disabled, spec 3.5
   /// wants displays two-sided anyway.
   void quad(
     List<List<double>> corners,

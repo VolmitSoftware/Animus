@@ -5,6 +5,7 @@ import art.arcane.animus.core.behavior.BehaviorCompiler;
 import art.arcane.animus.core.behavior.BehaviorProgram;
 import art.arcane.animus.core.behavior.catalog.BehaviorPath;
 import art.arcane.animus.core.behavior.catalog.PackManifest;
+import art.arcane.animus.core.behavior.catalog.ServerBehaviorList;
 import art.arcane.animus.core.gui.GuiDocument;
 import art.arcane.animus.core.navigation.WaypointSettings;
 import art.arcane.animus.core.npc.NpcDefinition;
@@ -75,6 +76,10 @@ public final class EditorDocuments {
                 if (store.read("gui/presets.json") != null) found.add(new Location(kind, "presets", "gui/presets.json"));
                 continue;
             }
+            if (kind == DocumentKind.SERVER_BEHAVIORS) {
+                if (store.read(ServerBehaviorList.PATH) != null) found.add(new Location(kind, kind.wireName(), ServerBehaviorList.PATH));
+                continue;
+            }
             List<String> roots = new ArrayList<>(List.of(kind.folder()));
             if (kind == DocumentKind.BEHAVIOR || kind == DocumentKind.PACK) {
                 Path packs = store.resolve("packs");
@@ -110,6 +115,7 @@ public final class EditorDocuments {
                 case BEHAVIOR -> Optional.of(BehaviorPath.idFor(path));
                 case PACK -> path.matches("packs/" + SEGMENT + "/pack\\.json") ? Optional.of(path.substring(6, path.length() - 10)) : Optional.empty();
                 case PRESETS -> path.equals("gui/presets.json") ? Optional.of("presets") : Optional.empty();
+                case SERVER_BEHAVIORS -> path.equals(ServerBehaviorList.PATH) ? Optional.of(kind.wireName()) : Optional.empty();
                 default -> {
                     String rest = path.startsWith(folder) ? path.substring(folder.length(), path.length() - 5) : "";
                     int slash = rest.indexOf('/');
@@ -131,6 +137,7 @@ public final class EditorDocuments {
             }
             case PACK -> "packs/" + id + "/pack.json";
             case PRESETS -> "gui/presets.json";
+            case SERVER_BEHAVIORS -> ServerBehaviorList.PATH;
             default -> kind.folder() + "/" + id.replace(':', '/') + ".json";
         };
         if (!idFor(kind, path).map(id::equals).orElse(false))
@@ -219,6 +226,10 @@ public final class EditorDocuments {
                     if (!recording.id().equals(id))
                         diagnostics.add(diagnostic("error", "$.id", "the recording id is " + recording.id() + " but the document is " + id, "id-mismatch"));
                 } catch (IOException invalid) { problems(diagnostics, List.of(invalid.getMessage().split("; "))); }
+            }
+            case SERVER_BEHAVIORS -> {
+                try { ServerBehaviorList.parse(text); }
+                catch (IOException invalid) { problems(diagnostics, List.of(String.valueOf(invalid.getMessage()))); }
             }
             case SKIN -> {
                 if (!JsonDocuments.hash(text).equals(id))

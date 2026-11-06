@@ -2,6 +2,15 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+.animus-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .animus-rig-editor {
   display: grid;
   gap: 0.75rem;
@@ -15,17 +24,43 @@
   align-items: end;
 }
 
+/* Three panes with the stage in the middle as the focal point; the
+   timeline spans the full width under them. */
 .animus-rig-layout {
   display: grid;
   grid-template-columns: minmax(11rem, 15rem) minmax(0, 1fr) minmax(13rem, 18rem);
-  gap: 0.75rem;
+  grid-template-areas:
+    "tree stage inspector"
+    "timeline timeline timeline";
+  gap: 0.75rem 1rem;
   align-items: start;
 }
 
 .animus-rig-stage {
+  grid-area: stage;
   display: grid;
   gap: 0.5rem;
   min-width: 0;
+}
+
+.animus-rig-pane {
+  min-width: 0;
+}
+
+.animus-rig-pane.is-tree {
+  grid-area: tree;
+}
+
+.animus-rig-pane.is-inspector {
+  grid-area: inspector;
+}
+
+.animus-rig-pane.is-timeline {
+  grid-area: timeline;
+}
+
+.animus-rig-panes {
+  display: none;
 }
 
 .animus-rig-tree,
@@ -45,34 +80,31 @@
 .animus-rig-tree ul {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0.25rem;
   max-height: 22rem;
   overflow: auto;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
 }
 
 .animus-rig-bone {
   display: flex;
   justify-content: space-between;
   gap: 0.5rem;
-  width: 100%;
-  padding: 0.3rem 0.5rem;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
+  padding: 0.35rem 0.5rem;
   cursor: pointer;
 }
 
-.animus-rig-bone:hover,
-.animus-rig-bone:focus-visible {
+.animus-rig-bone:hover {
   background: color-mix(in srgb, var(--animus-muted) 14%, transparent);
 }
 
+.animus-rig-bone:focus-visible {
+  outline: 2px solid var(--ring, #ffb3d6);
+  outline-offset: -2px;
+}
+
 .animus-rig-bone.is-selected {
-  background: color-mix(in srgb, var(--primary, #ff5fa8) 24%, transparent);
+  background: color-mix(in srgb, var(--primary, #ff5fa8) 22%, transparent);
 }
 
 .animus-rig-actions {
@@ -96,6 +128,25 @@
   grid-template-columns: max-content minmax(0, 1fr);
   align-items: center;
   gap: 0.5rem;
+}
+
+.animus-rig-field.is-check {
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.animus-rig-field.is-check > span:first-child,
+.animus-rig-field.is-check > span {
+  color: inherit;
+}
+
+.animus-rig-field.is-check input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--primary, #ff5fa8);
+  cursor: pointer;
 }
 
 .animus-rig-vector {
@@ -128,14 +179,18 @@
   stroke-width: 1.5;
 }
 
+html.light .animus-rig-bone-link {
+  stroke: rgba(20, 18, 20, 0.6);
+}
+
 .animus-rig-bone-dot {
-  fill: rgba(20, 22, 18, 0.75);
+  fill: rgba(20, 18, 20, 0.75);
   stroke: #ffffff;
   stroke-width: 1.5;
 }
 
 .animus-rig-bone-dot.is-selected {
-  fill: #f2c94c;
+  fill: var(--primary, #ff5fa8);
 }
 
 .animus-rig-axis {
@@ -148,57 +203,167 @@
   cursor: grab;
 }
 
+.animus-rig-handle:focus {
+  outline: none;
+}
+
+.animus-rig-handle:focus-visible {
+  stroke: var(--ring, #ffb3d6);
+  stroke-width: 4;
+}
+
 .animus-rig-axis.is-x,
 .animus-rig-handle.is-x {
-  stroke: #e5484d;
+  stroke: var(--animus-axis-x);
 }
 
 .animus-rig-axis.is-y,
 .animus-rig-handle.is-y {
-  stroke: #46a758;
+  stroke: var(--animus-axis-y);
 }
 
 .animus-rig-axis.is-z,
 .animus-rig-handle.is-z {
-  stroke: #3e63dd;
+  stroke: var(--animus-axis-z);
 }
 
-.animus-rig-handle.is-x { fill: #e5484d; }
-.animus-rig-handle.is-y { fill: #46a758; }
-.animus-rig-handle.is-z { fill: #3e63dd; }
+.animus-rig-handle.is-x { fill: var(--animus-axis-x); }
+.animus-rig-handle.is-y { fill: var(--animus-axis-y); }
+.animus-rig-handle.is-z { fill: var(--animus-axis-z); }
 .animus-rig-handle.is-rotate { r: 8; }
 .animus-rig-handle.is-scale { r: 7; }
+
+.animus-rig-handle.is-x:focus-visible,
+.animus-rig-handle.is-y:focus-visible,
+.animus-rig-handle.is-z:focus-visible {
+  stroke: var(--ring, #ffb3d6);
+}
 
 .animus-rig-timeline {
   display: grid;
   gap: 0.5rem;
   min-width: 0;
-  padding-top: 0.5rem;
+  padding-top: 0.75rem;
   border-top: 1px solid var(--animus-border);
 }
 
-.animus-rig-scrubber {
+.animus-rig-names-box {
+  border: 1px solid var(--animus-border);
+  padding: 0.25rem 0.75rem;
+}
+
+.animus-rig-names-toggle {
+  min-height: 2.25rem;
+  width: 100%;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.animus-rig-names-toggle:hover {
+  text-decoration: underline;
+}
+
+.animus-rig-names-caret {
+  width: 1ch;
+  font-family: var(--font-mono);
+  color: var(--animus-muted);
+}
+
+.animus-rig-names-toggle:focus-visible {
+  outline: 2px solid var(--ring, #ffb3d6);
+  outline-offset: 2px;
+}
+
+.animus-rig-names {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
-  gap: 0.75rem;
+  gap: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.animus-rig-names p {
+  margin: 0;
+}
+
+.animus-rig-name-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.animus-rig-name {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  border: 1px solid var(--animus-border);
+}
+
+.animus-rig-name.is-broken {
+  border-color: var(--animus-warning, #e2a336);
+}
+
+.animus-rig-name-head,
+.animus-rig-name-add,
+.animus-rig-name-fix {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   align-items: center;
 }
 
-.animus-rig-range {
-  width: 100%;
-  min-height: 2rem;
-  accent-color: #f2c94c;
+.animus-rig-name-head > :first-child {
+  flex: 0 1 10rem;
+  min-width: 6rem;
 }
 
-.animus-rig-tick {
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
+.animus-rig-name-role {
+  font-size: 0.8125rem;
+  color: var(--animus-muted);
 }
 
-.animus-rig-tracks {
+.animus-rig-name-fix {
+  font-size: 0.8125rem;
+  color: var(--animus-warning, #e2a336);
+}
+
+.animus-rig-transport {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  padding: 0.5rem;
+  background: color-mix(in srgb, var(--animus-muted) 8%, transparent);
+}
+
+.animus-rig-loop-note,
+.animus-rig-status {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.animus-rig-trim {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--animus-warning, #e2a336);
+}
+
+.animus-rig-lanes {
   display: grid;
   gap: 0.25rem;
-  max-height: 16rem;
+  max-height: 20rem;
   overflow: auto;
 }
 
@@ -210,22 +375,116 @@
   font-size: 0.85rem;
 }
 
+.animus-rig-lane-label {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  min-width: 0;
+  min-height: 1.75rem;
+  padding: 0 0.4rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+button.animus-rig-lane-label {
+  cursor: pointer;
+}
+
+button.animus-rig-lane-label:hover {
+  border-color: var(--animus-border);
+}
+
+button.animus-rig-lane-label:focus-visible {
+  outline: 2px solid var(--ring, #ffb3d6);
+  outline-offset: 1px;
+}
+
+.animus-rig-lane-label > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .animus-rig-lane.is-bone .animus-rig-lane-label {
   font-weight: 600;
 }
 
-.animus-rig-lane-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.animus-rig-lane.is-selected .animus-rig-lane-label {
+  border-color: var(--primary, #ff5fa8);
 }
 
-.animus-rig-lane-keys {
+.animus-rig-blend {
+  flex: none;
+  font-size: 0.75rem;
+  color: var(--animus-muted);
+}
+
+.animus-rig-lane-keys,
+.animus-rig-ruler {
   position: relative;
-  height: 1.5rem;
+  height: 1.75rem;
   margin: 0 0.6rem;
-  border-radius: var(--animus-radius);
   background: color-mix(in srgb, var(--animus-muted) 12%, transparent);
+}
+
+.animus-rig-ruler {
+  height: 1.4rem;
+  background: color-mix(in srgb, var(--animus-muted) 20%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.animus-rig-ruler-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  padding-left: 0.2rem;
+  border-left: 1px solid var(--animus-muted);
+  color: var(--animus-muted);
+}
+
+.animus-rig-ruler-mark.is-end {
+  padding: 0 0.2rem 0 0;
+  border-left: 0;
+  border-right: 1px solid var(--animus-muted);
+  transform: translateX(-100%);
+}
+
+.animus-rig-ruler-event {
+  position: absolute;
+  bottom: 0;
+  width: 0.5rem;
+  height: 0.35rem;
+  margin-left: -0.25rem;
+  background: var(--animus-muted);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.animus-rig-lane.is-scrubber {
+  align-items: center;
+}
+
+.animus-rig-lane.is-scrubber .animus-rig-range {
+  margin: 0 0.6rem;
+  width: calc(100% - 1.2rem);
+}
+
+.animus-rig-range {
+  width: 100%;
+  min-height: 2rem;
+  accent-color: var(--primary, #ff5fa8);
+  cursor: pointer;
+}
+
+.animus-rig-tick {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
 }
 
 .animus-rig-playhead {
@@ -234,24 +493,68 @@
   bottom: 0;
   width: 2px;
   margin-left: -1px;
-  background: #f2c94c;
+  background: var(--primary, #ff5fa8);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.animus-rig-hidden-span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--animus-muted) 30%, transparent) 0 4px, transparent 4px 8px);
   pointer-events: none;
 }
 
-.animus-rig-key {
+.animus-rig-key,
+.animus-rig-event {
   position: absolute;
   top: 50%;
+  z-index: 2;
   width: 0.8rem;
   height: 0.8rem;
   padding: 0;
-  border: 1px solid #0d0d0f;
+  border: 1px solid var(--animus-panel);
   background: var(--animus-muted);
   transform: translate(-50%, -50%) rotate(45deg);
+  cursor: grab;
+  touch-action: none;
+}
+
+.animus-rig-key.is-hidden {
+  background: var(--animus-panel);
+  border: 2px solid var(--animus-muted);
+}
+
+.animus-rig-event {
+  transform: translate(-50%, -50%);
   cursor: pointer;
 }
 
-.animus-rig-key.is-selected {
-  background: #f2c94c;
+.animus-rig-key:hover,
+.animus-rig-event:hover {
+  background: var(--secondary-foreground, var(--animus-muted));
+}
+
+.animus-rig-key:focus-visible,
+.animus-rig-event:focus-visible {
+  outline: 2px solid var(--ring, #ffb3d6);
+  outline-offset: 2px;
+}
+
+.animus-rig-key.is-selected,
+.animus-rig-event.is-selected {
+  background: var(--primary, #ff5fa8);
+  border-color: var(--primary, #ff5fa8);
+}
+
+.animus-rig-keybar {
+  align-items: center;
+}
+
+.animus-rig-key-panels {
+  display: grid;
+  gap: 0.5rem;
 }
 
 .animus-rig-keyframe {
@@ -261,30 +564,127 @@
   align-items: center;
   padding: 0.5rem;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
+}
+
+.animus-rig-keyframe > p {
+  margin: 0;
+  flex-basis: 100%;
 }
 
 @media (max-width: 1100px) {
   .animus-rig-layout {
     grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr);
-  }
-
-  .animus-rig-inspector {
-    grid-column: 1 / -1;
+    grid-template-areas:
+      "tree stage"
+      "inspector inspector"
+      "timeline timeline";
   }
 }
 
+/* Phone: the stage on top, then one pane at a time picked by the switch. */
 @media (max-width: 760px) {
   .animus-rig-layout {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "stage"
+      "tree"
+      "inspector"
+      "timeline";
   }
 
-  .animus-rig-stage {
-    order: -1;
+  .animus-rig-panes {
+    display: flex;
+  }
+
+  .animus-rig-layout[data-pane="tree"] .animus-rig-pane:not(.is-tree),
+  .animus-rig-layout[data-pane="inspector"] .animus-rig-pane:not(.is-inspector),
+  .animus-rig-layout[data-pane="timeline"] .animus-rig-pane:not(.is-timeline) {
+    display: none;
   }
 
   .animus-rig-lane {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.1rem;
+  }
+
+  .animus-rig-lane.is-ruler .animus-rig-lane-label {
+    display: none;
+  }
+
+  .animus-rig-lanes {
+    max-height: none;
+  }
+}
+
+/* Touch: keyframes and events keep their small glyph but take a 44 px
+   target; the glyph is drawn by ::before so its states carry over. */
+@media (max-width: 760px), (pointer: coarse) {
+  .animus-rig-lane-keys {
+    min-height: 2.75rem;
+  }
+
+  .animus-rig-key,
+  .animus-rig-event,
+  .animus-rig-key.is-hidden,
+  .animus-rig-key.is-selected,
+  .animus-rig-event.is-selected,
+  .animus-rig-key:hover,
+  .animus-rig-event:hover {
+    width: 2.75rem;
+    height: 2.75rem;
+    border: 0;
+    background: transparent;
+  }
+
+  .animus-rig-key::before,
+  .animus-rig-event::before {
+    content: "";
+    position: absolute;
+    inset: calc(50% - 0.4rem);
+    box-sizing: border-box;
+    border: 1px solid var(--animus-panel);
+    background: var(--animus-muted);
+  }
+
+  .animus-rig-key.is-hidden::before {
+    border: 2px solid var(--animus-muted);
+    background: var(--animus-panel);
+  }
+
+  .animus-rig-key:hover::before,
+  .animus-rig-event:hover::before {
+    background: var(--secondary-foreground, var(--animus-muted));
+  }
+
+  .animus-rig-key.is-selected::before,
+  .animus-rig-event.is-selected::before {
+    border-color: var(--primary, #ff5fa8);
+    background: var(--primary, #ff5fa8);
+  }
+
+  /* Gizmo handles stay round (they are the 3D gizmo) at a 44 px target. */
+  .animus-rig-handle,
+  .animus-rig-handle.is-rotate,
+  .animus-rig-handle.is-scale {
+    r: 22px;
+    fill-opacity: 0.4;
+  }
+}
+
+@media (max-width: 520px) {
+  .animus-rig-editor button:not(.animus-rig-key):not(.animus-rig-event),
+  .animus-rig-editor select,
+  .animus-rig-editor input:not([type="range"]):not([type="checkbox"]),
+  .animus-rig-names-toggle,
+  button.animus-rig-lane-label {
+    min-height: 44px;
+  }
+
+  .animus-rig-panes > * {
+    flex: 1 1 0;
+  }
+
+  .animus-rig-lane-keys {
+    height: 2.75rem;
   }
 }

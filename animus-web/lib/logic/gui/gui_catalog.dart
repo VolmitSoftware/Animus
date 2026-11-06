@@ -66,6 +66,9 @@ enum GuiFieldKind {
 
   /// Free JSON object (`inventory` args).
   object,
+
+  /// Any of [GuiField.choices], as a list of strings.
+  multiChoice,
 }
 
 final class GuiField {
@@ -112,8 +115,9 @@ const Map<String, List<GuiField>> actionFields = <String, List<GuiField>>{
   ],
   'actionbar': <GuiField>[
     GuiField('text', GuiFieldKind.template, required: true),
-    GuiField('ticks', GuiFieldKind.integer),
-    GuiField('priority', GuiFieldKind.choice, choices: _hudPriorities),
+    GuiField('ticks', GuiFieldKind.integer, help: 'Read for Gloss; Animus shows the bar for the client\'s usual time.'),
+    GuiField('slots', GuiFieldKind.multiChoice, choices: <String>['left', 'center', 'right'], help: 'Gloss compositor slots; Animus shows the bar centred.'),
+    GuiField('priority', GuiFieldKind.choice, choices: _hudPriorities, help: 'Read for Gloss; Animus does not rank bars.'),
   ],
   'close': <GuiField>[],
   'navigate': <GuiField>[
@@ -123,7 +127,7 @@ const Map<String, List<GuiField>> actionFields = <String, List<GuiField>>{
   ],
   'inventory': <GuiField>[
     GuiField('id', GuiFieldKind.text, required: true, help: 'The chest GUI to open, such as town:menu.'),
-    GuiField('args', GuiFieldKind.object, help: 'Values readable as args.*.'),
+    GuiField('args', GuiFieldKind.object, help: 'Values readable as args.<name>; names start with a lowercase letter.'),
   ],
   'setSession': <GuiField>[
     GuiField('var', GuiFieldKind.text, required: true, help: 'Readable as session.<var>.'),
@@ -213,6 +217,34 @@ const Map<String, List<GuiField>> actionFields = <String, List<GuiField>>{
   'animus:open-shop': <GuiField>[GuiField('shop', GuiFieldKind.text, required: true, help: 'A shop id, such as town:baker.')],
 };
 
+/// Fields that hold nested action lists.
+const List<String> nestedActionFields = <String>['then', 'else', 'default', 'steps', 'cases', 'branches'];
+
+/// [action] turned into a [type] action: the new type's starting fields,
+/// the common fields, and the nested lists the new type also has. The
+/// second value names the nested lists that are dropped.
+(Map<String, Object?>, List<String>) changeActionType(Map<String, Object?> action, String type) {
+  final Set<String> keeps = <String>{for (final GuiField field in actionFields[type] ?? const <GuiField>[]) field.name};
+  final Map<String, Object?> out = <String, Object?>{
+    ...newAction(type),
+    for (final GuiField common in commonActionFields)
+      if (action.containsKey(common.name)) common.name: action[common.name],
+    if (action.containsKey('atTicks')) 'atTicks': action['atTicks'],
+  };
+  final List<String> dropped = <String>[];
+  for (final String nested in nestedActionFields) {
+    final Object? value = action[nested];
+    final bool filled = value is List<Object?> ? value.isNotEmpty : (value is Map<String, Object?> && value.isNotEmpty);
+    if (!filled) continue;
+    if (keeps.contains(nested)) {
+      out[nested] = value;
+    } else {
+      dropped.add(nested);
+    }
+  }
+  return (out, dropped);
+}
+
 /// A minimal valid action of [type], for the add menu.
 Map<String, Object?> newAction(String type) => switch (type) {
       'command' => <String, Object?>{'type': type, 'command': 'say hello'},
@@ -223,7 +255,7 @@ Map<String, Object?> newAction(String type) => switch (type) {
       'navigate' => <String, Object?>{'type': type, 'mode': 'page', 'target': 'next'},
       'inventory' => <String, Object?>{'type': type, 'id': 'example:menu'},
       'setSession' => <String, Object?>{'type': type, 'var': 'choice', 'value': "'a'"},
-      'give' || 'take' => <String, Object?>{'type': type, 'item': <String, Object?>{'type': 'item', 'item': 'minecraft:bread'}},
+      'give' || 'take' => <String, Object?>{'type': type, 'item': <String, Object?>{'item': 'minecraft:bread'}},
       'economy' => <String, Object?>{'type': type, 'op': 'withdraw', 'amount': '10'},
       'delay' => <String, Object?>{'type': type, 'ticks': 20},
       'sequence' => <String, Object?>{'type': type, 'steps': <Object?>[<String, Object?>{'type': 'message', 'message': 'Step one'}]},
@@ -266,7 +298,8 @@ const int inventorySchemaVersion = 1;
 const Map<String, String> guiExpressionNames = <String, String>{
   'viewer.name': 'The viewer\'s name',
   'viewer.uuid': 'The viewer\'s UUID',
-  'viewer.world': 'The viewer\'s world',
+  'viewer.world': 'The viewer\'s world: its name on Bukkit, its dimension key on mod servers',
+  'viewer.world_key': 'The viewer\'s world as a dimension key, such as minecraft:the_nether',
   'viewer.health': 'Health',
   'viewer.level': 'Experience level',
   'viewer.food': 'Food level',
@@ -304,5 +337,13 @@ const List<String> guiOpenNamespaces = <String>['args.', 'session.', 'state.'];
 /// Every function name expressions can call.
 List<String> get guiExpressionFunctions => previewStandardFunctionNames;
 
-/// The data folder kind for each GUI surface the editors handle.
-const List<DocumentKind> guiKinds = <DocumentKind>[DocumentKind.inventory, DocumentKind.menu, DocumentKind.hologram, DocumentKind.shop];
+/// The data folder kinds the GUI editors write as JSON: the four surfaces,
+/// text animations and the presets document.
+const List<DocumentKind> guiKinds = <DocumentKind>[
+  DocumentKind.inventory,
+  DocumentKind.menu,
+  DocumentKind.hologram,
+  DocumentKind.shop,
+  DocumentKind.textAnimation,
+  DocumentKind.presets,
+];

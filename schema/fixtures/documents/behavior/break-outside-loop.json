@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:stray-break",
+  "entry": "main",
+  "variables": {
+    "count": {"type": "integer", "initial": 0}
+  },
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {"type": "condition", "expression": "count < 1", "then": {"type": "break"}}
+      ]
+    }
+  }
+}

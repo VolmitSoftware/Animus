@@ -131,6 +131,7 @@ final class McGl {
   late McGlTexture _white;
   bool _lost = false;
   final List<void Function()> _restored = <void Function()>[];
+  final List<void Function()> _lostCallbacks = <void Function()>[];
 
   McGlProgram get program => _program;
   bool get lost => _lost;
@@ -140,12 +141,18 @@ final class McGl {
 
   void onRestored(void Function() callback) => _restored.add(callback);
 
+  /// Runs when the browser drops the context (a GPU reset or too many contexts).
+  void onLost(void Function() callback) => _lostCallbacks.add(callback);
+
   void _listen() {
     canvas.addEventListener(
       'webglcontextlost',
       ((web.Event event) {
         event.preventDefault();
         _lost = true;
+        for (final void Function() callback in _lostCallbacks) {
+          callback();
+        }
       }).toJS,
     );
     canvas.addEventListener(

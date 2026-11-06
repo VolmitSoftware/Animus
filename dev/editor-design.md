@@ -96,7 +96,7 @@ Shared pieces Animus implements natively:
 - The `{{ expr }}` expression grammar and standard library described in `DROP_SCRIPT_FORMAT.md` (arithmetic, comparisons, ternary, `clamp`, `lerp`, `select`, `bar`, colours and the rest), with the same 512-character and depth limits. Namespaces `player.*`, `viewer.*`, `server.*`, `time.*` and `args.*` mean the same thing. Animus adds `npc.*` (name, id, health, spawned) and `state.*` mapped to the behavior's flags and quests. `papi(...)` works when PlaceholderAPI is installed, which is a PlaceholderAPI feature, not a Gloss one.
 - Colour text: `&` codes and MiniMessage, as Gloss.
 - Conditions: `show` and `when` as booleans or expression strings.
-- The action list. Animus implements `command`, `sound`, `message`, `title`, `actionBar`, `close`, `navigate`, `setSession`, `give`, `take`, `economy`, `delay`, `sequence`, `if`, `switch`, `chance`, `cooldown`, `stop` and `call`. Gloss-only actions that have no Animus meaning (`camera`, `sky`, `surface`, `glow`, `bossBar`, `connect`, `book`, `dialog` at first) are refused at load with a field diagnostic such as `$.keys.X.actions[1].type: action 'camera' is not available in Animus`. Animus never silently skips an action. Animus-only actions use a namespaced type, for example `{"type": "animus:behavior", "behavior": "town:greeter"}` or `{"type": "animus:trade", "offer": "bread"}`, so they never collide with a future Gloss type.
+- The action list (`schema/gloss/source.json` is the source of truth). Animus implements `command`, `sound`, `message`, `title`, `actionbar`, `close`, `navigate`, `inventory`, `setSession`, `give`, `take`, `economy`, `delay`, `sequence`, `if`, `switch`, `chance`, `cooldown`, `stop`, `call`, `teleport`, `bossbar`, `broadcast`, `effect`, `particle`, `parallel` and `repeat`. Gloss-only actions (`connect`, `surface`, `prompt`, `dialog`, `book`, `emit`, `setState`, `addState`, `clearState`, `sky`, `camera`, `glow`) are refused at load with a field diagnostic such as `$.keys.X.actions[1].type: action 'camera' is not available in Animus`. Animus never silently skips an action. Animus-only actions use a namespaced type, today `{"type": "animus:open-shop", "shop": "town:baker"}`, so they never collide with a future Gloss type.
 - Chest GUI layout: `title`, `resolution`, `mask`, `keys`, `slots`, `list` paging, `show`, `select`, `variants`, `refresh`.
 - Menu components: `button`, `decoration`, `toggle`, `list`, `tabs`, with icon types `text`, `item`, `block`, `playerHead` and `entity`. `customItem` (ItemsAdder, Oraxen, Nexo, CraftEngine, MMOItems) follows later through the same kind of soft integration Gloss uses.
 
@@ -104,29 +104,38 @@ Shared pieces Animus implements natively:
 
 ### Shops
 
-dtlTraders-style shops are an Animus document kind that combines a Gloss-format chest GUI with Animus trade data:
+dtlTraders-style shops are an Animus document kind (`shops/<namespace>/<path>.json`, parsed by core's `ShopDocument`). A shop draws its own window: pages of buy, sell and trade grids keyed by slot, with previous page, close, next page and mode switch controls on the bottom row:
 
 ```json
 {
   "schemaVersion": 1,
   "revision": 1,
   "id": "town:baker",
-  "layout": "town:baker",
-  "currency": "vault",
-  "offers": {
-    "bread": {
-      "item": {"id": "minecraft:bread", "count": 4},
-      "buy": {"price": 12.0},
-      "sell": {"price": 3.0},
-      "stock": {"maximum": 256, "restockTicks": 24000},
-      "limits": {"perPlayer": 64, "periodTicks": 24000}
+  "title": "&6Baker",
+  "modes": ["buy", "sell"],
+  "pages": [
+    {
+      "name": "Bread",
+      "rows": 3,
+      "buy": {
+        "10": {
+          "id": "bread",
+          "type": "buy",
+          "item": {"id": "minecraft:bread", "count": 4},
+          "price": 12,
+          "stock": {"maximum": 256, "restockSeconds": 1200},
+          "limit": {"perPlayer": 64, "resetSeconds": 86400}
+        }
+      },
+      "sell": {
+        "10": {"id": "bread-back", "type": "sell", "item": {"id": "minecraft:bread"}, "price": 3}
+      }
     }
-  },
-  "pages": [{"title": "&6Bread", "slots": {"10": "bread"}}]
+  ]
 }
 ```
 
-`layout` names a chest GUI in `gui/inventories/`. Slot buttons in that layout call `{"type": "animus:trade", "offer": "bread"}`. An NPC opens a shop with the behavior action `animus:open-gui` (below). Stock and limits are behavior-state documents under `state/`, written through the existing state store. The dtlTraders importer writes both the shop and its layout.
+Entry types are `buy`, `sell`, `trade` (`needs` and `gives` item lists), `command` (`commands`, needing the command allow-list) and `static` (decoration). A shop with `owner` and `containers` stocks from and pays into those chests, so it has only trade and static entries, no price and no stock of its own. An NPC opens a shop with `animus:open-shop` or the behavior action `animus:open-gui` (below). Stock and limit counters are kept by the server under each entry's `id`. The dtlTraders and Shopkeepers importers write shops in this form.
 
 ### Opening GUIs from NPCs
 

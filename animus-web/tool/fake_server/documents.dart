@@ -111,6 +111,7 @@ class FakeDocuments {
       DocumentKind.skin => 'skins/$id.json',
       DocumentKind.pack => 'packs/$id/pack.json',
       DocumentKind.presets => 'gui/presets.json',
+      DocumentKind.serverBehaviors => DocumentKind.serverBehaviorsPath,
       _ => '${kind.folder}/${id.replaceFirst(':', '/')}.json',
     };
     final DocumentLocation? back = locateDocument(path);

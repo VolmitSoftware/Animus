@@ -50,7 +50,7 @@ McDisplayTransformJson? mcDisplayTransform(McResolvedModel model, McDisplayPose 
 /// `none`, or a model without the entry) is the identity.
 ///
 /// `ItemTransform.apply` composes the rotation with
-/// `Quaternionf().rotationXYZ(x, y, z)`, which is the matrix `Rx * Ry * Rz` —
+/// `Quaternionf().rotationXYZ(x, y, z)`, which is the matrix `Rx * Ry * Rz` ,
 /// Z reaches the vertex first. (`ModelPart.translateAndRotate` uses
 /// `rotationZYX` instead, which is why `mc_rig_mesher.dart` builds the
 /// opposite chain; the two client call sites genuinely differ.)

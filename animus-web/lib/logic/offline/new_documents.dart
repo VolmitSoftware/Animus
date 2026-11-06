@@ -13,6 +13,7 @@ import '../../model/document_kind.dart';
 import '../data_folder.dart';
 import '../gui/gui_json.dart';
 import '../gui/gui_templates.dart';
+import '../npc/npc_paths.dart';
 import '../rig_edit.dart' show bonesOf, newAnimation, setKeyframe;
 import '../rig_sampler.dart' show TrackTarget;
 
@@ -31,12 +32,13 @@ const List<DocumentKind> creatableKinds = <DocumentKind>[
   DocumentKind.skin,
   DocumentKind.textAnimation,
   DocumentKind.presets,
+  DocumentKind.serverBehaviors,
 ];
 
 /// What each kind is for, in one line, for the New page.
 String kindPurpose(DocumentKind kind) => switch (kind) {
       DocumentKind.npc => 'A character in the world: body, name, skin, position and the behaviors it runs.',
-      DocumentKind.behavior => 'What an NPC does when clicked, approached, on a timer or after an answer.',
+      DocumentKind.behavior => 'Steps an NPC runs when clicked, approached, on a timer or after an answer, or a server behavior that reacts to joins, chat and commands.',
       DocumentKind.pack => 'A named bundle of behaviors, installed under packs/.',
       DocumentKind.route => 'Waypoints an NPC walks, reusable by several NPCs.',
       DocumentKind.recording => 'A player\'s captured movement that NPCs play back; made in game with /animus record.',
@@ -50,6 +52,7 @@ String kindPurpose(DocumentKind kind) => switch (kind) {
       DocumentKind.skin => 'A player skin from a PNG, for player bodies.',
       DocumentKind.textAnimation => 'Frames that GUI text cycles through.',
       DocumentKind.presets => 'Default settings for Gloss GUI documents; one per workspace.',
+      DocumentKind.serverBehaviors => 'Which server behaviors run. Only the ones listed here start; one per workspace.',
     };
 
 /// An id or folder name: lowercase letters, digits, `_` and `-`, starting
@@ -91,6 +94,7 @@ bool validDocumentId(DocumentKind kind, String id) =>
 String _pathFor(DocumentKind kind, String id) {
   if (kind == DocumentKind.pack) return 'packs/$id/pack.json';
   if (kind == DocumentKind.presets) return 'gui/presets.json';
+  if (kind == DocumentKind.serverBehaviors) return DocumentKind.serverBehaviorsPath;
   final int colon = id.indexOf(':');
   final String relative = colon < 0 ? id : '${id.substring(0, colon)}/${id.substring(colon + 1)}';
   return '${kind.folder}/$relative.json';
@@ -106,6 +110,7 @@ String idHint(DocumentKind kind) => switch (kind) {
       DocumentKind.route || DocumentKind.recording || DocumentKind.pack || DocumentKind.group => 'a name such as town-patrol',
       DocumentKind.skin => 'the SHA-256 of the skin file, set for you',
       DocumentKind.presets => 'always presets',
+      DocumentKind.serverBehaviors => 'always server-behaviors',
       _ => 'namespace:path, such as town/welcome written town:welcome',
     };
 
@@ -143,18 +148,25 @@ class NpcSeed {
   final double yaw;
   final List<String> behaviors;
 
-  String get documentId => '${slug(group, fallback: 'local')}/${id ?? slug(name)}';
+  String get documentId => npcIdIn(npcFolderSlug(group), id ?? slug(name));
 }
 
+/// [folder] as typed, made into an NPC folder: each segment a slug, at most
+/// [npcMaxFolders] deep; empty for `npcs/` itself.
+String npcFolderSlug(String folder) => <String>[
+      for (final String segment in normalizeNpcFolder(folder).split('/'))
+        if (segment.trim().isNotEmpty) slug(segment, fallback: 'folder'),
+    ].take(npcMaxFolders).join('/');
+
 JsonMap newNpc(NpcSeed seed, {required String uuid}) {
-  final List<String> parts = seed.documentId.split('/');
+  final String id = npcLocalIdOf(seed.documentId);
   return <String, Object?>{
     'schemaVersion': 1,
     'revision': 1,
     'uuid': uuid,
-    'id': parts[1],
-    'group': parts[0],
-    'name': seed.name.trim().isEmpty ? parts[1] : seed.name.trim(),
+    'id': id,
+    'group': npcFolderOf(seed.documentId),
+    'name': seed.name.trim().isEmpty ? id : seed.name.trim(),
     'type': seed.type,
     'spawned': true,
     'position': <String, Object?>{
@@ -389,7 +401,7 @@ JsonMap newRoute({(double, double, double) origin = (0, 64, 0), String mode = 'w
     'schemaVersion': 1,
     'mode': mode,
     'speed': 2,
-    'order': 'sequential',
+    'order': 'sequence',
     'waitTicks': 40,
     'points': <Object?>[
       for (final (double dx, double dz) in const <(double, double)>[(0, 0), (6, 0), (6, 6), (0, 6)])
@@ -533,6 +545,9 @@ JsonMap newTextAnimation({List<String> frames = const <String>['&eHello', '&6Hel
 
 JsonMap newPresets() => <String, Object?>{'schemaVersion': 1, 'revision': 1};
 
+/// An empty server behaviors list, optionally starting with [behaviors].
+JsonMap newServerBehaviors([List<String> behaviors = const <String>[]]) => <String, Object?>{'schemaVersion': 1, 'behaviors': <Object?>[...behaviors]};
+
 /// GUI documents from the GUI templates, with the title the guided step set.
 JsonMap newGuiDocument(DocumentKind kind, String id, {String? title}) {
   final JsonMap document = newDocument(kind, id);
@@ -570,7 +585,7 @@ JsonMap newGuiDocument(DocumentKind kind, String id, {String? title}) {
 
 /// A default id for a copy of [id] that [taken] does not hold.
 String copyId(DocumentKind kind, String id, Set<String> taken) {
-  if (kind == DocumentKind.presets || kind == DocumentKind.skin) return id;
+  if (kind == DocumentKind.presets || kind == DocumentKind.skin || kind == DocumentKind.serverBehaviors) return id;
   return freeId('$id-copy', taken);
 }
 
@@ -582,9 +597,8 @@ Object? rewriteIdentity(DocumentKind kind, Object? json, String id, {required bo
   final JsonMap out = <String, Object?>{...json};
   switch (kind) {
     case DocumentKind.npc:
-      final List<String> parts = id.split('/');
-      out['group'] = parts.first;
-      out['id'] = parts.last;
+      out['group'] = npcFolderOf(id);
+      out['id'] = npcLocalIdOf(id);
       if (fresh) out['uuid'] = newUuid(random);
     case DocumentKind.behavior:
     case DocumentKind.shop:

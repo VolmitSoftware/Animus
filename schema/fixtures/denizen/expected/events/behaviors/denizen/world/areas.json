@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:world/areas",
+  "server": true,
+  "entry": "on-server-start",
+  "variables": {
+    "t_1": {
+      "type": "any",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "on-server-start": {
+      "type": "sequence",
+      "steps": []
+    },
+    "on-player-enters-market": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "market-inside",
+            "scope": "player"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:actionbar",
+          "arguments": {
+            "text": "&aWelcome to the market"
+          }
+        }
+      ]
+    },
+    "on-player-exits-market": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "market-inside",
+            "scope": "player",
+            "clear": true
+          }
+        },
+        {
+          "type": "return"
+        }
+      ]
+    },
+    "on-player-enters-pond": {
+      "type": "action",
+      "capability": "animus:message",
+      "arguments": {
+        "text": null
+      },
+      "templates": {
+        "/text": "You hear frogs near {{ context.area }}."
+      }
+    },
+    "on-player-exits-old_mill": {
+      "type": "action",
+      "capability": "animus:message",
+      "arguments": {
+        "text": null
+      },
+      "templates": {
+        "/text": "Left the mill by {{ context.cause }}."
+      }
+    },
+    "on-player-enters-arena": {
+      "type": "foreach",
+      "list": {
+        "expression": "players(server.players)"
+      },
+      "as": "t_1",
+      "maximum": 100,
+      "body": {
+        "type": "action",
+        "capability": "animus:title",
+        "arguments": {
+          "title": "&cArena",
+          "player": null
+        },
+        "expressions": {
+          "/player": "t_1"
+        }
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "on-server-start",
+      "event": "server_start",
+      "routine": "on-server-start"
+    },
+    {
+      "id": "on-player-enters-market",
+      "event": "player_area",
+      "phase": "enter",
+      "area": "market",
+      "world": "world",
+      "cuboid": [
+        0,
+        60,
+        0,
+        20,
+        80,
+        20
+      ],
+      "routine": "on-player-enters-market"
+    },
+    {
+      "id": "on-player-exits-market",
+      "event": "player_area",
+      "phase": "leave",
+      "area": "market",
+      "world": "world",
+      "cuboid": [
+        0,
+        60,
+        0,
+        20,
+        80,
+        20
+      ],
+      "routine": "on-player-exits-market"
+    },
+    {
+      "id": "on-player-enters-pond",
+      "event": "player_area",
+      "phase": "enter",
+      "area": "pond",
+      "world": "world",
+      "ellipsoid": [
+        100.123,
+        62,
+        100.5,
+        6,
+        3.25,
+        6
+      ],
+      "routine": "on-player-enters-pond"
+    },
+    {
+      "id": "on-player-exits-old_mill",
+      "event": "player_area",
+      "phase": "leave",
+      "area": "old_mill",
+      "world": "world",
+      "cuboid": [
+        -5,
+        60,
+        -5,
+        5,
+        70,
+        5
+      ],
+      "routine": "on-player-exits-old_mill"
+    },
+    {
+      "id": "on-player-enters-arena",
+      "event": "player_area",
+      "phase": "enter",
+      "area": "arena",
+      "world": "world",
+      "cuboid": [
+        200,
+        60,
+        200,
+        210,
+        70,
+        210
+      ],
+      "routine": "on-player-enters-arena"
+    }
+  ]
+}

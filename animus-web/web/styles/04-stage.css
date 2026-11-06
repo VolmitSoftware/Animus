@@ -6,6 +6,24 @@
   font-display: swap;
 }
 
+/* The stage sky: a quiet near-black with a trace of the brand pink in dark,
+   a light grey in light, so the model and its pink selection carry the
+   colour. Axis colours follow the X red, Y green, Z blue convention and use
+   the theme's semantic red and green; each passes 3:1 on its sky. */
+html.dark {
+  --animus-stage-sky: linear-gradient(180deg, #2b2429 0%, #1a171b 70%, #141215 100%);
+  --animus-axis-x: var(--animus-error, #f0616a);
+  --animus-axis-y: var(--animus-ok, #5dbf6e);
+  --animus-axis-z: #7b9cf5;
+}
+
+html.light {
+  --animus-stage-sky: linear-gradient(180deg, #ecebec 0%, #dcd9db 100%);
+  --animus-axis-x: var(--animus-error, #b42a32);
+  --animus-axis-y: var(--animus-ok, #2a7a38);
+  --animus-axis-z: #2f4fc4;
+}
+
 .animus-npc-preview {
   display: grid;
   gap: 0.75rem;
@@ -32,6 +50,12 @@
   min-width: 0;
 }
 
+.animus-mc-stage-frame {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
 .animus-mc-stage {
   position: relative;
   width: 100%;
@@ -40,15 +64,22 @@
   max-height: 72vh;
   overflow: hidden;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
-  background: #9ebff5;
-  touch-action: none;
+  background: var(--animus-stage-sky, #1a171b);
+  /* Vertical swipes scroll the page; a horizontal drag orbits. A drag in
+     progress takes every direction. */
+  touch-action: pan-y;
   cursor: grab;
   user-select: none;
 }
 
-.animus-mc-stage:active {
+.animus-mc-stage.is-orbiting {
+  touch-action: none;
   cursor: grabbing;
+}
+
+.animus-mc-stage:focus-visible {
+  outline: 2px solid var(--ring, #ffb3d6);
+  outline-offset: 2px;
 }
 
 .animus-mc-gl-host,
@@ -74,7 +105,9 @@
   transform: translate(-50%, -100%);
   font-family: "Minecraft", var(--font-mono);
   line-height: 1.25;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  width: max-content;
   text-align: center;
   color: #ffffff;
   background: rgba(0, 0, 0, 0.25);
@@ -82,21 +115,92 @@
 }
 
 .animus-mc-text.is-nameplate {
-  background: rgba(0, 0, 0, 0.25);
+  white-space: pre;
+  max-width: none;
+}
+
+.animus-mc-text.is-dim {
+  opacity: 0.5;
 }
 
 .animus-mc-text-line {
-  text-shadow: none;
+  text-shadow: inherit;
+}
+
+.animus-mc-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+/* Loading: a straight track with a pink segment that runs across it, the
+   same line as the boot splash. */
+.animus-mc-spinner {
+  position: relative;
+  display: block;
+  width: 6rem;
+  height: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--animus-muted) 35%, transparent);
+}
+
+.animus-mc-spinner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: var(--primary, #ff5fa8);
+  animation: animus-track 1.1s ease-in-out infinite;
+}
+
+@keyframes animus-track {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animus-mc-spinner::before {
+    animation: none;
+    transform: none;
+  }
+}
+
+/* The stage's accessible description, shown as a quiet line so keyboard
+   users find the keys too. */
+.animus-mc-keys {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--animus-muted);
+}
+
+.animus-mc-status {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.animus-mc-status:empty {
+  display: none;
+}
+
+.animus-mc-status p {
+  margin: 0;
 }
 
 .animus-mc-problem {
-  position: absolute;
-  inset: auto 0.75rem 0.75rem 0.75rem;
-  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
   padding: 0.5rem 0.75rem;
-  border-radius: var(--animus-radius);
-  background: rgba(0, 0, 0, 0.7);
-  color: #ffffff;
+  border: 1px solid var(--animus-error);
+  color: var(--animus-error);
 }
 
 .animus-npc-facts {
@@ -124,5 +228,15 @@
 @media (max-width: 760px) {
   .animus-mc-stage {
     aspect-ratio: 3 / 4;
+    max-height: 62vh;
+  }
+}
+
+@media (max-width: 520px) {
+  .animus-npc-preview-bar button,
+  .animus-npc-preview-bar select,
+  .animus-npc-preview-bar input,
+  .animus-mc-status button {
+    min-height: 44px;
   }
 }

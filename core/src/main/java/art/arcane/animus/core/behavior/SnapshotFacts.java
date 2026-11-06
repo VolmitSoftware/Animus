@@ -21,6 +21,7 @@ public final class SnapshotFacts implements BehaviorFacts {
     private final Map<UUID, Map<String, Object>> players = new ConcurrentHashMap<>();
     private final Function<UUID, Optional<Map<String, Object>>> npcs;
     private volatile Map<String, Object> server = Map.of();
+    private volatile Function<String, Optional<String>> worlds = (String reference) -> Optional.empty();
 
     public SnapshotFacts(Function<UUID, Optional<Map<String, Object>>> npcs) { this.npcs = Objects.requireNonNull(npcs); }
 
@@ -32,10 +33,32 @@ public final class SnapshotFacts implements BehaviorFacts {
     }
     public void forget(UUID player) { players.remove(player); }
     public void server(Map<String, Object> facts) { server = Map.copyOf(facts); }
+    /**
+     * The platform's world resolver, which must be quick and safe on any thread: the form its player facts give for a
+     * world name, dimension key or UUID. NPC worlds are reported in that form too, so {@code npc.world} and
+     * {@code player.world} are equal in the same world.
+     */
+    public void worlds(Function<String, Optional<String>> resolver) { worlds = Objects.requireNonNull(resolver); }
 
     @Override public Optional<Map<String, Object>> player(UUID player) { return Optional.ofNullable(players.get(player)); }
-    @Override public Optional<Map<String, Object>> npc(UUID npc) { return npcs.apply(npc); }
+    @Override public Optional<Map<String, Object>> npc(UUID npc) { return npcs.apply(npc).map(this::canonicalWorld); }
     @Override public Map<String, Object> server() { return server; }
+    @Override public Optional<String> world(String reference) {
+        if (reference == null || reference.isBlank()) return Optional.empty();
+        try { return worlds.apply(reference); }
+        catch (RuntimeException failure) { return Optional.empty(); }
+    }
+
+    /** The facts with the world in the resolver's form; a world it does not know stays as the runtime reported it. */
+    private Map<String, Object> canonicalWorld(Map<String, Object> facts) {
+        if (!(facts.get("world") instanceof String reported)) return facts;
+        Optional<String> named = world(reported);
+        if (named.isEmpty() || named.get().equals(reported)) return facts;
+        Map<String, Object> copy = new LinkedHashMap<>(facts);
+        copy.put("world", named.get());
+        if (facts.get("x") instanceof Double x && facts.get("y") instanceof Double y && facts.get("z") instanceof Double z) copy.put("location", location(x, y, z, named.get()));
+        return copy;
+    }
 
     /** The player facts the expression language names, built from plain values; {@code location} is {@code x,y,z,world} to two decimals. */
     public static Map<String, Object> player(String name, UUID uuid, double health, double maxHealth, long food, long level, String world,
@@ -63,11 +86,15 @@ public final class SnapshotFacts implements BehaviorFacts {
         return facts;
     }
 
-    /** NPC facts: name, id, uuid, spawned, health, world, x, y, z, location. */
-    public static Map<String, Object> npc(String name, String id, UUID uuid, boolean spawned, double health, String world, double x, double y, double z) {
+    /**
+     * NPC facts: name, id, citizens_id, uuid, spawned, health, world, x, y, z, location. {@code citizensId} is the numeric
+     * Citizens id of an NPC migrated from Citizens, and the Animus id of any other NPC.
+     */
+    public static Map<String, Object> npc(String name, String id, String citizensId, UUID uuid, boolean spawned, double health, String world, double x, double y, double z) {
         Map<String, Object> facts = new LinkedHashMap<>();
         facts.put("name", name);
         facts.put("id", id);
+        facts.put("citizens_id", citizensId);
         facts.put("uuid", uuid.toString());
         facts.put("spawned", spawned);
         facts.put("health", health);
@@ -79,8 +106,14 @@ public final class SnapshotFacts implements BehaviorFacts {
         return facts;
     }
 
-    public static Map<String, Object> server(long onlinePlayers, long maxPlayers, long tick, long timeMillis) {
-        return Map.of("online_players", onlinePlayers, "max_players", maxPlayers, "tick", tick, "time_millis", timeMillis);
+    /** The most player UUIDs the {@code players} fact lists. */
+    public static final int MAXIMUM_LISTED_PLAYERS = 1024;
+
+    /** Server facts; {@code players} lists the online players' UUIDs, at most {@link #MAXIMUM_LISTED_PLAYERS}. */
+    public static Map<String, Object> server(long onlinePlayers, long maxPlayers, long tick, long timeMillis, java.util.Collection<UUID> players) {
+        java.util.List<String> listed = new java.util.ArrayList<>(Math.min(players.size(), MAXIMUM_LISTED_PLAYERS));
+        for (UUID player : players) { if (listed.size() >= MAXIMUM_LISTED_PLAYERS) break; listed.add(player.toString()); }
+        return Map.of("online_players", onlinePlayers, "players", java.util.List.copyOf(listed), "max_players", maxPlayers, "tick", tick, "time_millis", timeMillis);
     }
 
     /**
@@ -109,13 +142,14 @@ public final class SnapshotFacts implements BehaviorFacts {
                 Map<String, Object> facts = new LinkedHashMap<>();
                 facts.put("name", definition.name());
                 facts.put("id", definition.id());
+                facts.put("citizens_id", definition.citizensId().orElse(definition.id()));
                 facts.put("uuid", npc.toString());
                 facts.put("spawned", false);
                 facts.put("health", 0.0);
                 return Optional.of(facts);
             }
             art.arcane.animus.core.virtual.VirtualNpcState.Snapshot snapshot = state.get();
-            return Optional.of(npc(definition.name(), definition.id(), npc, snapshot.active(), snapshot.health(), snapshot.position().world(),
+            return Optional.of(npc(definition.name(), definition.id(), definition.citizensId().orElse(definition.id()), npc, snapshot.active(), snapshot.health(), snapshot.position().world(),
                     snapshot.position().point().x(), snapshot.position().point().y(), snapshot.position().point().z()));
         };
     }

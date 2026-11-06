@@ -1,5 +1,7 @@
 package art.arcane.animus.bukkit.protection;
 
+import art.arcane.animus.bukkit.BukkitWorldLookup;
+
 import art.arcane.animus.core.virtual.WorldPosition;
 import com.sk89q.worldedit.bukkit.BukkitAdapter;
 import com.sk89q.worldguard.WorldGuard;
@@ -85,10 +87,7 @@ final class WorldGuardRegionFlags implements RegionFlags {
         if (world == null) throw new IllegalStateException("world " + at.world() + " is not loaded");
         return new Location(world, at.point().x(), at.point().y(), at.point().z());
     }
-    private World world(String name) {
-        try { return server.getWorld(UUID.fromString(name)); }
-        catch (IllegalArgumentException notUuid) { return server.getWorld(name); }
-    }
+    private World world(String name) { return BukkitWorldLookup.find(server, name); }
     private static StateFlag flag(Flag flag) {
         return switch (flag) {
             case PVP -> Flags.PVP;

@@ -21,9 +21,11 @@ import '../mc/npc/npc_look.dart';
 import '../mc/npc/npc_playground.dart';
 import '../mc/npc/npc_scene.dart';
 import '../mc/npc/npc_skin.dart';
+import '../mc/npc/npc_skin_failure.dart';
 import '../mc/npc/route_overlay.dart';
 import '../model/animus_document.dart';
 import '../services/skin_images.dart';
+import '../services/skin_textures.dart';
 import 'mc/mc_asset_loader.dart';
 import 'mc/mc_stage.dart';
 
@@ -65,6 +67,7 @@ class _NpcPreviewState extends State<NpcPreview> {
   final McStageController _stage = McStageController();
   final Map<String, (Uint8List, String)> _textures = <String, (Uint8List, String)>{};
   bool? _slim;
+  String? _awaitingSkin;
   String _url = '';
   bool _loading = false;
   String? _shown;
@@ -74,6 +77,8 @@ class _NpcPreviewState extends State<NpcPreview> {
   double _tick = 0;
   bool _playing = false;
   double? _lastFrame;
+  bool _backToIdle = false;
+  String? _skinProblem;
 
   NpcLook get _look {
     final Object? json = component.document.json;
@@ -95,7 +100,15 @@ class _NpcPreviewState extends State<NpcPreview> {
     final bool slim = _slimFor(look);
     final LoadedSkin? loaded = _loaded(look);
     if (loaded != null) return NpcSkinChoice(textureId: loaded.textureId, slim: slim);
-    return slim ? NpcSkinChoice.alex : NpcSkinChoice.steve;
+    return NpcSkinChoice(textureId: SkinImages.placeholderFor(component.document.id, slim: slim).textureId, slim: slim);
+  }
+
+  /// The rig's idle animation id, when the workspace has it.
+  String? get _idleId {
+    final Object? rig = component.rig?.json;
+    final Object? names = rig is Map<String, Object?> ? rig['animations'] : null;
+    final Object? idle = names is Map<String, Object?> ? names['idle'] : null;
+    return idle is String && component.animations.any((AnimusDocument animation) => animation.id == idle) ? idle : null;
   }
 
   Clip? get _clip {
@@ -146,6 +159,7 @@ class _NpcPreviewState extends State<NpcPreview> {
   /// playhead changed.
   void _sync({bool frame = false}) {
     final NpcLook look = _look;
+    _fetchSkin(look);
     final NpcSkinChoice skin = _skinFor(look);
     final JsonMap? route = _showRoute ? component.route : null;
     final AnimusDocument? rig = component.rig;
@@ -168,6 +182,23 @@ class _NpcPreviewState extends State<NpcPreview> {
         ? body
         : withRoute(body, RouteSpec(route), (asDouble(position['x']) ?? 0, asDouble(position['y']) ?? 0, asDouble(position['z']) ?? 0));
     _stage.show(scene.scene, scene.texts, yawDeg: look.yawDeg, frame: frame);
+  }
+
+  /// Fetches a signed skin's texture once its document is here, and redraws
+  /// when it settles. A failed one waits for Retry.
+  void _fetchSkin(NpcLook look, {bool retry = false}) {
+    final String? hash = look.skin;
+    final NpcSkinInfo? info = _skinInfo;
+    if (hash == null || info == null || hash == _awaitingSkin || _loaded(look) != null) return;
+    if (!retry && SkinImages.textures.stateOf(hash)?.status == SkinTextureStatus.failed) return;
+    _awaitingSkin = hash;
+    final Future<void> settled = retry ? SkinImages.textures.retry(hash, info.textureUrl) : SkinImages.textures.load(hash, info.textureUrl);
+    settled.then((void _) {
+      if (_awaitingSkin == hash) _awaitingSkin = null;
+      if (!mounted) return;
+      setState(() {});
+      _sync();
+    });
   }
 
   void _play() {
@@ -196,7 +227,13 @@ class _NpcPreviewState extends State<NpcPreview> {
         }
         if (last != null) {
           _tick += (time - last) / 50;
-          if ((clip.loop == LoopMode.once || clip.loop == LoopMode.hold) && _tick >= clip.durationTicks) {
+          final String? idle = _idleId;
+          if (clip.loop == LoopMode.once && _tick >= clip.durationTicks && idle != null && idle != _animation) {
+            // The server ends a once clip and goes back to the rig's idle.
+            _animation = idle;
+            _tick = 0;
+            _backToIdle = true;
+          } else if ((clip.loop == LoopMode.once || clip.loop == LoopMode.hold) && _tick >= clip.durationTicks) {
             _tick = clip.durationTicks;
             _playing = false;
           }
@@ -212,9 +249,13 @@ class _NpcPreviewState extends State<NpcPreview> {
     setState(() => _loading = true);
     try {
       final LoadedSkin? skin = await load(_skinKey(_look));
-      if (skin != null) ArcaneSonner.success('Skin loaded from ${skin.source}.');
+      if (skin != null) {
+        _skinProblem = null;
+        ArcaneSonner.success('Skin loaded from ${skin.source}.');
+      }
     } on Object catch (failure) {
-      ArcaneSonner.error('Could not load the skin: $failure');
+      _skinProblem = skinFailureText(failure);
+      ArcaneSonner.error(_skinProblem!);
     } finally {
       if (mounted) {
         setState(() => _loading = false);
@@ -261,6 +302,7 @@ class _NpcPreviewState extends State<NpcPreview> {
               onChanged: (String value) {
                 setState(() {
                   _animation = value.isEmpty ? null : value;
+                  _backToIdle = false;
                   _tick = 0;
                   _playing = false;
                 });
@@ -325,9 +367,16 @@ class _NpcPreviewState extends State<NpcPreview> {
       dom.dl(classes: 'animus-npc-facts', <Widget>[
         ..._fact('Body', scene.presentable ? look.type : '${look.type} (not presented)'),
         if (component.rig != null)
-          ..._fact('Rig', '${component.rig!.id}${_animation == null ? ', rest pose' : ', $_animation at tick ${_tick.toStringAsFixed(1)}'}'),
+          ..._fact('Rig', '${component.rig!.id}${_animation == null ? ', rest pose' : ', $_animation at tick ${_tick.toStringAsFixed(1)}${_backToIdle ? ' (back to idle after a once clip, as the server does)' : ''}'}'),
         if (player) ..._fact('Pose', look.pose.name),
-        if (player) ..._fact('Skin', _skinText(look, info, loaded, slim)),
+        if (player) ...<Widget>[
+          const dom.dt(<Widget>[Component.text('Skin')]),
+          dom.dd(attributes: const <String, String>{'data-testid': 'npc-skin-state'}, <Widget>[
+            Component.text(_skinText(look, info, loaded, slim)),
+            if (loaded == null && look.skin != null && SkinImages.textures.stateOf(look.skin!)?.status == SkinTextureStatus.failed)
+              Button.ghost(label: 'Retry texture', size: ButtonSize.small, onPressed: () => _fetchSkin(look, retry: true)),
+          ]),
+        ],
         if (look.armorStand != null) ..._fact('Armor stand', _armorStandText(look.armorStand!)),
         ..._fact(
           'Equipment',
@@ -337,8 +386,9 @@ class _NpcPreviewState extends State<NpcPreview> {
         ),
         ..._fact('Text', look.textLines.isEmpty ? (look.nativeName ? 'nameplate only' : 'none') : '${look.textLines.length} line${look.textLines.length == 1 ? '' : 's'}'),
       ]),
-      if (scene.notes.isNotEmpty)
+      if (scene.notes.isNotEmpty || _skinProblem != null)
         dom.ul(classes: 'animus-npc-notes', <Widget>[
+          if (_skinProblem != null) dom.li(<Widget>[Component.text(_skinProblem!)]),
           for (final String note in scene.notes) dom.li(<Widget>[Component.text(note)]),
         ]),
     ]);
@@ -347,9 +397,13 @@ class _NpcPreviewState extends State<NpcPreview> {
   String _skinText(NpcLook look, NpcSkinInfo? info, LoadedSkin? loaded, bool slim) {
     final String model = slim ? 'slim' : 'classic';
     if (loaded != null) return '${loaded.source} ($model)';
-    if (look.skin == null) return 'default ${slim ? 'Alex' : 'Steve'} ($model); the definition names no skin';
-    if (info == null) return 'skins/${look.skin}.json is not in this workspace; default skin ($model)';
-    return 'signed skin ${look.skin!.substring(0, 12)} ($model); the server supplies its texture once connected, or load a PNG';
+    final String placeholder = 'placeholder ${SkinImages.placeholderLook(component.document.id).label} skin ($model)';
+    if (look.skin == null) return 'the $placeholder, in this preview only; the definition names no skin, so the server shows a default skin';
+    if (info == null) return 'skins/${look.skin}.json is not in this workspace; showing the $placeholder';
+    final String signed = 'signed skin ${look.skin!.substring(0, look.skin!.length.clamp(0, 12))} ($model)';
+    final SkinTextureState? state = SkinImages.textures.stateOf(look.skin!);
+    if (state?.status == SkinTextureStatus.failed) return '$signed; texture not loaded: ${state!.message}. Showing the $placeholder; retry or load a PNG';
+    return '$signed; loading its texture from textures.minecraft.net, showing the $placeholder until then';
   }
 
   String _armorStandText(NpcArmorStand stand) => <String>[

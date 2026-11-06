@@ -1,10 +1,17 @@
 package art.arcane.animus.mod;
 
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.level.Level;
@@ -81,5 +88,62 @@ public final class ModHooks {
     public static boolean suppressesDrops(LivingEntity entity) {
         AnimusModRuntime active = runtime;
         return active != null && active.suppressesDrops(entity);
+    }
+
+    /*
+     * Server behavior world events, on the server thread. A true answer means a trigger cancelled the action; the caller
+     * stops it and resyncs the client.
+     */
+
+    public static boolean opening(ServerPlayer player, AbstractContainerMenu menu) {
+        ModServerBehaviors behaviors = behaviors();
+        return behaviors != null && behaviors.opening(player, menu);
+    }
+    public static void closing(ServerPlayer player) {
+        ModServerBehaviors behaviors = behaviors();
+        if (behaviors != null) behaviors.closing(player);
+    }
+    public static boolean clicking(ServerPlayer player, int containerId, int slot, int button, ContainerInput input) {
+        ModServerBehaviors behaviors = behaviors();
+        return behaviors != null && behaviors.clicking(player, containerId, slot, button, input);
+    }
+    public static boolean dropping(ServerPlayer player, boolean all) {
+        ModServerBehaviors behaviors = behaviors();
+        return behaviors != null && behaviors.dropping(player, all);
+    }
+    public static boolean pickingUp(ServerPlayer player, ItemStack stack) {
+        ModServerBehaviors behaviors = behaviors();
+        return behaviors != null && behaviors.pickingUp(player, stack);
+    }
+    public static boolean consuming(ServerPlayer player, ItemStack stack) {
+        ModServerBehaviors behaviors = behaviors();
+        return behaviors != null && behaviors.consuming(player, stack);
+    }
+    public static boolean clickingBlock(ServerPlayer player, boolean left, InteractionHand hand, BlockPos pos) {
+        ModServerBehaviors behaviors = behaviors();
+        return behaviors != null && behaviors.clickingBlock(player, left, hand, pos);
+    }
+    public static boolean placing(ServerPlayer player, Block block, BlockPos pos) {
+        ModServerBehaviors behaviors = behaviors();
+        return behaviors != null && behaviors.placing(player, block, pos);
+    }
+    public static boolean breaking(ServerPlayer player, BlockPos pos) {
+        ModServerBehaviors behaviors = behaviors();
+        return behaviors != null && behaviors.breaking(player, pos);
+    }
+    public static boolean hurting(LivingEntity victim, ServerLevel level, DamageSource source, float amount) {
+        ModServerBehaviors behaviors = behaviors();
+        return behaviors != null && behaviors.hurting(victim, level, source, amount);
+    }
+    public static void killed(LivingEntity victim, DamageSource source) {
+        ModServerBehaviors behaviors = behaviors();
+        if (behaviors != null) behaviors.killed(victim, source);
+    }
+    /** Undoes a client's predicted change to one block, block entity data included. */
+    public static void resendBlock(ServerPlayer player, BlockPos pos) { ModServerBehaviors.resendBlock(player, pos); }
+
+    private static ModServerBehaviors behaviors() {
+        AnimusModRuntime active = runtime;
+        return active == null ? null : active.serverBehaviors();
     }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import '../logic/data_folder.dart';
@@ -6,6 +7,7 @@ import '../logic/shared_schemas.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import '../model/server_binding.dart';
+import 'workspace_coordination.dart';
 import 'workspace_repository.dart';
 
 typedef StoreListener = void Function();
@@ -25,42 +27,134 @@ class DocumentChange {
 
 /// Where a new document of [kind] with [id] lives in the data folder.
 String documentPath(DocumentKind kind, String id) {
+  if (kind == DocumentKind.serverBehaviors) return DocumentKind.serverBehaviorsPath;
   final int colon = id.indexOf(':');
   final String relative = colon < 0 ? id : '${id.substring(0, colon)}/${id.substring(colon + 1)}';
   return '${kind.folder}/$relative.json';
 }
 
+/// The problem shown when another tab saved first and this tab reloaded.
+const String reloadedFromOtherTab = 'Another tab changed this workspace, so this tab reloaded it. Your last edit here was not kept.';
+
+/// The problem shown when another tab deleted the open workspace.
+const String deletedInOtherTab = 'Another tab deleted this workspace, so it is no longer in this browser. '
+    'That tab can restore it until it is closed.';
+
+/// The sentence for a save the browser refused: the cause and what to do.
+String saveFailureMessage(Object failure) {
+  if (failure is WorkspaceWriteFailure && failure.quota) {
+    return 'The last change was not saved: the browser refused to write (it is out of storage space for this site). '
+        'Free space or export a zip, then try again.';
+  }
+  final String reason = failure is WorkspaceWriteFailure ? failure.reason : '$failure';
+  return 'The last change was not saved: the browser refused to write ($reason). Export a zip to keep a copy, then try again.';
+}
+
+/// What a commit did, for "Undid: ..." when no label was given.
+String describeChanges(List<DocumentChange> documents, Iterable<String> resources, bool Function(DocumentChange change) exists) {
+  if (documents.length == 1) {
+    final DocumentChange change = documents.single;
+    if (change.source == null) return 'delete ${change.id}';
+    return exists(change) ? 'edit ${change.id}' : 'create ${change.id}';
+  }
+  if (documents.isEmpty) return resources.length == 1 ? 'change ${resources.single}' : 'change ${resources.length} files';
+  return 'change ${documents.length} documents';
+}
+
 /// Document state for the open workspace. Connection state lives elsewhere.
 class EditorStore {
-  EditorStore({required this.repository, required this.schemas, String Function()? newId})
-      : _newId = newId ?? _timeId;
+  EditorStore({
+    required this.repository,
+    required this.schemas,
+    String Function()? newId,
+    this.events = const SilentWorkspaceEvents(),
+    this.locks = const UnsharedWorkspaceLocks(),
+    this.persistent = true,
+    this.onWorkspaceCreated,
+  }) : _newId = newId ?? _timeId {
+    events.listen(_heard);
+  }
 
   final WorkspaceRepository repository;
   final SharedSchemas schemas;
   final String Function() _newId;
-  final List<StoreListener> _listeners = <StoreListener>[];
-  final List<WorkspaceSnapshot> _undo = <WorkspaceSnapshot>[];
 
-  /// Undo steps kept per workspace, in memory and in the repository.
+  /// Save and delete notices to and from the other tabs.
+  final WorkspaceEvents events;
+
+  /// The per-workspace lock behind [ownedByThisTab].
+  final WorkspaceLocks locks;
+  final List<StoreListener> _listeners = <StoreListener>[];
+  final List<HistoryStep> _undo = <HistoryStep>[];
+  final List<HistoryStep> _redo = <HistoryStep>[];
+
+  /// False when the repository forgets everything on close (no IndexedDB),
+  /// which the shell says in a banner.
+  final bool persistent;
+
+  /// Called after a workspace is created, so the browser can be asked to
+  /// keep this site's storage.
+  final void Function()? onWorkspaceCreated;
+
+  /// Undo (and redo) steps kept per workspace, in memory and in the
+  /// repository.
   static const int undoLimit = 50;
 
   WorkspaceSnapshot? _workspace;
   WorkspaceSnapshot? _deleted;
   Future<void> _queue = Future<void>.value();
+  int _pending = 0;
   String? _coalesce;
   List<WorkspaceSummary> _workspaces = const <WorkspaceSummary>[];
+  bool _listed = false;
+  String? _listProblem;
   List<String> _ignored = const <String>[];
   String? _problem;
+  bool _unsaved = false;
+  bool _gone = false;
+  bool _owned = false;
+  bool _heldElsewhere = false;
+  String? _lock;
 
   WorkspaceSnapshot? get workspace => _workspace;
   List<WorkspaceSummary> get workspaces => _workspaces;
+
+  /// False until the workspace list has loaded once.
+  bool get workspacesListed => _listed;
+
+  /// Why the workspace list could not be read, when it could not.
+  String? get listProblem => _listProblem;
 
   /// Paths in the last opened folder that are not documents.
   List<String> get ignored => _ignored;
 
   /// The last load or save failure, for the shell to show.
   String? get problem => _problem;
+
+  /// True while the open workspace holds an edit the browser refused to
+  /// store; [saveAgain] retries it.
+  bool get hasUnsavedEdit => _unsaved;
+
+  /// True while a commit is queued or an edit is held only in memory: the
+  /// page asks before it closes.
+  bool get hasPendingWork => _pending > 0 || _unsaved;
+
+  /// True when this tab holds the open workspace's lock. Only the owning tab
+  /// should talk to a server for it (send change sets, resume them after a
+  /// reload); another tab with the same workspace open waits and takes over
+  /// when the owner closes.
+  bool get ownedByThisTab => _owned;
+
+  /// True while another tab holds the open workspace's lock and this one
+  /// waits for it (not merely before the first answer).
+  bool get heldByAnotherTab => _heldElsewhere;
+
   bool get canUndo => _undo.isNotEmpty;
+  bool get canRedo => _redo.isNotEmpty;
+
+  /// What Undo and Redo would revert or repeat, such as `rename town:baker`.
+  String? get undoLabel => _undo.isEmpty ? null : _undo.last.label;
+  String? get redoLabel => _redo.isEmpty ? null : _redo.last.label;
 
   void addListener(StoreListener listener) => _listeners.add(listener);
 
@@ -72,8 +166,28 @@ class EditorStore {
     }
   }
 
+  /// True once after another tab deleted the open workspace, so the app can
+  /// go home.
+  bool takeWorkspaceGone() {
+    final bool gone = _gone;
+    _gone = false;
+    return gone;
+  }
+
+  void dismissProblem() {
+    if (_problem == null || _unsaved) return;
+    _problem = null;
+    _changed();
+  }
+
   Future<void> refreshWorkspaces() async {
-    _workspaces = await repository.list();
+    try {
+      _workspaces = await repository.list();
+      _listProblem = null;
+    } on Object catch (failure) {
+      _listProblem = 'The workspaces in this browser could not be read ($failure). Reload the page to try again.';
+    }
+    _listed = true;
     _changed();
   }
 
@@ -92,11 +206,12 @@ class EditorStore {
     if (trimmed.isEmpty) return;
     final WorkspaceSnapshot? current = _workspace;
     if (current?.id == id) {
-      await _enqueue(() => _save(current!, current.next(name: trimmed), recordUndo: false));
+      await _enqueue(() => _save(current!, current.next(name: trimmed)));
     } else {
       final WorkspaceSnapshot? stored = await repository.load(id);
       if (stored == null) return;
       await repository.save(stored.next(name: trimmed));
+      events.announce(WorkspaceEvent(WorkspaceEventKind.saved, id, generation: stored.generation + 1));
     }
     await refreshWorkspaces();
   }
@@ -114,6 +229,7 @@ class EditorStore {
       resources: source.resources,
     );
     await repository.save(copy);
+    events.announce(WorkspaceEvent(WorkspaceEventKind.saved, copy.id, generation: 1));
     await refreshWorkspaces();
     return copy;
   }
@@ -122,15 +238,9 @@ class EditorStore {
   Future<WorkspaceSnapshot?> restoreDeleted() async {
     final WorkspaceSnapshot? deleted = _deleted;
     if (deleted == null) return null;
-    final WorkspaceSnapshot restored = WorkspaceSnapshot(
-      id: deleted.id,
-      name: deleted.name,
-      generation: 1,
-      documents: deleted.documents,
-      resources: deleted.resources,
-      server: deleted.server,
-    );
+    final WorkspaceSnapshot restored = deleted.atGeneration(1);
     await repository.save(restored);
+    events.announce(WorkspaceEvent(WorkspaceEventKind.saved, restored.id, generation: 1));
     _deleted = null;
     await refreshWorkspaces();
     return restored;
@@ -147,12 +257,16 @@ class EditorStore {
       resources: result.resources,
     );
     await repository.save(snapshot);
+    events.announce(WorkspaceEvent(WorkspaceEventKind.saved, snapshot.id, generation: 1));
+    onWorkspaceCreated?.call();
     _workspace = snapshot;
     _ignored = result.ignored;
-    _undo.clear();
-    _coalesce = null;
+    _resetHistory();
     _problem = null;
+    _unsaved = false;
+    await _claim(snapshot.id);
     _workspaces = await repository.list();
+    _listed = true;
     _changed();
     return snapshot;
   }
@@ -164,48 +278,58 @@ class EditorStore {
     if (snapshot == null) {
       snapshot = WorkspaceSnapshot(id: id, name: name, generation: 1, documents: const <AnimusDocument>[], server: binding);
       await repository.save(snapshot);
+      events.announce(WorkspaceEvent(WorkspaceEventKind.saved, id, generation: 1));
     }
     if (_workspace?.id != id) {
       _workspace = snapshot;
       _ignored = const <String>[];
-      _undo.clear();
-      _coalesce = null;
+      _resetHistory();
+      _unsaved = false;
+      await _claim(id);
     }
     _problem = null;
     _workspaces = await repository.list();
+    _listed = true;
     _changed();
     return snapshot;
   }
 
-  /// Opens a stored workspace with its saved undo steps; returns false when
-  /// it does not exist.
+  /// Opens a stored workspace with its saved undo and redo steps; returns
+  /// false when it does not exist.
   Future<bool> openWorkspace(String id) async {
     if (_workspace?.id == id) return true;
     final WorkspaceSnapshot? snapshot = await repository.load(id);
-    final List<WorkspaceSnapshot> steps = snapshot == null ? const <WorkspaceSnapshot>[] : await repository.loadUndo(id);
     _workspace = snapshot;
     _ignored = const <String>[];
-    _undo
-      ..clear()
-      ..addAll(steps);
-    _coalesce = null;
-    _problem = snapshot == null ? 'Workspace $id is not in this browser.' : null;
+    _resetHistory();
+    if (snapshot != null) await _loadHistory(id);
+    _unsaved = false;
+    _problem = snapshot == null ? 'There is no workspace "$id" in this browser. It may have been deleted, or made in another browser.' : null;
+    if (snapshot != null) {
+      await _claim(id);
+    } else {
+      _release();
+    }
     _changed();
     return snapshot != null;
   }
 
   void closeWorkspace() {
     _workspace = null;
-    _undo.clear();
+    _resetHistory();
+    _unsaved = false;
+    _release();
     _changed();
   }
 
-  /// Deletes a workspace and its undo steps. [restoreDeleted] brings the
-  /// last one back while this page is open.
+  /// Deletes a workspace and its history. [restoreDeleted] brings the last
+  /// one back while this page is open.
   Future<void> deleteWorkspace(String id) async {
     _deleted = await loadWorkspace(id);
     await repository.delete(id);
-    await repository.clearUndo(id);
+    await repository.clearHistory(id, HistoryStack.undo);
+    await repository.clearHistory(id, HistoryStack.redo);
+    events.announce(WorkspaceEvent(WorkspaceEventKind.deleted, id));
     if (_workspace?.id == id) closeWorkspace();
     await refreshWorkspaces();
   }
@@ -227,12 +351,15 @@ class EditorStore {
   /// revalidates them with the animations that depend on changed rigs.
   /// Commits run one at a time in call order. Successive commits with the
   /// same [coalesce] key (typing into one field) share one undo step.
+  /// [label] says what the step did for the Undo and Redo notices, such as
+  /// `rename town:baker`; without one it is worked out from the changes.
   Future<void> commit({
     List<DocumentChange> documents = const <DocumentChange>[],
     Map<String, Uint8List?> resources = const <String, Uint8List?>{},
     String? coalesce,
     ServerBinding Function(ServerBinding binding)? server,
     bool undoable = true,
+    String? label,
   }) => _enqueue(() async {
     final WorkspaceSnapshot? current = _workspace;
     if (current == null) return;
@@ -240,6 +367,8 @@ class EditorStore {
     final List<AnimusDocument> next = List<AnimusDocument>.of(current.documents);
     final Set<String> touched = <String>{};
     bool changed = false;
+    final String description = label ??
+        describeChanges(documents, resources.keys, (DocumentChange change) => next.any((AnimusDocument d) => d.kind == change.kind && d.id == change.id));
     for (final DocumentChange change in documents) {
       final int index = next.indexWhere((AnimusDocument document) => document.kind == change.kind && document.id == change.id);
       final String? source = change.source;
@@ -285,23 +414,60 @@ class EditorStore {
       final AnimusDocument fresh = validateSource(DocumentLocation(document.kind, document.id), document.path, document.source, schemas);
       next[index] = fresh.copyWith(diagnostics: <Diagnostic>[...fresh.diagnostics, ...validateAnimationStructure(fresh.json, rigs[rig])]);
     }
+    if (touched.any((String key) => key.startsWith('rig:') || key.startsWith('animation:'))) {
+      final Map<String, Object?> animations = <String, Object?>{
+        for (final AnimusDocument document in next)
+          if (document.kind == DocumentKind.animation) document.id: document.json,
+      };
+      for (int index = 0; index < next.length; index++) {
+        final AnimusDocument document = next[index];
+        if (document.kind != DocumentKind.rig) continue;
+        final AnimusDocument fresh = validateSource(DocumentLocation(document.kind, document.id), document.path, document.source, schemas);
+        next[index] = fresh.copyWith(diagnostics: <Diagnostic>[...fresh.diagnostics, ...validateRigAnimations(fresh.json, animations)]);
+      }
+    }
     final bool merge = coalesce != null && coalesce == _coalesce && _undo.isNotEmpty;
-    await _save(current, current.next(documents: next, resources: nextResources, server: binding), recordUndo: undoable && !merge);
+    final bool saved = await _save(
+      current,
+      current.next(documents: next, resources: nextResources, server: binding),
+      record: undoable && !merge ? HistoryStep(description, current) : null,
+    );
+    if (!saved) return;
+    if (changed) await _clearRedo(current.id);
     _coalesce = undoable ? coalesce : null;
   });
 
-  Future<void> undo() => _enqueue(() async {
+  /// Goes back one step; returns what the step did, or null when there was
+  /// nothing to undo.
+  Future<String?> undo() => _enqueue(() => _travel(_undo, HistoryStack.undo, _redo, HistoryStack.redo));
+
+  /// Repeats the last undone step; returns what it did, or null.
+  Future<String?> redo() => _enqueue(() => _travel(_redo, HistoryStack.redo, _undo, HistoryStack.undo));
+
+  Future<String?> _travel(List<HistoryStep> from, HistoryStack fromStack, List<HistoryStep> to, HistoryStack toStack) async {
     final WorkspaceSnapshot? current = _workspace;
-    if (current == null || _undo.isEmpty) return;
-    final WorkspaceSnapshot previous = _undo.removeLast();
+    if (current == null || from.isEmpty) return null;
+    final HistoryStep step = from.removeLast();
     _coalesce = null;
-    await _persistUndo(() => repository.popUndo(current.id));
-    await _save(current, current.next(documents: previous.documents, resources: previous.resources), recordUndo: false);
+    await _persistHistory(() => repository.popHistory(current.id, fromStack));
+    final bool saved = await _save(current, current.next(documents: step.snapshot.documents, resources: step.snapshot.resources));
+    if (!saved) return null;
+    final HistoryStep back = HistoryStep(step.label, current);
+    to.add(back);
+    if (to.length > undoLimit) to.removeAt(0);
+    await _persistHistory(() => repository.pushHistory(current.id, toStack, back, undoLimit));
+    return step.label;
+  }
+
+  /// Tries again to store an edit the browser refused.
+  Future<void> saveAgain() => _enqueue(() async {
+    final WorkspaceSnapshot? current = _workspace;
+    if (current == null || !_unsaved) return;
+    await _save(current, current.next());
   });
 
-  /// Undo steps are a convenience: a failed write to them never blocks the
-  /// edit itself.
-  Future<void> _persistUndo(Future<void> Function() write) async {
+  /// History is a convenience: a failed write to it never blocks the edit.
+  Future<void> _persistHistory(Future<void> Function() write) async {
     try {
       await write();
     } on Object {
@@ -309,31 +475,141 @@ class EditorStore {
     }
   }
 
-  Future<void> _enqueue(Future<void> Function() task) {
-    final Future<void> run = _queue.then((void _) => task());
-    _queue = run.then<void>((void _) {}, onError: (Object _) {});
+  Future<void> _clearRedo(String id) async {
+    if (_redo.isEmpty) return;
+    _redo.clear();
+    await _persistHistory(() => repository.clearHistory(id, HistoryStack.redo));
+  }
+
+  void _resetHistory() {
+    _undo.clear();
+    _redo.clear();
+    _coalesce = null;
+  }
+
+  Future<void> _loadHistory(String id) async {
+    try {
+      _undo.addAll(await repository.loadHistory(id, HistoryStack.undo));
+      _redo.addAll(await repository.loadHistory(id, HistoryStack.redo));
+    } on Object {
+      _resetHistory();
+    }
+  }
+
+  Future<T> _enqueue<T>(Future<T> Function() task) {
+    _pending++;
+    final Future<T> run = _queue.then((void _) => task());
+    _queue = run.then<void>((T _) {}, onError: (Object _) {}).whenComplete(() => _pending--);
     return run;
   }
 
-  Future<void> _save(WorkspaceSnapshot current, WorkspaceSnapshot next, {bool recordUndo = true}) async {
+  /// Saves [next] over [current]; true when the edit stands (stored, or kept
+  /// in memory after the browser refused it), false when another tab won and
+  /// this tab reloaded.
+  Future<bool> _save(WorkspaceSnapshot current, WorkspaceSnapshot next, {HistoryStep? record}) async {
     try {
       await repository.save(next);
-    } on WorkspaceConflict catch (conflict) {
-      _problem = 'Another tab changed this workspace (generation ${conflict.storedGeneration}). Reloaded its copy; your last edit was not saved.';
-      _workspace = await repository.load(current.id);
-      _undo.clear();
-      await _persistUndo(() => repository.clearUndo(current.id));
+    } on WorkspaceConflict {
+      await _reload(current.id, lost: true);
+      return false;
+    } on Object catch (failure) {
+      // The edit stays on screen at the stored generation, so the next save
+      // (or Save again) writes it on top of the stored copy.
+      _keep(current, next.atGeneration(current.generation), record);
+      _unsaved = true;
+      _problem = saveFailureMessage(failure);
       _changed();
-      return;
+      return true;
     }
-    if (recordUndo) {
-      _undo.add(current);
+    _keep(current, next, record);
+    if (record != null) await _persistHistory(() => repository.pushHistory(current.id, HistoryStack.undo, record, undoLimit));
+    _unsaved = false;
+    _problem = null;
+    events.announce(WorkspaceEvent(WorkspaceEventKind.saved, next.id, generation: next.generation));
+    _changed();
+    return true;
+  }
+
+  void _keep(WorkspaceSnapshot current, WorkspaceSnapshot next, HistoryStep? record) {
+    if (record != null) {
+      _undo.add(record);
       if (_undo.length > undoLimit) _undo.removeAt(0);
-      await _persistUndo(() => repository.pushUndo(current.id, current, undoLimit));
     }
     _workspace = next;
-    _problem = null;
+  }
+
+  /// Replaces the open workspace with the stored copy and its history.
+  /// [lost] says an edit made here was dropped.
+  Future<void> _reload(String id, {required bool lost}) async {
+    final WorkspaceSnapshot? stored = await repository.load(id);
+    if (_workspace?.id != id) return;
+    if (stored == null) {
+      _workspaceDeletedElsewhere();
+      return;
+    }
+    final bool hadUnsaved = _unsaved;
+    _workspace = stored;
+    _resetHistory();
+    await _loadHistory(id);
+    _unsaved = false;
+    if (lost || hadUnsaved) _problem = reloadedFromOtherTab;
     _changed();
+  }
+
+  void _workspaceDeletedElsewhere() {
+    _workspace = null;
+    _resetHistory();
+    _unsaved = false;
+    _release();
+    _gone = true;
+    _problem = deletedInOtherTab;
+  }
+
+  void _heard(WorkspaceEvent event) {
+    final WorkspaceSnapshot? open = _workspace;
+    if (open == null || open.id != event.workspaceId) {
+      if (open == null) unawaited(refreshWorkspaces());
+      return;
+    }
+    switch (event.kind) {
+      case WorkspaceEventKind.saved:
+        if (event.generation <= open.generation) return;
+        unawaited(_enqueue(() => _reload(open.id, lost: false)));
+      case WorkspaceEventKind.deleted:
+        unawaited(_enqueue(() async {
+          if (_workspace?.id != event.workspaceId) return;
+          _workspaceDeletedElsewhere();
+          _changed();
+        }));
+    }
+  }
+
+  /// Takes the open workspace's lock, or waits for it in the background.
+  Future<void> _claim(String id) async {
+    final String name = workspaceLockName(id);
+    if (_lock == name) return;
+    _release();
+    _lock = name;
+    _owned = await locks.tryHold(name);
+    if (_owned || _lock != name) return;
+    _heldElsewhere = true;
+    unawaited(locks.hold(name).then((void _) {
+      if (_lock != name) {
+        locks.release(name);
+        return;
+      }
+      _owned = true;
+      _heldElsewhere = false;
+      _changed();
+    }));
+  }
+
+  void _release() {
+    final String? lock = _lock;
+    _lock = null;
+    _owned = false;
+    _heldElsewhere = false;
+    if (lock != null) locks.release(lock);
   }
 
   static String _timeId() => 'ws-${DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36)}';

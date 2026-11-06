@@ -69,7 +69,8 @@ public final class BuildSession {
         boolean stalled, grounded;
         Claim(int step, long since) { this.step = step; this.since = since; }
     }
-    private enum Check { WORK, DONE, WAIT }
+    /** {@code AWAY}: another region holds the block; the NPC may walk towards it, and its turn there checks and places it. */
+    private enum Check { WORK, DONE, WAIT, AWAY }
 
     private final String id;
     private final String world;
@@ -97,6 +98,9 @@ public final class BuildSession {
     private long placed, skipped, denied, unobtainable, refused, reverted, undoSkipped;
     private int undoRemaining = -1;
     private long tick, retryAt, runTicks, processed;
+    private int focusTurn;
+    /** Active members the last turn could not move because another region holds them. */
+    private int elsewhere;
     private BuildWorld worldAccess;
 
     public BuildSession(String id, String leader, String world, BlockPos origin, String schematic, String schematicHash, BuildOptions options,
@@ -259,6 +263,11 @@ public final class BuildSession {
         if (!context.world().worldLoaded(world)) { waitFor("the build's world is not loaded", before, waitingFor); return; }
         List<BuildCrew.Member> active = active(context.crew());
         scaffolds.dismantle(context, npc(context.crew()), false);
+        if (active.isEmpty() && elsewhere > 0) {
+            // Every active member stands on another region; the build's next turn goes to one of them.
+            state = before; reason = waitingFor;
+            return;
+        }
         if (active.isEmpty()) { waitFor("no builder NPC is active in the build's world", before, waitingFor); return; }
         runTicks++;
         String wait = null;
@@ -272,14 +281,48 @@ public final class BuildSession {
         if (before == State.WAITING) listener.changed(this);
     }
 
-    /** Team members active in the build's world; the scaffolding of any other member is taken down without it. */
+    /**
+     * Team members active in the build's world that this thread may move; the scaffolding of a member that is not active
+     * is taken down without it. A member active on another region waits for the turn on its own region.
+     */
     private List<BuildCrew.Member> active(BuildCrew crew) {
         List<BuildCrew.Member> active = new ArrayList<>();
+        elsewhere = 0;
         for (String npc : team) {
             Optional<BuildCrew.Member> member = crew.member(npc).filter((BuildCrew.Member found) -> found.position().world().equals(world));
-            if (member.isPresent()) active.add(member.get()); else scaffolds.abandon(npc);
+            if (member.isEmpty()) scaffolds.abandon(npc);
+            else if (crew.here(npc)) active.add(member.get());
+            else elsewhere++;
         }
         return active;
+    }
+
+    // Regionized servers
+
+    /**
+     * Where the next turn should run on a regionized server: undo goes to the next change to put back; otherwise each
+     * turn goes to the next active team member in rotation, then to standing scaffolding, then to the origin.
+     */
+    public BlockPos focus(BuildCrew crew) {
+        if (state == State.UNDOING && undoRemaining > 0) return journal.get(undoRemaining - 1).position();
+        if (state.open() || !scaffolds.empty()) {
+            List<BuildCrew.Member> present = new ArrayList<>();
+            for (String npc : team) crew.member(npc).filter((BuildCrew.Member found) -> found.position().world().equals(world)).ifPresent(present::add);
+            if (!present.isEmpty()) return BlockPos.containing(present.get(Math.floorMod(focusTurn++, present.size())).position().point());
+        }
+        return scaffolds.anyCell().orElse(origin);
+    }
+    /** Whether a turn has anything to do; a settled build with no scaffolding standing does not. */
+    public boolean wantsTurn() {
+        return switch (state) {
+            case RUNNING, WAITING -> plan != null;
+            case UNDOING -> true;
+            case PAUSED, CANCELLED, FINISHED, FAILED, UNDONE -> !scaffolds.empty();
+        };
+    }
+    /** The turn could not be sent where the build works now: an open build waits with the reason. */
+    public void unreachable(String why) {
+        if (state == State.RUNNING || state == State.WAITING) waitFor(why, state, reason);
     }
 
     /** The NPCs climb down and take their scaffolding with them. True once none is left. */
@@ -407,6 +450,7 @@ public final class BuildSession {
         claims.remove(member.id());
         Check checked = check(claim.step, member.uuid(), context);
         if (checked == Check.WAIT) { claims.put(member.id(), claim); return reason; }
+        if (checked == Check.AWAY) { claims.put(member.id(), claim); return null; }
         if (checked == Check.DONE) return null;
         BlockPos at = plan.stepPosition(claim.step);
         List<UndoJournal.Change> changes = changes(claim.step, context.world());
@@ -487,16 +531,16 @@ public final class BuildSession {
     /** Whether the step still needs work now, is already settled, or must wait. Settled steps are marked done here. */
     private Check check(int step, UUID npc, Context context) {
         BlockPos at = plan.stepPosition(step);
-        if (!context.world().chunkLoaded(world, Math.floorDiv(at.x(), 16), Math.floorDiv(at.z(), 16))) {
-            reason = "waiting for an unloaded chunk at " + at.x() + " " + at.z();
+        Optional<BuildPlan.Unit> unit = plan.unit(step);
+        List<BlockPos> cells = new ArrayList<>(List.of(at));
+        unit.ifPresent((BuildPlan.Unit object) -> { for (BuildPlan.Part part : object.parts()) cells.add(part.at()); });
+        for (BlockPos cell : cells) {
+            int chunkX = Math.floorDiv(cell.x(), 16), chunkZ = Math.floorDiv(cell.z(), 16);
+            if (context.world().chunkLoaded(world, chunkX, chunkZ)) continue;
+            if (context.world().elsewhere(world, chunkX, chunkZ)) return Check.AWAY;
+            reason = waitingFor(context.world(), world, cell);
             return Check.WAIT;
         }
-        Optional<BuildPlan.Unit> unit = plan.unit(step);
-        if (unit.isPresent()) for (BuildPlan.Part part : unit.get().parts())
-            if (!context.world().chunkLoaded(world, Math.floorDiv(part.at().x(), 16), Math.floorDiv(part.at().z(), 16))) {
-                reason = "waiting for an unloaded chunk at " + part.at().x() + " " + part.at().z();
-                return Check.WAIT;
-            }
         Optional<String> current = context.world().block(world, at);
         if (current.isEmpty()) { refused++; complete(step); return Check.DONE; }
         // Air the build wants where its own scaffolding stands comes when the scaffolding does.
@@ -520,7 +564,7 @@ public final class BuildSession {
         }
         for (Map.Entry<String, Long> item : wanted.entrySet()) {
             long have = available(item.getKey(), context.world());
-            if (have < 0) { reason = "the material container at " + container() + " is not loaded or not a container"; return Check.WAIT; }
+            if (have < 0) { reason = containerMissing(context.world()); return Check.WAIT; }
             if (have < item.getValue()) {
                 long rest = remaining().getOrDefault(item.getKey(), item.getValue());
                 reason = "needs " + item.getValue() + " " + item.getKey() + " (have " + have + ", the rest of the build needs " + rest + ")";
@@ -559,7 +603,7 @@ public final class BuildSession {
             for (int index = start; index < undoRemaining; index++) {
                 BlockPos at = journal.get(index).position();
                 if (!context.world().chunkLoaded(world, Math.floorDiv(at.x(), 16), Math.floorDiv(at.z(), 16))) {
-                    reason = "waiting for an unloaded chunk at " + at.x() + " " + at.z();
+                    reason = waitingFor(context.world(), world, at);
                     return;
                 }
             }
@@ -680,7 +724,8 @@ public final class BuildSession {
         if (options.materials() == BuildOptions.Materials.CREATIVE) { lines.add("Build " + id + " uses creative materials; nothing is needed"); return lines; }
         lines.add("Build " + id + " needs, for the steps left (blocks already in place are not counted off until reached):");
         for (Map.Entry<String, Long> entry : totals.entrySet()) {
-            long have = options.materials() == BuildOptions.Materials.CONTAINER ? Math.max(0, access.containerCount(world, container(), entry.getKey())) : ledger.available(entry.getKey());
+            long have = options.materials() == BuildOptions.Materials.CONTAINER ? access.containerCount(world, container(), entry.getKey()) : ledger.available(entry.getKey());
+            if (have < 0) { lines.add(entry.getKey() + ": need " + entry.getValue() + "; " + containerMissing(access)); continue; }
             lines.add(entry.getKey() + ": need " + entry.getValue() + ", have " + have + (have >= entry.getValue() ? "" : ", short " + (entry.getValue() - have)));
         }
         if (totals.isEmpty()) lines.add("nothing");
@@ -746,6 +791,17 @@ public final class BuildSession {
         return at.x() + 1 > feet.x() - half && at.x() < feet.x() + half && at.z() + 1 > feet.z() - half && at.z() < feet.z() + half
                 && at.y() + 1 > feet.y() && at.y() < feet.y() + member.height();
     }
+    /** The reason a build waits for a block whose chunk this thread cannot use now. */
+    static String waitingFor(BuildWorld access, String world, BlockPos at) {
+        return "waiting for " + access.missing(world, Math.floorDiv(at.x(), 16), Math.floorDiv(at.z(), 16)) + " at " + at.x() + " " + at.z();
+    }
+    /** The reason a container build waits when its container cannot be read. */
+    static String containerMissing(BuildWorld access, String world, BlockPos container) {
+        int chunkX = Math.floorDiv(container.x(), 16), chunkZ = Math.floorDiv(container.z(), 16);
+        return "the material container at " + container + (access.chunkLoaded(world, chunkX, chunkZ) ? " is not loaded or not a container"
+                : " is in " + access.missing(world, chunkX, chunkZ));
+    }
+    private String containerMissing(BuildWorld access) { return containerMissing(access, world, container()); }
     /** Platform block text names air, cave air or void air. */
     static boolean air(String state) {
         int open = state.indexOf('[');

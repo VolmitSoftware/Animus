@@ -90,6 +90,7 @@ class FakeApi {
     'menu': 'gloss/gloss.schema.json',
     'hologram': 'gloss/gloss-holograms.schema.json',
     'presets': 'gloss/gloss-presets.schema.json',
+    'server-behaviors': 'server-behaviors-v1.schema.json',
   };
 
   final FakeSettings settings;
@@ -102,6 +103,33 @@ class FakeApi {
   late final FakeImports imports;
   Map<String, Object?>? _schemas;
 
+  /// `/__fake/fail`: the next [_failTimes] requests (on paths starting with
+  /// [_failRoute], when set) answer [_failCode].
+  String? _failCode;
+  int _failTimes = 0;
+  String? _failRoute;
+
+  /// `/__fake/drop-answer`: the next change set is written, but its answer
+  /// and its change event are lost, so the browser must ask for its status.
+  bool dropNextApply = false;
+
+  /// `/__fake/player`: whether the viewer is on the server for previews.
+  bool playerOnline = true;
+
+  /// Makes the next [times] requests answer [code].
+  void failNext(String code, int times, {String? route}) {
+    errorStatus(code);
+    _failCode = code;
+    _failTimes = times;
+    _failRoute = route;
+  }
+
+  Map<String, Object?> get testControls => <String, Object?>{
+        if (_failTimes > 0) 'fail': <String, Object?>{'code': _failCode, 'times': _failTimes, 'route': ?_failRoute},
+        'dropNextApply': dropNextApply,
+        'playerOnline': playerOnline,
+      };
+
   /// Back to the data folder as loaded, with no tokens, previews or records.
   void reset() {
     events.closeAll('server-stopping');
@@ -110,6 +138,9 @@ class FakeApi {
     changes.clear();
     imports.reset();
     documents.load();
+    _failTimes = 0;
+    dropNextApply = false;
+    playerOnline = true;
   }
 
   /// Once a second: expired tokens close their streams; expired previews end.
@@ -144,11 +175,19 @@ class FakeApi {
     final Map<String, String> headers = cors(request);
     FakeResponse response;
     try {
+      _injectedFailure(request);
       response = _route(request);
     } on ApiError catch (refused) {
       response = refused.toResponse();
     }
     return headers.isEmpty ? response : response.withHeaders(headers);
+  }
+
+  void _injectedFailure(FakeRequest request) {
+    if (_failTimes <= 0 || request.method == 'OPTIONS' || request.route == '/v1/hello') return;
+    if (_failRoute != null && !request.route.startsWith(_failRoute!)) return;
+    _failTimes--;
+    throw ApiError(_failCode!, 'Failed on purpose by /__fake/fail.');
   }
 
   void _origin(FakeRequest request) {
@@ -378,7 +417,8 @@ class FakeApi {
       List<Map<String, Object?>> diagnostics = <Map<String, Object?>>[];
       if (!change.delete) {
         final Map<String, Object?> source = copyJson(change.source)! as Map<String, Object?>;
-        if (revisioned.contains(change.kind)) source['revision'] = (documents.at(location.path)?.revision ?? 0) + 1;
+        final String base = change.from == null ? location.path : documents.locate(change.kind, change.from!).path;
+        if (revisioned.contains(change.kind)) source['revision'] = (documents.at(base)?.revision ?? 0) + 1;
         diagnostics = validateDocument(change.kind, change.id, location.path, source);
         final Object? references = source['behaviors'];
         if (change.kind == DocumentKind.npc && references is List<Object?>) {
@@ -431,6 +471,7 @@ class FakeApi {
     }
     final int maximum = limit('npcsPerPreview');
     if (npcs.length > maximum) throw ApiError('too-large', 'A preview shows at most $maximum NPCs.');
+    if (!playerOnline) throw ApiError('player-offline', 'The viewer ${settings.viewer} is not online.');
     final Preview started = previews.start(replace, token.id, settings.viewer, npcs);
     final List<String> hidden = <String>[
       for (final String id in started.npcs)
@@ -466,6 +507,13 @@ class FakeApi {
     final ChangeSet set = parseChangeSet(body);
     _scopes(token, <DocumentKind>{for (final Change change in set.documents) change.kind});
     final Outcome outcome = changes.apply(set, sha256Text(jsonEncode(body)));
+    if (dropNextApply && outcome.committed) {
+      dropNextApply = false;
+      // Written, but the answer and the change event are lost: only
+      // GET /v1/changes/{key} can tell the browser what happened.
+      publishCatalog(outcome.catalog, outcome.deleted);
+      return FakeResponse.dropped;
+    }
     _published(outcome);
     return FakeResponse(outcome.status, body: outcome.body);
   }

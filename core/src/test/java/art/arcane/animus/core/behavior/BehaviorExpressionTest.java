@@ -51,6 +51,26 @@ class BehaviorExpressionTest {
         assertTrue(failure("context.missing",env).getMessage().startsWith("fact-unavailable"));
         env.player=Optional.empty();assertTrue(failure("player.name",env).getMessage().startsWith("fact-unavailable"));
     }
+    @Test void sameWorldComparesWorldsThePlatformResolves(){
+        Env env=new Env();
+        BehaviorFacts base=env.facts;
+        env.facts=new BehaviorFacts(){
+            public Optional<Map<String,Object>> player(UUID id){return Optional.of(Map.of("world","world_nether"));}
+            public Optional<Map<String,Object>> npc(UUID id){return base.npc(id);}
+            public Map<String,Object> server(){return base.server();}
+            public Optional<String> world(String reference){return switch(reference){
+                case "world","minecraft:overworld"->Optional.of("world");
+                case "world_nether","minecraft:the_nether"->Optional.of("world_nether");
+                default->Optional.empty();
+            };}
+        };
+        assertEquals(true,eval("same_world(player.world, 'minecraft:the_nether')",env));
+        assertEquals(false,eval("same_world(player.world, 'minecraft:overworld')",env));
+        assertEquals(false,eval("same_world('skylands', 'minecraft:overworld')",env));
+        assertEquals(true,eval("same_world('Skylands', 'skylands')",env),"worlds no platform knows compare as text, ignoring case");
+        assertEquals(true,eval("same_world('world', 'world')"),"without a resolver both sides compare as written");
+        assertTrue(failure("same_world('world')",new Env()).getMessage().contains("same_world takes 2"));
+    }
     @Test void collectionFunctionsAreImmutableAndBounded(){
         Env env=new Env();env.variables.put("names",new Value(Type.LIST,List.of(text("b"),text("a"))));
         assertEquals(List.of("b","a","c"),eval("append(names, 'c')",env));assertEquals(List.of("b","a"),BehaviorValues.expression(env.variables.get("names")));
@@ -111,5 +131,19 @@ class BehaviorExpressionTest {
         assertEquals(integer(4),BehaviorValues.coerce(4.0,Type.ANY));assertEquals(new Value(Type.DECIMAL,4.5),BehaviorValues.coerce(4.5,Type.ANY));
         assertThrows(IllegalArgumentException.class,()->BehaviorValues.coerce("true",Type.BOOLEAN));
         assertEquals(Type.LIST,BehaviorValues.coerce(List.of(1.0),Type.LIST).type());assertThrows(IllegalArgumentException.class,()->BehaviorValues.coerce(List.of(1.0),Type.MAP));
+    }
+    @Test void playerListsInfoAndOtherPlayersFlagsAreBounded(){
+        Env env=new Env();
+        UUID other=UUID.fromString("00000000-0000-0000-0000-0000000000b2");
+        env.variables.put("crowd",new Value(Type.LIST,List.of(text("p@"+PLAYER),text(other.toString()),text("not a player"),text(PLAYER.toString()))));
+        assertEquals(List.of(PLAYER.toString(),other.toString()),eval("players(crowd)",env));
+        assertEquals(List.of(PLAYER.toString()),eval("players('"+PLAYER+"')",env));
+        List<Value> many=new ArrayList<>();for(int i=0;i<103;i++)many.add(text(new UUID(1,i).toString()));
+        env.variables.put("many",new Value(Type.LIST,many));
+        assertEquals(100.0,eval("len(players(many))",env));
+        assertEquals("Steve",eval("get(player_info('p@"+PLAYER+"'), 'name')",env));
+        assertEquals(Map.of(),eval("player_info('"+other+"')",env));
+        assertEquals(false,eval("player_has_flag('"+other+"', 'vip')",env),"the default environment reads no other player");
+        assertEquals("none",eval("player_flag('"+other+"', 'vip', 'none')",env));
     }
 }

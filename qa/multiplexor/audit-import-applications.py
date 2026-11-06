@@ -240,11 +240,11 @@ class ImportAuditor(base.Auditor):
         rows = report.get('commands'); require(isinstance(rows, list) and len(rows) == 32, 'Full 32-command scenario required')
         b, u = state['baselineImport'], state['updatedImport']; app = state['baseApplication']; cp = state['copyApplication']; stale = state['staleApplication']; fresh = state['replacementApplication']
         transaction = lambda i: re.search(r'\btransaction ([a-f0-9-]{36}|already-applied)\b', rows[i]['receipt'])[1]
-        expected = ['animus status', *[f"animus import preview {state['inputFiles']['baseline']} qa_legacy=world"] * 2,
-            *[f'animus import stage {b} reject'] * 2, *[f'animus import apply-plan {b} {app}'] * 2,
-            *[f'animus import stage {b} duplicate qa'] * 2, *[f'animus import apply-plan {b} {cp}'] * 2,
-            f"animus import preview {state['inputFiles']['updated']} qa_legacy=world", f'animus import stage {u}', f'animus import stage {u} replace',
-            'animus edit citizens-900001 {"name":"QAConcurrent"}', f'animus import apply-plan {u} {stale}', f'animus import stage {u} replace',
+        expected = ['animus status', *[f"animus import preview {state['inputFiles']['baseline']} worlds=qa_legacy:world"] * 2,
+            *[f'animus import stage {b} mode=reject'] * 2, *[f'animus import apply-plan {b} {app}'] * 2,
+            *[f'animus import stage {b} mode=duplicate copy=qa'] * 2, *[f'animus import apply-plan {b} {cp}'] * 2,
+            f"animus import preview {state['inputFiles']['updated']} worlds=qa_legacy:world", f'animus import stage {u}', f'animus import stage {u} mode=replace',
+            'animus edit citizens-900001 {"name":"QAConcurrent"}', f'animus import apply-plan {u} {stale}', f'animus import stage {u} mode=replace',
             *[f'animus import apply-plan {u} {fresh}'] * 2, 'animus status', f"animus rollback {state['replacementTransaction']}",
             f'animus import apply-plan {u} {fresh}', f'animus rollback {transaction(21)}', f"animus rollback {state['copyTransaction']}",
             f"animus rollback {state['editTransaction']}", f"animus rollback {state['baseTransaction']}",

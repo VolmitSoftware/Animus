@@ -124,6 +124,68 @@
 - `@selected` for the selected NPC wherever a command takes an NPC id.
 - Commands that take an NPC also accept its folder-qualified id or its `npcs/.../<id>.json` path.
 - `/animus debug mode` and `animus.debug.mode`; per-NPC route, activation and packet diagnostics are summarized every five minutes unless debug mode is on.
+- World-event server triggers: `player_area`, inventory open/close/click, item drop/pickup/consume, block click/place/break, `player_damaged`, `player_damage_entity` and `player_kill`, with filters and `cancel` conditions on Bukkit, Folia and mods.
+- `npc.citizens_id` and `server.players` facts; `players`, `player_info`, `player_flag` and `player_has_flag` functions; `[behaviors.server] maximumAreas`.
+- Denizen converter v4 converts area events from `notables.yml` and literal notes, the new world events with `determine cancelled`, player-list targets, and flag names joined with tags.
+- Rig editor: a panel for the rig's animation names, with idle and walk called out and missing names fixable.
+- Rig editor: an events lane for animation sounds and particles, with markers on the ruler.
+- Rig editor: track blend, order and delete; keyframe drag, arrow-key moves and copy to the playhead.
+- Rig editor: text display background, line width and shadow, and item display count.
+- Rig and NPC stages draw socket equipment.
+- Stage keyboard controls: arrows orbit, Shift and arrows pan, + and - zoom, 0 resets; gizmo handles nudge with the arrow keys.
+- The rig editor shows one pane at a time under the stage on phones.
+- Blockbench import keeps vanilla sound keyframes as events and both values of split keyframes.
+- The NPC schema declares pose, equipment, hologram, nameplate, armor stand, owner, inventory, body traits, named facings, movement and the combat, shop, GUI and hire modules with the server's bounds.
+- Reusable routes have a generated schema, `route.schema.json`, served with the other editor schemas.
+- Web editor: typed NPC inspector parts for pose, owner, rig, armor stand, hologram lines with a preview, nameplate, inventory and mount.
+- Web editor: route points can be moved, removed and added from the keyboard.
+- Web editor: pack manifests have a typed editor for their fields and Java modules.
+- Web editor: skin documents show their face, hash, arm model, wearers and PNG loading in one place.
+- Web editor: NPC browser rows show the skin's face once its PNG is loaded.
+- Editor: Redo (Ctrl+Shift+Z or Ctrl+Y) beside Undo, kept across reloads; both notices say what they reverted.
+- Editor: a command palette (Ctrl+K) to open documents, switch workspaces, export, undo, redo and change the theme.
+- Editor: keyboard shortcuts for undo, redo and the document search (Ctrl+F or /), and arrow keys in the document list and view tabs.
+- Editor: a documents drawer and a More menu on phones.
+- Editor: a skip link to the document.
+- Editor: a banner when the browser keeps no workspaces between visits, and a request to keep this site's storage.
+- Editor: tabs of one browser follow each other's saves and deletes, and each open workspace is locked to one tab.
+- Editor: closing the tab asks first while an edit is not stored or Code text is not applied.
+- Editor: the Animus mark in the top bar, the boot splash and the home page, with a message when the editor does not load.
+- The web editor converts a Denizen folder in the browser and downloads its staged bundle.
+- The editor's live bar says when the pairing is about to expire and offers Pair again when the server ends it.
+- The editor's Sync page can ask the server what became of a push whose answer was lost.
+- The fake server gains test controls for token expiry, forced errors, lost apply answers, relay errors, limit closes and an offline player.
+- The editor edits every Denizen v2 behavior node: foreach, while, break, continue and return, with loop variables picked or declared for you.
+- One operand control in the behavior editor takes a typed value, a variable, an expression or a template wherever the language allows an operand.
+- Expression and template fields check their syntax and complete variables, facts and functions as you type, in the Visual and Code views.
+- Action and condition arguments can be filled at run time from a variable, an expression or a template.
+- A server switch in the behavior editor, with server events, scopes, capabilities and timer limits to match.
+- The editor opens, creates, edits and exports `server-behaviors.json`, and the workspace overview counts the listed server behaviors.
+- The dry run runs loops, expressions, templates, call results and server events, and asks about facts only a server knows.
+- `completions.json` lists the expression language, which capabilities need an NPC, and each server event's context keys.
+- GUI editor: shop owner and up to eight stock containers, with container shops limited to trade and static entries.
+- GUI editor: text animation editor with a live preview that pauses, steps by frame and starts paused under reduced motion.
+- GUI editor: presets editor, and a fix that copies a named preset's fields into a chest GUI, hologram or text animation.
+- GUI editor: hologram row show and scale, item rows with count, name and lore, head and entity rows, style and refresh.
+- GUI editor: menu component motion, hover, click box, tooltip, icon styles, list flow, tab spacing and menu constants.
+- GUI editor: chest GUI select, refresh mode and condition ticks, icon count format and head refresh.
+- GUI editor: clicking a menu component on the stage selects it, with a pink ring on the selection.
+- Importing a Gloss bundle whose ids the workspace already has asks before replacing those documents, and the import notice lists what the bundle does not keep.
+- Web editor: the NPC browser's folders are a tree of `npcs/` and its nested folders, with expand and collapse kept per workspace and NPC counts per folder and per collapsed subtree.
+- Web editor: new, rename, move and delete for NPC folders; a rename or move takes the whole subtree along in one undo step, checked against the server's folder rules first.
+- Web editor: `folder:=town` matches one folder and `folder:=` the NPCs directly in `npcs/`.
+- Web editor: "New NPC in" a folder opens the new NPC form with that folder filled in.
+- Change sets can move a document: `from` names the old id, and the server writes the new file and removes the old one in one transaction, keeping the revision chain; undo moves it back.
+- `/animus attack` and `/animus target` on Folia; checks run on the NPC's and the target's own regions, with results in the server log.
+- Builds on Folia, including scaffolding, doors and beds; each build takes turns on the region that owns its work.
+- `/animus build status` shows `region-turns`, `out` and `lost` on Folia.
+- Server triggers that name a world that is not loaded report a `server-world-unknown` warning.
+- Web editor: eight built-in placeholder skins (guard, merchant, villager, noble, miner, traveler, smith, scholar), each in classic and slim arms, under `web/assets/skins/placeholder/` with an `index.json`.
+- Web editor: a Placeholder skins picker in the NPC Appearance section; the choice lasts for the page session and is not saved to the definition.
+- Web editor: `tool/generate_placeholder_skins.dart` draws the placeholder PNGs and their index.
+- Web editor: `test/shape_browser.cjs` walks every page at both widths and themes and fails on a corner radius, an inset or offset shadow, a one-sided accent border or an accent gradient, including hover, focus and active states.
+- `same_world(a, b)` behavior expression function, which matches worlds by name, UUID or dimension key.
+- `viewer.world_key` GUI placeholder.
 - Performance recording documents (`recordings/<id>.json`): frames, swing, equipment and door events, a byte-exact serialized form, hotload and editor apply, and `schema/recording-v1.schema.json`.
 - Recording core for playback: frame simplification within 0.02 blocks and 2 degrees, and a once, loop or pingpong cursor with interpolated poses, capped event windows and catch-up skips.
 - `[recordings]` settings in `config.toml` for sampling, length, file size, sessions, ghosts and previews, all applied live.
@@ -216,14 +278,68 @@
 - Optional command values are always `key=value`; stray words and unknown keys are refused with the usage line.
 - Many commands have new shapes: `navigation`, `combat`, `build`, `import citizens preview`, `worlds=old:new`, comma-separated `accept` (including `commands`), `page=`, `player=` and `debug summary`.
 - `/animus navigate` treats whole-number x and z as the centre of that block.
+- Web editor: `folder:town` matches `npcs/town/` and every folder below it.
+- Web editor: the NPC browser's move to folder picks from the folder tree or takes a new nested path, including `npcs/` itself.
+- Web editor: moving NPCs to other folders on a server workspace goes out as moves in the next apply, and the live bar counts them as moved.
+- Web editor: a stale `group` in an NPC file is a warning, since the server takes the group from the folder.
+- On Folia, build commands and `animus:build` answer a moment later through your own region; `animus:build` answers `queued`.
+- A donation takes the held stack and returns what the build does not need.
+- QA scripts use the Director command syntax.
+- Web editor: every control is square-cornered, from one `--animus-radius` token set to 0; per-component radii are gone.
+- Web editor: one button system (primary, secondary, ghost, destructive, icon-only; small 28 px and default 36 px, 44 px on phones) for arcane_jaspr and native buttons, with fields and selects at the same height.
+- Web editor: a selected tab, segment or palette row is a raised grey with a full pink border instead of a pink underline or edge stripe.
+- Web editor: menus, the command palette, completions and toasts sit on a full border instead of a drop shadow.
+- Web editor: the stage loading indicator is a straight pink line instead of a spinning partial ring.
+- Web editor: checkboxes, radios and range thumbs are square; rig keyframes, events and gizmo handles take a 44 px target on phones.
+- Web editor: the NPC preview wears a placeholder skin instead of the default one when no skin texture is loaded, offline or online, and its skin line names it.
+- The Denizen importer converts world comparisons and `in:<world>` switches to `same_world`.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
+- Rig editor selection, playhead and selected keyframe are pink; other keyframes are grey, and the stage sky follows the theme.
+- Build resource pack is now Download server files, and its message says to run `/animus pack build`.
+- Shortening an animation warns about keyframes and events past the new end and offers to trim them.
+- Blockbench import counts curve approximations and left-out particle and script keyframes in its summary.
+- Rig previews play the idle animation after a `once` clip ends, as the server does.
+- The stage wheel zooms only with Ctrl or while the stage has focus, and vertical swipes scroll the page.
+- Web editor: the NPC inspector reads top down in parts with one-line summaries, and opens only identity on phones.
+- Web editor: field labels in the NPC inspector and route editor read as words instead of raw keys.
+- Web editor: the NPC browser's folder tree is one tab stop with arrow keys, Home, End and Enter.
+- Web editor: bulk delete and server despawn ask first, and Escape keeps the NPCs.
+- Web editor: Spawn and Despawn on server appear only for a token with the spawn scope.
+- Web editor: the NPC browser and route grid use grey chrome, with pink kept for selection and actions.
+- Editor icons are the Animus mark (triangle, stripe and diamond) instead of the temporary letter tile.
+- The editor home page leads with Start a workspace and lists the three ways to start as rows.
+- The editor top bar groups Undo and Redo, the Open, Import and Export menus, and the app controls.
+- Editor buttons, inputs and tabs use Geist; ids, paths and code stay in Geist Mono.
+- The selected view tab is a raised grey with a pink underline, and disabled buttons are grey.
+- The editor theme follows the system until it is chosen.
+- The converter button reads Convert a Citizens, Shopkeepers, dtlTraders or Denizen save.
+- Legacy colour codes show as plain text in the sidebar, the document heading and the New page.
+- Every server error in the editor says what happened and what to do next, in plain words.
+- The pairing page leads with the server's name and fingerprint, and Remember this browser is a switch.
+- Undo last apply, Take server version, Accept the deletion, replacing server copies on push, and import Apply, Accept all and Roll back ask first.
+- The server catalog in the editor is grouped by kind and shows each document's revision in words.
+- The converter screen names all four sources, leads the Citizens review with its warnings and lists skipped dtlTraders files.
+- Live editing for a server runs in one browser tab at a time; another tab waits and takes over.
+- The behavior tree reads by indentation with one thin rail per level, and shows each step's type and a plain summary when collapsed.
+- Field labels read as words ("Cooldown ticks"), and format problems say what the value must look like instead of showing a pattern.
+- New variables are named `flag_2` rather than `flag-2`, so expressions can read them.
+- GUI editor: changing a shop entry's type removes the fields the new type refuses; stock shows only where it applies.
+- GUI editor: Gloss bundle exports carry the Animus id in the title, so a bundle imports back to the same ids.
+- GUI editor: tabs, fields and the selected slot use the grey and pink editor style; phone slots and fields are 44 px.
+- GUI editor: changing an action's type keeps nested lists the new type has and asks before dropping others.
+- GUI editor: refusal messages for presets, icons and components use the server's wording.
 
 ### Fixed
 
+- NPC previews in the web editor wear their real skin, fetched from the skin's texture URL.
 - A builder standing inside its target block walks aside instead of teleporting.
 - A valid NPC edit is no longer refused because another NPC file is invalid.
+- Web editor: new routes are written with order sequence, which the server accepts.
+- Web editor: server-wide behaviors are no longer offered to NPCs.
+- Web editor: NPC browser rows, tree items and route list items have 44 px tap targets on phones.
+- Web editor: empty and no-match states in the NPC browser and route editor say how to continue.
 - Imported Citizens routes with no saved `avoidwater` swim across water as Citizens does.
 - Citizens hologram lines import in the right order.
 - Combat, builds and container shops refuse when WorldGuard is installed but disabled, at startup or later.
@@ -267,6 +383,61 @@
 - Hotload notices wait until edited behaviors, shops, GUIs, holograms and menus are live.
 - Hotload no longer reports numerically equal values, such as `0.0` and `0`, as changed.
 - Plain command replies carry the `[Animus]` prefix, refusals show in red and successes in green.
+- Denizen `<npc.id>` reads the Citizens id, so imported and newly written flags agree.
+- A rate-limited sneak-click on an NPC falls through to its shop, as in Denizen.
+- Adding a keyframe keys the selected track with its own value instead of the combined pose.
+- Bezier easings the server refuses are refused in the editor too, with a hint at the field.
+- The stage says when the model pack is loading, missing or failed to download, and offers Retry.
+- A skin or texture that fails to load is drawn plain white with a note instead of hiding the body.
+- The stage notes items it cannot draw, elytra, heads and skulls, and items in the body slot of players and armor stands.
+- A save the browser refuses keeps the edit on screen and says why, with Save again and Export zip.
+- Another tab's save reloads this tab's copy with a plain message instead of a generation number.
+- Escape cancels only the confirmation that has focus.
+- Long document titles and paths no longer widen the page on phones.
+- Error and empty states name the cause and offer a way back, and "1 documents need repair" reads correctly.
+- Two editor tabs on one server no longer lose each other's live edits.
+- The editor never sends a change set it could not record, so a lost answer can always be recovered.
+- Pairing tries the relay when the direct path refuses or errors.
+- A connection attempt that fails in an unexpected way retries instead of stopping silently.
+- Ending a preview that the server did not end now says so; leaving the workspace ends its preview.
+- A change set whose status check fails no longer waits forever; Check again and Stop waiting are offered.
+- An undo that conflicts no longer offers your draft as the side to keep.
+- A spawn cut short by a lost connection is not reported as done.
+- A failed catalog load no longer shows Loading forever.
+- Forgetting a server removes its live workspace, and tabs no longer overwrite each other's saved servers.
+- An apply the browser resent after a dropped connection is recovered instead of reported as refused.
+- Typing an expression into a while or condition no longer reports "Invalid JSON".
+- Setting a variable from an expression no longer writes a second, conflicting operand.
+- Changing a list, map or any variable's type gives it a matching starting value instead of empty text.
+- New while and foreach steps are valid as soon as they are added.
+- The editor keeps `server-behaviors.json` when a data folder is opened and exported.
+- The code view names a JSON syntax error by line and column in words.
+- GUI editor: editing a hologram row no longer drops its show, scale or other keys.
+- GUI editor: the mask brush paints every slot a drag crosses, including fast drags.
+- GUI editor: tab labels no longer rewrite tab ids; shop and hologram pages keep a neighbour selected when one is removed.
+- GUI editor: chest window slot names include lore, lore shows on tap in previews, and tooltips wrap on phones.
+- GUI editor: text fields no longer render as grey slabs, and warnings meet contrast in the light theme.
+- GUI editor: invalid inventory arguments show the JSON error at the field instead of being ignored.
+- Pack manifests open in their typed editor instead of the read-only field list.
+- The Sync page keeps the push result on screen once the new compare has nothing left to send.
+- A second tab that waits for live editing says so when it takes over.
+- Inside a server workspace the top bar leaves the connection state to the live bar instead of showing it twice, and on phones More stays on screen.
+- NPC browser rows and a skin's wearers show names without legacy colour codes.
+- Field help gives the bounds as their own sentence ("At most 64 characters.").
+- GUI editor section tabs use the same selected style as the view tabs.
+- The web editor opens, creates and names NPCs directly in `npcs/` or nested folders the way the server does, instead of assuming one folder.
+- Undoing an apply on a server workspace drops the documents it removed without asking the server for them.
+- Build protection counters are safe when several regions use them at once.
+- A guard's combat teleport into a chunk held by another Folia region now places the NPC.
+- Guards return exactly to their definition's post after each fight and face their post's direction again; repeated fights no longer move a guard's post.
+- Guards walk back to their post without stalling, and a walk that ends short of the post finishes with a short step.
+- `player_area` triggers naming a Bukkit world such as `world` now fire on Fabric, NeoForge and Forge.
+- `player_world_change` `from` and `to` accept Bukkit world names on mod servers and dimension keys on Bukkit.
+- Hologram anchors on mod servers match `world_nether`, `world_the_end` and bare vanilla dimension names.
+- Folia combat respawn and return points accept world names and dimension keys.
+- Bukkit NPC positions, admin create, teleports, combat locations, GUI teleports, shop chests and WorldGuard checks accept dimension keys such as `minecraft:the_nether`.
+- `npc.world` gives the same form as `player.world`: the world name on Bukkit, the dimension key on mods.
+- Clicks on NPC-bound holograms count only in the NPC's world.
 
 ### Notes
 

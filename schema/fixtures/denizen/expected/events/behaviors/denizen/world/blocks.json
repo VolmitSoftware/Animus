@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:world/blocks",
+  "server": true,
+  "entry": "on-player-right-clicks-chest",
+  "routines": {
+    "on-player-right-clicks-chest": {
+      "type": "condition",
+      "expression": "same(player.item_in_hand, 'minecraft:stick')",
+      "then": {
+        "type": "sequence",
+        "steps": [
+          {
+            "type": "action",
+            "capability": "animus:message",
+            "arguments": {
+              "text": null
+            },
+            "templates": {
+              "/text": "Tapped a chest at {{ context.x }}, {{ context.z }}."
+            }
+          },
+          {
+            "type": "return"
+          }
+        ]
+      }
+    },
+    "on-player-left-clicks-block": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "expression": "!same_world(context.world, 'world')",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "Hit {{ replace(context.block, 'minecraft:', '') }}."
+          }
+        }
+      ]
+    },
+    "on-player-places-tnt": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "expression": "has_flag('player', 'demolition')",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "return"
+        }
+      ]
+    },
+    "on-player-breaks-_log": {
+      "type": "action",
+      "capability": "animus:set-flag",
+      "arguments": {
+        "name": "logs",
+        "scope": "player",
+        "value": null
+      },
+      "expressions": {
+        "/value": "(num(flag('player', 'logs', 0)) + 1)"
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "on-player-right-clicks-chest",
+      "event": "player_block_click",
+      "click": "right",
+      "block": "chest",
+      "cancel": "same(player.item_in_hand, 'minecraft:stick')",
+      "routine": "on-player-right-clicks-chest"
+    },
+    {
+      "id": "on-player-left-clicks-block",
+      "event": "player_block_click",
+      "click": "left",
+      "routine": "on-player-left-clicks-block"
+    },
+    {
+      "id": "on-player-places-tnt",
+      "event": "player_block_place",
+      "block": "tnt",
+      "cancel": "!(has_flag('player', 'demolition'))",
+      "routine": "on-player-places-tnt"
+    },
+    {
+      "id": "on-player-breaks-_log",
+      "event": "player_block_break",
+      "block": "*_log",
+      "routine": "on-player-breaks-_log"
+    }
+  ]
+}

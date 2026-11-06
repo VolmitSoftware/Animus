@@ -3,6 +3,7 @@
 // acting as players through the native-codec client. Prints one line per check; details go to --results.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createServer, connect } from 'node:net';
 import path from 'node:path';
@@ -37,7 +38,9 @@ const defaultScenarios = project === 'folia' ? 'folia' : MOD ? (version === '26.
 const scenarios = (args.get('scenarios') ?? defaultScenarios).split(',');
 const dashed = version.replaceAll('.', '-');
 const name = args.get('instance-name') ?? (MOD ? `animus-mod-${project}-${dashed}` : `animus-live-${project}-${dashed}`);
-assert(new RegExp(MOD ? `^animus-mod-${project}-${dashed}$` : `^animus-(?:live|gate-live|guarddebug|foliafinal|builderscaffold)-${project}-${dashed}$`).test(name), 'Instance name must bind the requested platform/version');
+// A Folia run may also use the animus-folia-paper-<version> instance a Folia check was asked to run on.
+assert(new RegExp(MOD ? `^animus-mod-${project}-${dashed}$` : `^animus-(?:live|gate-live|guarddebug|foliafinal|builderscaffold)-${project}-${dashed}$`).test(name)
+  || project === 'folia' && name === `animus-folia-paper-${dashed}`, 'Instance name must bind the requested platform/version');
 assert(!MOD || !fixture, 'The QA event fixture is a Bukkit plugin; mod servers run without it');
 const instances = path.join(workspace, `consumers/${MOD ? `${project}-mod` : 'plugin'}-consumers/instances`);
 const pluginInstances = path.join(workspace, 'consumers/plugin-consumers/instances');
@@ -114,7 +117,7 @@ class Server {
     writeFileSync(path.join(instance, 'eula.txt'), existsSync(path.join(template, 'eula.txt')) ? readFileSync(path.join(template, 'eula.txt')) : 'eula=true\n');
     const plugins = path.join(instance, MOD ? 'mods' : 'plugins');
     // Every run starts from empty plugin data so no earlier revision, checkpoint or state answers for this run.
-    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|guarddebug|foliafinal|builderscaffold|mod)-/.test(path.basename(instance)));
+    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|guarddebug|foliafinal|builderscaffold|mod|folia-paper)-/.test(path.basename(instance)));
     rmSync(data, { recursive: true, force: true });
     mkdirSync(data, { recursive: true });
     mkdirSync(plugins, { recursive: true });
@@ -370,7 +373,7 @@ async function triggers() {
   });
   await check('trigger waypoint arrival', async () => {
     const from = owner.events.length;
-    await server.cmd('animus navigate trig 4 61 10 walk 3', /./);
+    await server.cmd('animus navigate trig 4 61 10 mode=walk speed=3', /./);
     return (await owner.chat('Trigger » waypoint-fired', from, 15_000)).text;
   });
   await check('behaviors triggers output', async () => {
@@ -442,8 +445,17 @@ async function values(owner, npc = 'st') {
   const from = owner.events.length;
   const execution = await owner.run(npc, 'live:state');
   await owner.chat('report-end', from);
-  const lines = owner.events.slice(from).filter(e => e.event === 'chat' && e.text.startsWith('State: ')).map(e => e.text.slice(7));
+  const lines = owner.events.slice(from).filter(e => e.event === 'chat' && e.text.startsWith('State » ')).map(e => e.text.slice('State » '.length));
   return { lines: lines.filter(line => line !== 'report-end'), execution };
+}
+// An offline server stores no player skins, so the scenario writes its own unsigned one, named by its content hash.
+function syntheticSkin() {
+  const texture = Buffer.from(JSON.stringify({ textures: { SKIN: { url: 'http://textures.minecraft.net/texture/1a4af718455d4aab528e7a61f86fa25e6a369d1768dcb13f7df319a713eb810b' } } })).toString('base64');
+  const text = JSON.stringify({ textureRaw: texture, signature: null }) + '\n';
+  const hash = createHash('sha256').update(text, 'utf8').digest('hex');
+  mkdirSync(path.join(data, 'skins'), { recursive: true });
+  writeFileSync(path.join(data, 'skins', `${hash}.json`), text);
+  return hash;
 }
 async function state() {
   server.behavior('live:state', stateDoc());
@@ -699,7 +711,7 @@ async function actions() {
     return diagnosticOf(result.text).replace(/^.*Behavior diagnostic/, 'diagnostic').slice(0, 200);
   });
   await check('navigate wait fails when blocked mid-walk', async () => {
-    await server.cmd('animus navigate act 0 61 3 walk 5', /./); await delay(2000);
+    await server.cmd('animus navigate act 0 61 3 mode=walk speed=5', /./); await delay(2000);
     server.behavior('live:nav', { routines: { main: seq(action('animus:navigate', { x: 12, y: 61, z: 3, speed: 1, wait: true, timeoutTicks: 600 }), sayTo('walled-arrived')) } });
     await server.reload();
     const execution = await owner.run('act', 'live:nav');
@@ -711,14 +723,14 @@ async function actions() {
     return diagnosticOf(result.text).replace(/^.*Behavior diagnostic/, 'diagnostic').slice(0, 200);
   });
   await check('navigate wait times out', async () => {
-    await server.cmd('animus navigate act 0 61 3 walk 5', /./); await delay(3000);
+    await server.cmd('animus navigate act 0 61 3 mode=walk speed=5', /./); await delay(3000);
     const result = await runDoc(owner, 'nav', action('animus:navigate', { x: 30, y: 61, z: 3, speed: 1, wait: true, timeoutTicks: 20 }));
     assert.equal(result.state, 'FAILED');
     assert(/navigation-timeout/.test(result.text), result.text.slice(0, 400));
     return diagnosticOf(result.text).replace(/^.*Behavior diagnostic/, 'diagnostic').slice(0, 200);
   });
   await check('look at coordinate and player', async () => {
-    await server.cmd('animus navigation act stop', /./);
+    await server.cmd('animus navigation stop act', /./);
     await delay(400);
     let from = owner.events.length;
     const result = await runDoc(owner, 'look', action('animus:look', { x: 20, y: 62, z: 3 }));
@@ -739,7 +751,7 @@ async function actions() {
     let result = await runDoc(owner, 'appear', action('animus:set-appearance', { name: 'Renamed' }));
     assert.equal(result.state, 'COMPLETED', diagnosticOf(result.text));
     await owner.wait(e => e.event === 'player_info' && e.uuid === uuid && e.name === 'Renamed', from, 5000);
-    const skin = readdirSync(path.join(data, 'skins')).find(file => file.endsWith('.json'))?.replace('.json', '');
+    const skin = syntheticSkin();
     from = owner.events.length;
     result = await runDoc(owner, 'appear', action('animus:set-appearance', { skin }));
     assert.equal(result.state, 'COMPLETED', diagnosticOf(result.text));
@@ -1207,8 +1219,8 @@ async function dragon() {
   await check('moving dragon uses flight phase and returns to sitting', async () => {
     await go(0, 61, -20);
     const from = owner.events.length;
-    const reply = await server.capture('animus navigate drake 0 61 16 walk 2', /Navigation[^\n]*|Animus navigation[^\n]*/, 2500);
-    const status = await server.capture('animus navigation drake status', /Navigation[^\n]*|Animus navigation[^\n]*/);
+    const reply = await server.capture('animus navigate drake 0 61 16 mode=walk speed=2', /Navigation[^\n]*|Animus navigation[^\n]*/, 2500);
+    const status = await server.capture('animus navigation status drake', /Navigation[^\n]*|Animus navigation[^\n]*/);
     note(reply + status);
     const phases = () => owner.events.slice(from).filter(e => e.event === 'metadata' && e.id === body.id).map(e => JSON.stringify(e.fields)).join(' ');
     await owner.wait(e => e.event === 'metadata' && e.id === body.id && e.fields.some(f => f.value === 0), from, 8000).catch(error => { throw new Error(`${error.message}; phases=${phases()}; ${status.match(/Navigation[^\n]*/)?.[0]}`); });
@@ -1316,10 +1328,11 @@ async function folia() {
   await foliaMounts(owner, at);
   await foliaRiding(owner, at);
   await foliaGuard(owner, at);
+  await foliaManual(owner, at);
+  await foliaBuilds(owner, at);
   await foliaDragon(owner, at);
   await owner.close();
   await server.cmd('animus delete fnpc', /Deleted/);
-  await foliaBuildsRefused();
 }
 
 // ---- Folia: mounted groups, riding, combat and dragon phases on region owners ----
@@ -1338,7 +1351,7 @@ async function foliaMounts(owner, at) {
     const before = await inspect('fhorse');
     const goal = [before.x + 24, before.y, before.z];
     await owner.tp(before.x + 12, before.y, before.z - 4);
-    await server.cmd(`animus navigate fhorse ${goal[0].toFixed(1)} ${goal[1]} ${goal[2].toFixed(1)} walk 4`, /Navigation|navigation|route/i);
+    await server.cmd(`animus navigate fhorse ${goal[0].toFixed(1)} ${goal[1]} ${goal[2].toFixed(1)} mode=walk speed=4`, /Navigation|navigation|route/i);
     const end = await until(async () => { const h = await inspect('fhorse'); return { ok: Math.abs(h.x - goal[0]) < .7, x: h.x, line: h.line.slice(0, 200) }; }, 30000, 'horse did not arrive');
     const rider = await inspect('fknight');
     const chunks = Math.floor(goal[0] / 16) - Math.floor(before.x / 16);
@@ -1475,7 +1488,7 @@ async function foliaDragon(owner, at) {
     await owner.wait(e => e.event === 'metadata' && e.id === body.id && e.fields.some(f => f.value === 6), from, 8000);
     const moved = owner.events.length;
     const goal = at(-20, 46);
-    await server.cmd(`animus navigate fdrake ${goal[0]} ${goal[1]} ${goal[2]} walk 2`, /Navigation|navigation|route/i);
+    await server.cmd(`animus navigate fdrake ${goal[0]} ${goal[1]} ${goal[2]} mode=walk speed=2`, /Navigation|navigation|route/i);
     await owner.wait(e => e.event === 'metadata' && e.id === body.id && e.fields.some(f => f.value === 0), moved, 10000);
     await owner.wait(e => e.event === 'metadata' && e.id === body.id && e.fields.some(f => f.value === 6), moved, 20000);
     return owner.events.filter(e => e.event === 'metadata' && e.id === body.id).map(e => JSON.stringify(e.fields)).join(' ').slice(0, 200);
@@ -1527,11 +1540,12 @@ async function inspect(id) {
 }
 async function combatOf(id) {
   const pattern = new RegExp(`Combat ${id}:[^\\n]*`);
-  return plain(await server.capture(`animus combat ${id} status`, pattern)).match(pattern)[0];
+  return plain(await server.capture(`animus combat status npc=${id}`, pattern)).match(pattern)[0];
 }
 async function combatCommand(id, operation) {
   const pattern = new RegExp(`Combat ${id}:[^\\n]*|Unknown NPC[^\\n]*|Usage[^\\n]*`);
-  return plain(await server.capture(`animus combat ${id} ${operation}`, pattern)).match(pattern)[0];
+  const [verb, ...rest] = operation.split(' ');
+  return plain(await server.capture(`animus combat ${verb} ${id}${rest.length ? ' ' + rest.join(' ') : ''}`, pattern)).match(pattern)[0];
 }
 async function entityNumber(uuid, nbt) {
   const text = plain(await server.capture(`data get entity ${uuid} ${nbt}`, /following entity data[^\n]*|No entity was found|Found no elements[^\n]*/));
@@ -1598,7 +1612,7 @@ async function terrain() {
     const from = owner.events.length;
     const result = await runDoc(owner, 'stairs', action('animus:navigate', { x: 8.5, y: 63, z: -19.5, speed: 3, wait: true, timeoutTicks: 400 }), {}, 'stairs');
     const heights = [...new Set(owner.events.slice(from).filter(e => e.event === 'move' && e.id === body.id).map(e => e.y))];
-    note(`stairs navigation: ${plain(await server.capture('animus navigation stairs status', /Navigation[^\n]*/))}`);
+    note(`stairs navigation: ${plain(await server.capture('animus navigation status stairs', /Navigation[^\n]*/))}`);
     const end = await inspect('stairs');
     await server.cmd('animus delete stairs', /Deleted/);
     assert.equal(result.state, 'COMPLETED', `${diagnosticOf(result.text)} heights=${heights}`);
@@ -1705,7 +1719,7 @@ async function combat() {
     results.target = await combatCommand('cmelee', `target ${OWNER.uuid}`);
     results.guard = await combatCommand('cmelee', `guard ${OWNER.uuid}`);
     results.guardStop = await combatCommand('cmelee', 'guard stop');
-    results.unknown = plain(await server.capture('animus combat nobody status', /Unknown NPC[^\n]*|Combat[^\n]*/)).match(/Unknown NPC[^\n]*|Combat[^\n]*/)[0];
+    results.unknown = plain(await server.capture('animus combat status npc=nobody', /Unknown NPC[^\n]*|Combat[^\n]*/)).match(/Unknown NPC[^\n]*|Combat[^\n]*/)[0];
     for (const key of ['disengage', 'engage', 'release', 'target', 'guard', 'guardStop']) assert(/: APPLIED/.test(results[key]), `${key}: ${results[key]}`);
     assert(/Unknown NPC/.test(results.unknown), results.unknown);
     await combatCommand('cmelee', 'disengage');
@@ -1887,7 +1901,7 @@ async function packs() {
   await check('packs load and every pack NPC is active', async () => {
     // The list pages at 20 rows; earlier scenarios' documents come first.
     let list = '';
-    for (const page of [1, 2]) list += plain(await server.capture(`animus behaviors list ${page}`, /Behaviors: \d+ documents[^\n]*/, 600));
+    for (const page of [1, 2]) list += plain(await server.capture(`animus behaviors list page=${page}`, /Behaviors: \d+ documents[^\n]*/, 600));
     note(list);
     const rows = list.split('\n').filter(line => /Behavior \S+ \| path=packs\//.test(line));
     const problems = [];
@@ -2099,7 +2113,7 @@ async function blockIs(x, y, z, id) {
 }
 async function buildStatus(id) {
   const pattern = new RegExp(`Build ${id}: [^\\n]*|No build for ${id}[^\\n]*|Animus build: [^\\n]*|Builds unavailable: [^\\n]*`);
-  return plain(await server.capture(`animus build ${id} status`, pattern, 150)).match(pattern)[0];
+  return plain(await server.capture(`animus build status build=${id}`, pattern, 150)).match(pattern)[0];
 }
 // The next chest window after `from`, with the contents the server sent for it.
 async function windowOpened(client, from, timeout = 10_000) {
@@ -2149,7 +2163,7 @@ async function building() {
       assert(listed.includes(BUILD.file), listed);
       const from = logText().length;
       const startPattern = new RegExp(`Started build ${BUILD.npc}[^\\n]*|Cannot start build ${BUILD.npc}[^\\n]*|Animus build: [^\\n]*|Builds unavailable: [^\\n]*`);
-      const started = plain((await server.cmd(`animus build start ${BUILD.npc} ${BUILD.file} at=${ox},${oy},${oz} anchor=corner materials=creative interval=1 timeout=5`, startPattern))[0]);
+      const started = plain((await server.cmd(`animus build start ${BUILD.npc} schematic=${BUILD.file} at=${ox},${oy},${oz} anchor=corner materials=creative interval=1 timeout=5`, startPattern))[0]);
       assert.match(started, new RegExp(`^Started build ${BUILD.npc}: ${BUILD.file.replace('.', '\\.')} 18 steps from ${ox} ${oy} ${oz} to ${ox + 2} ${oy + 1} ${oz + 2}$`));
       // BuildService logs "Build <id> finished" when the last block is placed (the console starter gets no chat line).
       await server.waitLog(new RegExp(`Build ${BUILD.npc} finished`), from, 90_000);
@@ -2157,7 +2171,7 @@ async function building() {
       assert.match(status, /: finished 18\/18 \(100%\)/);
       assert.match(status, /placed=18 skipped=0 denied=0 no-item=0 refused=0/);
       assert.match(status, /materials=creative \| undo=18\b/);
-      const survey = plain(await server.capture(`animus build ${BUILD.npc} survey`, new RegExp(`Build ${BUILD.npc} [^\\n]*`)));
+      const survey = plain(await server.capture(`animus build survey ${BUILD.npc}`, new RegExp(`Build ${BUILD.npc} [^\\n]*`)));
       assert(survey.includes(`Build ${BUILD.npc} uses creative materials; nothing is needed`), survey);
       const wrong = [];
       for (const b of blocks) if (!await blockIs(b.x, b.y, b.z, b.id)) wrong.push(`${b.x},${b.y},${b.z}!=${b.id}`);
@@ -2170,7 +2184,7 @@ async function building() {
       for (const id of kinds) held.push(await itemCount(OWNER.name, id));
       assert.deepEqual(held, [5, 5, 5]);
       // Undo puts the air back; it does not walk and is limited by undoPerTick (32), so 18 cells take one tick.
-      const undo = plain((await server.cmd(`animus build ${BUILD.npc} undo`, new RegExp(`Undoing \\d+ changes of build ${BUILD.npc}[^\\n]*|Animus build: [^\\n]*`)))[0]);
+      const undo = plain((await server.cmd(`animus build undo ${BUILD.npc}`, new RegExp(`Undoing \\d+ changes of build ${BUILD.npc}[^\\n]*|Animus build: [^\\n]*`)))[0]);
       assert.equal(undo, `Undoing 18 changes of build ${BUILD.npc}`);
       const undone = await until(async () => { const s = await buildStatus(BUILD.npc); return { ok: /: undone /.test(s), s }; }, 20_000, 'undo did not finish');
       assert.match(undone.s, /restored=18 kept=0/);
@@ -2213,7 +2227,7 @@ async function scaffolding() {
       const body = await owner.body(uuid);
       const watched = owner.events.length, from = logText().length;
       const startPattern = new RegExp(`Started build ${SCAFFOLD.npc}[^\\n]*|Cannot start build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*|Builds unavailable: [^\\n]*`);
-      const started = plain((await server.cmd(`animus build start ${SCAFFOLD.npc} ${SCAFFOLD.file} at=${ox},${oy},${oz} anchor=corner materials=creative interval=2 timeout=30`, startPattern))[0]);
+      const started = plain((await server.cmd(`animus build start ${SCAFFOLD.npc} schematic=${SCAFFOLD.file} at=${ox},${oy},${oz} anchor=corner materials=creative interval=2 timeout=30`, startPattern))[0]);
       assert.match(started, new RegExp(`^Started build ${SCAFFOLD.npc}: live-scaffold\\.nbt 42 steps from ${ox} ${oy} ${oz} to ${ox + 4} ${oy + 13} ${oz + 4}`));
       let most = 0;
       await until(async () => {
@@ -2257,7 +2271,7 @@ async function scaffolding() {
       assert(top >= oy + 9, `the rigger only reached y=${top}`);
       let jump = 0;
       for (let i = 1; i < moves.length; i++) jump = Math.max(jump, Math.abs(moves[i].y - moves[i - 1].y));
-      const undo = plain((await server.cmd(`animus build ${SCAFFOLD.npc} undo`, new RegExp(`Undoing \\d+ changes of build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*`)))[0]);
+      const undo = plain((await server.cmd(`animus build undo ${SCAFFOLD.npc}`, new RegExp(`Undoing \\d+ changes of build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*`)))[0]);
       assert.match(undo, new RegExp(`^Undoing \\d+ changes of build ${SCAFFOLD.npc}`));
       const undone = await until(async () => { const s = await buildStatus(SCAFFOLD.npc); return { ok: /: undone /.test(s), s }; }, 30_000, 'undo did not finish');
       assert.match(undone.s, /restored=\d+ kept=0/);
@@ -2301,7 +2315,8 @@ async function shops() {
       const listed = plain(await server.capture('animus shop list', /Shops: \d+/, 400));
       assert(new RegExp(`${SHOP.id} \\| [^|]*Swap \\| pages=1`).test(listed), listed);
       const problems = plain(await server.capture('animus shop problems', /Shop and GUI problems: \d+/, 400));
-      assert(!/live[:/]swap/.test(problems), problems);
+      // The hotload line for the new file can land in the same capture; only the problem rows count.
+      assert(!/live[:/]swap/.test(problems.split('\n').filter(line => !/Hotloaded/.test(line)).join('\n')), problems);
       const uuid = await server.npc(SHOP.npc, 'minecraft:player', ...SHOP.at, 'Swapper', { modules: { 'animus:shop': { shop: SHOP.id, openOn: 'right' } } });
       created = true;
       await server.cmd(`clear ${OWNER.name}`, /Removed|No items/);
@@ -2327,7 +2342,7 @@ async function shops() {
 
       // 2. Open again with the command and try once more without the price: nothing changes.
       from = owner.events.length;
-      await server.cmd(`animus shop open ${SHOP.id} ${OWNER.name}`);
+      await server.cmd(`animus shop open ${SHOP.id} player=${OWNER.name}`);
       open = await windowOpened(owner, from);
       from = await clickSlot(owner, open.container, SHOP.slot);
       const refused = await owner.chat('You do not have the items for that.', from, 8000);
@@ -2356,20 +2371,190 @@ async function shops() {
   await owner.close();
 }
 
-// ---- folia(): add inside the existing folia scenario ----------------------------------------
+// ---- Folia: manual attack, mob control and builds across region owners ----------------------
 
-// AnimusPlugin.startBuilds sets this reason when there is no main-thread runtime; BuildCommands answers
-// every /animus build form with "Builds unavailable: " + reason before reading any argument.
-const FOLIA_BUILDS = 'Builds unavailable: unavailable on Folia: a build site, its NPC team and its material container have no shared region owner, and no handoff for a build exists yet';
-async function foliaBuildsRefused() {
-  await check('builds refuse on Folia with the reason', async () => {
-    const pattern = /Builds unavailable: [^\n]*/;
-    const status = plain((await server.cmd('animus build', pattern))[0]);
-    const start = plain((await server.cmd(`animus build start nobody ${BUILD.file} at=0,61,0`, pattern))[0]);
-    assert.equal(status, FOLIA_BUILDS);
-    assert.equal(start, FOLIA_BUILDS);
+// The console's answers arrive in the server log; the bot's commands answer in its chat.
+async function foliaLog(text, pattern, timeout = 20_000) {
+  const from = logText().length;
+  await server.cmd(text, null);
+  return plain((await server.waitLog(pattern, from, timeout))[0]);
+}
+async function foliaBlockIs(owner, x, y, z, id) {
+  const reply = await owner.command(`execute if block ${x} ${y} ${z} ${id}`, /Test (passed|failed)/);
+  return /Test passed/.test(reply.text);
+}
+async function foliaManual(owner, at) {
+  await owner.tp(...at(4, -14));
+  const npcAt = at(4, -10);
+  const uuid = await server.npc('fmanual', 'minecraft:player', ...npcAt, 'Duelist');
+  await owner.body(uuid);
+  const attack = async (target, damage) => foliaLog(`animus attack fmanual ${target} damage=${damage}`, /Attack fmanual: (?!QUEUED)[^\n]*/);
+  await check('Folia: attack hits a mob on its region', async () => {
+    // A cow has no armor, so the whole hit lands.
+    const cow = await summon(31, 'minecraft:cow', npcAt[0] + 1.5, npcAt[1], npcAt[2], 'NoAI:1b,Health:10f');
+    const line = await attack(cow, 4);
+    await server.cmd(`kill ${cow}`, /Killed|No entity/).catch(() => {});
+    assert.match(line, /APPLIED applied=4\.0 health-before=10\.0 health-after=6\.0/);
+    return line;
+  });
+  await check('Folia: attack hits the bot on its own region', async () => {
+    // The NPC's attack cooldown (20 ticks) runs from the previous attack.
+    await delay(1200);
+    await gamemode('survival');
+    await owner.tp(npcAt[0] - 1.5, npcAt[1], npcAt[2]);
+    const before = owner.health;
+    const line = await attack(OWNER.uuid, 3);
+    await until(async () => ({ ok: owner.health < before, health: owner.health }), 5000, 'the bot never lost health');
+    await gamemode('creative');
+    assert.match(line, /APPLIED applied=3\.0/);
+    return `${line}; client health ${before} -> ${owner.health}`;
+  });
+  await check('Folia: attack on a player in another region is refused there', async () => {
+    const peer = await join(PEER.name, null);
+    await peer.tp(npcAt[0] + 4000, npcAt[1], npcAt[2] + 4000);
+    await delay(1500);
+    const line = await attack(PEER.uuid, 3);
+    await delay(1200);
+    await peer.close();
+    assert.match(line, /DIFFERENT_WORLD|OUT_OF_REACH|STALE|UNAVAILABLE_CHUNK/);
+    return line;
+  });
+  await check('Folia: target makes a mob fight the NPC from the mob region', async () => {
+    await owner.tp(npcAt[0] - 6, npcAt[1], npcAt[2]);
+    const before = await inspect('fmanual');
+    const zombie = await summon(32, 'minecraft:zombie', npcAt[0] + 5.5, npcAt[1], npcAt[2], 'Health:40f');
+    const started = await foliaLog(`animus target fmanual ${zombie}`, /Mob control started[^\n]*|Mob control fmanual: (?!QUEUED)[^\n]*/);
+    assert.match(started, /Mob control started npc=fmanual/);
+    const hurt = await until(async () => { const n = await inspect('fmanual'); return { ok: n.health < before.health, health: n.health }; }, 20_000, 'the zombie never hit the NPC');
+    const status = plain(await server.capture('animus combat status', /Combat \w+[^\n]*/)).match(/Combat \w+[^\n]*/)[0];
+    const from = logText().length;
+    const released = await foliaLog('animus target fmanual stop', /Released \d+ mob control leases for fmanual/);
+    await server.waitLog(/Mob control fmanual ended: STOPPED/, from, 10_000);
+    await server.cmd(`kill ${zombie}`, /Killed|No entity/).catch(() => {});
+    assert.match(released, /Released 1 /);
+    assert.match(status, /controlled-mobs=1\/32 mob-hits=[1-9]/);
+    return `NPC health ${before.health} -> ${hurt.health}; ${status.match(/manual attack[^|]*\|[^|]*/)?.[0]}; ${released}`;
+  });
+  await check('Folia: target refuses a player as on Paper', async () => {
+    const line = await foliaLog(`animus target fmanual ${OWNER.uuid}`, /Target control requires an existing supported mob|Animus[^\n]*target[^\n]*/i);
+    assert.match(line, /Target control requires an existing supported mob/);
+    return line;
+  });
+  await server.cmd('animus delete fmanual', /Deleted/);
+}
+
+// The scaffolding fixture with its door column on a chunk border: the bed and floor sit in one chunk and the tall
+// pillar in the next, and the rigger starts a chunk further west, so its walk, its scaffold and the blocks cross owners.
+async function foliaBuilds(owner, at) {
+  const [sx, ground, sz] = at(0, 0);
+  const ox = (Math.floor((Math.floor(sx) + 28) / 16) + 1) * 16 - 2, oy = ground, oz = Math.floor(sz) - 34;
+  const file = path.join(data, 'schematics', SCAFFOLD.file);
+  const area = `${ox - 16} ${oy} ${oz - 4} ${ox + 8} ${oy + 18} ${oz + 10}`;
+  const startPattern = new RegExp(`Started build ${SCAFFOLD.npc}[^\\n]*|Cannot start build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*`);
+  const startCommand = `animus build start ${SCAFFOLD.npc} schematic=${SCAFFOLD.file} at=${ox},${oy},${oz} anchor=corner materials=creative interval=2 timeout=30`;
+  let created = false, helper = false;
+  await check('Folia: builds run on region turns', async () => {
+    const status = plain(await server.capture('animus build status', /Builds [^\n]*/)).match(/Builds [^\n]*/)[0];
+    assert.match(status, /^Builds ready on Folia regions \| /);
     return status;
   });
+  await check('Folia: a build across chunk owners places a door, a bed and climbs scaffolding', async () => {
+    try {
+      mkdirSync(path.dirname(file), { recursive: true });
+      const made = spawnSync('python3', ['-I', path.join(root, 'qa/multiplexor/make-scaffold-nbt.py'), file], { encoding: 'utf8' });
+      assert.equal(made.status, 0, made.stderr);
+      const blocks = JSON.parse(made.stdout).blocks.map(b => ({ x: ox + b.pos[0], y: oy + b.pos[1], z: oz + b.pos[2], id: b.name }));
+      await gamemode('creative');
+      await owner.tp(ox - 2.5, oy, oz + 9.5);
+      await owner.command(`fill ${area} air`, /filled/i);
+      const uuid = await server.npc(SCAFFOLD.npc, 'minecraft:player', ox - 12.5, oy, oz + 7.5, 'Rigger');
+      created = true;
+      await until(async () => { const n = await inspect(SCAFFOLD.npc); return { ok: /: active/.test(n.line), line: n.line.slice(0, 160) }; }, 15_000, 'rigger never became active');
+      const body = await owner.body(uuid);
+      const watched = owner.events.length, from = logText().length;
+      const started = await foliaLog(startCommand, startPattern);
+      assert.match(started, new RegExp(`^Started build ${SCAFFOLD.npc}: live-scaffold\\.nbt 42 steps from ${ox} ${oy} ${oz} to ${ox + 4} ${oy + 13} ${oz + 4}`));
+      let most = 0;
+      await until(async () => {
+        const s = await buildStatus(SCAFFOLD.npc);
+        most = Math.max(most, Number(s.match(/scaffolding=(\d+)/)?.[1] ?? 0));
+        return { ok: /: finished /.test(s), s };
+      }, 300_000, 'the build did not finish');
+      await server.waitLog(new RegExp(`Build ${SCAFFOLD.npc} finished`), from, 5_000);
+      const status = await buildStatus(SCAFFOLD.npc);
+      assert.match(status, /: finished 42\/42 \(100%\)/);
+      assert.match(status, /placed=46 skipped=0 denied=0 no-item=0 refused=0/);
+      const wrong = [];
+      for (const b of blocks) if (!await foliaBlockIs(owner, b.x, b.y, b.z, b.id)) wrong.push(`${b.x},${b.y},${b.z}!=${b.id}`);
+      assert.deepEqual(wrong, []);
+      const chunks = new Set(blocks.map(b => Math.floor(b.x / 16)));
+      assert(chunks.size >= 2, `the build stayed in chunk column ${[...chunks]}`);
+      const packets = owner.events.slice(watched).filter(e => e.event === 'blocks');
+      const key = c => `${c.x},${c.y},${c.z}`;
+      const together = [];
+      for (const [a, b, label] of [[[2, 1, 0], [2, 2, 0], 'door'], [[0, 1, 1], [0, 1, 2], 'bed']]) {
+        const first = `${ox + a[0]},${oy + a[1]},${oz + a[2]}`, second = `${ox + b[0]},${oy + b[1]},${oz + b[2]}`;
+        const packet = packets.find(p => p.cells.some(c => (key(c) === first || key(c) === second) && c.state !== 'minecraft:air'));
+        assert(packet, `${label} never arrived`);
+        const keys = packet.cells.filter(c => c.state !== 'minecraft:air').map(key);
+        assert(keys.includes(first) && keys.includes(second), `${label} halves arrived apart: ${JSON.stringify(packet.cells)}`);
+        together.push(label);
+      }
+      const placedScaffold = new Map(), cleared = new Set();
+      for (const p of packets) for (const c of p.cells) {
+        if (c.state.startsWith('minecraft:scaffolding')) { placedScaffold.set(key(c), c); cleared.delete(key(c)); }
+        else if (placedScaffold.has(key(c)) && c.state === 'minecraft:air') cleared.add(key(c));
+      }
+      assert(placedScaffold.size >= 6, `only ${placedScaffold.size} scaffolding blocks seen`);
+      assert.deepEqual([...placedScaffold.keys()].filter(k => !cleared.has(k)), [], 'scaffolding left standing');
+      const moves = owner.events.slice(watched).filter(e => e.event === 'move' && e.id === body.id);
+      const top = Math.max(...moves.map(m => m.y));
+      assert(top >= oy + 9, `the rigger only reached y=${top}`);
+      const crossed = new Set(moves.map(m => Math.floor(m.x / 16))).size;
+      assert(crossed >= 2, 'the rigger never left its first chunk column');
+      const turns = plain(await server.capture('animus build status', /Builds [^\n]*/)).match(/region-turns=(\d+) out=\d+ lost=(\d+)/);
+      assert(turns && Number(turns[1]) > 0 && turns[2] === '0', `region turns: ${turns?.[0]}`);
+      const undo = await foliaLog(`animus build undo ${SCAFFOLD.npc}`, new RegExp(`Undoing \\d+ changes of build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*`));
+      assert.match(undo, new RegExp(`^Undoing \\d+ changes of build ${SCAFFOLD.npc}`));
+      const undone = await until(async () => { const s = await buildStatus(SCAFFOLD.npc); return { ok: /: undone /.test(s), s }; }, 30_000, 'undo did not finish');
+      assert.match(undone.s, /restored=\d+ kept=0/);
+      const left = [];
+      for (const b of blocks) if (!await foliaBlockIs(owner, b.x, b.y, b.z, 'minecraft:air')) left.push(`${b.x},${b.y},${b.z}`);
+      assert.deepEqual(left, []);
+      return `${started.slice(0, 70)}; ${chunks.size} chunk columns; together: ${together.join(', ')}; scaffolding ${placedScaffold.size} cells, most standing ${most}, all removed; rigger top y=${top.toFixed(2)} across ${crossed} chunk columns; ${turns[0]}; undo ${undone.s.match(/restored=\d+ kept=\d+/)[0]}`;
+    } finally {
+      await owner.command(`fill ${area} air`, /filled/i).catch(() => {});
+    }
+  });
+  await check('Folia: a team member on another region works there through the build turn', async () => {
+    // The peer holds a separate region far away; only the helper's own region can give it a route.
+    const peer = await join(PEER.name, null);
+    const far = [ox + 4000.5, oy, oz + 4000.5];
+    await peer.tp(...far);
+    await delay(1500);
+    await server.npc('fhelper', 'minecraft:player', far[0] + 2, far[1], far[2], 'Helper');
+    helper = true;
+    try {
+      await until(async () => { const n = await inspect('fhelper'); return { ok: /: active/.test(n.line), line: n.line.slice(0, 160) }; }, 15_000, 'helper never became active');
+      const restarted = await foliaLog(startCommand, startPattern);
+      assert.match(restarted, /^Started build rigger/);
+      const added = await foliaLog(`animus build team add ${SCAFFOLD.npc} fhelper`, /Added fhelper to build[^\n]*|Animus build: [^\n]*/);
+      assert.match(added, /Added fhelper to build rigger; team=rigger,fhelper/);
+      const routed = await until(async () => {
+        const line = plain(await server.capture('animus navigation status fhelper', /Navigation fhelper:[^\n]*/)).match(/Navigation fhelper:[^\n]*/)?.[0] ?? '';
+        return { ok: /route=/.test(line), line };
+      }, 30_000, 'the helper never got a route from the build');
+      const cancel = await foliaLog(`animus build cancel ${SCAFFOLD.npc}`, /Cancelled build rigger[^\n]*|Animus build: [^\n]*/);
+      assert.match(cancel, /^Cancelled build rigger/);
+      return `${added}; ${routed.line.slice(0, 120)}; ${cancel}`;
+    } finally {
+      await peer.close();
+    }
+  });
+  await owner.command(`fill ${area} air`, /filled/i).catch(() => {});
+  if (existsSync(file)) unlinkSync(file);
+  if (helper) await server.cmd('animus delete fhelper', /Deleted|Unknown/);
+  if (created) await server.cmd(`animus delete ${SCAFFOLD.npc}`, /Deleted|Unknown/);
 }
 
 // ---- scenario: smoke (start, spawn, interact, navigate, ride, restart) ----------------------
@@ -2393,7 +2578,7 @@ async function smoke() {
   });
   await check('smoke navigation arrives', async () => {
     const from = owner.events.length;
-    await server.cmd('animus navigate smoke 4 61 6 walk 3', /./);
+    await server.cmd('animus navigate smoke 4 61 6 mode=walk speed=3', /./);
     await owner.chat('Smoke » smoke-arrived', from, 15_000);
     const moved = owner.events.slice(from).filter(e => e.event === 'move' && e.id === body.id).at(-1);
     assert(moved && Math.abs(moved.x - 4.5) < 1, JSON.stringify(moved));

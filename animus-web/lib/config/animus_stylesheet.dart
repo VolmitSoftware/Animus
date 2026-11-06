@@ -2,6 +2,7 @@ import 'package:arcane_jaspr/theme/index.dart';
 import 'package:arcane_jaspr_ascii/arcane_jaspr_ascii.dart';
 
 import 'brand.dart';
+import 'control_css.dart';
 
 /// The Ascii stylesheet in Animus colours: the brand tokens from [brandDark]
 /// and [brandLight] replace Ascii's neutrals after its own CSS, and primary
@@ -44,5 +45,6 @@ String brandCss() {
       '${block('html.dark #arcane-root.arcane-theme-ascii,\n#arcane-root.dark.arcane-theme-ascii', brandDark)}'
       "#arcane-root.arcane-theme-ascii :is(.arcane-button, .arcane-cycle-button)[data-variant='primary'] {\n"
       '  --shadcn-button-hover: var(--animus-pink-deep);\n'
-      '}\n';
+      '}\n'
+      '$controlCss';
 }

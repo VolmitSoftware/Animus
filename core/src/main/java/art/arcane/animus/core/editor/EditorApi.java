@@ -382,6 +382,12 @@ public final class EditorApi implements EditorRequestHandler {
         return kind != DocumentKind.NPC || token.group(id.substring(0, Math.max(0, id.lastIndexOf('/'))));
     }
 
+    /** A change reaches its id and, for a move, the id it leaves. */
+    private static void reach(EditorTokens.Token token, EditorMessages.Change change) throws EditorError {
+        group(token, change.kind(), change.id());
+        if (change.move()) group(token, change.kind(), change.from().orElseThrow());
+    }
+
     private static void group(EditorTokens.Token token, DocumentKind kind, String id) throws EditorError {
         if (!visible(token, kind, id)) throw new EditorError(EditorError.Code.GROUP_DENIED, "This token cannot reach NPC folder npcs/" + id.substring(0, Math.max(0, id.lastIndexOf('/'))) + ".");
     }
@@ -426,19 +432,22 @@ public final class EditorApi implements EditorRequestHandler {
         JsonObject body = EditorMessages.body(request);
         EditorMessages.fields(body, "$", Set.of("documents"));
         List<EditorMessages.Change> changes = EditorMessages.changes(body, parts.settings().changeSetDocuments());
-        for (EditorMessages.Change change : changes) group(token, change.kind(), change.id());
+        for (EditorMessages.Change change : changes) reach(token, change);
         return files(() -> {
             JsonArray documents = new JsonArray();
             boolean valid = true;
             Set<String> behaviors = new java.util.HashSet<>();
             for (EditorDocuments.Location location : parts.documents().list(List.of(DocumentKind.BEHAVIOR))) behaviors.add(location.id());
             for (EditorMessages.Change change : changes)
-                if (change.kind() == DocumentKind.BEHAVIOR) { if (change.delete()) behaviors.remove(change.id()); else behaviors.add(change.id()); }
+                if (change.kind() == DocumentKind.BEHAVIOR) {
+                    if (change.delete()) behaviors.remove(change.id()); else behaviors.add(change.id());
+                    change.from().ifPresent(behaviors::remove);
+                }
             for (EditorMessages.Change change : changes) {
                 JsonArray diagnostics = new JsonArray();
                 if (!change.delete()) {
                     JsonObject source = change.source().orElseThrow().deepCopy();
-                    EditorDocuments.Stored current = parts.documents().read(parts.documents().locate(change.kind(), change.id()));
+                    EditorDocuments.Stored current = parts.documents().read(parts.documents().locate(change.kind(), change.from().orElse(change.id())));
                     if (EditorDocuments.REVISIONED.contains(change.kind())) source.addProperty("revision", current.revision() + 1);
                     diagnostics = parts.documents().validate(change.kind(), change.id(), source);
                     if (change.kind() == DocumentKind.NPC && source.has("behaviors") && source.get("behaviors").isJsonArray()) {
@@ -466,7 +475,7 @@ public final class EditorApi implements EditorRequestHandler {
         EditorMessages.fields(body, "$", Set.of("previewId", "documents"));
         Optional<String> replace = body.has("previewId") ? Optional.of(EditorMessages.string(body, "previewId", EditorMessages.OBJECT_ID, "$.previewId")) : Optional.empty();
         List<EditorMessages.Change> changes = EditorMessages.changes(body, parts.settings().changeSetDocuments());
-        for (EditorMessages.Change change : changes) group(token, change.kind(), change.id());
+        for (EditorMessages.Change change : changes) reach(token, change);
         EditorHost.PreviewPresenter presenter = parts.host().previews()
                 .orElseThrow(() -> new EditorError(EditorError.Code.PREVIEW_REFUSED, "Previews are unavailable: " + parts.host().previewsUnavailable()));
         UUID viewer = token.admin().orElseThrow(() -> new EditorError(EditorError.Code.PLAYER_OFFLINE, "This token was paired from the console; previews show to the pairing player."));
@@ -539,7 +548,8 @@ public final class EditorApi implements EditorRequestHandler {
         EditorMessages.ChangeSet set = EditorMessages.changeSet(body, parts.settings().changeSetDocuments());
         Set<DocumentKind> kinds = EnumSet.noneOf(DocumentKind.class);
         set.documents().forEach((EditorMessages.Change change) -> kinds.add(change.kind()));
-        scopes(token, kinds, set.documents().stream().filter((EditorMessages.Change change) -> change.kind() == DocumentKind.NPC).map(EditorMessages.Change::id).toList());
+        scopes(token, kinds, set.documents().stream().filter((EditorMessages.Change change) -> change.kind() == DocumentKind.NPC)
+                .flatMap((EditorMessages.Change change) -> java.util.stream.Stream.concat(java.util.stream.Stream.of(change.id()), change.from().stream())).toList());
         String requestHash = EditorTokens.sha256(body.toString());
         parts.changes().queued(set.idempotencyKey());
         try {
@@ -600,7 +610,7 @@ public final class EditorApi implements EditorRequestHandler {
     }
 
     /** Kinds an import writes: NPCs and skins, generated behaviors, and the shops and layouts of dtlTraders and Shopkeepers. */
-    private static final Set<DocumentKind> IMPORTED = EnumSet.of(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.BEHAVIOR, DocumentKind.SHOP, DocumentKind.INVENTORY);
+    private static final Set<DocumentKind> IMPORTED = EnumSet.of(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.BEHAVIOR, DocumentKind.SHOP, DocumentKind.INVENTORY, DocumentKind.SERVER_BEHAVIORS);
 
     private EditorImports imports() { return new EditorImports(parts.documents().store(), parts.npcs(), parts.importHost()); }
 

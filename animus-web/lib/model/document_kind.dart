@@ -15,13 +15,23 @@ enum DocumentKind {
   textAnimation('text-animation', 'Text animations', 'gui/text-animations'),
   presets('presets', 'Presets', 'gui'),
   rig('rig', 'Rigs', 'rigs'),
-  animation('animation', 'Animations', 'animations');
+  animation('animation', 'Animations', 'animations'),
+
+  /// The single `server-behaviors.json` at the data folder root: the server
+  /// behaviors that run. Its folder is empty.
+  serverBehaviors('server-behaviors', 'Server behaviors', '');
 
   const DocumentKind(this.wireName, this.label, this.folder);
 
   final String wireName;
   final String label;
   final String folder;
+
+  /// The id of the one server behaviors list.
+  static const String serverBehaviorsId = 'server-behaviors';
+
+  /// Where the server behaviors list lives.
+  static const String serverBehaviorsPath = 'server-behaviors.json';
 
   static DocumentKind? parse(String wireName) {
     for (final DocumentKind kind in values) {

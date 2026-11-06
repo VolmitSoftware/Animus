@@ -4,7 +4,13 @@
   "workspace": {
     "schemaVersion": 2,
     "workspaceId": "6f1c2b8e-4d5a-4c3b-9a1e-2b7d8c9e0f11",
-    "folders": [],
+    "folders": [
+      {
+        "id": "3c9d7e1a-2b4f-4c6d-8e0a-1b2c3d4e5f60",
+        "name": "Lobby",
+        "parentId": null
+      }
+    ],
     "documents": [
       {
         "id": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
@@ -22,7 +28,7 @@
         "json": "{\"offset\": [0, 1.5, 2], \"components\": [{\"id\": \"hello\", \"offset\": [0, 0, 0], \"data\": {\"type\": \"decoration\", \"icon\": {\"type\": \"text\", \"text\": \"&eHello\"}}}]}",
         "updatedAt": 1793793600000,
         "kind": "menu",
-        "folderId": null
+        "folderId": "3c9d7e1a-2b4f-4c6d-8e0a-1b2c3d4e5f60"
       },
       {
         "id": "2a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
@@ -45,5 +51,12 @@
     ],
     "activeDocumentId": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
   },
-  "images": []
+  "images": [
+    {
+      "id": "7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d",
+      "name": "logo.png",
+      "mimeType": "image/png",
+      "data": ""
+    }
+  ]
 }

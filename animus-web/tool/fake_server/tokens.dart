@@ -8,7 +8,9 @@ class FakeToken {
   final String hash;
   final List<String> scopes;
   final DateTime created;
-  final DateTime expires;
+
+  /// Moved by `/__fake/expire`.
+  DateTime expires;
   final String? client;
   int counter = 0;
   DateTime? lastUsed;
@@ -35,10 +37,13 @@ class Pairing {
 }
 
 class _Pending {
-  const _Pending(this.secretHash, this.expires, this.extraScopes);
+  const _Pending(this.secretHash, this.expires, this.extraScopes, this.tokenDays);
 
   final String secretHash;
   final DateTime expires;
+
+  /// The token's lifetime, the pairing default unless a test asked.
+  final num tokenDays;
 
   /// Scopes granted on top of the pairing defaults, such as import.
   final List<String> extraScopes;
@@ -67,11 +72,11 @@ class FakeTokens {
 
   /// A fresh one-time secret, good for `secretMinutes`; its token gets the
   /// pairing defaults plus [extraScopes].
-  Pairing pair([List<String> extraScopes = const <String>[]]) {
+  Pairing pair([List<String> extraScopes = const <String>[], num? tokenDays]) {
     final String id = 'tok_${randomText(12)}';
     final String secret = randomText(32);
     final DateTime expires = now().add(Duration(minutes: pairingDefaults['secretMinutes']! as int));
-    _pairings[id] = _Pending(sha256Text(secret), expires, extraScopes);
+    _pairings[id] = _Pending(sha256Text(secret), expires, extraScopes, tokenDays ?? (pairingDefaults['defaultTokenDays']! as int));
     return Pairing(id, secret, expires);
   }
 
@@ -92,7 +97,7 @@ class FakeTokens {
       for (final String scope in pending.extraScopes) scope,
     ];
     final FakeToken token = FakeToken(tokenId, sha256Text(text), scopes, time,
-        time.add(Duration(days: pairingDefaults['defaultTokenDays']! as int)), client);
+        time.add(Duration(minutes: (pending.tokenDays * 1440).round())), client);
     _tokens[tokenId] = token;
     return (text, token);
   }
@@ -129,6 +134,19 @@ class FakeTokens {
         : (_tokens.containsKey(idOrAll) ? <String>[idOrAll] : <String>[]);
     for (final String id in ids) {
       _revoked[id] = _tokens.remove(id)!.expires;
+    }
+    return ids;
+  }
+
+  /// Moves the expiry of one token, or every token for `all`, to [at].
+  /// Returns the ids moved.
+  List<String> expireAt(String idOrAll, DateTime at) {
+    final List<String> ids = <String>[
+      for (final FakeToken token in _tokens.values)
+        if (idOrAll == 'all' || token.id == idOrAll) token.id,
+    ];
+    for (final String id in ids) {
+      _tokens[id]!.expires = at;
     }
     return ids;
   }

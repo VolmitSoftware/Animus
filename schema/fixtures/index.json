@@ -219,6 +219,87 @@
       }
     },
     {
+      "path": "documents/route/town-patrol.json",
+      "kind": "route",
+      "id": "town-patrol",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "documents/route/loop-with-random.json",
+      "kind": "route",
+      "id": "loop-with-random",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
+      "path": "documents/route/no-points.json",
+      "kind": "route",
+      "id": "no-points",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
+      "path": "documents/behavior/loops.json",
+      "kind": "behavior",
+      "id": "town:counter",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "documents/behavior/server-welcome.json",
+      "kind": "behavior",
+      "id": "town:welcome",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "documents/behavior/server-npc-trigger.json",
+      "kind": "behavior",
+      "id": "town:broken-server",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
+      "path": "documents/behavior/break-outside-loop.json",
+      "kind": "behavior",
+      "id": "town:stray-break",
+      "expect": {
+        "schema": true,
+        "java": false
+      }
+    },
+    {
+      "path": "documents/server-behaviors/server-behaviors.json",
+      "kind": "server-behaviors",
+      "id": "server-behaviors",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "documents/server-behaviors/extra-field.json",
+      "kind": "server-behaviors",
+      "id": "server-behaviors",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
       "path": "recordings/market-loop.json",
       "kind": "recording",
       "id": "market-loop",
@@ -362,6 +443,12 @@
       "schema": "editor-v1.schema.json"
     },
     {
+      "path": "editor/messages/change-set.1.json",
+      "definition": "change-set",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
       "path": "editor/messages/validate-response.0.json",
       "definition": "validate-response",
       "valid": true,
@@ -399,6 +486,12 @@
     },
     {
       "path": "editor/messages/change-applied.0.json",
+      "definition": "change-applied",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/change-applied.1.json",
       "definition": "change-applied",
       "valid": true,
       "schema": "editor-v1.schema.json"
@@ -483,6 +576,18 @@
     },
     {
       "path": "editor/messages/invalid/change-set.2.json",
+      "definition": "change-set",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/change-set.3.json",
+      "definition": "change-set",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/change-set.4.json",
       "definition": "change-set",
       "valid": false,
       "schema": "editor-v1.schema.json"

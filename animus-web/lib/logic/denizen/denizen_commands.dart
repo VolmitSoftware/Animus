@@ -380,11 +380,12 @@ class _Commands {
     }
   }
 
-  /// The `consume` condition of an NPC click event: the event's switch guards and the top-level `if ...: stop` guards
-  /// before a top-level `determine cancelled`, all of which hold when the click reaches it. Other lines in between run
-  /// without deciding anything. Null when the event never cancels or when something before the cancel cannot be
-  /// decided as the click arrives: a block, a wait, or a guard that reads definitions, runs a procedure or checks a
-  /// permission.
+  /// The `consume` condition of an NPC click event, or the `cancel` condition of a cancellable server event: the event's
+  /// switch guards, the top-level `if ...: stop` guards and the top-level `ratelimit` windows before a top-level
+  /// `determine cancelled`, all of which hold when the event reaches it. A rate-limited event is therefore left alone, as
+  /// in Denizen, where the script stops before it cancels. Other lines in between run without deciding anything. Null
+  /// when the event never cancels or when something before the cancel cannot be decided as the event happens: a block,
+  /// a wait, or a guard that reads definitions, runs a procedure or checks a permission.
   _Consume? consume(List<DenizenItem> items, List<_Cond> guards, _Scope scope) {
     final List<String> parts = <String>[];
     for (final _Cond guard in guards) {
@@ -407,6 +408,12 @@ class _Commands {
         return _Consume(item, parts.isEmpty ? 'true' : parts.join(' && '));
       }
       if (command.name == 'wait') return null;
+      if (command.name == 'ratelimit' && item.children == null) {
+        final String? window = ratelimitFlag(item, command, scope);
+        if (window == null) return null;
+        parts.add("!has_flag('player', ${_quote(window)})");
+        continue;
+      }
       if (item.children == null) continue;
       if (command.name != 'if' || index + 1 < items.length && denizenCommand(items[index + 1].text).name == 'else') return null;
       final List<DenizenItem> body = item.children!.items;
@@ -438,7 +445,7 @@ class _Commands {
     if (ticks == null) return const _Converted.kept('ratelimit needs a literal duration');
     final int seconds = (ticks + 19) ~/ 20 < 1 ? 1 : (ticks + 19) ~/ 20;
     if (seconds > 31536000) return const _Converted.kept('ratelimit longer than a year');
-    final String flag = converter.ratelimitFlag(scope.container, item.line);
+    final String flag = ratelimitFlag(item, command, scope)!;
     final JObject guard = JObject()
       ..addString('type', 'condition')
       ..addString('expression', "has_flag('player', ${_quote(flag)})")
@@ -450,13 +457,28 @@ class _Commands {
     return _Converted.of(<JObject>[guard, _action('animus:set-flag', arguments)]);
   }
 
+  /// The flag of a `ratelimit <player> <duration>` line that converts; null for any other ratelimit.
+  String? ratelimitFlag(DenizenItem item, DenizenCommand command, _Scope scope) {
+    if (command.args.length != 2 || command.args.first.prefix.isNotEmpty || !_playerTarget(command.args.first.value)) return null;
+    final int? ticks = denizenTicks(_raw(command.args[1]));
+    if (ticks == null || ((ticks + 19) ~/ 20 < 1 ? 1 : (ticks + 19) ~/ 20) > 31536000) return null;
+    return converter.ratelimitFlag(scope.container, item.line);
+  }
+
   /// `determine` ends a task or procedure with its value; elsewhere it would change an event, so it is kept and the
   /// routine still ends.
   List<JObject> determine(DenizenItem item, DenizenCommand command, _Scope scope) {
     final JObject node = _plain('return');
     if (!<String>['task', 'procedure'].contains(scope.container.type)) {
-      converter.outcome(scope, item, 'command', 'determine', false,
-          "determine changes the event's outcome, and Animus triggers cannot cancel or change events; the routine still ends here");
+      converter.outcome(
+          scope,
+          item,
+          'command',
+          'determine',
+          false,
+          scope.cancellable
+              ? 'only a top-level determine cancelled after plain guards and rate limits cancels the event in Animus; this one is not reached that way; the routine still ends here'
+              : "determine changes the event's outcome, and Animus cannot cancel or change this event; the routine still ends here");
       return <JObject>[node];
     }
     if (command.args.length > 1) {
@@ -764,7 +786,13 @@ class _Commands {
 
   // ---- Commands ----
 
-  _Converted simple(DenizenCommand command, _Scope scope, _Pending pending) => switch (command.name) {
+  _Converted simple(DenizenCommand command, _Scope scope, _Pending pending) {
+    final _Converted? fanned = fanout(command, scope, pending);
+    if (fanned != null) return fanned;
+    return switch (command.name) {
+        'note' => _noteOf(command) != null
+            ? _Converted.of(<JObject>[])
+            : const _Converted.kept('only a literal cuboid or ellipsoid noted as:name has an Animus equivalent, as the bounds of area triggers'),
         'narrate' => narrate(command, scope, pending),
         'announce' => announce(command, scope, pending),
         'chat' => chat(command, scope, pending),
@@ -792,6 +820,104 @@ class _Commands {
         '' => const _Converted.kept('empty command line'),
         _ => _Converted.kept('no Animus equivalent for ${command.name}'),
       };
+  }
+
+  /// Commands that show something to players, and the actions they become, which take a `player` argument.
+  static const Set<String> _fanned = <String>{'narrate', 'actionbar', 'title', 'playsound', 'playeffect'};
+  static const Set<String> _playerActions = <String>{'animus:message', 'animus:actionbar', 'animus:title', 'animus:play-sound', 'animus:spawn-particle'};
+
+  /// The definition a fan-out's player goes by inside its filters; `filter_value` is Denizen's own name in filter_tag.
+  static const String _fan = '__targets';
+
+  /// A command for players other than the triggering one (`targets:<server.online_players>`, a filtered list, a list in
+  /// a flag or definition, or a sound played at `<[someone]>`): the same command for one player, run once for each
+  /// listed player in a `foreach` over `players(...)`, which keeps at most 100 of them. Trailing `filter[...]`,
+  /// `filter_tag[...]` and `exclude[...]` become a condition on each player.
+  _Converted? fanout(DenizenCommand command, _Scope scope, _Pending pending) {
+    if (!_fanned.contains(command.name)) return null;
+    final List<DenizenArg> args = command.args;
+    int at = -1;
+    for (int index = 0; index < args.length && at < 0; index++) {
+      final DenizenArg arg = args[index];
+      final bool targets = arg.prefix == 'targets' && !_playerTarget(arg.value) && !(command.name == 'narrate' && _everyone(arg.value));
+      final bool place = command.name == 'playsound' &&
+          arg.prefix.isEmpty &&
+          arg.value.startsWith('<') &&
+          _at(arg.value) == null &&
+          !arg.value.toLowerCase().contains('location') &&
+          _location(arg.value) == null;
+      if (targets || place) at = index;
+    }
+    if (at < 0) return null;
+    final String value = args[at].value;
+    final List<DenizenPart> filters = <DenizenPart>[];
+    final List<DenizenSegment> segments = denizenSegments(value);
+    _Result<_Expr>? list;
+    if (segments.length == 1 && segments.first.tag) {
+      final DenizenTag tag = denizenTag(segments.first.text);
+      final List<DenizenPart> parts = List<DenizenPart>.of(tag.parts);
+      while (tag.fallback == null &&
+          parts.length > 1 &&
+          parts.last.parameter != null &&
+          <String>['filter', 'filter_tag', 'exclude'].contains(parts.last.name.toLowerCase())) {
+        filters.insert(0, parts.removeLast());
+      }
+      final List<String> written = <String>[
+        for (final DenizenPart part in parts) part.name + (part.parameter == null ? '' : '[${part.parameter}]'),
+      ];
+      list = expressions.value('<${written.join('.')}${tag.fallback == null ? '' : '||${tag.fallback}'}>', scope, pending);
+    } else {
+      final List<String> items = <String>[];
+      for (final String piece in _pipes(value)) {
+        if (piece.isEmpty) continue;
+        final _Result<_Expr> item = expressions.value(piece, scope, pending);
+        if (item.failed) {
+          list = item;
+          break;
+        }
+        items.add(item.value!.text);
+      }
+      list ??= _Result<_Expr>.ok(_Expr('[${items.join(', ')}]', 'l'));
+    }
+    if (list.failed) return _Converted.kept('targets ${list.reason}');
+    final String variable = converter.temporary(scope);
+    final SplayTreeMap<String, String> definitions = SplayTreeMap<String, String>.of(scope.definitions);
+    definitions[_fan] = '@$variable';
+    definitions['filter_value'] = '@$variable';
+    final _Scope inner = scope.loop(definitions, scope.loops);
+    final _Pending body = _Pending();
+    final List<String> conditions = <String>[];
+    for (final DenizenPart filter in filters) {
+      final String name = filter.name.toLowerCase();
+      final String parameter = filter.parameter!;
+      final _Result<_Expr> test = expressions.value(name == 'filter' ? '<[$_fan].$parameter>' : parameter, inner, body);
+      if (test.failed) return _Converted.kept('targets $name: ${test.reason}');
+      conditions.add(name == 'exclude' ? '!contains(players(${test.value!.text}), $variable)' : _truth(test.value!));
+    }
+    final List<DenizenArg> replaced = List<DenizenArg>.of(args);
+    replaced[at] = DenizenArg(args[at].prefix, '<player>', false);
+    final _Converted single = simple(DenizenCommand(command.name, replaced), inner, body);
+    if (single.reason.isNotEmpty) return single;
+    for (final JObject step in single.steps) {
+      final JElement? capability = step.get('capability');
+      if (capability == null || !_playerActions.contains(capability.asPrimitive.asString)) {
+        return _Converted.kept('${command.name} for other players has no Animus equivalent');
+      }
+      step.object('arguments')!.add('player', JNull.instance);
+      final JObject filled = step.object('expressions') ?? JObject();
+      filled.addString('/player', variable);
+      step.add('expressions', filled);
+    }
+    final List<JObject> steps = <JObject>[...body.steps, ...single.steps];
+    JObject each = _sequence(steps);
+    if (conditions.isNotEmpty) each = _build(_Atom(conditions.join(' && ')), each, null);
+    final JObject loop = _plain('foreach')
+      ..add('list', JObject()..addString('expression', 'players(${list.value!.text})'))
+      ..addString('as', variable)
+      ..addInt('maximum', 100)
+      ..add('body', each);
+    return _Converted.of(<JObject>[loop]);
+  }
 
   /// Text of an argument with a length limit on the literal and the template.
   _Result<_Text> text(String raw, _Scope scope, _Pending pending, bool command, int limit) {
@@ -929,19 +1055,30 @@ class _Commands {
     final int colon = rawName.indexOf(':');
     final String denizen = (colon < 0 ? rawName : rawName.substring(0, colon)).toLowerCase();
     final String value = colon < 0 ? '' : rawName.substring(colon + 1);
+    // A name joined with tags, such as npc_done_<npc.id>, is computed as the run writes it, like the reads of it.
+    final _Result<String> named = denizenSegments(denizen).any((DenizenSegment segment) => segment.tag) && !denizen.startsWith('<')
+        ? expressions.flagNameExpression(denizen, scope, pending)
+        : const _Result<String>.fail('');
     final String? name = _flagName(denizen);
-    if (denizen.contains('<') || denizen.contains('[') || name == null) return _Converted.kept('flag name $denizen cannot be an Animus flag name');
+    if (named.failed && (denizen.contains('<') || denizen.contains('[') || name == null)) {
+      return _Converted.kept('flag name $denizen cannot be an Animus flag name');
+    }
+    final String nameExpression = named.failed ? _quote(name!) : named.value!;
     final String scopeName = _scopeOf(target);
-    final _Action action = _Action()
-      ..put('name', JString(name))
-      ..put('scope', JString(scopeName));
+    final _Action action = _Action();
+    if (named.failed) {
+      action.put('name', JString(name!));
+    } else {
+      action.expression('name', nameExpression);
+    }
+    action.put('scope', JString(scopeName));
     if (colon >= 0 && value == '!') {
       if (expire != null) return const _Converted.kept('clearing a flag takes no expire');
       action.put('clear', const JBool(true));
       return _Converted.of(<JObject>[action.node('animus:set-flag')]);
     }
     if (colon >= 0) {
-      final String read = 'flag(${_quote(scopeName)}, ${_quote(name)}, ';
+      final String read = 'flag(${_quote(scopeName)}, $nameExpression, ';
       final _Result<String> computed = dataAction(value, '$read[])', 'num(${read}0))', scope, pending);
       if (computed.failed) return _Converted.kept(computed.reason!);
       if (computed.value != null) {

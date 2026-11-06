@@ -46,7 +46,7 @@ class Client extends NativeClient {
     assert.equal(packet.type, 'minecraft:player'); return body;
   }
   async start(body) {
-    const receipt = await this.command(`animus proof control ${body.id}`, 'Proof control started id=');
+    const receipt = await this.command(`animus proof control start ${body.id}`, 'Proof control started id=');
     const f = fields(receipt.text);
     assert.equal(Number(f.id), body.id); assert.equal(Number(f.speed), 2); assert.equal(Number(f.leash), 8);
     assert(receipt.text.includes('unmounted remote control') && receipt.text.includes('awaiting fresh input'));
@@ -110,7 +110,7 @@ try {
   passed('another viewer input cannot move or reveal the private controlled body');
   await owner.command('op AnimusProofPeer', /operator|already/i); peerOperator = true;
   await peer.body();
-  await peer.command(`animus proof control ${body.id}`, 'Proof body is not active for this viewer');
+  await peer.command(`animus proof control start ${body.id}`, 'Proof body is not active for this viewer');
   assert((await peer.status()).idle);
   await peer.clear(); await owner.command('deop AnimusProofPeer', /operator|already/i); peerOperator = false;
   await owner.stationary(before);
