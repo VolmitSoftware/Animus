@@ -16,7 +16,7 @@ import '../gui/gui_json.dart';
 final RegExp npcTagPattern = RegExp(r'^[a-z0-9][a-z0-9_-]{0,31}$');
 
 /// Folder (group) names as the NPC schema accepts them.
-final RegExp npcFolderPattern = RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$');
+final RegExp npcFolderPattern = RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}(?:/[a-z0-9][a-z0-9_-]{0,63}){0,7}$');
 
 /// The most tags one definition may carry.
 const int npcTagLimit = 32;
@@ -63,12 +63,12 @@ class NpcEntry {
   String get key => document.id;
 
   String get folder {
-    final int slash = document.id.indexOf('/');
+    final int slash = document.id.lastIndexOf('/');
     return slash < 0 ? '' : document.id.substring(0, slash);
   }
 
   String get localId {
-    final int slash = document.id.indexOf('/');
+    final int slash = document.id.lastIndexOf('/');
     return slash < 0 ? document.id : document.id.substring(slash + 1);
   }
 

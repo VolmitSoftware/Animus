@@ -8,6 +8,7 @@ import art.arcane.animus.core.behavior.catalog.PackManifest;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.storage.JsonDocumentTree;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.storage.NpcPaths;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.IOException;
@@ -103,11 +104,11 @@ public final class OfflineBehaviorValidation {
         else if (lines.size() == MAXIMUM_LINES) lines.add("More problems were found; fix these and check again.");
     }
     private static List<Path> npcFiles(Path directory) throws IOException {
-        List<Path> files = new ArrayList<>(JsonDocumentTree.files(directory.resolve("npcs")));
+        List<Path> files = new ArrayList<>(JsonDocumentTree.files(directory.resolve("npcs"), NpcPaths.TREE_DEPTH));
         Path packs = directory.resolve("packs");
         if (Files.isDirectory(packs, LinkOption.NOFOLLOW_LINKS)) {
             try (Stream<Path> children = Files.list(packs)) {
-                for (Path pack : children.sorted().toList()) files.addAll(JsonDocumentTree.files(pack.resolve("npcs")));
+                for (Path pack : children.sorted().toList()) files.addAll(JsonDocumentTree.files(pack.resolve("npcs"), NpcPaths.TREE_DEPTH));
             }
         }
         return files;

@@ -1,21 +1,26 @@
 // A line-for-line copy of core's `DenizenEvents`: world script event names as server triggers. An event such as
 // `on player chats message:hello*` becomes the trigger fields (`"event": "player_chat", "pattern": "hello*"`), the
 // conditions its other switches add around the routine (`flagged:`, `permission:`, `in:`), and the `context.*` keys
-// its script may read. An event or switch without an Animus equivalent gives the reason instead.
+// its script may read. A right click on an NPC is an NPC event instead: an `interaction` trigger of a behavior bound to
+// every NPC, whose run reads the NPC as `context.entity`. An event or switch without an Animus equivalent gives the
+// reason instead.
 part of 'denizen_converter.dart';
 
-/// A mapped event: trigger fields without id and routine, wrapping conditions, readable context keys; or a reason.
+/// A mapped event: trigger fields without id and routine, wrapping conditions, readable context keys, and whether it is
+/// an NPC event; or a reason. The context key `entity` maps to `npc`: the clicked entity is the NPC.
 class _Mapped {
-  const _Mapped(this.trigger, this.guards, this.context, this.reason);
+  const _Mapped(this.trigger, this.guards, this.context, this.npc, this.reason);
 
   const _Mapped.fail(String this.reason)
       : trigger = null,
         guards = const <_Cond>[],
-        context = const <String, String>{};
+        context = const <String, String>{},
+        npc = false;
 
   final JObject? trigger;
   final List<_Cond> guards;
   final Map<String, String> context;
+  final bool npc;
   final String? reason;
 }
 
@@ -51,6 +56,7 @@ _Mapped _denizenEvent(String key) {
   final JObject trigger = JObject();
   final SplayTreeMap<String, String> context = SplayTreeMap<String, String>();
   bool player = true;
+  bool npc = false;
   final String event;
   switch (phrase) {
     case 'player joins':
@@ -78,6 +84,14 @@ _Mapped _denizenEvent(String key) {
     case 'delta time hourly':
       event = 'timer';
       player = false;
+    case 'player right clicks entity':
+    case 'player right clicks npc':
+      event = 'interaction';
+      npc = true;
+      trigger.addString('action', 'interact');
+      context['entity'] = 'npc';
+      context['hand'] = 'hand';
+      context['sneaking'] = 'sneaking';
     default:
       if (phrase.startsWith('player changes world')) {
         event = 'player_world_change';
@@ -126,6 +140,7 @@ _Mapped _denizenEvent(String key) {
       case 'every':
         if (event != 'timer') return const _Mapped.fail('switch every: belongs to delta time');
       case 'priority':
+      case 'bukkit_priority':
       case 'ignorecancelled':
         // order and cancellation have no meaning without cancellation
         break;
@@ -156,7 +171,7 @@ _Mapped _denizenEvent(String key) {
         return _Mapped.fail('event switch $name: has no Animus equivalent');
     }
   }
-  return _Mapped(fields, guards, context, null);
+  return _Mapped(fields, guards, context, npc, null);
 }
 
 /// The context keys of a command script's run.
