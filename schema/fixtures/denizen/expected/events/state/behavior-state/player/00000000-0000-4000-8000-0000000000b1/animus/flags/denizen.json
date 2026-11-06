@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "behavior": "animus:flags/denizen",
+  "scope": "player",
+  "player": "00000000-0000-4000-8000-0000000000b1",
+  "values": {
+    "meals": {
+      "type": "integer",
+      "value": 3
+    },
+    "story_done_7": {
+      "type": "boolean",
+      "value": true
+    }
+  }
+}

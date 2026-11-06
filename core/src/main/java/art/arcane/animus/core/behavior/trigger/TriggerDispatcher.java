@@ -175,6 +175,10 @@ public final class TriggerDispatcher implements TriggerSink {
             return (Long) reads.state().read(subject(BehaviorFlags.QUESTS), name, BehaviorFlags.declaration(scope), UNSET_STAGE, BehaviorProgram.Type.INTEGER).value();
         }
         @Override public RandomGenerator random() { return ThreadLocalRandom.current(); }
+        @Override public Optional<BehaviorProgram.Value> playerFlag(UUID player, String name) {
+            BehaviorProgram.Value value = reads.state().read(BehaviorFlags.subject(BehaviorFlags.FLAGS, behavior, event.npc(), Optional.of(player)), name, BehaviorFlags.declaration("player"), UNSET, BehaviorProgram.Type.ANY);
+            return value == UNSET ? Optional.empty() : Optional.of(value);
+        }
         private BehaviorState.Subject subject(String kind) { return BehaviorFlags.subject(kind, behavior, event.npc(), event.player()); }
     }
 

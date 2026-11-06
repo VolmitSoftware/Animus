@@ -4123,7 +4123,20 @@
             "server_start",
             "player_death",
             "player_respawn",
-            "player_world_change"
+            "player_world_change",
+            "player_area",
+            "player_inventory_open",
+            "player_inventory_close",
+            "player_inventory_click",
+            "player_item_drop",
+            "player_item_pickup",
+            "player_item_consume",
+            "player_block_click",
+            "player_block_place",
+            "player_block_break",
+            "player_damaged",
+            "player_damage_entity",
+            "player_kill"
           ],
           "description": "What starts the run."
         },
@@ -4453,6 +4466,201 @@
           "then": {
             "$ref": "#/$defs/trigger-player_world_change"
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_area"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_area"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_inventory_open"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_inventory_open"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_inventory_close"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_inventory_close"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_inventory_click"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_inventory_click"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_item_drop"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_item_drop"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_item_pickup"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_item_pickup"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_item_consume"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_item_consume"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_block_click"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_block_click"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_block_place"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_block_place"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_block_break"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_block_break"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_damaged"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_damaged"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_damage_entity"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_damage_entity"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_kill"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_kill"
+          }
         }
       ]
     },
@@ -4525,7 +4733,7 @@
             "enter",
             "leave"
           ],
-          "description": "Entering or leaving the radius."
+          "description": "Entering or leaving the radius or area."
         },
         "radius": {
           "type": "number",
@@ -5154,6 +5362,552 @@
           "pattern": "\\S",
           "maxLength": 64,
           "description": "Fires only when entering this world. Omit for any world."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_area": {
+      "type": "object",
+      "description": "A player enters or leaves a cuboid or ellipsoid area, checked every half second and on join and quit. Runs read context.area, context.world and context.cause (join, move or quit).",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_area"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "phase": {
+          "enum": [
+            "enter",
+            "leave"
+          ],
+          "description": "Entering or leaving the radius or area."
+        },
+        "area": {
+          "$ref": "#/$defs/identifier",
+          "description": "The area's name, read by runs as context.area. Triggers that name the same area in the same world share it."
+        },
+        "world": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 64,
+          "description": "The world the area is in."
+        },
+        "cuboid": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "number",
+            "minimum": -3.0E7,
+            "maximum": 3.0E7
+          },
+          "description": "Two opposite corner blocks, x1, y1, z1, x2, y2, z2, both included. Give this or ellipsoid."
+        },
+        "ellipsoid": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "number",
+            "minimum": -3.0E7,
+            "maximum": 3.0E7
+          },
+          "description": "A centre x, y, z and three radii in blocks. Give this or cuboid."
+        }
+      },
+      "required": [
+        "id",
+        "event",
+        "phase",
+        "area",
+        "world"
+      ]
+    },
+    "trigger-player_inventory_open": {
+      "type": "object",
+      "description": "A player opens an inventory. Runs read context.inventory_type. cancel keeps it closed.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_inventory_open"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "inventory": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_inventory_close": {
+      "type": "object",
+      "description": "A player closes an inventory. Runs read context.inventory_type.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_inventory_close"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "inventory": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_inventory_click": {
+      "type": "object",
+      "description": "A player clicks a slot of an open inventory. Runs read context.inventory_type, context.click, context.slot and context.item. cancel undoes the click.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_inventory_click"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "inventory": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."
+        },
+        "click": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "The click: left or right on a block; left, right, shift_left, shift_right, middle, number_key, double_click, drop and so on in an inventory. Omit for every click."
+        },
+        "item": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_item_drop": {
+      "type": "object",
+      "description": "A player drops an item. Runs read context.item and context.amount. cancel keeps it in the inventory.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_item_drop"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "item": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_item_pickup": {
+      "type": "object",
+      "description": "A player picks up an item. Runs read context.item and context.amount. cancel leaves it on the ground.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_item_pickup"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "item": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_item_consume": {
+      "type": "object",
+      "description": "A player finishes eating or drinking an item. Runs read context.item. cancel keeps the item.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_item_consume"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "item": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_block_click": {
+      "type": "object",
+      "description": "A player left or right clicks a block. Runs read context.block, context.click (left or right), context.hand, context.location, context.world, context.x, context.y and context.z. cancel stops the click.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_block_click"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "block": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
+        },
+        "click": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "The click: left or right on a block; left, right, shift_left, shift_right, middle, number_key, double_click, drop and so on in an inventory. Omit for every click."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_block_place": {
+      "type": "object",
+      "description": "A player places a block. Runs read context.block and its location. cancel stops the placement.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_block_place"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "block": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_block_break": {
+      "type": "object",
+      "description": "A player breaks a block. Runs read context.block and its location. cancel keeps the block.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_block_break"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "block": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_damaged": {
+      "type": "object",
+      "description": "A player takes damage. Runs read context.cause, context.damage and context.damager (an entity type, empty for none). cancel prevents the damage.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_damaged"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "cause": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A damage type such as fall, lava or player_attack. Omit for every cause."
+        },
+        "damager": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_damage_entity": {
+      "type": "object",
+      "description": "A player hits a living entity that is not an NPC. Runs read context.entity, context.entity_uuid, context.cause and context.damage. cancel prevents the damage.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_damage_entity"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "entity": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_kill": {
+      "type": "object",
+      "description": "A player kills a living entity. Runs read context.entity and context.entity_uuid.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_kill"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "entity": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
         }
       },
       "required": [

@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:world/combat",
+  "server": true,
+  "entry": "on-player-damaged-by-fall",
+  "routines": {
+    "on-player-damaged-by-fall": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "expression": "has_flag('player', 'feather_fall')",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "Ouch, {{ context.damage }} damage."
+          }
+        }
+      ]
+    },
+    "on-player-damaged-by-zombie": {
+      "type": "action",
+      "capability": "animus:message",
+      "arguments": {
+        "text": null
+      },
+      "templates": {
+        "/text": "A zombie hit you from {{ replace(context.damager, 'minecraft:', '') }}."
+      }
+    },
+    "on-player-damages-entity": {
+      "type": "action",
+      "capability": "animus:message",
+      "arguments": {
+        "text": null
+      },
+      "templates": {
+        "/text": "You hit {{ replace(context.entity, 'minecraft:', '') }} for {{ context.damage }}."
+      }
+    },
+    "on-player-kills-zombie": {
+      "type": "action",
+      "capability": "animus:set-flag",
+      "arguments": {
+        "name": "zombie_kills",
+        "scope": "player",
+        "value": null
+      },
+      "expressions": {
+        "/value": "(num(flag('player', 'zombie_kills', 0)) + 1)"
+      }
+    },
+    "on-player-dies": {
+      "type": "action",
+      "capability": "animus:message",
+      "arguments": {
+        "text": "Down again."
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "on-player-damaged-by-fall",
+      "event": "player_damaged",
+      "cause": "fall",
+      "routine": "on-player-damaged-by-fall"
+    },
+    {
+      "id": "on-player-damaged-by-zombie",
+      "event": "player_damaged",
+      "damager": "zombie",
+      "routine": "on-player-damaged-by-zombie"
+    },
+    {
+      "id": "on-player-damages-entity",
+      "event": "player_damage_entity",
+      "routine": "on-player-damages-entity"
+    },
+    {
+      "id": "on-player-kills-zombie",
+      "event": "player_kill",
+      "entity": "zombie",
+      "routine": "on-player-kills-zombie"
+    },
+    {
+      "id": "on-player-dies",
+      "event": "player_death",
+      "routine": "on-player-dies"
+    }
+  ]
+}

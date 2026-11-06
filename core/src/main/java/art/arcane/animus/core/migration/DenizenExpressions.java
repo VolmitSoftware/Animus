@@ -301,13 +301,17 @@ final class DenizenExpressions {
         };
     }
 
-    /** {@code <[name]>}: a loop's own value, or the execution variable {@code d_<name>}; dots inside walk map keys. */
+    /**
+     * {@code <[name]>}: a loop's own value, or the execution variable {@code d_<name>}; dots inside walk map keys. A loop
+     * value written {@code @variable} is that variable, such as the player of a fan-out.
+     */
     private Result<Step> definition(String raw, Scope scope) {
         if (raw.contains("<")) return Result.fail("a computed definition name has no Animus expression");
         String[] path = raw.split("\\.", -1);
         String name = path[0].toLowerCase(Locale.ROOT);
         String override = scope.definitions.get(name);
         StringBuilder text = new StringBuilder();
+        if (override != null && override.startsWith("@") && path.length == 1) return Result.ok(new Step(Expr.of(override.substring(1), 'a'), 1));
         if (override != null) {
             if (path.length > 1) return Result.fail("definition " + name + " is a loop counter, not a map");
             return Result.ok(new Step(Expr.of(override, 'n'), 1));
@@ -335,7 +339,7 @@ final class DenizenExpressions {
      * A flag name as an expression: a literal Animus flag name, or written text joined with tags such as
      * {@code npc_done_<npc.id>}, whose written parts are mapped as literal names are.
      */
-    private Result<String> flagNameExpression(String raw, Scope scope, Pending pending) {
+    Result<String> flagNameExpression(String raw, Scope scope, Pending pending) {
         if (!raw.contains("<")) {
             Optional<String> name = DenizenConverter.flagName(raw);
             return name.isEmpty() ? Result.fail("flag name " + raw + " cannot be an Animus flag name") : Result.ok(quote(name.get()));
@@ -403,7 +407,7 @@ final class DenizenExpressions {
         Optional<String> next = attributeName(parts, 2);
         return switch (attribute) {
             case "name" -> fact("npc.name", 's', 2);
-            case "id" -> fact("npc.id", 'a', 2);
+            case "id" -> fact("npc.citizens_id", 'a', 2);
             case "uuid" -> fact("npc.uuid", 's', 2);
             case "is_spawned" -> fact("npc.spawned", 'b', 2);
             case "health" -> fact("npc.health", 'n', 2);
@@ -421,7 +425,7 @@ final class DenizenExpressions {
         Optional<String> next = attributeName(parts, 2);
         return switch (attribute) {
             case "online_players" -> next.isPresent() && (next.get().equals("size") || next.get().equals("count"))
-                    ? fact("server.online_players", 'n', 3) : Result.fail("server.online_players is a list of players; behaviors read only their number");
+                    ? fact("server.online_players", 'n', 3) : fact("server.players", 'l', 2);
             case "max_players" -> fact("server.max_players", 'n', 2);
             case "current_time_millis" -> fact("server.time_millis", 'n', 2);
             case "current_tick" -> fact("server.tick", 'n', 2);
@@ -466,7 +470,7 @@ final class DenizenExpressions {
         return Result.fail("tag util." + attribute + " has no Animus expression");
     }
 
-    private static final Map<String, String> CONTEXT_KINDS = Map.of("args", "l", "first", "b");
+    private static final Map<String, String> CONTEXT_KINDS = Map.of("args", "l", "first", "b", "damage", "n");
 
     private Result<Step> context(List<Part> parts, Scope scope, Pending pending) {
         if (parts.size() < 2 || parts.get(1).parameter().isPresent()) return Result.fail("tag context has no Animus expression");
@@ -480,8 +484,44 @@ final class DenizenExpressions {
             return npc.failed() ? npc : Result.ok(new Step(npc.value().expr(), npc.value().next() + 1));
         }
         if (key.equals("hand") && mapped.equals("hand")) return fact("replace(context.hand, '_', '')", 's', 2);
+        Optional<String> attribute = attributeName(parts, 2);
+        // A world event passes keys and coordinates rather than Denizen objects; the common attributes read those.
+        switch (mapped) {
+            case "inventory_type" -> {
+                if (attribute.filter("inventory_type"::equals).isPresent()) return fact("upper(context.inventory_type)", 's', 3);
+                return Result.fail("context.inventory is an inventory; Animus passes only its type, as context.inventory.inventory_type");
+            }
+            case "location" -> {
+                if (attribute.isEmpty()) return fact("context.location", 's', 2);
+                return switch (attribute.get()) {
+                    case "x", "y", "z", "block_x", "block_y", "block_z" -> fact("context." + attribute.get().substring(attribute.get().length() - 1), 'n', 3);
+                    case "world" -> fact("context.world", 's', attributeName(parts, 3).filter("name"::equals).isPresent() ? 4 : 3);
+                    // Every event that passes a location is a block event, which passes the block too.
+                    case "material" -> fact("replace(context.block, 'minecraft:', '')", 's', attributeName(parts, 3).filter("name"::equals).isPresent() ? 4 : 3);
+                    default -> Result.fail("tag attribute " + attribute.get() + " of context.location has no Animus expression");
+                };
+            }
+            case "item", "block", "damager" -> {
+                if (attribute.filter((String name) -> name.equals("material") || name.equals("name") || name.equals("entity_type")).isPresent())
+                    return fact("replace(context." + mapped + ", 'minecraft:', '')", 's', attribute.get().equals("material") && attributeName(parts, 3).filter("name"::equals).isPresent() ? 4 : 3);
+                return fact("context." + mapped, 's', 2);
+            }
+            case "entity" -> {
+                if (attribute.isEmpty()) return fact("context.entity", 's', 2);
+                return switch (attribute.get()) {
+                    case "is_npc" -> fact("false", 'b', 3);
+                    case "is_player" -> fact("same(context.entity, 'minecraft:player')", 'b', 3);
+                    case "uuid" -> fact("context.entity_uuid", 's', 3);
+                    case "entity_type", "name" -> fact("replace(context.entity, 'minecraft:', '')", 's', 3);
+                    default -> Result.fail("tag attribute " + attribute.get() + " of context.entity has no Animus expression");
+                };
+            }
+            case "slot" -> { return fact("(context.slot + 1)", 'n', 2); }
+            case "click" -> { return fact(key.equals("click_type") ? "(upper(context.click) + '_CLICK_BLOCK')" : "upper(context.click)", 's', 2); }
+            default -> { }
+        }
         int next = 2;
-        if ((key.equals("origin_world") || key.equals("destination_world")) && attributeName(parts, 2).filter("name"::equals).isPresent()) next = 3;
+        if ((key.equals("origin_world") || key.equals("destination_world")) && attribute.filter("name"::equals).isPresent()) next = 3;
         String kind = CONTEXT_KINDS.getOrDefault(mapped, "s");
         return Result.ok(new Step(Expr.of("context." + mapped, kind.charAt(0)), next));
     }
@@ -644,9 +684,27 @@ final class DenizenExpressions {
 
     // ---- Attributes ----
 
+    /** Attributes of a value holding a player: the fact player_info reads, its value when the player is offline, and the kind. */
+    private static final Map<String, String[]> PLAYER_ATTRIBUTES = Map.of("name", new String[] {"name", "''", "s"}, "is_online", new String[] {"online", "false", "b"},
+            "is_op", new String[] {"op", "false", "b"}, "health", new String[] {"health", "0", "n"}, "world", new String[] {"world", "''", "s"},
+            "location", new String[] {"location", "''", "s"}, "gamemode", new String[] {"gamemode", "''", "s"});
+
     private Result<Step> attribute(Expr expr, List<Part> parts, int index, Scope scope, Pending pending) {
         Part part = parts.get(index);
         String name = part.name().toLowerCase(Locale.ROOT);
+        // A value holding a player, such as a fan-out's or a loop's player, reads that player's flags and facts.
+        if ((name.equals("has_flag") || name.equals("flag")) && part.parameter().isPresent()) {
+            Result<String> flag = flagNameExpression(part.parameter().get(), scope, pending);
+            if (flag.failed()) return Result.fail(flag.reason());
+            if (name.equals("has_flag")) return step("player_has_flag(" + expr.text() + ", " + flag.value() + ")", 'b', index + 1);
+            String prefix = "player_flag(" + expr.text() + ", " + flag.value() + ", ";
+            return Result.ok(new Step(new Expr(prefix + "'')", 'a', prefix), index + 1));
+        }
+        if (part.parameter().isEmpty() && expr.kind() != 's' && expr.kind() != 'l' && PLAYER_ATTRIBUTES.containsKey(name)) {
+            String[] fact = PLAYER_ATTRIBUTES.get(name);
+            return step("get(player_info(" + expr.text() + "), '" + fact[0] + "', " + fact[1] + ")", fact[2].charAt(0), index + 1);
+        }
+        if (part.parameter().isEmpty() && name.equals("uuid") && expr.kind() != 'l') return step("replace(text(" + expr.text() + "), 'p@', '')", 's', index + 1);
         Expr parameter = null;
         if (part.parameter().isPresent()) {
             Result<Expr> value = value(part.parameter().get(), scope, pending);

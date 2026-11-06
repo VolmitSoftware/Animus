@@ -168,6 +168,14 @@ public final class NpcDefinition {
     public boolean spawned() { return spawned; }
     /** True for a definition installed by an import, which keeps its {@code migration} record. */
     public boolean imported() { return imported; }
+    /** The numeric Citizens id of an NPC migrated from Citizens, from its {@code migration} record. */
+    public Optional<String> citizensId() {
+        JsonElement migration = data.get("migration");
+        if (migration == null || !migration.isJsonObject()) return Optional.empty();
+        JsonElement id = migration.getAsJsonObject().get("citizensId");
+        if (id == null || !id.isJsonPrimitive() || !id.getAsString().matches("0|[1-9][0-9]{0,9}")) return Optional.empty();
+        return Optional.of(id.getAsString());
+    }
     /** Behavior references attached to this NPC. Their trigger bindings run once the NPC is active. */
     public List<String> behaviors() { return behaviors; }
     /** Labels the editor uses to find and group NPCs; empty when none are declared. */

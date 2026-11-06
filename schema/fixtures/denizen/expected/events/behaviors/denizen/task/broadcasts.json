@@ -1,0 +1,191 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:task/broadcasts",
+  "entry": "main",
+  "variables": {
+    "d_crew": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_online": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_target": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_1": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_2": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_3": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_4": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_5": {
+      "type": "any",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": "A storm comes!",
+            "to": "all"
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "players(server.players)"
+          },
+          "as": "t_1",
+          "maximum": 100,
+          "body": {
+            "type": "condition",
+            "expression": "player_has_flag(t_1, 'storm_alerts')",
+            "then": {
+              "type": "action",
+              "capability": "animus:title",
+              "arguments": {
+                "title": "&eStorm",
+                "player": null
+              },
+              "expressions": {
+                "/player": "t_1"
+              }
+            }
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "players(d_crew)"
+          },
+          "as": "t_2",
+          "maximum": 100,
+          "body": {
+            "type": "action",
+            "capability": "animus:actionbar",
+            "arguments": {
+              "text": "Your crew needs you",
+              "player": null
+            },
+            "expressions": {
+              "/player": "t_2"
+            }
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "players(d_target)"
+          },
+          "as": "t_3",
+          "maximum": 100,
+          "body": {
+            "type": "action",
+            "capability": "animus:play-sound",
+            "arguments": {
+              "sound": "minecraft:entity.experience_orb.pickup",
+              "at": "player",
+              "player": null
+            },
+            "expressions": {
+              "/player": "t_3"
+            }
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "players(flag('global', 'party', ''))"
+          },
+          "as": "t_4",
+          "maximum": 100,
+          "body": {
+            "type": "condition",
+            "expression": "!contains(players(player.uuid), t_4)",
+            "then": {
+              "type": "action",
+              "capability": "animus:message",
+              "arguments": {
+                "text": "Party time",
+                "player": null
+              },
+              "expressions": {
+                "/player": "t_4"
+              }
+            }
+          }
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "server.players"
+          },
+          "as": "d_online",
+          "body": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "condition",
+                "expression": "player_has_flag(d_online, 'muted')",
+                "then": {
+                  "type": "continue"
+                }
+              },
+              {
+                "type": "foreach",
+                "list": {
+                  "expression": "players(d_online)"
+                },
+                "as": "t_5",
+                "maximum": 100,
+                "body": {
+                  "type": "action",
+                  "capability": "animus:message",
+                  "arguments": {
+                    "text": null,
+                    "player": null
+                  },
+                  "templates": {
+                    "/text": "Hello {{ get(player_info(d_online), 'name', '') }}, you are {{ get(player_info(d_online), 'online', false) }}"
+                  },
+                  "expressions": {
+                    "/player": "t_5"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "Done {{ npc.citizens_id }}"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -39,11 +39,13 @@ DenizenInput _folder(String folder, {String? citizens}) {
       if (name.endsWith('.dat')) players[name.substring(0, name.length - 4)] = file.readAsStringSync();
     }
   }
+  final File notables = File('${root.path}/notables.yml');
   return DenizenInput(
     scripts: scripts,
     citizens: citizens == null ? null : File(_path(citizens)).readAsStringSync(),
     serverFlags: server.existsSync() ? server.readAsStringSync() : null,
     playerFlags: players,
+    notables: notables.existsSync() ? notables.readAsStringSync() : null,
   );
 }
 
