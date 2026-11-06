@@ -19,7 +19,7 @@ import '../gui/gui_fields.dart';
 int _nextListId = 0;
 
 /// A label with a required marker.
-String fieldLabel(FieldSpec field, {String? label}) => '${label ?? field.key}${field.required ? ' *' : ''}';
+String fieldLabel(FieldSpec field, {String? label}) => '${label ?? humanizeKey(field.key)}${field.required ? ' *' : ''}';
 
 /// Diagnostics for a field: the document's at [path] and the field's own
 /// bounds check of [value].
@@ -117,7 +117,8 @@ class InspectControl extends StatelessWidget {
           value: current is String ? current : null,
           options: options,
           allowNone: !field.required,
-          noneLabel: field.required ? 'choose' : 'not set',
+          noneLabel: field.required ? 'Pick ${humanizeKey(field.key).toLowerCase()}' : 'Not set',
+          label: humanizeKey(field.key),
           labels: <String, String>{for (final FieldOption option in field.options) option.label: option.label},
           onChanged: onChanged,
         );
@@ -145,7 +146,7 @@ class InspectControl extends StatelessWidget {
             value: current as String? ?? '',
             label: field.key,
             suggestions: suggestions,
-            placeholder: field.pattern,
+            placeholder: field.bounds.isEmpty ? null : field.bounds,
             onChanged: (String next) => onChanged(next.isEmpty && !field.required ? null : next),
           );
         }
@@ -224,7 +225,7 @@ class InspectObject extends StatelessWidget {
           GuiRow(
             key: ValueKey<String>('kept:${entry.key}'),
             label: entry.key,
-            help: 'Not in the schema; kept as written.',
+            help: 'Kept as written; the server reads it.',
             problems: diagnosticsAt(diagnostics, childPath(path, entry.key), nested: true),
             child: KeptJsonEditor(value: entry.value, label: entry.key, onChanged: (Object? next) => put(entry.key, next)),
           ),
