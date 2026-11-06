@@ -9,6 +9,7 @@ import '../../model/document_kind.dart';
 import '../gui/gui_json.dart';
 import '../shared_schemas.dart';
 import 'group_merge.dart';
+import 'npc_attributes.dart';
 
 /// Group ids as the server accepts them.
 final RegExp groupIdPattern = RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$');
@@ -28,8 +29,8 @@ List<String> npcGroups(JsonMap npc) => jsonStrings(npc['groups']);
 /// The strings of a JSON list, other items left out.
 List<String> jsonStrings(Object? value) => <String>[for (final Object? item in asList(value)) if (item is String) item];
 
-/// One line of the Effective view: a top-level field or a `modules.<id>`
-/// path, its merged value and the group id or `npc` that set it last.
+/// One line of the Effective view: a top-level field or a `modules.<id>` or
+/// `attributes.<id>` path, its merged value and the group id or `npc` that set it last.
 class EffectiveRow {
   const EffectiveRow(this.path, this.value, this.source);
 
@@ -56,14 +57,14 @@ class NpcEffective {
   /// Who set [path]; fields no one set (identity) come from the NPC.
   String sourceOf(String path) => provenance[path] ?? groupMergeNpc;
 
-  /// Top-level fields in the effective order, with `modules` split into one
-  /// row per module. Identity and state fields, which only the NPC sets, and
+  /// Top-level fields in the effective order, with `modules` and `attributes`
+  /// split into one row per module or attribute. Identity and state fields, which only the NPC sets, and
   /// `groups` itself are left out.
   List<EffectiveRow> get rows => <EffectiveRow>[
         for (final MapEntry<String, Object?> field in json.entries)
-          if (field.key == 'modules' && field.value is Map<String, Object?>)
-            for (final MapEntry<String, Object?> module in asMap(field.value).entries)
-              EffectiveRow('modules.${module.key}', module.value, sourceOf('modules.${module.key}'))
+          if ((field.key == 'modules' || field.key == attributesField) && field.value is Map<String, Object?>)
+            for (final MapEntry<String, Object?> child in asMap(field.value).entries)
+              EffectiveRow('${field.key}.${child.key}', child.value, sourceOf('${field.key}.${child.key}'))
           else if (!groupRefusedFields.contains(field.key))
             EffectiveRow(field.key, field.value, sourceOf(field.key)),
       ];

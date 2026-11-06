@@ -566,7 +566,8 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         }
         if (knockback > 0 && defender.settings().defense().knockback()) {
             Vec3 away = target.position().point().subtract(from.point());
-            if (Math.abs(away.x()) + Math.abs(away.z()) > .0001) world.knockback(defender.npc(), new Vec3(away.x(), 0, away.z()), knockback);
+            double taken = knockback * (1 - defender.settings().defense().knockbackResistance());
+            if (taken > 0 && Math.abs(away.x()) + Math.abs(away.z()) > .0001) world.knockback(defender.npc(), new Vec3(away.x(), 0, away.z()), taken);
         }
         defender.attacked(attacker);
         for (CombatBrain guardian : guardians.getOrDefault(target.ref(), List.of())) guardian.alerted(attacker);

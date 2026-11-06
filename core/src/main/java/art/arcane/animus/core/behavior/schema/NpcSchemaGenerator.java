@@ -17,6 +17,8 @@ import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.HologramStyle;
 import art.arcane.animus.core.npc.NamedPoses;
 import art.arcane.animus.core.npc.NpcAppearance;
+import art.arcane.animus.core.npc.NpcAttributes;
+import art.arcane.animus.core.npc.VanillaAttributes;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcInventory;
 import art.arcane.animus.core.npc.NpcItem;
@@ -83,7 +85,8 @@ public final class NpcSchemaGenerator {
         properties.add("baby", described(type("boolean"), "A baby body, for types that have one."));
         properties.add("usingItem", described(type("boolean"), "Holds the main-hand item raised."));
         properties.add("listed", described(type("boolean"), "Player bodies only: show an entry in the tab list."));
-        properties.add("gravity", described(type("boolean"), "False keeps the body where it is placed. True by default."));
+        properties.add("gravity", described(type("boolean"), "False keeps the body where it is placed, whatever the gravity attribute says. True by default."));
+        properties.add(NpcAttributes.FIELD, attributes());
         properties.add("inventory", inventory());
         properties.add("poses", poses());
         properties.add("movement", movement());
@@ -257,6 +260,23 @@ public final class NpcSchemaGenerator {
         facing.add("properties", fields);
         poses.add("additionalProperties", facing);
         return poses;
+    }
+
+    /** Every vanilla attribute, bare and namespaced, with its range and default from {@link VanillaAttributes}. */
+    private static JsonObject attributes() {
+        JsonObject attributes = described(closed(), "Vanilla entity attributes by id, such as scale or minecraft:scale, mapped to base values."
+                + " Every one is sent to viewers; the description of each says what Animus itself does with it.");
+        JsonObject fields = new JsonObject();
+        for (VanillaAttributes.Attribute attribute : NpcAttributes.table()) {
+            String since = attribute.since().isEmpty() ? "" : " Minecraft " + attribute.since() + " and later.";
+            JsonObject value = described(range("number", attribute.minimum(), attribute.maximum()),
+                    "Vanilla default " + NpcAttributes.format(attribute.defaultValue()) + ". " + NpcAttributes.note(attribute.id()) + since);
+            value.addProperty("default", attribute.defaultValue());
+            fields.add(attribute.id(), value);
+            fields.add(NpcAttributes.NAMESPACE + attribute.id(), value.deepCopy());
+        }
+        attributes.add("properties", fields);
+        return attributes;
     }
 
     private static JsonObject movement() {

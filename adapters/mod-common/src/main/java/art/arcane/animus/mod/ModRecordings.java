@@ -3,6 +3,7 @@ package art.arcane.animus.mod;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.config.RecordingSettings;
 import art.arcane.animus.core.npc.BodyTraits;
+import art.arcane.animus.core.npc.NpcAttributes;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.HologramStyle;
 import art.arcane.animus.core.npc.NpcAppearance;
@@ -189,7 +190,7 @@ final class ModRecordings implements RecordingHost<ServerPlayer, ItemStack>, Aut
         }
         watch.ghosts++;
         String world = ModWorldKeys.key(viewer.level());
-        BodyTraits traits = new BodyTraits(settings.ghostGlow(), settings.ghostGlow() ? Optional.of(settings.ghostColor()) : Optional.empty(), false, false, false, true);
+        BodyTraits traits = new BodyTraits(settings.ghostGlow(), settings.ghostGlow() ? Optional.of(settings.ghostColor()) : Optional.empty(), false, false, false, true, NpcAttributes.NONE);
         BodySkin textures = skin.orElse(null);
         GhostReplay.Bodies<ItemStack> bodies = new GhostReplay.Bodies<>() {
             @Override public BodyTransport.Body create(NpcPose pose) {
