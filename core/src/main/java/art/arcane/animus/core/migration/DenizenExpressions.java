@@ -761,7 +761,7 @@ final class DenizenExpressions {
             case "separated_by" -> step("join(" + e + ", " + textual(parameter) + ")", 's', next);
             case "find", "find_text" -> step("(index_of(" + e + ", " + p + ") + 1)", 'n', next);
             case "include" -> step("append(" + e + ", " + p + ")", 'l', next);
-            case "equals" -> step("same(" + e + ", " + p + ")", 'b', next);
+            case "equals" -> step(equality(expr, parameter) + "(" + e + ", " + p + ")", 'b', next);
             case "get" -> parameter.kind() == 'n' ? step("get(" + e + ", " + numeric(parameter) + " - 1)", 'a', next) : step("get(" + e + ", " + p + ")", 'a', next);
             case "substring" -> {
                 String[] bounds = part.parameter().get().split(",", -1);
@@ -916,13 +916,18 @@ final class DenizenExpressions {
         if (right.failed()) return Result.fail(right.reason());
         Expr l = left.value(), r = right.value();
         return Result.ok(new Atom(switch (operator) {
-            case "==" -> "same(" + l.text() + ", " + r.text() + ")";
-            case "!=" -> "!same(" + l.text() + ", " + r.text() + ")";
+            case "==" -> equality(l, r) + "(" + l.text() + ", " + r.text() + ")";
+            case "!=" -> "!" + equality(l, r) + "(" + l.text() + ", " + r.text() + ")";
             case "contains" -> "contains(" + l.text() + ", " + r.text() + ")";
             case "in" -> "contains(" + r.text() + ", " + l.text() + ")";
             default -> numeric(l) + " " + operator + " " + numeric(r);
         }));
     }
+
+    /** A world fact gives a Bukkit name or a dimension key by platform, so a comparison with one resolves both sides. */
+    static boolean world(Expr expr) { return expr.text().equals("player.world") || expr.text().equals("npc.world") || expr.text().equals("context.world"); }
+
+    static String equality(Expr left, Expr right) { return world(left) || world(right) ? "same_world" : "same"; }
 
     /** Denizen's advanced matcher for the simple forms: alternatives with {@code |} and {@code *} at either end, ignoring case. */
     private static Result<Cond> matcher(Expr value, String pattern) {
@@ -938,7 +943,7 @@ final class DenizenExpressions {
             if (start && end) tests.add("contains(" + subject + ", " + quote(core) + ")");
             else if (start) tests.add("ends_with(" + subject + ", " + quote(core) + ")");
             else if (end) tests.add("starts_with(" + subject + ", " + quote(core) + ")");
-            else tests.add("same(" + textual(value) + ", " + quote(core) + ")");
+            else tests.add(equality(value, value) + "(" + textual(value) + ", " + quote(core) + ")");
         }
         return Result.ok(new Atom(tests.size() == 1 ? tests.getFirst() : "(" + String.join(" || ", tests) + ")"));
     }

@@ -339,7 +339,7 @@ _Mapped _denizenEvent(String key, Map<String, _Note> notes, bool npcEntity) {
         if (!player) return _Mapped.fail('switch in: needs a player; $event has none');
         if (!_full('[a-z0-9_-]{1,64}', value)) return _Mapped.fail('switch in:$value names an area Animus cannot check');
         if (notes.containsKey(value)) return _Mapped.fail('switch in:$value names a noted area; Animus checks areas only as enter and exit events');
-        guards.add(_Atom('same(player.world, ${_quote(value)})'));
+        guards.add(_Atom('same_world(player.world, ${_quote(value)})'));
       default:
         return _Mapped.fail('event switch $name: has no Animus equivalent');
     }

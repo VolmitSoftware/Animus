@@ -549,13 +549,9 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         throw elsewhere();
     }
 
-    /** A world by name, or by UUID. */
+    /** A world by name, UUID or dimension key. */
     private World world(String name) {
-        World world = server.getWorld(name);
-        if (world == null) {
-            try { world = server.getWorld(UUID.fromString(name)); }
-            catch (IllegalArgumentException notUuid) { world = null; }
-        }
+        World world = BukkitWorldLookup.find(server, name);
         if (world == null) throw new CapabilityRefusal(Outcome.Status.INVALID, "unknown-world", "Unknown or unloaded world: " + name);
         return world;
     }

@@ -15,4 +15,5 @@ final class ConnectedFacts implements BehaviorFacts {
     @Override public Optional<Map<String, Object>> player(UUID player) { return provider.player(player); }
     @Override public Optional<Map<String, Object>> npc(UUID npc) { return provider.npc(npc); }
     @Override public Map<String, Object> server() { return provider.server(); }
+    @Override public Optional<String> world(String reference) { return provider.world(reference); }
 }

@@ -1,9 +1,9 @@
 package art.arcane.animus.bukkit.folia;
 
+import art.arcane.animus.bukkit.BukkitWorldLookup;
 import art.arcane.animus.bukkit.runtime.RegionScheduler;
 import art.arcane.animus.core.virtual.ChunkPosition;
 import java.lang.reflect.Method;
-import java.util.UUID;
 import java.util.function.Consumer;
 import org.bukkit.Server;
 import org.bukkit.World;
@@ -135,12 +135,16 @@ public final class FoliaRegions implements RegionScheduler {
             return new Tick(data, (long) regionTick.invoke(data));
         } catch (ReflectiveOperationException | RuntimeException failure) { return null; }
     }
-    /** Folia loads no world after startup, so a found world stays valid; a missing one is looked up again. */
+    /**
+     * A world by UUID, name or dimension key. Folia loads no world after startup, so a found world stays valid; a
+     * missing one is looked up again.
+     */
     public World world(String id) {
         World cached = worlds.get(id);
         if (cached != null) return cached;
-        try { World found = server.getWorld(UUID.fromString(id)); if (found != null) worlds.put(id, found); return found; }
-        catch (IllegalArgumentException invalid) { return null; }
+        World found = BukkitWorldLookup.find(server, id);
+        if (found != null) worlds.put(id, found);
+        return found;
     }
     private static boolean invokeBoolean(Method method, Object target, Object... arguments) {
         try { return (boolean) method.invoke(target, arguments); }

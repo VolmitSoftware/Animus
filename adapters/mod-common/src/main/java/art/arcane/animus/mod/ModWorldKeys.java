@@ -23,8 +23,13 @@ final class ModWorldKeys {
     }
 
     static Optional<String> resolve(MinecraftServer server, String reference) {
+        return ModWorlds.resolve(reference, server.getWorldData().getLevelName(), loaded(server));
+    }
+
+    /** The keys of the loaded dimensions. */
+    static Set<String> loaded(MinecraftServer server) {
         Set<String> loaded = new HashSet<>();
         for (ResourceKey<Level> dimension : server.levelKeys()) loaded.add(dimension.identifier().toString());
-        return ModWorlds.resolve(reference, server.getWorldData().getLevelName(), loaded);
+        return Set.copyOf(loaded);
     }
 }

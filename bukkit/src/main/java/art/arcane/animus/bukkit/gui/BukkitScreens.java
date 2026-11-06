@@ -1,5 +1,7 @@
 package art.arcane.animus.bukkit.gui;
 
+import art.arcane.animus.bukkit.BukkitWorldLookup;
+
 import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.PacketKind;
 import art.arcane.animus.bukkit.protection.RegionContainerAccess;
@@ -125,6 +127,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     @Override public Object viewer(Player player, String property) {
         return switch (property) {
             case "world" -> player.getWorld().getName();
+            case "world_key" -> player.getWorld().getKey().toString();
             case "health" -> player.getHealth();
             case "level" -> player.getLevel();
             case "food" -> player.getFoodLevel();
@@ -240,14 +243,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         return player.teleport(destination);
     }
 
-    private World world(String reference) {
-        World named = server.getWorld(reference);
-        if (named != null) return named;
-        NamespacedKey key = NamespacedKey.fromString(reference);
-        if (key == null) return null;
-        for (World world : server.getWorlds()) if (world.getKey().equals(key)) return world;
-        return null;
-    }
+    private World world(String reference) { return BukkitWorldLookup.find(server, reference); }
 
     @Override public void bossBar(Player player, String lane, String title, float progress, String color, String style, int ticks) {
         Map<String, Lane> lanes = bars.computeIfAbsent(player.getUniqueId(), (UUID ignored) -> new ConcurrentHashMap<>());

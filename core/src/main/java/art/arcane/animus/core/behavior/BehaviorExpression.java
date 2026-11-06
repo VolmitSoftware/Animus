@@ -21,7 +21,7 @@ public final class BehaviorExpression {
     public static final List<String> SERVER_FACTS=List.of("online_players","players","max_players","tick","time_millis");
     public static final List<String> FLAG_SCOPES=List.of("player","npc","relationship","global");
     public static final List<String> FUNCTIONS=List.of("get","has","keys","values","put","remove","append","insert","index_of","first","last","slice","reverse","sort","sum","join","split","range",
-            "trim","replace","starts_with","ends_with","num","int","truthy","same","text","random","random_decimal","chance","pick","flag","has_flag","quest",
+            "trim","replace","starts_with","ends_with","num","int","truthy","same","same_world","text","random","random_decimal","chance","pick","flag","has_flag","quest",
             "players","player_info","player_flag","player_has_flag");
     /** The most players {@code players} returns, which bounds a fan-out over a player list. */
     public static final int MAX_PLAYERS=100;
@@ -193,6 +193,7 @@ public final class BehaviorExpression {
         functions.put("int",(args,scope)->{arity("int",args,1,1);double value=number(args.get(0));return value<0?Math.ceil(value):Math.floor(value);});
         functions.put("truthy",(args,scope)->{arity("truthy",args,1,1);Object value=args.get(0);return value instanceof Boolean flag?flag:value instanceof Double number?number!=0:value instanceof String text&&text.equalsIgnoreCase("true");});
         functions.put("same",(args,scope)->{arity("same",args,2,2);return same(args.get(0),args.get(1));});
+        functions.put("same_world",(args,scope)->{arity("same_world",args,2,2);BehaviorFacts facts=environment(scope).facts();return world(facts,args.get(0)).equalsIgnoreCase(world(facts,args.get(1)));});
         functions.put("text",(args,scope)->{arity("text",args,1,1);return GuiExpression.text(args.get(0));});
         functions.put("random",(args,scope)->{
             arity("random",args,2,2);long minimum=whole("random",args.get(0)),maximum=whole("random",args.get(1));
@@ -275,6 +276,8 @@ public final class BehaviorExpression {
         throw new GuiExpression.Invalid("'"+GuiExpression.text(value)+"' is not a number");
     }
     private static boolean numeric(Object value){return value instanceof Double||value instanceof String text&&NUMERIC.matcher(text).matches();}
+    /** A world name, dimension key or UUID in the form the platform's world facts use; a world it does not know stays as written. */
+    private static String world(BehaviorFacts facts,Object reference){String text=GuiExpression.text(reference);return facts.world(text).orElse(text);}
     /** Denizen equality: numerically when both sides are numbers or numeric text, otherwise case-insensitive text. */
     static boolean same(Object left,Object right){
         if(numeric(left)&&numeric(right))return number(left)==number(right);
