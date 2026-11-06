@@ -67,21 +67,25 @@ class Easing {
 
   static const Easing linear = Easing._('linear');
 
+  /// The bezier form schema/animation-v1.schema.json and the server's
+  /// `Easing` accept: x values within 0..1 written as `0`, `0.x`, `1` or
+  /// `1.0`, y values plain decimals, no exponents and no leading `+`.
+  static final RegExp bezierPattern = RegExp(
+    r'^bezier\(\s*(0(?:\.\d+)?|1(?:\.0+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*,\s*(0(?:\.\d+)?|1(?:\.0+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)$',
+  );
+
+  /// What the editor says about a curve [parse] refuses.
+  static const String bezierHint = 'Use bezier(x1,y1,x2,y2) with numbers like 0.25. The x values stay within 0 and 1.';
+
   static Easing parse(String? source) {
     if (source == null || source == 'linear') return linear;
     if (const <String>{'hold', 'ease_in', 'ease_out', 'ease_in_out', 'back_out'}.contains(source)) return Easing._(source);
-    if (source.startsWith('bezier(') && source.endsWith(')')) {
-      final List<double> values = source
-          .substring(7, source.length - 1)
-          .split(',')
-          .map((String part) => double.parse(part.trim()))
-          .toList();
-      if (values.length != 4 || values[0] < 0 || values[0] > 1 || values[2] < 0 || values[2] > 1) {
-        throw FormatException('bezier needs x1,y1,x2,y2 with x values within 0..1: $source');
-      }
-      return Easing._('bezier', values);
+    final RegExpMatch? bezier = bezierPattern.firstMatch(source);
+    if (bezier != null) {
+      return Easing._('bezier', <double>[for (int group = 1; group <= 4; group++) double.parse(bezier.group(group)!)]);
     }
-    throw FormatException('unknown easing $source');
+    if (source.startsWith('bezier')) throw const FormatException(bezierHint);
+    throw FormatException('Unknown easing $source. Pick linear, hold, ease_in, ease_out, ease_in_out, back_out or a bezier curve.');
   }
 
   double apply(double progress) {
@@ -288,6 +292,7 @@ class BonePose {
     required this.translation,
     required this.scale,
     required this.visible,
+    required this.ownVisible,
     required this.model,
     required this.visual,
   });
@@ -298,6 +303,10 @@ class BonePose {
 
   /// False when the bone or any ancestor is hidden.
   final bool visible;
+
+  /// The bone's own visible channel, ancestors aside: what a visible track
+  /// keyed on this bone holds.
+  final bool ownVisible;
 
   /// The bone's model-space transform, body yaw included.
   final Affine model;
@@ -351,6 +360,7 @@ Map<String, BonePose> sampleRig(Rig rig, List<Layer> layers, double yaw, double 
       translation: channel.translation,
       scale: channel.scale,
       visible: channel.visible && (parentPose?.visible ?? true),
+      ownVisible: channel.visible,
       model: model,
       visual: visual == null
           ? null

@@ -47,6 +47,31 @@ List<Diagnostic> validateRigStructure(Object? json) {
   return problems;
 }
 
+/// The rig's `animations` map against the workspace's animations by id. The
+/// server skips a name whose animation is missing or animates another rig,
+/// so both are warnings.
+List<Diagnostic> validateRigAnimations(Object? rig, Map<String, Object?> animations) {
+  if (rig is! Map<String, Object?> || rig['animations'] is! Map<String, Object?>) return const <Diagnostic>[];
+  final List<Diagnostic> problems = <Diagnostic>[];
+  for (final MapEntry<String, Object?> entry in (rig['animations']! as Map<String, Object?>).entries) {
+    final Object? id = entry.value;
+    if (id is! String) continue;
+    final String path = '\$.animations.${entry.key}';
+    final Object? animation = animations[id];
+    if (animation == null) {
+      problems.add(Diagnostic(DiagnosticSeverity.warning, path, 'no animation $id; the server skips ${entry.key}', code: 'rig-animation-missing'));
+    } else if (animation is Map<String, Object?> && animation['rig'] != rig['id']) {
+      problems.add(Diagnostic(
+        DiagnosticSeverity.warning,
+        path,
+        '$id animates ${animation['rig']}, not ${rig['id']}; the server skips ${entry.key}',
+        code: 'rig-animation-rig',
+      ));
+    }
+  }
+  return problems;
+}
+
 /// [rig] is the parsed rig the animation names, when the workspace has it.
 List<Diagnostic> validateAnimationStructure(Object? json, Object? rig) {
   if (json is! Map<String, Object?> || json['tracks'] is! List<Object?>) return const <Diagnostic>[];
