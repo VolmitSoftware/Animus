@@ -355,7 +355,7 @@ final class RegionViewer {
             body.socketRevision = shown.socketRevision();
             rigBudget[0] -= sockets.length;
             try {
-                host.packets.restyleBones(player, body.bones, sockets, shown.socketDisplays()).whenComplete((nothing, failure) -> {
+                handOver(() -> host.packets.restyleBones(player, body.bones, sockets, shown.socketDisplays())).whenComplete((nothing, failure) -> {
                     if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) host.cosmeticFailed(this, "socket items", body.actor, failure); });
                 });
             } catch (RuntimeException failure) { host.cosmeticFailed(this, "socket items", body.actor, failure); }
