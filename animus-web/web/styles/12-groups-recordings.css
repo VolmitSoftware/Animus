@@ -1,0 +1,423 @@
+/* Trait groups: the group editor, the NPC groups list, the Effective view and
+   bulk assignment in the NPC browser. Grey chrome throughout; a value set by
+   a group reads in normal text and one the NPC sets itself in muted text, so
+   the source column never relies on colour alone. */
+.animus-npc-groups,
+.animus-group-skins {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.animus-npc-group-list,
+.animus-group-skin-list,
+.animus-group-members {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.animus-npc-group-list {
+  counter-reset: animus-group;
+}
+
+.animus-npc-group-list > li {
+  display: grid;
+  gap: 0.25rem;
+  counter-increment: animus-group;
+}
+
+.animus-npc-group-list > li > .animus-gui-line::before {
+  content: counter(animus-group);
+  min-width: 1.25rem;
+  color: var(--animus-muted);
+  font-size: 0.8125rem;
+}
+
+.animus-npc-group-list code,
+.animus-group-skin-list code {
+  overflow-wrap: anywhere;
+}
+
+.animus-group-skin-list > li,
+.animus-group-members > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.animus-group-members code {
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.animus-effective-wrap {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.animus-effective-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 0.8125rem;
+}
+
+.animus-effective-table th,
+.animus-effective-table td {
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--animus-border);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.animus-effective-table thead th {
+  color: var(--animus-muted);
+  font-weight: 500;
+}
+
+.animus-effective-table th:first-child {
+  width: 34%;
+}
+
+.animus-effective-table th:last-child {
+  width: 9rem;
+}
+
+.animus-effective-table tr.is-own td code {
+  color: var(--animus-muted);
+}
+
+.animus-effective-json pre {
+  margin: 0.5rem 0 0;
+  max-height: 24rem;
+  overflow: auto;
+  padding: 0.5rem;
+  border: 1px solid var(--animus-border);
+  background: var(--animus-panel);
+  font-size: 0.75rem;
+}
+
+.animus-npc-group-assign {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.625rem;
+  border: 1px solid var(--animus-border);
+  background: var(--animus-panel);
+  min-width: 0;
+}
+
+.animus-npc-group-assign h3 {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.animus-npc-group-assign-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  min-width: 0;
+}
+
+.animus-npc-group-assign .animus-row {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 760px) {
+  .animus-npc-group-assign-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .animus-npc-group-assign-fields .animus-npc-filter-select {
+    display: grid;
+    grid-template-columns: 4rem minmax(0, 1fr);
+  }
+
+  .animus-npc-group-assign-fields select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .animus-effective-table th:first-child {
+    width: 38%;
+  }
+
+  .animus-effective-table th:last-child {
+    width: 6.5rem;
+  }
+}
+
+/* Recordings: the recording view, its path preview and scrub, and the list.
+   The path is grey chrome like the route grid; pink marks only the scrub
+   position, its facing and the played part of the scrub track. */
+.animus-recording {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 34rem);
+  grid-template-areas: 'facts stage' 'events stage';
+  align-items: start;
+  gap: var(--animus-gap) 1.5rem;
+  min-width: 0;
+}
+
+.animus-recording.is-preview {
+  grid-template-columns: minmax(0, 34rem);
+  grid-template-areas: 'stage';
+}
+
+.animus-recording-facts {
+  grid-area: facts;
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.animus-recording-facts p {
+  margin: 0;
+}
+
+.animus-recording-facts dl {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  gap: 0.375rem 1rem;
+  margin: 0;
+}
+
+.animus-recording-facts dt {
+  color: var(--animus-muted);
+}
+
+.animus-recording-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.animus-recording-stage {
+  grid-area: stage;
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.animus-recording-path {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--animus-border);
+  background: var(--animus-panel);
+}
+
+.animus-recording-line {
+  fill: none;
+  stroke: var(--animus-muted);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.animus-recording-start {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+}
+
+.animus-recording-event {
+  fill: var(--animus-panel);
+  stroke: var(--animus-muted);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+
+.animus-recording-marker {
+  fill: var(--primary, #ff5fa8);
+  stroke: #0d0d0f;
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+
+html.light .animus-recording-marker {
+  stroke: #ffffff;
+}
+
+.animus-recording-heading {
+  stroke: var(--primary, #ff5fa8);
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+}
+
+.animus-recording-legend {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.animus-recording-scrub {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.animus-recording-range {
+  width: 100%;
+  min-height: 2rem;
+  margin: 0;
+  accent-color: var(--primary, #ff5fa8);
+}
+
+.animus-recording-readout {
+  grid-column: 1 / -1;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.animus-recording-events {
+  grid-area: events;
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.animus-recording-events h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.animus-recording-events ol {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.animus-recording-events li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  min-width: 0;
+}
+
+.animus-recording-events li:not(.is-past) {
+  color: var(--animus-muted);
+}
+
+.animus-recording-event-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.animus-recording-list {
+  display: grid;
+  gap: var(--animus-gap);
+}
+
+.animus-recording-list h1 {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.animus-recording-table-wrap {
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.animus-recording-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.animus-recording-table :is(th, td) {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--animus-border);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.animus-recording-table thead th {
+  color: var(--animus-muted);
+  font-weight: 400;
+}
+
+.animus-recording-table tbody th {
+  font-weight: 400;
+}
+
+.animus-recording-table tbody th a {
+  font-family: var(--font-mono);
+}
+
+.animus-recording-table .animus-badge {
+  margin-left: 0.5rem;
+}
+
+@media (max-width: 1100px) {
+  .animus-recording {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'facts' 'stage' 'events';
+  }
+}
+
+/* Phones: facts label above value, a 44 px scrub track, and the table as
+   one labelled block per recording. */
+@media (max-width: 520px) {
+  .animus-recording-facts dl {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.125rem;
+  }
+
+  .animus-recording-facts dd + dt {
+    margin-top: 0.5rem;
+  }
+
+  .animus-recording-range {
+    min-height: 2.75rem;
+  }
+
+  .animus-recording-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .animus-recording-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    margin-bottom: 0.5rem;
+    border: 1px solid var(--animus-border);
+  }
+
+  .animus-recording-table :is(th, td) {
+    border: 0;
+    padding: 0.25rem 0.75rem;
+  }
+
+  .animus-recording-table td::before {
+    color: var(--animus-muted);
+    margin-right: 0.5rem;
+  }
+
+  .animus-recording-table td:nth-of-type(1)::before { content: 'Length'; }
+  .animus-recording-table td:nth-of-type(2)::before { content: 'Frames'; }
+  .animus-recording-table td:nth-of-type(3)::before { content: 'Events'; }
+  .animus-recording-table td:nth-of-type(4)::before { content: 'World'; }
+  .animus-recording-table td:nth-of-type(5)::before { content: 'Size'; }
+}
+
+.animus-npc-group-assign [data-npc='group-assign-reach'] {
+  font-size: 0.8125rem;
+}

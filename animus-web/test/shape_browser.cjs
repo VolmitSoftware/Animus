@@ -7,7 +7,9 @@
 // :focus-visible and :active forced on it. It also checks that buttons share the heights of
 // the button system and that phone controls keep a 44 px target.
 // Pages: home, the example-packs workspace and every document kind in it
-// with each view, the gui_editors and rig_editor fixtures, New document,
+// with each view, the gui_editors, rig_editor and groups_recordings fixtures
+// (that one also with its NPC list and group form, and its recordings
+// list), New document,
 // Send to a server, the NPC list, the converter, a pairing link, the command
 // palette, the top bar menus and a delete confirmation.
 // ANIMUS_SCREENSHOTS (optional, outside the repository) receives a shot of
@@ -23,7 +25,7 @@ const {isCompact} = require('./support/shell.cjs');
 
 const url = process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })();
 const shots = process.env.ANIMUS_SCREENSHOTS;
-const folders = ['fixtures/gui_editors', 'fixtures/rig_editor'].map(folder => path.resolve(__dirname, folder));
+const folders = ['fixtures/gui_editors', 'fixtures/rig_editor', 'fixtures/groups_recordings'].map(folder => path.resolve(__dirname, folder));
 
 // Round by meaning, and the only places a border-radius is allowed. Empty:
 // the rig gizmo's handles are round, but they are SVG circles on the 3D
@@ -277,6 +279,15 @@ async function run(browser, viewport, width, theme, failures) {
     await page.waitForFunction(() => /#\/workspace\//.test(location.hash));
     await page.locator('#animus-sidebar a[href*="/workspace/"]').first().waitFor({state: 'attached'});
     await walk(path.basename(folder));
+    if (path.basename(folder) === 'groups_recordings') {
+      const opened = /#\/workspace\/([^/?]+)/.exec(page.url())[1];
+      await hash(`#/workspace/${opened}/npcs`);
+      await page.locator('[data-npc="group-assign"]').waitFor();
+      await visit('groups_recordings npc list');
+      await hash(`#/workspace/${opened}/recordings`);
+      await page.locator('[data-recording="list"]').waitFor();
+      await visit('groups_recordings recordings list');
+    }
   }
 
   for (const error of errors) failures.push(`${width} ${theme}: console ${error}`);

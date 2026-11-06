@@ -36,6 +36,93 @@ Map<String, int?> routeRecordings(List<AnimusDocument> documents) => <String, in
 
 enum RouteTool { point, guide, select }
 
+/// A `waitTicks` field: one count, or with Range pressed a Min and a Max
+/// drawn per arrival. Writes an int, `[min, max]`, or null when [optional]
+/// and emptied. [id] prefixes the inputs: `<id>`, `<id>-min`, `<id>-max`
+/// and the `<id>-range` toggle.
+class RouteWaitInput extends StatefulWidget {
+  const RouteWaitInput({required this.id, required this.label, required this.value, required this.onChanged, this.placeholder, super.key});
+
+  final String id;
+
+  /// What the inputs are named for assistive technology, such as `Point 2`.
+  final String label;
+  final Object? value;
+  final void Function(Object? value) onChanged;
+
+  /// Shown in the empty single field: the wait that applies without one.
+  final String? placeholder;
+
+  @override
+  State<RouteWaitInput> createState() => _RouteWaitInputState();
+}
+
+class _RouteWaitInputState extends State<RouteWaitInput> {
+  /// Range chosen before both ends were typed.
+  bool? _range;
+
+  bool get _ranged => _range ?? component.value is List<Object?>;
+
+  List<int?> get _ends {
+    final Object? value = component.value;
+    if (value is List<Object?>) return <int?>[value.isNotEmpty ? asInt(value[0]) : null, value.length > 1 ? asInt(value[1]) : null];
+    final int? fixed = asInt(value);
+    return <int?>[fixed, fixed];
+  }
+
+  void _toggle() {
+    final List<int?> ends = _ends;
+    final bool range = !_ranged;
+    setState(() => _range = range);
+    if (range) {
+      if (ends[0] != null) component.onChanged(<int>[ends[0]!, ends[1] ?? ends[0]!]);
+    } else {
+      component.onChanged(ends[0]);
+    }
+  }
+
+  void _end(int which, num? typed) {
+    final List<int?> ends = _ends;
+    ends[which] = typed?.toInt();
+    final int? low = ends[0] ?? ends[1], high = ends[1] ?? ends[0];
+    component.onChanged(low == null || high == null ? null : <int>[low, high]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool ranged = _ranged;
+    final List<int?> ends = _ends;
+    final String label = component.label;
+    return dom.div(classes: 'animus-route-wait', attributes: <String, String>{'role': 'group', 'aria-label': '$label wait'}, <Widget>[
+      if (ranged) ...<Widget>[
+        dom.label(classes: 'animus-route-wait-end', <Widget>[
+          const dom.span(<Widget>[Component.text('Min')]),
+          GuiNumberInput(id: '${component.id}-min', value: ends[0], label: '$label waitTicks min', placeholder: '0', onChanged: (num? value) => _end(0, value)),
+        ]),
+        dom.label(classes: 'animus-route-wait-end', <Widget>[
+          const dom.span(<Widget>[Component.text('Max')]),
+          GuiNumberInput(id: '${component.id}-max', value: ends[1], label: '$label waitTicks max', placeholder: '$routeMaxWait', onChanged: (num? value) => _end(1, value)),
+        ]),
+      ] else
+        GuiNumberInput(
+          id: component.id,
+          value: asInt(component.value),
+          label: '$label waitTicks',
+          placeholder: component.placeholder,
+          onChanged: (num? value) => component.onChanged(value?.toInt()),
+        ),
+      Button(
+        id: '${component.id}-range',
+        label: 'Range',
+        size: ButtonSize.small,
+        variant: ranged ? ButtonVariant.primary : ButtonVariant.ghost,
+        attributes: <String, String>{'aria-pressed': '$ranged', 'aria-label': '$label wait range'},
+        onPressed: _toggle,
+      ),
+    ]);
+  }
+}
+
 class RouteEditor extends StatefulWidget {
   const RouteEditor({
     required this.value,
@@ -277,8 +364,14 @@ class _RouteEditorState extends State<RouteEditor> {
   @override
   Widget build(BuildContext context) {
     final RouteSpec spec = _shownSpec;
-    final List<(String, String)> problems = RouteSpec(_route).problems();
     final (String, int)? picked = _picked != null && asList(_route[_picked!.$1]).length > _picked!.$2 ? _picked : null;
+    // Problems of the route fields and of the picked point show at their
+    // field; the rest are listed under the grid.
+    final String? pickedField = picked == null || component.readOnly ? null : '${picked.$1}[${picked.$2}]';
+    final List<(String, String)> problems = <(String, String)>[
+      for (final (String field, String message) in RouteSpec(_route).problems())
+        if (component.readOnly || !(_inlineFields.contains(field) || (pickedField != null && (field.startsWith('$pickedField.') || field == pickedField)))) (field, message),
+    ];
     return dom.div(classes: 'animus-route-editor', attributes: const <String, String>{'role': 'group', 'aria-label': 'Route editor'}, <Widget>[
       if (!component.readOnly) _settings(spec),
       if (!component.readOnly)
@@ -306,6 +399,21 @@ class _RouteEditorState extends State<RouteEditor> {
   }
 
   List<Diagnostic> get _problems => diagnosticsAt(component.diagnostics, component.path, nested: true);
+
+  /// Route fields whose problems show in their own row.
+  static const Set<String> _inlineFields = <String>{'waitTicks', 'seed', 'startOffset', 'jitter'};
+
+  /// The browser's problems at exactly [field] (`jitter`, `points[2].next[0].to`).
+  List<Diagnostic> _inline(String field) => <Diagnostic>[
+        for (final (String at, String message) in RouteSpec(_route).problems())
+          if (at == field) Diagnostic(DiagnosticSeverity.error, at, message),
+      ];
+
+  /// The browser's problems at [field] and inside it.
+  List<Diagnostic> _inlineWithin(String field) => <Diagnostic>[
+        for (final (String at, String message) in RouteSpec(_route).problems())
+          if (at == field || at.startsWith('$field.') || at.startsWith('$field[')) Diagnostic(DiagnosticSeverity.error, at, message),
+      ];
 
   Widget _toolButton(RouteTool tool, String label) => Button(
         label: label,
@@ -343,11 +451,42 @@ class _RouteEditorState extends State<RouteEditor> {
         help: 'Blocks per second, 1-5.',
         child: GuiNumberInput(value: asDouble(route['speed']), integer: false, label: 'route speed', onChanged: (num? value) => _field('speed', value)),
       ),
-      GuiRow(
+      InspectRow(
         label: 'Wait ticks',
-        help: 'Wait before the first leg and after each arrival, 0-$routeMaxWait. 20 by default.',
-        child: GuiNumberInput(value: asInt(route['waitTicks']), label: 'route waitTicks', onChanged: (num? value) => _field('waitTicks', value?.toInt())),
+        labelFor: '$_gridId-wait',
+        help: 'Wait before the first leg and after each arrival, 0-$routeMaxWait; a range draws a new wait each time. 20 by default.',
+        problems: _inline('waitTicks'),
+        child: RouteWaitInput(id: '$_gridId-wait', label: 'route', value: route['waitTicks'], placeholder: '20', onChanged: (Object? value) => _field('waitTicks', value)),
       ),
+      InspectRow(
+        label: 'Seed',
+        labelFor: '$_gridId-seed',
+        help: 'npc: each NPC makes its own choices, the same after a restart. random: new choices every run.',
+        problems: _inline('seed'),
+        child: GuiSelect(id: '$_gridId-seed', value: asString(route['seed']), options: routeSeeds, allowNone: true, noneLabel: 'npc (default)', onChanged: (String? value) => _field('seed', value)),
+      ),
+      InspectRow(
+        label: 'Start offset',
+        labelFor: '$_gridId-start',
+        help: 'random starts at a random point after a random part of the wait, so NPCs sharing the route spread out.',
+        problems: _inline('startOffset'),
+        child: GuiSelect(
+          id: '$_gridId-start',
+          value: asString(route['startOffset']),
+          options: routeStartOffsets,
+          allowNone: true,
+          noneLabel: 'first (default)',
+          onChanged: (String? value) => _field('startOffset', value),
+        ),
+      ),
+      if (spec.order != 'wander' || route.containsKey('jitter'))
+        InspectRow(
+          label: 'Jitter',
+          labelFor: '$_gridId-jitter',
+          help: 'Each leg aims at a random whole block up to this many blocks from the point, 0-$routeMaxJitter. 0 by default.',
+          problems: _inline('jitter'),
+          child: GuiNumberInput(id: '$_gridId-jitter', value: asInt(route['jitter']), label: 'route jitter', placeholder: '0', onChanged: (num? value) => _field('jitter', value?.toInt())),
+        ),
       if (spec.order == 'sequence')
         GuiRow(
           label: 'Loop',
@@ -413,6 +552,16 @@ class _RouteEditorState extends State<RouteEditor> {
           y2: _n(spec.positionOf(b)!.z),
           classes: 'animus-route-link${spec.order == 'random' ? ' is-mesh' : ''}',
         ),
+      for (final (int a, int b) in spec.junctionLinks)
+        dom.line(
+          const <Component>[],
+          x1: _n(spec.positionOf(a)!.x),
+          y1: _n(spec.positionOf(a)!.z),
+          x2: _n(spec.positionOf(b)!.x),
+          y2: _n(spec.positionOf(b)!.z),
+          classes: 'animus-route-link is-junction',
+          attributes: <String, String>{'data-junction': '$a:$b'},
+        ),
       if (spec.order == 'wander')
         for (final RouteNode point in spec.points.whereType<RouteNode>())
           dom.rect(
@@ -434,7 +583,9 @@ class _RouteEditorState extends State<RouteEditor> {
       for (int index = 0; index < spec.points.length; index++)
         if (spec.points[index] case final RouteNode point) _node('points', index, point, radius, picked, bounds, '$index'),
     ];
-    return dom.div(classes: 'animus-route-grid-wrap', <Widget>[
+    // Points on the grid are sized by the map's scale, not the button
+    // system; the point list below gives each one a full-size target.
+    return dom.div(classes: 'animus-route-grid-wrap', attributes: const <String, String>{'data-size-exempt': ''}, <Widget>[
       dom.svg(
         <Component>[...grid, ...links, ...markers],
         id: _gridId,
@@ -538,20 +689,25 @@ class _RouteEditorState extends State<RouteEditor> {
 
     final int count = asList(_route[key]).length;
     final String label = guide ? 'Guide $index' : (step ? 'Step $index' : 'Point $index');
-    final RouteWait? wait = RouteWait.fromJson(node['waitTicks']);
-    final Widget waitField = dom.label(<Widget>[
-      const dom.span(<Widget>[Component.text('Wait ticks')]),
-      GuiNumberInput(
-        value: wait == null || wait.ranged ? null : wait.min,
-        label: '$label waitTicks',
-        placeholder: wait != null && wait.ranged ? '$wait' : 'route',
-        onChanged: (num? value) => set('waitTicks', value?.toInt()),
+    final String field = '$key[$index]';
+    final Widget waitField = InspectRow(
+      label: 'Wait ticks',
+      labelFor: '$_gridId-point-wait',
+      help: 'Empty uses the route\'s wait (${spec.waitTicks}).',
+      problems: _inline('$field.waitTicks'),
+      child: RouteWaitInput(
+        key: ValueKey<String>('wait:$key:$index'),
+        id: '$_gridId-point-wait',
+        label: label,
+        value: node['waitTicks'],
+        placeholder: 'route',
+        onChanged: (Object? value) => set('waitTicks', value),
       ),
-    ]);
+    );
     return dom.div(classes: 'animus-route-picked', attributes: <String, String>{'role': 'group', 'aria-label': 'Selected $label'}, <Widget>[
       dom.strong(<Widget>[Component.text(label)]),
       if (step)
-        _stepFields(node, label, set, waitField)
+        _stepFields(node, label, set)
       else
         dom.div(classes: 'animus-route-coords', <Widget>[
           for (final String axis in const <String>['x', 'y', 'z'])
@@ -559,8 +715,36 @@ class _RouteEditorState extends State<RouteEditor> {
               dom.span(<Widget>[Component.text(axis)]),
               GuiNumberInput(value: asDouble(node[axis]), integer: false, label: '$label $axis', onChanged: (num? value) => set(axis, value ?? 0)),
             ]),
-          if (!guide) waitField,
         ]),
+      if (!guide) ...<Widget>[
+        waitField,
+        if (!step && (spec.order != 'wander' || node.containsKey('jitter')))
+          InspectRow(
+            label: 'Jitter',
+            labelFor: '$_gridId-point-jitter',
+            help: 'Blocks, 0-$routeMaxJitter. Empty uses the route\'s.',
+            problems: _inline('$field.jitter'),
+            child: GuiNumberInput(id: '$_gridId-point-jitter', value: asInt(node['jitter']), label: '$label jitter', placeholder: 'route', onChanged: (num? value) => set('jitter', value?.toInt())),
+          ),
+        if (step && node.containsKey('jitter'))
+          for (final Diagnostic problem in _inline('$field.jitter'))
+            dom.div(classes: 'animus-row', <Widget>[
+              dom.span(classes: 'animus-gui-problem is-error', <Widget>[dom.code(<Widget>[Component.text(problem.path)]), Component.text(' ${problem.message}')]),
+              Button.ghost(label: 'Remove jitter', size: ButtonSize.small, onPressed: () => set('jitter', null)),
+            ]),
+        if (spec.order == 'random' || node.containsKey('weight'))
+          InspectRow(
+            label: 'Weight',
+            labelFor: '$_gridId-point-weight',
+            help: 'How often random picks this point against the others, 1-$routeMaxWeight. 1 by default.',
+            problems: _inline('$field.weight'),
+            child: GuiNumberInput(id: '$_gridId-point-weight', value: asInt(node['weight']), label: '$label weight', placeholder: '1', onChanged: (num? value) => set('weight', value?.toInt())),
+          ),
+        if (spec.order == 'sequence' || node.containsKey('next')) _junctions(node, index, label, field),
+      ],
+      for (final Diagnostic problem in _inlineWithin(field))
+        if (!<String>['waitTicks', 'jitter', 'weight', 'next'].any((String covered) => problem.path == '$field.$covered' || problem.path.startsWith('$field.next')))
+          dom.span(classes: 'animus-gui-problem is-error', <Widget>[dom.code(<Widget>[Component.text(problem.path)]), Component.text(' ${problem.message}')]),
       dom.div(classes: 'animus-row', <Widget>[
         if (!guide) ...<Widget>[
           Button.ghost(
@@ -611,7 +795,69 @@ class _RouteEditorState extends State<RouteEditor> {
 
   /// A step's recording, tick range and wait. The recording is picked from
   /// the workspace's recordings, or typed when the workspace has none.
-  Widget _stepFields(JsonMap node, String label, void Function(String field, Object? value) set, Widget waitField) {
+  /// A point's `next` junctions: each leads to a point by weight.
+  Widget _junctions(JsonMap node, int index, String label, String field) {
+    final List<Object?> next = asList(node['next']);
+    final int count = asList(_route['points']).length;
+    final List<String> targets = <String>[
+      for (int point = 0; point < count; point++)
+        if (point != index) '$point',
+    ];
+    return dom.div(classes: 'animus-route-junctions', attributes: <String, String>{'role': 'group', 'aria-label': '$label next points'}, <Widget>[
+      dom.div(classes: 'animus-route-junctions-head', <Widget>[
+        const dom.span(classes: 'animus-gui-label', <Widget>[Component.text('Next points')]),
+        dom.span(classes: 'animus-gui-help', <Widget>[
+          Component.text(next.isEmpty
+              ? 'None: the NPC walks on to point ${index + 1 < count ? index + 1 : 'after the last'}. Add a junction to branch here.'
+              : 'After this point the NPC goes to one of these, picked by weight, instead of point ${index + 1}.'),
+        ]),
+      ]),
+      for (int junction = 0; junction < next.length; junction++)
+        dom.div(key: ValueKey<String>('junction:$index:$junction'), classes: 'animus-route-junction', <Widget>[
+          dom.label(<Widget>[
+            const dom.span(<Widget>[Component.text('To point')]),
+            GuiSelect(
+              id: '$_gridId-next-$junction-to',
+              value: asInt(asMap(next[junction])['to'])?.toString(),
+              options: targets,
+              labels: <String, String>{for (final String target in targets) target: 'Point $target'},
+              onChanged: (String? value) {
+                final int? to = value == null ? null : int.tryParse(value);
+                if (to != null) _write(setRouteJunction(_route, index, junction, to: to));
+              },
+            ),
+          ]),
+          dom.label(<Widget>[
+            const dom.span(<Widget>[Component.text('Weight')]),
+            GuiNumberInput(
+              id: '$_gridId-next-$junction-weight',
+              value: asInt(asMap(next[junction])['weight']),
+              label: '$label junction ${junction + 1} weight',
+              placeholder: '1',
+              onChanged: (num? value) => _write(setRouteJunction(_route, index, junction, weight: value?.toInt())),
+            ),
+          ]),
+          GuiIconButton(
+            icon: ArcaneIcon.x(size: IconSize.sm),
+            label: 'Remove junction ${junction + 1}',
+            onPressed: () => _write(removeRouteJunction(_route, index, junction)),
+          ),
+          for (final Diagnostic problem in _inlineWithin('$field.next[$junction]'))
+            dom.span(classes: 'animus-gui-problem is-error', <Widget>[dom.code(<Widget>[Component.text(problem.path)]), Component.text(' ${problem.message}')]),
+        ]),
+      for (final Diagnostic problem in _inline('$field.next'))
+        dom.span(classes: 'animus-gui-problem is-error', <Widget>[dom.code(<Widget>[Component.text(problem.path)]), Component.text(' ${problem.message}')]),
+      Button.ghost(
+        id: '$_gridId-next-add',
+        label: 'Add junction',
+        size: ButtonSize.small,
+        disabled: next.length >= routeMaxJunctions || count < 2,
+        onPressed: () => _write(addRouteJunction(_route, index)),
+      ),
+    ]);
+  }
+
+  Widget _stepFields(JsonMap node, String label, void Function(String field, Object? value) set) {
     final String recording = asString(node['recording']) ?? '';
     final Map<String, int?> recordings = component.recordings;
     final int? duration = recordings[recording];
@@ -641,7 +887,6 @@ class _RouteEditorState extends State<RouteEditor> {
             onChanged: (num? value) => set('toTick', value?.toInt()),
           ),
         ]),
-        waitField,
       ]),
     ]);
   }
@@ -680,13 +925,20 @@ class _RouteEditorState extends State<RouteEditor> {
                 dom.code(<Widget>[Component.text('$index')]),
                 dom.span(<Widget>[Component.text(kind(spec.nodes[index]))]),
                 dom.span(<Widget>[Component.text(where(spec.nodes[index]))]),
-                dom.span(classes: 'animus-muted', <Widget>[Component.text('wait ${wait(spec.nodes[index])}')]),
+                dom.span(classes: 'animus-muted', <Widget>[Component.text('wait ${wait(spec.nodes[index])}${_extras(index < spec.points.length ? asMap(asList(_route['points'])[index]) : const <String, Object?>{})}')]),
               ],
             ),
           ],
         ),
     ]);
   }
+
+  /// A point's weight, jitter and junctions for its list row.
+  static String _extras(JsonMap point) => <String>[
+        if (point['weight'] != null) ', weight ${point['weight']}',
+        if (point['jitter'] != null) ', jitter ${point['jitter']}',
+        if (point['next'] is List<Object?>) ', next ${asList(point['next']).map((Object? junction) => asMap(junction)['to']).join(' or ')}',
+      ].join();
 
   static (String, int) _listKey(RouteSpec spec, int number) => number < spec.points.length ? ('points', number) : ('guides', number - spec.points.length);
 

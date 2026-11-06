@@ -124,7 +124,8 @@ class ShopBindingEditor extends StatelessWidget {
   }
 }
 
-/// `animus:navigation`: waypoints of the NPC's own, or a reusable route.
+/// `animus:navigation`: waypoints of the NPC's own, a reusable route, or a
+/// recording played once, in a loop or back and forth.
 class NavigationEditor extends StatelessWidget {
   const NavigationEditor({
     required this.value,
@@ -161,17 +162,47 @@ class NavigationEditor extends StatelessWidget {
     ];
   }
 
+  static const Map<String, String> _sourceLabels = <String, String>{
+    'points': 'Waypoints of its own',
+    'route': 'A reusable route',
+    'recording': 'A recording',
+  };
+
+  static const Map<String, String> _playbackHelp = <String, String>{
+    'once': 'Plays one time and stops at the last frame.',
+    'loop': 'Starts again from the first frame after the last. End the recording near where it started for a clean loop.',
+    'pingpong': 'Plays forward, then backward, then forward again, forever.',
+  };
+
+  /// The module moved to [source]: the old source's fields go, enabled,
+  /// reviewAccepted and unknown keys stay.
+  JsonMap _withSource(JsonMap module, NavigationSource source, List<String> routeIds) {
+    final JsonMap next = <String, Object?>{
+      for (final MapEntry<String, Object?> entry in module.entries)
+        if (!routeFields.contains(entry.key) && entry.key != 'route' && entry.key != 'recording' && entry.key != 'playback') entry.key: entry.value,
+    };
+    switch (source) {
+      case NavigationSource.points:
+        next['points'] = _originPoint;
+      case NavigationSource.route:
+        next['route'] = routeIds.firstOrNull ?? '';
+      case NavigationSource.recording:
+        return setNavigationRecording(next, recordings.keys.firstOrNull ?? '');
+    }
+    return next;
+  }
+
   @override
   Widget build(BuildContext context) {
     final JsonMap module = asMap(value);
     final String path = childPath(r'$.modules', navigationModule);
     final List<String> routeIds = <String>[for (final AnimusDocument route in routes) route.id];
-    final String? reference = asString(module['route']);
     const String routeId = 'animus-npc-route';
+    const String sourceId = 'animus-npc-nav-source';
     if (value == null) {
       return dom.div(classes: 'animus-npc-route', <Widget>[
         const dom.p(classes: 'animus-gui-help', <Widget>[
-          Component.text('The NPC stands still. Give it waypoints of its own or a reusable route under routes/.'),
+          Component.text('The NPC stands still. Give it waypoints of its own, a reusable route under routes/, or a recording under recordings/ to play.'),
         ]),
         dom.div(classes: 'animus-row', <Widget>[
           Button.secondary(
@@ -191,9 +222,17 @@ class NavigationEditor extends StatelessWidget {
               },
             ),
           ],
+          Button.ghost(
+            id: 'animus-npc-add-recording',
+            label: 'Play a recording',
+            size: ButtonSize.small,
+            onPressed: () => onChanged(setNavigationRecording(<String, Object?>{'enabled': true}, recordings.keys.firstOrNull ?? '')),
+          ),
         ]),
       ]);
     }
+    final NavigationSource source = navigationSource(module);
+    final String? reference = asString(module['route']);
     final AnimusDocument? routeDocument = reference == null ? null : routes.where((AnimusDocument d) => d.id == reference).firstOrNull;
     return dom.div(classes: 'animus-npc-route', <Widget>[
       dom.div(classes: 'animus-row', <Widget>[
@@ -204,47 +243,122 @@ class NavigationEditor extends StatelessWidget {
             label: 'Review accepted',
             onChanged: (bool accepted) => onChanged(<String, Object?>{...module, 'reviewAccepted': accepted}),
           ),
-        const dom.label(classes: 'animus-sr-only', attributes: <String, String>{'for': routeId}, <Widget>[Component.text('Route source')]),
-        GuiSelect(
-          id: routeId,
-          value: reference,
-          options: routeIds,
-          allowNone: true,
-          noneLabel: 'Waypoints of its own',
-          onChanged: (String? id) {
-            final JsonMap next = <String, Object?>{
-              for (final MapEntry<String, Object?> entry in module.entries)
-                if (!routeFields.contains(entry.key) && entry.key != 'route') entry.key: entry.value,
-            };
-            if (id != null) {
-              next['route'] = id;
-            } else {
-              next['points'] = _originPoint;
-            }
-            onChanged(next);
-          },
-        ),
         GuiIconButton(
           icon: ArcaneIcon.x(size: IconSize.sm),
           label: 'Remove the route',
           onPressed: () => onChanged(null),
         ),
       ]),
-      if (reference != null) ...<Widget>[
-        dom.p(classes: 'animus-gui-help', <Widget>[
-          Component.text('Follows routes/$reference.json; edit the route there. '),
-          if (routeDocument != null && onOpen != null)
-            Button.ghost(label: 'Open route $reference', size: ButtonSize.small, onPressed: () => onOpen!(DocumentKind.route, reference)),
-        ]),
-        if (routeDocument == null)
-          const dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('Not a route in this workspace; the server may have it.')])
-        else
-          RouteEditor(value: asMap(routeDocument.json), onChanged: (JsonMap _) {}, origin: origin, recordings: recordings, readOnly: true),
-      ] else
-        RouteEditor(value: module, origin: origin, path: path, diagnostics: diagnostics, recordings: recordings, onChanged: (JsonMap next) => onChanged(next)),
+      InspectRow(
+        label: 'Moves by',
+        labelFor: sourceId,
+        help: 'One source at a time: the server refuses a module that mixes them.',
+        problems: diagnosticsAt(diagnostics, path),
+        child: GuiSelect(
+          id: sourceId,
+          value: source.name,
+          options: <String>[for (final NavigationSource option in NavigationSource.values) option.name],
+          labels: _sourceLabels,
+          onChanged: (String? name) {
+            if (name == null || name == source.name) return;
+            onChanged(_withSource(module, NavigationSource.values.byName(name), routeIds));
+          },
+        ),
+      ),
+      ...switch (source) {
+        NavigationSource.recording => _recording(module, path),
+        NavigationSource.route => <Widget>[
+            InspectRow(
+              label: 'Route',
+              labelFor: routeId,
+              help: 'Follows routes/<id>.json; edit the route there.',
+              problems: diagnosticsAt(diagnostics, childPath(path, 'route')),
+              child: routeIds.isEmpty
+                  ? GuiTextInput(id: routeId, value: reference ?? '', label: 'Route id', placeholder: 'town-patrol', onChanged: (String id) => onChanged(<String, Object?>{...module, 'route': id.trim()}))
+                  : GuiSelect(id: routeId, value: reference, options: routeIds, onChanged: (String? id) => onChanged(<String, Object?>{...module, 'route': id ?? ''})),
+            ),
+            if (routeDocument != null && onOpen != null)
+              dom.div(classes: 'animus-row', <Widget>[
+                Button.ghost(label: 'Open route $reference', size: ButtonSize.small, onPressed: () => onOpen!(DocumentKind.route, reference!)),
+              ]),
+            if (routeDocument == null)
+              const dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('Not a route in this workspace; the server may have it.')])
+            else
+              RouteEditor(value: asMap(routeDocument.json), onChanged: (JsonMap _) {}, origin: origin, recordings: recordings, readOnly: true),
+          ],
+        NavigationSource.points => <Widget>[
+            RouteEditor(value: module, origin: origin, path: path, diagnostics: diagnostics, recordings: recordings, onChanged: (JsonMap next) => onChanged(next)),
+          ],
+      },
     ]);
   }
+
+  /// The recording a module plays and how.
+  List<Widget> _recording(JsonMap module, String path) {
+    const String recordingId = 'animus-npc-recording';
+    const String playbackId = 'animus-npc-playback';
+    final String recording = asString(module['recording']) ?? '';
+    final String? playback = asString(module['playback']);
+    final List<(String, String)> problems = navigationProblems(module);
+    List<Diagnostic> at(String field) => <Diagnostic>[
+          for (final (String name, String message) in problems)
+            if (name == field) Diagnostic(DiagnosticSeverity.error, childPath(path, name), message),
+          ...diagnosticsAt(diagnostics, childPath(path, field)),
+        ];
+    final bool known = recordings.containsKey(recording);
+    final int? duration = recordings[recording];
+    return <Widget>[
+      InspectRow(
+        label: 'Recording',
+        labelFor: recordingId,
+        help: recordings.isEmpty
+            ? 'No recordings in this workspace. Record one in game with /animus record start <id>, or type the id of one on the server.'
+            : (duration == null ? 'A recording under recordings/.' : '$duration ticks, ${(duration / 20).toStringAsFixed(1)} seconds.'),
+        problems: at('recording'),
+        child: recordings.isEmpty
+            ? GuiTextInput(id: recordingId, value: recording, label: 'Recording id', placeholder: 'market-loop', onChanged: (String id) => onChanged(<String, Object?>{...module, 'recording': id.trim()}))
+            : GuiSelect(
+                id: recordingId,
+                value: recording.isEmpty ? null : recording,
+                options: recordings.keys.toList(),
+                onChanged: (String? id) => onChanged(<String, Object?>{...module, 'recording': id ?? ''}),
+              ),
+      ),
+      if (recording.isNotEmpty && !known && recordings.isNotEmpty)
+        const dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('Not a recording in this workspace; the server may have it.')]),
+      if (known && onOpen != null)
+        dom.div(classes: 'animus-row', <Widget>[
+          Button.ghost(id: 'animus-npc-open-recording', label: 'Open recording $recording', size: ButtonSize.small, onPressed: () => onOpen!(DocumentKind.recording, recording)),
+        ]),
+      InspectRow(
+        label: 'Playback',
+        labelFor: playbackId,
+        help: _playbackHelp[playback ?? 'loop'] ?? 'Expected once, loop or pingpong.',
+        problems: at('playback'),
+        child: GuiSelect(
+          id: playbackId,
+          value: playback,
+          options: navigationPlaybacks,
+          allowNone: true,
+          noneLabel: 'loop (default)',
+          onChanged: (String? next) {
+            final JsonMap updated = <String, Object?>{...module};
+            if (next == null) {
+              updated.remove('playback');
+            } else {
+              updated['playback'] = next;
+            }
+            onChanged(updated);
+          },
+        ),
+      ),
+      const dom.p(classes: 'animus-gui-help', <Widget>[
+        Component.text('The NPC first walks to the first frame on a planned path, then plays the recording at the speed it was made. Combat and /animus navigate interrupt it.'),
+      ]),
+    ];
+  }
 }
+
 
 class MountEditor extends StatelessWidget {
   const MountEditor({required this.value, required this.vehicles, required this.onChanged, this.diagnostics = const <Diagnostic>[], super.key});
