@@ -54,9 +54,13 @@ public interface EditorHost {
     /**
      * Called on the file lane after an apply, undo or import committed. The platform reloads every catalog of these kinds:
      * NPCs, behaviors, shops, GUIs, holograms and rigs. {@code removedBehaviors} names behaviors whose sources the change
-     * deleted, so the catalog forgets them. {@code rollback} is true when older revisions were restored on purpose.
+     * deleted, so the catalog forgets them. {@code rollback} is true when older revisions were restored on purpose. Completes
+     * once every touched catalog is live, with the refusals the reload reported; chain on it, never wait for it on the lane.
      */
-    void applied(Set<DocumentKind> kinds, Set<String> removedBehaviors, boolean rollback);
+    CompletionStage<List<String>> applied(Set<DocumentKind> kinds, Set<String> removedBehaviors, boolean rollback);
+
+    /** Where in-game notices of editor events go. */
+    EditorNoticeChannel notices();
 
     /** Viewer-private previews, or empty with the reason they are unavailable. */
     Optional<PreviewPresenter> previews();

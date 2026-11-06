@@ -84,7 +84,8 @@ public final class EditorService implements AutoCloseable {
             events.publish(event);
         });
         timers = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("Animus-editor-timers").factory());
-        api = new EditorApi(new EditorApi.Parts(settings, relaySettings.enabled(), host, identity, tokens, audit, documents, changes, previews, events, runtime::npcs, runtime::importHost, timers, clock,
+        EditorNotices notices = new EditorNotices(() -> settings.notices(), host.notices(), log, System::nanoTime, art.arcane.animus.core.AnimusLog.shared()::debug);
+        api = new EditorApi(new EditorApi.Parts(settings, relaySettings.enabled(), host, identity, tokens, audit, documents, changes, previews, events, notices, runtime::npcs, runtime::importHost, timers, clock,
                 runtime.environment().minecraftVersion()));
         frames = scheduleFrames(events, settings.eventFramesPerSecond());
         EditorApi opened = api;
@@ -93,6 +94,7 @@ public final class EditorService implements AutoCloseable {
             catch (IOException failure) { log.accept("Editor token housekeeping failed: " + failure.getMessage()); }
         }), 1, 1, TimeUnit.SECONDS);
         timers.scheduleAtFixedRate(guard(opened::recheckAdmins), 60, 60, TimeUnit.SECONDS);
+        timers.scheduleAtFixedRate(guard(notices::tick), 100, 100, TimeUnit.MILLISECONDS);
         timers.scheduleAtFixedRate(guard(() -> {
             try {
                 host.files().execute(() -> {

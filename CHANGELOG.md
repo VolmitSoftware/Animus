@@ -230,6 +230,7 @@
 - `[npcs] simulationPerTick` bounds idle fall and rig animation steps per tick (per region on Folia).
 - `[npcs] queuePerViewer` bounds the packet operations one player may have waiting; cosmetic updates stop first when it fills.
 - `[npcs] degradedIntervalTicks`: while a simulation, route or behavior budget runs short, cosmetic updates and distant NPC moves slow down; `/animus status` shows `presentation=degraded`.
+- Web editor changes play a sound and show one chat line in game, such as "Brian's editor applied 3 NPCs, 1 behavior (tx 1a2b3c4d)", for applies, undos, imports, spawns, pairings, revokes and refusals. Holders of `animus.editor.notify` (operators by default) and the token's owner get them; the transaction id copies on click and the line suggests `/animus rollback`. Bursts merge into one notice, and the notice waits for the reload so it reports the real result. Sounds, chat, action bar and log line are set in `[editor.notify]`.
 
 ### Changed
 
