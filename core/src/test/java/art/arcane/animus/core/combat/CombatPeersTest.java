@@ -94,6 +94,27 @@ class CombatPeersTest {
         assertEquals(npcRef(hunter), status(prey).target().orElseThrow(), "the prey fights back against the NPC another engine holds");
     }
 
+    @Test void shouldLandAnArrowOnAnNpcAnotherEngineHoldsAndCreditTheArcher() {
+        UUID archer = combatant(0, 0, 20, "{\"targets\":{\"categories\":[\"npcs\"]},\"targeting\":{\"scanIntervalTicks\":1,\"scanRange\":30},\"melee\":{\"enabled\":false},"
+                + "\"ranged\":{\"enabled\":true,\"damage\":5,\"range\":30,\"cooldownTicks\":20}}");
+        UUID dummy = combatant(10, 0, 20, "{\"defense\":{\"invulnerableTicks\":0},\"melee\":{\"enabled\":false},\"pursuit\":{\"closeChase\":false}}");
+        run(1);
+        UUID helper = world.helpers.keySet().iterator().next();
+        world.helpers.put(helper, new art.arcane.animus.core.virtual.Vec3(11, 65, 0));
+        run(1);
+        assertTrue(world.removedHelpers.contains(helper), "the arrow is spent on the other engine's NPC");
+        assertEquals(15, world.npc(dummy).orElseThrow().health(), "its owner applied the hit once");
+        assertEquals(npcRef(archer), status(dummy).target().orElseThrow(), "the hit is credited to the archer");
+    }
+
+    @Test void shouldNeverTargetAnInvincibleNpcAnotherEngineHolds() {
+        UUID hunter = combatant(0, 0, 20, "{\"targets\":{\"categories\":[\"npcs\"]},\"targeting\":{\"scanIntervalTicks\":1}}");
+        combatant(2, 0, 20, "{\"defense\":{\"invincible\":true},\"targeting\":{\"fightBack\":false}}");
+        run(3);
+        assertTrue(status(hunter).target().isEmpty());
+        assertFalse(world.delivered.contains("strike"));
+    }
+
     @Test void shouldAlertSquadMatesHeldByOtherEnginesWithinTheSharedBudget() {
         String squad = "{\"targets\":{\"categories\":[\"monsters\"]},\"squad\":{\"name\":\"town\",\"alertRange\":20},\"targeting\":{\"scanIntervalTicks\":1,\"scanRange\":8}}";
         UUID first = combatant(0, 0, 20, squad);

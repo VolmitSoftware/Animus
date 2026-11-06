@@ -133,7 +133,7 @@ final class VanillaCombatWorld extends RuntimeCombatWorld<ServerPlayer, ItemStac
             Identifier id = BuiltInRegistries.MOB_EFFECT.getKey(effect.getEffect().value());
             if (id != null) effects.add(id.toString());
         }
-        return new CombatTarget.Details(creature.getMaxHealth(), item(creature.getMainHandItem()), item(creature.getOffhandItem()), worn, effects);
+        return new CombatTarget.Details(creature.getMaxHealth(), item(creature.getMainHandItem()), item(creature.getOffhandItem()), worn, effects, creature.isInvulnerable());
     }
     private static String item(ItemStack stack) {
         return stack.isEmpty() ? CombatLoadout.EMPTY : BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
