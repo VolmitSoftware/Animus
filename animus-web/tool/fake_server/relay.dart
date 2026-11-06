@@ -47,6 +47,15 @@ class RelayPath {
     _connections.clear();
   }
 
+  /// Sends a relay `error` frame with [code] to every browser and closes them.
+  int failAll(String code) {
+    final List<_RelayConnection> open = _connections.toList();
+    for (final _RelayConnection connection in open) {
+      connection._fail(code, 'Failed on purpose by /__fake/relay-error.');
+    }
+    return open.length;
+  }
+
   /// Sends `status` frames to every subscribed browser of this server.
   void announce(bool online) {
     for (final _RelayConnection connection in _connections) {
@@ -147,6 +156,7 @@ class _RelayConnection {
   }
 
   void _respond(int id, FakeResponse response) {
+    if (response.isDropped) return send(<String, Object?>{'type': 'close', 'id': id});
     send(<String, Object?>{
       'type': 'response',
       'id': id,
