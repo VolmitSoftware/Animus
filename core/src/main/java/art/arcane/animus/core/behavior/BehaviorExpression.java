@@ -17,11 +17,15 @@ public final class BehaviorExpression {
     public static final Pattern NAME=Pattern.compile("[a-z][a-z0-9_]{0,63}");
     public static final Set<String> RESERVED=Set.of("player","npc","server","context","true","false");
     public static final List<String> PLAYER_FACTS=List.of("name","uuid","online","health","max_health","food","level","world","x","y","z","location","gamemode","op","sneaking","flying","item_in_hand","item_in_hand_amount");
-    public static final List<String> NPC_FACTS=List.of("name","id","uuid","spawned","health","world","x","y","z","location");
-    public static final List<String> SERVER_FACTS=List.of("online_players","max_players","tick","time_millis");
+    public static final List<String> NPC_FACTS=List.of("name","id","citizens_id","uuid","spawned","health","world","x","y","z","location");
+    public static final List<String> SERVER_FACTS=List.of("online_players","players","max_players","tick","time_millis");
     public static final List<String> FLAG_SCOPES=List.of("player","npc","relationship","global");
     public static final List<String> FUNCTIONS=List.of("get","has","keys","values","put","remove","append","insert","index_of","first","last","slice","reverse","sort","sum","join","split","range",
-            "trim","replace","starts_with","ends_with","num","int","truthy","same","text","random","random_decimal","chance","pick","flag","has_flag","quest");
+            "trim","replace","starts_with","ends_with","num","int","truthy","same","text","random","random_decimal","chance","pick","flag","has_flag","quest",
+            "players","player_info","player_flag","player_has_flag");
+    /** The most players {@code players} returns, which bounds a fan-out over a player list. */
+    public static final int MAX_PLAYERS=100;
+    private static final Pattern PLAYER_ID=Pattern.compile("(?:p@)?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})");
     private static final Pattern NUMERIC=Pattern.compile("\\s*-?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)([eE][-+]?[0-9]+)?\\s*");
     private static final Map<String,GuiExpression.Function> LIBRARY=library();
 
@@ -52,6 +56,8 @@ public final class BehaviorExpression {
         /** A quest stage of this behavior's namespace, zero when unset. */
         long quest(String scope,String name);
         RandomGenerator random();
+        /** A player flag of this behavior's namespace for another player, empty when unset, expired or not readable here. */
+        default Optional<Value> playerFlag(UUID player,String name){return Optional.empty();}
     }
 
     private final GuiExpression expression;private final String field;
@@ -204,6 +210,28 @@ public final class BehaviorExpression {
         });
         functions.put("has_flag",(args,scope)->{arity("has_flag",args,2,2);return environment(scope).flag(flagScope(args.get(0)),GuiExpression.text(args.get(1))).isPresent();});
         functions.put("quest",(args,scope)->{arity("quest",args,2,2);return (double)environment(scope).quest(flagScope(args.get(0)),GuiExpression.text(args.get(1)));});
+        functions.put("players",(args,scope)->{
+            arity("players",args,1,1);List<Object> found=new ArrayList<>();
+            for(Object item:args.get(0) instanceof List<?> items?items:List.of(args.get(0))){
+                Optional<UUID> player=playerId(item);
+                if(player.isPresent()&&!found.contains(player.get().toString()))found.add(player.get().toString());
+                if(found.size()>=MAX_PLAYERS)break;
+            }
+            work(scope,found.size());return Collections.unmodifiableList(found);
+        });
+        functions.put("player_info",(args,scope)->{
+            arity("player_info",args,1,1);Optional<UUID> player=playerId(args.get(0));
+            Optional<Map<String,Object>> facts=player.flatMap(environment(scope).facts()::player);
+            return facts.map(BehaviorExpression::plain).orElse(Map.of());
+        });
+        functions.put("player_flag",(args,scope)->{
+            arity("player_flag",args,2,3);Optional<UUID> player=playerId(args.get(0));
+            Optional<Value> value=player.flatMap(id->environment(scope).playerFlag(id,GuiExpression.text(args.get(1))));
+            if(value.isPresent())return BehaviorValues.expression(value.get());
+            if(args.size()==3)return args.get(2);
+            throw new GuiExpression.Invalid("flag '"+GuiExpression.text(args.get(1))+"' is not set for that player");
+        });
+        functions.put("player_has_flag",(args,scope)->{arity("player_has_flag",args,2,2);return playerId(args.get(0)).flatMap(id->environment(scope).playerFlag(id,GuiExpression.text(args.get(1)))).isPresent();});
         for(GuiExpression.Function function:List.copyOf(functions.values()))Objects.requireNonNull(function);
         if(!functions.keySet().equals(Set.copyOf(FUNCTIONS)))throw new IllegalStateException("Behavior function table and list differ");
         return Map.copyOf(functions);
@@ -212,6 +240,12 @@ public final class BehaviorExpression {
         if(args.size()<minimum||args.size()>maximum)throw new GuiExpression.Invalid(name+" takes "+(minimum==maximum?String.valueOf(minimum):minimum+" or "+maximum)+" arguments, got "+args.size());
     }
     private static Environment environment(GuiExpression.Scope scope){return ((Evaluation)scope).environment;}
+    /** A player UUID, also written as Denizen's {@code p@<uuid>}; empty for anything else. */
+    private static Optional<UUID> playerId(Object value){
+        if(!(value instanceof String text))return Optional.empty();
+        java.util.regex.Matcher matcher=PLAYER_ID.matcher(text.strip());
+        return matcher.matches()?Optional.of(UUID.fromString(matcher.group(1).toLowerCase(Locale.ROOT))):Optional.empty();
+    }
     private static RandomGenerator random(GuiExpression.Scope scope){return environment(scope).random();}
     private static void work(GuiExpression.Scope scope,int amount){((Evaluation)scope).charge(amount);}
     private static String flagScope(Object value){

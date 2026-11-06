@@ -2,6 +2,7 @@ package art.arcane.animus.core.migration;
 
 import art.arcane.animus.core.migration.DenizenArgs.Arg;
 import art.arcane.animus.core.migration.DenizenArgs.Command;
+import art.arcane.animus.core.migration.DenizenArgs.Part;
 import art.arcane.animus.core.migration.DenizenConverter.Interact;
 import art.arcane.animus.core.migration.DenizenConverter.Scope;
 import art.arcane.animus.core.migration.DenizenExpressions.Cond;
@@ -164,11 +165,12 @@ final class DenizenCommands {
     }
 
     /**
-     * The {@code consume} condition of an NPC click event: the event's switch guards and the top-level
-     * {@code if ...: stop} guards before a top-level {@code determine cancelled}, all of which hold when the click
-     * reaches it. Other lines in between run without deciding anything. Empty when the event never cancels or when
-     * something before the cancel cannot be decided as the click arrives: a block, a wait, or a guard that reads
-     * definitions, runs a procedure or checks a permission.
+     * The {@code consume} condition of an NPC click event, or the {@code cancel} condition of a cancellable server event:
+     * the event's switch guards, the top-level {@code if ...: stop} guards and the top-level {@code ratelimit} windows
+     * before a top-level {@code determine cancelled}, all of which hold when the event reaches it. A rate-limited event
+     * is therefore left alone, as in Denizen, where the script stops before it cancels. Other lines in between run
+     * without deciding anything. Empty when the event never cancels or when something before the cancel cannot be decided
+     * as the event happens: a block, a wait, or a guard that reads definitions, runs a procedure or checks a permission.
      */
     Optional<Consume> consume(List<Item> items, List<Cond> guards, Scope scope) {
         List<String> parts = new ArrayList<>();
@@ -189,6 +191,12 @@ final class DenizenCommands {
                 return Optional.of(new Consume(item, parts.isEmpty() ? "true" : String.join(" && ", parts)));
             }
             if (command.name().equals("wait")) return Optional.empty();
+            if (command.name().equals("ratelimit") && item.children().isEmpty()) {
+                Optional<String> window = ratelimitFlag(item, command, scope);
+                if (window.isEmpty()) return Optional.empty();
+                parts.add("!has_flag('player', " + DenizenExpressions.quote(window.get()) + ")");
+                continue;
+            }
             if (item.children().isEmpty()) continue;
             if (!command.name().equals("if") || index + 1 < items.size() && DenizenArgs.command(items.get(index + 1).text()).name().equals("else")) return Optional.empty();
             List<Item> body = item.children().get().items();
@@ -216,7 +224,7 @@ final class DenizenCommands {
         if (ticks.isEmpty()) return Converted.kept("ratelimit needs a literal duration");
         long seconds = Math.max(1, (ticks.getAsLong() + 19) / 20);
         if (seconds > 31_536_000) return Converted.kept("ratelimit longer than a year");
-        String flag = converter.ratelimitFlag(scope.container, item.line());
+        String flag = ratelimitFlag(item, command, scope).orElseThrow();
         JsonObject guard = new JsonObject();
         guard.addProperty("type", "condition");
         guard.addProperty("expression", "has_flag('player', " + DenizenExpressions.quote(flag) + ")");
@@ -228,11 +236,21 @@ final class DenizenCommands {
         return Converted.of(guard, action("animus:set-flag", arguments));
     }
 
+    /** The flag of a {@code ratelimit <player> <duration>} line that converts; empty for any other ratelimit. */
+    private Optional<String> ratelimitFlag(Item item, Command command, Scope scope) {
+        if (command.args().size() != 2 || !command.args().getFirst().prefix().isEmpty() || !playerTarget(command.args().getFirst().value())) return Optional.empty();
+        OptionalLong ticks = DenizenArgs.ticks(raw(command.args().get(1)));
+        if (ticks.isEmpty() || Math.max(1, (ticks.getAsLong() + 19) / 20) > 31_536_000) return Optional.empty();
+        return Optional.of(converter.ratelimitFlag(scope.container, item.line()));
+    }
+
     /** {@code determine} ends a task or procedure with its value; elsewhere it would change an event, so it is kept and the routine still ends. */
     private List<JsonObject> determine(Item item, Command command, Scope scope) {
         JsonObject node = plain("return");
         if (!List.of("task", "procedure").contains(scope.container.type())) {
-            converter.outcome(scope, item, "command", "determine", false, "determine changes the event's outcome, and Animus triggers cannot cancel or change events; the routine still ends here");
+            converter.outcome(scope, item, "command", "determine", false, scope.cancellable
+                    ? "only a top-level determine cancelled after plain guards and rate limits cancels the event in Animus; this one is not reached that way; the routine still ends here"
+                    : "determine changes the event's outcome, and Animus cannot cancel or change this event; the routine still ends here");
             return List.of(node);
         }
         if (command.args().size() > 1) {
@@ -476,7 +494,11 @@ final class DenizenCommands {
     // ---- Commands ----
 
     private Converted simple(Command command, Scope scope, Pending pending) {
+        Optional<Converted> fanned = fanout(command, scope, pending);
+        if (fanned.isPresent()) return fanned.get();
         return switch (command.name()) {
+            case "note" -> DenizenConverter.noteOf(command).isPresent() ? Converted.of()
+                    : Converted.kept("only a literal cuboid or ellipsoid noted as:name has an Animus equivalent, as the bounds of area triggers");
             case "narrate" -> narrate(command, scope, pending);
             case "announce" -> announce(command, scope, pending);
             case "chat" -> chat(command, scope, pending);
@@ -504,6 +526,92 @@ final class DenizenCommands {
             case "" -> Converted.kept("empty command line");
             default -> Converted.kept("no Animus equivalent for " + command.name());
         };
+    }
+
+    /** Commands that show something to players, and the actions they become, which take a {@code player} argument. */
+    private static final Set<String> FANNED = Set.of("narrate", "actionbar", "title", "playsound", "playeffect");
+    private static final Set<String> PLAYER_ACTIONS = Set.of("animus:message", "animus:actionbar", "animus:title", "animus:play-sound", "animus:spawn-particle");
+    /** The definition a fan-out's player goes by inside its filters; {@code filter_value} is Denizen's own name in filter_tag. */
+    private static final String FAN = "__targets";
+
+    /**
+     * A command for players other than the triggering one ({@code targets:<server.online_players>}, a filtered list, a
+     * list in a flag or definition, or a sound played at {@code <[someone]>}): the same command for one player, run once
+     * for each listed player in a {@code foreach} over {@code players(...)}, which keeps at most 100 of them. Trailing
+     * {@code filter[...]}, {@code filter_tag[...]} and {@code exclude[...]} become a condition on each player.
+     */
+    private Optional<Converted> fanout(Command command, Scope scope, Pending pending) {
+        if (!FANNED.contains(command.name())) return Optional.empty();
+        List<Arg> args = command.args();
+        int at = -1;
+        for (int index = 0; index < args.size() && at < 0; index++) {
+            Arg arg = args.get(index);
+            boolean targets = arg.prefix().equals("targets") && !playerTarget(arg.value()) && !(command.name().equals("narrate") && everyone(arg.value()));
+            boolean place = command.name().equals("playsound") && arg.prefix().isEmpty() && arg.value().startsWith("<") && at(arg.value()).isEmpty()
+                    && !arg.value().toLowerCase(Locale.ROOT).contains("location") && location(arg.value()).isEmpty();
+            if (targets || place) at = index;
+        }
+        if (at < 0) return Optional.empty();
+        String value = args.get(at).value();
+        List<Part> filters = new ArrayList<>();
+        List<DenizenArgs.Segment> segments = DenizenArgs.segments(value);
+        Result<Expr> list;
+        if (segments.size() == 1 && segments.getFirst().tag()) {
+            DenizenArgs.Tag tag = DenizenArgs.tag(segments.getFirst().text());
+            List<Part> parts = new ArrayList<>(tag.parts());
+            while (tag.fallback().isEmpty() && parts.size() > 1 && parts.getLast().parameter().isPresent()
+                    && List.of("filter", "filter_tag", "exclude").contains(parts.getLast().name().toLowerCase(Locale.ROOT))) filters.addFirst(parts.removeLast());
+            List<String> written = new ArrayList<>();
+            for (Part part : parts) written.add(part.name() + part.parameter().map((String parameter) -> "[" + parameter + "]").orElse(""));
+            list = expressions.value("<" + String.join(".", written) + tag.fallback().map((String fallback) -> "||" + fallback).orElse("") + ">", scope, pending);
+        } else {
+            List<String> items = new ArrayList<>();
+            list = null;
+            for (String piece : DenizenExpressions.pipes(value)) {
+                if (piece.isEmpty()) continue;
+                Result<Expr> item = expressions.value(piece, scope, pending);
+                if (item.failed()) { list = item; break; }
+                items.add(item.value().text());
+            }
+            if (list == null) list = Result.ok(Expr.of("[" + String.join(", ", items) + "]", 'l'));
+        }
+        if (list.failed()) return Optional.of(Converted.kept("targets " + list.reason()));
+        String variable = converter.temporary(scope);
+        TreeMap<String, String> definitions = new TreeMap<>(scope.definitions);
+        definitions.put(FAN, "@" + variable);
+        definitions.put("filter_value", "@" + variable);
+        Scope inner = scope.loop(definitions, scope.loops);
+        Pending body = new Pending();
+        List<String> conditions = new ArrayList<>();
+        for (Part filter : filters) {
+            String name = filter.name().toLowerCase(Locale.ROOT), parameter = filter.parameter().orElseThrow();
+            Result<Expr> test = expressions.value(name.equals("filter") ? "<[" + FAN + "]." + parameter + ">" : parameter, inner, body);
+            if (test.failed()) return Optional.of(Converted.kept("targets " + name + ": " + test.reason()));
+            conditions.add(name.equals("exclude") ? "!contains(players(" + test.value().text() + "), " + variable + ")" : DenizenExpressions.truth(test.value()));
+        }
+        List<Arg> replaced = new ArrayList<>(args);
+        replaced.set(at, new Arg(args.get(at).prefix(), "<player>", false));
+        Converted single = simple(new Command(command.name(), replaced), inner, body);
+        if (!single.reason().isEmpty()) return Optional.of(single);
+        for (JsonObject step : single.steps()) {
+            if (!step.has("capability") || !PLAYER_ACTIONS.contains(step.get("capability").getAsString())) return Optional.of(Converted.kept(command.name() + " for other players has no Animus equivalent"));
+            step.getAsJsonObject("arguments").add("player", JsonNull.INSTANCE);
+            JsonObject filled = step.has("expressions") ? step.getAsJsonObject("expressions") : new JsonObject();
+            filled.addProperty("/player", variable);
+            step.add("expressions", filled);
+        }
+        List<JsonObject> steps = new ArrayList<>(body.steps);
+        steps.addAll(single.steps());
+        JsonObject each = DenizenConverter.sequence(steps);
+        if (!conditions.isEmpty()) each = DenizenExpressions.build(new DenizenExpressions.Atom(String.join(" && ", conditions)), each, Optional.empty());
+        JsonObject loop = plain("foreach");
+        JsonObject source = new JsonObject();
+        source.addProperty("expression", "players(" + list.value().text() + ")");
+        loop.add("list", source);
+        loop.addProperty("as", variable);
+        loop.addProperty("maximum", 100);
+        loop.add("body", each);
+        return Optional.of(Converted.of(loop));
     }
 
     static String raw(Arg arg) { return arg.prefix().isEmpty() ? arg.value() : arg.prefix() + ":" + arg.value(); }
@@ -649,11 +757,16 @@ final class DenizenCommands {
         int colon = rawName.indexOf(':');
         String denizen = (colon < 0 ? rawName : rawName.substring(0, colon)).toLowerCase(Locale.ROOT);
         String value = colon < 0 ? "" : rawName.substring(colon + 1);
+        // A name joined with tags, such as npc_done_<npc.id>, is computed as the run writes it, like the reads of it.
+        Result<String> named = DenizenArgs.segments(denizen).stream().anyMatch(DenizenArgs.Segment::tag) && !denizen.startsWith("<")
+                ? expressions.flagNameExpression(denizen, scope, pending) : Result.fail("");
         Optional<String> name = DenizenConverter.flagName(denizen);
-        if (denizen.contains("<") || denizen.contains("[") || name.isEmpty()) return Converted.kept("flag name " + denizen + " cannot be an Animus flag name");
+        if (named.failed() && (denizen.contains("<") || denizen.contains("[") || name.isEmpty())) return Converted.kept("flag name " + denizen + " cannot be an Animus flag name");
+        String nameExpression = named.failed() ? DenizenExpressions.quote(name.orElseThrow()) : named.value();
         String scopeName = DenizenConverter.scopeOf(target);
         Action action = new Action();
-        action.put("name", name.get());
+        if (named.failed()) action.put("name", name.get());
+        else action.expression("name", nameExpression);
         action.put("scope", scopeName);
         if (colon >= 0 && value.equals("!")) {
             if (expire.isPresent()) return Converted.kept("clearing a flag takes no expire");
@@ -661,7 +774,7 @@ final class DenizenCommands {
             return Converted.of(action.node("animus:set-flag"));
         }
         if (colon >= 0) {
-            String read = "flag(" + DenizenExpressions.quote(scopeName) + ", " + DenizenExpressions.quote(name.get()) + ", ";
+            String read = "flag(" + DenizenExpressions.quote(scopeName) + ", " + nameExpression + ", ";
             Result<String> computed = dataAction(value, read + "[])", "num(" + read + "0))", scope, pending);
             if (computed.failed()) return Converted.kept(computed.reason());
             if (computed.value() != null) {

@@ -29,7 +29,7 @@ class ServerTriggerDispatcherTest {
     private long revision;
 
     private static ServerTriggerSettings settings(int queue, int perTrigger, int concurrentPerTrigger, int cooldown, int commands) {
-        return new ServerTriggerSettings(true, queue, 64, 16, perTrigger, concurrentPerTrigger, 32, cooldown, 20, commands);
+        return new ServerTriggerSettings(true, queue, 64, 16, perTrigger, concurrentPerTrigger, 32, cooldown, 20, commands, 256);
     }
     private void dispatcher(ServerTriggerSettings settings) {
         dispatcher = new ServerTriggerDispatcher(settings, catalog::get, enabled::get);

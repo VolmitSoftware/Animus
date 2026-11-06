@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 3,
-  "importId": "3352c9cbbbf5854d452fc36a48af1f4db761826d9b1766ab01efe92b7a9425ff",
+  "converterVersion": 4,
+  "importId": "179e64ece383a67d816e80f73d092ca38e87cd593b6cf9813875e88c6185bac4",
   "notice": "Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.",
   "sources": {
     "scripts/broken.dsc": "ed429b9bba7215abe689fb88c25d060937970fdf6b4c75311ad50e5ae0200fd9",
@@ -135,8 +135,8 @@
       "preserved": 0
     },
     "foreach": {
-      "converted": 2,
-      "preserved": 1
+      "converted": 3,
+      "preserved": 0
     },
     "give": {
       "converted": 2,
@@ -155,8 +155,8 @@
       "preserved": 0
     },
     "narrate": {
-      "converted": 21,
-      "preserved": 5
+      "converted": 22,
+      "preserved": 4
     },
     "playeffect": {
       "converted": 1,
@@ -327,8 +327,8 @@
       "unmapped": 0
     },
     "[definition]": {
-      "mapped": 9,
-      "unmapped": 1
+      "mapped": 10,
+      "unmapped": 0
     },
     "context.args": {
       "mapped": 2,
@@ -411,8 +411,8 @@
       "unmapped": 0
     },
     "server.online_players": {
-      "mapped": 0,
-      "unmapped": 1
+      "mapped": 1,
+      "unmapped": 0
     },
     "util.random": {
       "mapped": 1,
@@ -486,20 +486,6 @@
       "kind": "command",
       "item": "adjust",
       "reason": "NPC mechanism skin_blob has no Animus equivalent"
-    },
-    {
-      "source": "town.dsc:96",
-      "container": "greet_task",
-      "kind": "command",
-      "item": "foreach",
-      "reason": "server.online_players is a list of players; behaviors read only their number"
-    },
-    {
-      "source": "town.dsc:97",
-      "container": "greet_task",
-      "kind": "command",
-      "item": "narrate",
-      "reason": "inside a block that is kept: server.online_players is a list of players; behaviors read only their number"
     },
     {
       "source": "town.dsc:28",
@@ -620,16 +606,16 @@
   ],
   "documents": {
     "behaviors/denizen/assignment/crier_assignment.json": "3b41c92f237acde0f00548b419b7b11439c85981933a52550cdade68cb56e065",
-    "behaviors/denizen/assignment/guard_assignment.json": "66d9634094c37c202a722c168304c6cfea9ac4ff3247ecb6824fa4069d95b764",
+    "behaviors/denizen/assignment/guard_assignment.json": "cb7169771a3cf55d5836ce20ec84d80502e7fbe1a9488c3e1aef65ae10d41646",
     "behaviors/denizen/book/notice_board.json": "0f9027882f80b883228d91d3a8c40d534dd892631d636b48a40806094d1f68fc",
     "behaviors/denizen/book/town_guide.json": "7537e7ae94d6b3c93ad75ff19ed71068f4f1d730b904099ecd2c1dd1a6253e1e",
     "behaviors/denizen/command/reset_command.json": "668be2e7f755825e365f2dfee924aebb3f6a3dd05873f4a0ec63a85247870f71",
     "behaviors/denizen/interact/guard_quest.json": "b5b6e5a86270dc9c309dd3656fe8b15696b03de888f596ea643781628b1ff6ed",
     "behaviors/denizen/task/crier_story.json": "16c70701943a8e20666ba5054792769a4a3fe0971a686f0e36f4a09e0b837b62",
     "behaviors/denizen/task/gate_task.json": "e9034dc663e4f676543b625ca6c2c5c58eeb781b89bdf6f293c28e8a559c2ccf",
-    "behaviors/denizen/task/greet_task.json": "2653617d9571f5b9815ed33927293550f80801a99c0fe324dfb1455a313c0a4c",
+    "behaviors/denizen/task/greet_task.json": "c6aa03283f78747d75e3ac6cb66324375fac0ecd27bdc4efc4fcdf7155a0a635",
     "behaviors/denizen/task/tally_task.json": "0a54e9a73a65ea40eafe895cd0995fd8fc0213600d01b909222b89b5169b5785",
-    "behaviors/denizen/world-npc/dialogue_starter.json": "fb9c218f1a2f70f642873b2f8f2851de1a8afa76a91324ce74d93933a9750636",
+    "behaviors/denizen/world-npc/dialogue_starter.json": "ab40a413045c6e2ed35de20b9e3021fcb3e3cf3618abf7a9e4e1228244cd14dd",
     "behaviors/denizen/world/lantern_world.json": "f6300f00a0b226af769eecda3d867aec00aeffec58a4b1e15f8b99283482814c",
     "guis/denizen/gate_menu.json": "fe8a3600f831d43d9dba48a1ee883f09818b3ef57bebb177ef9867b33f0f3d17",
     "state/behavior-state/global/animus/flags/denizen.json": "ad0ffdae740dc03415dde5b62533e1bfe364ccce56e2d022be544dfcfaa1d1fd",
