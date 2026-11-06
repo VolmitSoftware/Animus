@@ -368,24 +368,35 @@ void main() {
       final JsonMap bundle = jsonDecode(exported.bundle) as JsonMap;
       expect(asList(asMap(bundle['workspace'])['documents']).map((Object? d) => asMap(d)['runtimeId']).toSet(), <String>{'town.hub', 'town.welcome', 'town.gloss-only'});
       final GlossImport back = readGlossBundle(exported.bundle);
-      // Gloss ids carry no namespace, so town:welcome leaves as town.welcome
-      // and comes back into the gloss namespace, as the server's import does.
-      const Map<String, String> returned = <String, String>{
-        'hologram:gloss:town-welcome': 'hologram:town:welcome',
-        'menu:gloss:town-hub': 'menu:town:hub',
-        'inventory:gloss:town-gloss-only': 'inventory:town:gloss-only',
-      };
+      // The Animus id rides in the Gloss title, so ids come back unchanged
+      // even though town:welcome leaves as town.welcome.
+      expect(back.notes, isEmpty);
+      expect(back.documents, hasLength(3));
       for (final GlossImportedDocument document in back.documents) {
-        final String key = returned['${document.location}'] ?? '${document.location}';
-        final AnimusDocument original = folder.documents.firstWhere((AnimusDocument d) => '${d.kind.wireName}:${d.id}' == key);
-        if (key != '${document.location}') {
-          expect(document.path, '${document.location.kind.folder}/gloss/${document.location.id.substring(6)}.json');
-          expect(document.source, original.source);
-          continue;
-        }
+        final AnimusDocument original = folder.documents.firstWhere((AnimusDocument d) => d.kind == document.location.kind && d.id == document.location.id);
         expect(document.path, original.path);
         expect(document.source, original.source);
       }
+    });
+
+    test('should map ids as GlossIds and take a title back only when it maps to the Gloss id', () {
+      expect(glossIdForAnimus(DocumentKind.inventory, 'town:menu'), 'town.menu');
+      expect(animusIdForGloss(DocumentKind.inventory, 'town.menu'), 'gloss:town-menu');
+      expect(animusIdFromBundle(DocumentKind.inventory, 'town.menu', 'town:menu'), 'town:menu');
+      expect(animusIdFromBundle(DocumentKind.inventory, 'town.menu', 'town:other'), 'gloss:town-menu');
+      expect(animusIdFromBundle(DocumentKind.menu, 'lobby.shops/food', 'lobby:shops/food'), 'lobby:shops/food');
+      expect(animusIdFromBundle(DocumentKind.hologram, 'spawn', 'Spawn sign'), 'gloss:spawn');
+    });
+
+    test('should note folders, images and titles it does not keep, and list conflicts', () {
+      final Map<String, Object?> bundle = jsonDecode(File('test/fixtures/gloss_bundle/gloss-workspace.json').readAsStringSync()) as Map<String, Object?>;
+      final GlossImport imported = readGlossBundle(jsonEncode(bundle));
+      expect(imported.notes, contains(startsWith('Folders (Lobby) are not kept')));
+      expect(imported.notes, contains(startsWith('1 image is not imported')));
+      expect(imported.notes, contains('Lobby menu: the Gloss title is not kept; the document is gloss:lobby/main.'));
+      final AnimusDocument existing = validateSource(imported.documents.first.location, imported.documents.first.path, imported.documents.first.source, schemas);
+      expect(glossConflicts(imported, <AnimusDocument>[existing]), <DocumentLocation>[imported.documents.first.location]);
+      expect(glossConflicts(imported, const <AnimusDocument>[]), isEmpty);
     });
   });
 

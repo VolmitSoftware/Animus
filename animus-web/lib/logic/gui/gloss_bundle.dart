@@ -3,6 +3,12 @@
 /// adopts: chest GUIs, holographic menus, holograms, text animations and
 /// presets. A GUI made
 /// in Gloss Web opens here, and the reverse (dev/editor-design.md, section 3).
+///
+/// Ids map as the server's GlossIds maps them. That mapping loses the
+/// namespace (`town:menu` leaves as `town.menu`), so an export also writes
+/// the Animus id as the document's Gloss title, which Gloss Web keeps; an
+/// import takes a title back as the id when it is an Animus id that maps to
+/// the document's Gloss id, so a bundle round-trips to the same ids.
 library;
 
 import 'dart:convert';
@@ -40,12 +46,16 @@ final class GlossImportedDocument {
 }
 
 final class GlossImport {
-  const GlossImport({required this.documents, required this.skipped, this.error});
+  const GlossImport({required this.documents, required this.skipped, this.notes = const <String>[], this.error});
 
   final List<GlossImportedDocument> documents;
 
   /// Documents left out, each with the reason.
   final List<String> skipped;
+
+  /// Bundle parts Animus does not keep (folders, titles, images), each with
+  /// what happens to it.
+  final List<String> notes;
 
   /// Set when the file is not a readable bundle; nothing is imported.
   final String? error;
@@ -54,6 +64,7 @@ final class GlossImport {
 /// Reads a bundle. Gloss kinds Animus does not adopt are skipped by name.
 GlossImport readGlossBundle(String raw) {
   GlossImport fail(String error) => GlossImport(documents: const <GlossImportedDocument>[], skipped: const <String>[], error: error);
+  final List<String> notes = <String>[];
   final Object? decoded;
   try {
     decoded = jsonDecode(raw);
@@ -71,6 +82,17 @@ GlossImport readGlossBundle(String raw) {
   final List<GlossImportedDocument> documents = <GlossImportedDocument>[];
   final List<String> skipped = <String>[];
   final Set<DocumentLocation> seen = <DocumentLocation>{};
+  final Map<String, String> folders = <String, String>{
+    for (final Object? folder in asList(workspace['folders']))
+      if (asString(asMap(folder)['id']) != null) asString(asMap(folder)['id'])!: asString(asMap(folder)['name']) ?? asString(asMap(folder)['id'])!,
+  };
+  if (folders.isNotEmpty) {
+    notes.add('Folders (${folders.values.join(', ')}) are not kept: Animus files GUI documents by id, so they open in their kind\'s list.');
+  }
+  final int images = asList(bundle['images']).length;
+  if (images > 0) {
+    notes.add('$images ${images == 1 ? 'image is' : 'images are'} not imported: Animus has no image glyphs, so textImage icons are refused.');
+  }
   for (final Object? raw in asList(workspace['documents'])) {
     final JsonMap doc = asMap(raw);
     final String kindName = asString(doc['kind']) ?? 'menu';
@@ -86,7 +108,7 @@ GlossImport readGlossBundle(String raw) {
       continue;
     }
     final String glossId = asString(doc['runtimeId']) ?? title;
-    final String? id = animusIdForGloss(kind, glossId);
+    final String? id = animusIdFromBundle(kind, glossId, asString(doc['title']));
     final String? path = id == null ? null : documentPath(kind, id);
     if (id == null || path == null || locateDocument(path) != DocumentLocation(kind, id)) {
       skipped.add('$title: id "$glossId" has no Animus file name');
@@ -98,8 +120,32 @@ GlossImport readGlossBundle(String raw) {
       continue;
     }
     documents.add(GlossImportedDocument(location, path, source.endsWith('\n') ? source : '$source\n', glossId));
+    final String? glossTitle = asString(doc['title']);
+    if (glossTitle != null && glossTitle != glossId && glossTitle != id) {
+      notes.add('$title: the Gloss title is not kept; the document is $id.');
+    }
   }
-  return GlossImport(documents: documents, skipped: skipped);
+  return GlossImport(documents: documents, skipped: skipped, notes: notes);
+}
+
+final RegExp _animusId = RegExp(r'^[a-z0-9_-]{1,64}:[a-z0-9_/-]{1,191}$');
+
+/// The Animus id for a bundle document: its [title] when that is an Animus
+/// id whose Gloss id is [glossId] (written by an Animus export), otherwise
+/// the server's mapping of [glossId].
+String? animusIdFromBundle(DocumentKind kind, String glossId, String? title) {
+  if (kind != DocumentKind.presets && title != null && _animusId.hasMatch(title) && glossIdForAnimus(kind, title) == glossId) return title;
+  return animusIdForGloss(kind, glossId);
+}
+
+/// Imported documents whose id the workspace already has; importing them
+/// replaces those documents, so the caller asks first.
+List<DocumentLocation> glossConflicts(GlossImport imported, Iterable<AnimusDocument> existing) {
+  final Set<DocumentLocation> have = <DocumentLocation>{for (final AnimusDocument document in existing) DocumentLocation(document.kind, document.id)};
+  return <DocumentLocation>[
+    for (final GlossImportedDocument document in imported.documents)
+      if (have.contains(document.location)) document.location,
+  ];
 }
 
 /// The Animus id for a Gloss runtime id, as the server's GlossIds imports it:
@@ -180,7 +226,8 @@ GlossExport writeGlossBundle(Iterable<AnimusDocument> documents, {String Functio
     }
     out.add(<String, Object?>{
       'id': id(),
-      'title': runtimeId,
+      // The Animus id rides in the title so an import restores it.
+      'title': document.kind == DocumentKind.presets ? runtimeId : document.id,
       'runtimeId': runtimeId,
       'json': document.source,
       'updatedAt': stamp,
