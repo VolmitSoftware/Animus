@@ -2,6 +2,7 @@
 /// points (lime) and guides (light blue), thin bars along the links the
 /// runtime may walk, and the point numbers above them. Positions are the
 /// route's world coordinates relative to the NPC, whose feet are the origin.
+/// Recording steps have no position and are not drawn.
 library;
 
 import 'dart:math' as math;
@@ -16,14 +17,17 @@ const double _bar = 0.08;
 
 /// [base] with [spec] drawn around it; [origin] is the NPC's position.
 NpcScene withRoute(NpcScene base, RouteSpec spec, (double, double, double) origin) {
-  final List<RouteNode> nodes = spec.nodes;
-  if (nodes.isEmpty) return base;
+  final List<RouteNode> placed = spec.placed;
+  if (placed.isEmpty) return base;
   McVec3 at(RouteNode node) => McVec3(node.x - origin.$1, node.y - origin.$2, node.z - origin.$3);
   final List<McSceneNode> extra = <McSceneNode>[];
   final List<NpcText> texts = <NpcText>[];
+  final List<RouteEntry> nodes = spec.nodes;
   for (int index = 0; index < nodes.length; index++) {
-    final McVec3 point = at(nodes[index]);
-    final bool guide = nodes[index].guide;
+    final RouteEntry node = nodes[index];
+    if (node is! RouteNode) continue;
+    final McVec3 point = at(node);
+    final bool guide = node.guide;
     final double size = guide ? _marker * 0.7 : _marker;
     extra.add(McBlockNode(
       key: 'route:node:$index',
@@ -33,8 +37,8 @@ NpcScene withRoute(NpcScene base, RouteSpec spec, (double, double, double) origi
     texts.add(NpcText(anchor: McVec3(point.x, point.y + size + 0.15, point.z), lines: <String>['$index'], nameplate: false));
   }
   for (final (int a, int b) in spec.links) {
-    final McVec3 from = at(nodes[a]) + const McVec3(0, _marker / 2, 0);
-    final McVec3 to = at(nodes[b]) + const McVec3(0, _marker / 2, 0);
+    final McVec3 from = at(spec.positionOf(a)!) + const McVec3(0, _marker / 2, 0);
+    final McVec3 to = at(spec.positionOf(b)!) + const McVec3(0, _marker / 2, 0);
     final double dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
     final double horizontal = math.sqrt(dx * dx + dz * dz);
     final double length = math.sqrt(horizontal * horizontal + dy * dy);
@@ -52,7 +56,7 @@ NpcScene withRoute(NpcScene base, RouteSpec spec, (double, double, double) origi
     ));
   }
   return NpcScene(
-    scene: McScene(<McSceneNode>[...base.scene.nodes, ...extra], frame: <McVec3>[...base.scene.frame, for (final RouteNode node in nodes) at(node)]),
+    scene: McScene(<McSceneNode>[...base.scene.nodes, ...extra], frame: <McVec3>[...base.scene.frame, for (final RouteNode node in placed) at(node)]),
     texts: <NpcText>[...base.texts, ...texts],
     notes: base.notes,
     presentable: base.presentable,

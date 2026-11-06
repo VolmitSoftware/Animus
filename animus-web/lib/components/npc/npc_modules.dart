@@ -130,6 +130,7 @@ class NavigationEditor extends StatelessWidget {
     required this.value,
     required this.routes,
     required this.onChanged,
+    this.recordings = const <String, int?>{},
     this.origin,
     this.imported = false,
     this.diagnostics = const <Diagnostic>[],
@@ -143,6 +144,9 @@ class NavigationEditor extends StatelessWidget {
   /// The workspace's route documents.
   final List<AnimusDocument> routes;
   final void Function(Object? value) onChanged;
+
+  /// The workspace's recordings for route steps, as [routeRecordings] gives them.
+  final Map<String, int?> recordings;
 
   /// The NPC's x, y and z.
   final (double, double, double)? origin;
@@ -235,9 +239,9 @@ class NavigationEditor extends StatelessWidget {
         if (routeDocument == null)
           const dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('Not a route in this workspace; the server may have it.')])
         else
-          RouteEditor(value: asMap(routeDocument.json), onChanged: (JsonMap _) {}, origin: origin, readOnly: true),
+          RouteEditor(value: asMap(routeDocument.json), onChanged: (JsonMap _) {}, origin: origin, recordings: recordings, readOnly: true),
       ] else
-        RouteEditor(value: module, origin: origin, path: path, diagnostics: diagnostics, onChanged: (JsonMap next) => onChanged(next)),
+        RouteEditor(value: module, origin: origin, path: path, diagnostics: diagnostics, recordings: recordings, onChanged: (JsonMap next) => onChanged(next)),
     ]);
   }
 }

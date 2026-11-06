@@ -207,6 +207,7 @@
 - `animus:play-recording` and `animus:resume-patrol` behavior actions; `inspect` and status report the recording, mode, cursor and state.
 - A recording stores its world as the Bukkit world name or dimension key; playback and previews resolve it, or a world UUID, like other documents, and refuse in `route-error` a recording whose world is not loaded or is not the NPC's.
 - Route points can be recording steps (`{"recording": id, "fromTick", "toTick", "playback": "once"}`): the NPC walks to the segment's first frame, plays it once and goes on from its last frame, in both runtimes and across Folia handoffs; `inspect` shows `step=recording:<id> cursor=<n>/<to>`.
+- Web editor: the route editor lists recording steps with the points, picks the recording (or takes a typed id when the workspace has none), edits `fromTick` and `toTick`, adds steps and turns a point into a step and back.
 
 ### Changed
 
@@ -335,6 +336,7 @@
 
 ### Fixed
 
+- The web editor's route model no longer drops points it cannot draw: recording steps, ranged waits and unknown keys survive an edit, and points after a step keep their numbers.
 - NPC previews in the web editor wear their real skin, fetched from the skin's texture URL.
 - A builder standing inside its target block walks aside instead of teleporting.
 - A valid NPC edit is no longer refused because another NPC file is invalid.

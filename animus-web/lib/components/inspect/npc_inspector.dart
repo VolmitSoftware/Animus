@@ -26,6 +26,7 @@ import '../npc/combat_editor.dart';
 import '../npc/equipment_editor.dart';
 import '../npc/inventory_editor.dart';
 import '../npc/npc_modules.dart';
+import '../npc/route_editor.dart' show routeRecordings;
 import '../npc/npc_section.dart';
 import '../npc/skin_picker.dart';
 import 'inspect_fields.dart';
@@ -546,6 +547,7 @@ class _NpcInspectorState extends State<NpcInspector> {
   Widget _route() => NavigationEditor(
     value: _modules[navigationModule],
     routes: _documents(DocumentKind.route),
+    recordings: routeRecordings(component.workspaceDocuments),
     origin: _origin,
     imported: _doc.containsKey('migration'),
     diagnostics: _diagnostics,

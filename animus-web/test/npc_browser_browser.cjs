@@ -9,7 +9,8 @@
 // their summaries, pose, owner, hologram lines with a preview, armor stand
 // parts and angles, the rig picker), the route editor (a point added on the
 // grid, one dragged, one nudged and one added and removed from the
-// keyboard), the combat editor (an out-of-range value flagged, then fixed),
+// keyboard, and a recording step added, typed, made a position and
+// removed), the combat editor (an out-of-range value flagged, then fixed),
 // the equipment and skin editors, the skin document's summary and the
 // conversation view. Then, against the fake server loaded with the same
 // fixture, it renames a folder, applies it as moves, sees the moved paths
@@ -439,6 +440,35 @@ async function local(browser, viewport, tag, theme) {
   await page.waitForFunction(() => !document.querySelector('[data-node="points:5"]'));
   json = await codeOf(page);
   assert.equal(json.modules['animus:navigation'].points.length, 5, 'Delete removes the focused point');
+
+  // A recording step: listed and numbered with the points, typed by id when
+  // the workspace has no recordings, then made a position and removed.
+  const routeStep = (await part(inspector, 'behaviour')).getByRole('group', {name: 'Route editor'});
+  await routeStep.getByRole('button', {name: 'Add recording step'}).click();
+  const stepPicked = routeStep.getByRole('group', {name: 'Selected Step 5'});
+  await stepPicked.waitFor();
+  await stepPicked.getByText('No recordings in this workspace').waitFor();
+  await stepPicked.getByLabel('Step 5 recording').fill('market-loop');
+  await stepPicked.getByLabel('Step 5 toTick').fill('400');
+  await settle(page);
+  const stepRow = routeStep.getByRole('list', {name: 'Route points'}).locator('li').nth(5);
+  await stepRow.getByText('market-loop, ticks 0 to 400').waitFor();
+  assert.equal(await stepRow.locator('span').first().textContent(), 'step');
+  assert.equal(await routeStep.locator('svg.animus-route-grid .animus-route-node').count(), 5, 'a step is not drawn on the grid');
+  await shot(page, `${tag}-07b-route-step`);
+  json = await codeOf(page);
+  assert.deepEqual(json.modules['animus:navigation'].points[5], {recording: 'market-loop', toTick: 400});
+  // Code and back clears the selection, so pick the step from the list again.
+  const routeStepAgain = (await part(inspector, 'behaviour')).getByRole('group', {name: 'Route editor'});
+  await routeStepAgain.getByRole('list', {name: 'Route points'}).locator('li').nth(5).locator('button').click();
+  await routeStepAgain.getByRole('group', {name: 'Selected Step 5'}).getByRole('button', {name: 'Make a position'}).click();
+  await routeStepAgain.locator('[data-node="points:5"]').waitFor();
+  json = await codeOf(page);
+  assert.deepEqual(Object.keys(json.modules['animus:navigation'].points[5]), ['x', 'y', 'z'], 'the recording fields go with the step');
+  const routeStepLast = (await part(inspector, 'behaviour')).getByRole('group', {name: 'Route editor'});
+  await routeStepLast.locator('[data-node="points:5"]').focus();
+  await page.keyboard.press('Delete');
+  await page.waitForFunction(() => !document.querySelector('[data-node="points:5"]'));
 
   // Body: pose and owner.
   const body = await part(inspector, 'body');

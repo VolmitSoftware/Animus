@@ -22,21 +22,70 @@ const double routeDefaultLinkDistance = 32;
 /// Fields a route keeps, in the module or in its route document.
 const List<String> routeFields = <String>['mode', 'speed', 'order', 'loop', 'waitTicks', 'points', 'guides', 'linkDistance', 'wander', 'seed', 'startOffset', 'jitter'];
 
-/// One point or guide.
-class RouteNode {
-  const RouteNode(this.x, this.y, this.z, {this.waitTicks, this.guide = false});
+/// A wait in ticks: a fixed count, or `[min, max]` drawn per arrival.
+class RouteWait {
+  const RouteWait(this.min, this.max);
+
+  final int min;
+  final int max;
+
+  /// An integer or a two-integer list; anything else is null.
+  static RouteWait? fromJson(Object? value) {
+    final int? fixed = asInt(value);
+    if (fixed != null) return RouteWait(fixed, fixed);
+    final List<Object?> range = asList(value);
+    final int? low = range.length == 2 ? asInt(range[0]) : null, high = range.length == 2 ? asInt(range[1]) : null;
+    return low == null || high == null ? null : RouteWait(low, high);
+  }
+
+  bool get ranged => min != max;
+
+  @override
+  String toString() => ranged ? '$min-$max' : '$min';
+
+  @override
+  bool operator ==(Object other) => other is RouteWait && other.min == min && other.max == max;
+
+  @override
+  int get hashCode => Object.hash(min, max);
+}
+
+/// One entry of `points` (a position or a recording step) or of `guides`.
+sealed class RouteEntry {
+  const RouteEntry({this.waitTicks, this.guide = false});
+
+  /// The point's own wait, or null for the route's.
+  final RouteWait? waitTicks;
+  final bool guide;
+
+  /// A step when it names a `recording` (never for a guide), a position when
+  /// it has x, y and z, else [RouteOther], so every entry keeps its number.
+  static RouteEntry fromJson(Object? value, {bool guide = false}) {
+    final JsonMap map = asMap(value);
+    if (!guide && map.containsKey('recording')) return RouteStep.fromJson(map);
+    return RouteNode.fromJson(map, guide: guide) ?? RouteOther(guide: guide, waitTicks: RouteWait.fromJson(map['waitTicks']));
+  }
+}
+
+/// An entry that is neither a position nor a step, such as a point missing
+/// its y. It keeps its number and is not drawn.
+class RouteOther extends RouteEntry {
+  const RouteOther({super.guide, super.waitTicks});
+}
+
+/// A point or guide at a position.
+class RouteNode extends RouteEntry {
+  const RouteNode(this.x, this.y, this.z, {super.waitTicks, super.guide});
 
   final double x;
   final double y;
   final double z;
-  final int? waitTicks;
-  final bool guide;
 
   static RouteNode? fromJson(Object? value, {bool guide = false}) {
     final JsonMap map = asMap(value);
     final double? x = asDouble(map['x']), y = asDouble(map['y']), z = asDouble(map['z']);
     if (x == null || y == null || z == null) return null;
-    return RouteNode(x, y, z, waitTicks: asInt(map['waitTicks']), guide: guide);
+    return RouteNode(x, y, z, waitTicks: RouteWait.fromJson(map['waitTicks']), guide: guide);
   }
 
   double distanceTo(RouteNode other) {
@@ -45,52 +94,99 @@ class RouteNode {
   }
 }
 
+/// A point that plays ticks [fromTick] to [toTick] of `recordings/<recording>.json`
+/// once; it has no position of its own and starts at the segment's first frame.
+class RouteStep extends RouteEntry {
+  const RouteStep(this.recording, {this.fromTick = 0, this.toTick, super.waitTicks});
+
+  final String recording;
+  final int fromTick;
+
+  /// Null for the recording's durationTicks.
+  final int? toTick;
+
+  static RouteStep fromJson(JsonMap map) => RouteStep(
+        asString(map['recording']) ?? '',
+        fromTick: asInt(map['fromTick']) ?? 0,
+        toTick: asInt(map['toTick']),
+        waitTicks: RouteWait.fromJson(map['waitTicks']),
+      );
+}
+
+/// Recording ids as the runtime accepts them.
+final RegExp routeRecordingId = RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$');
+
 /// A route as the runtime reads it.
 class RouteSpec {
   RouteSpec(JsonMap json)
     : order = routeOrders.contains(json['order']) ? json['order']! as String : 'sequence',
       loop = json['loop'] == true,
       mode = routeModes.contains(json['mode']) ? json['mode']! as String : 'walk',
-      waitTicks = asInt(json['waitTicks']) ?? 20,
+      waitTicks = RouteWait.fromJson(json['waitTicks']) ?? const RouteWait(20, 20),
       linkDistance = asDouble(json['linkDistance']) ?? routeDefaultLinkDistance,
       wanderRadius = asInt(asMap(json['wander'])['radius']) ?? 25,
       wanderHeight = asInt(asMap(json['wander'])['height']) ?? 3,
-      points = <RouteNode>[for (final Object? point in asList(json['points'])) ?RouteNode.fromJson(point)],
-      guides = <RouteNode>[for (final Object? guide in asList(json['guides'])) ?RouteNode.fromJson(guide, guide: true)];
+      points = <RouteEntry>[for (final Object? point in asList(json['points'])) RouteEntry.fromJson(point)],
+      guides = <RouteEntry>[for (final Object? guide in asList(json['guides'])) RouteEntry.fromJson(guide, guide: true)];
 
   final String order;
   final bool loop;
   final String mode;
-  final int waitTicks;
+  final RouteWait waitTicks;
   final double linkDistance;
   final int wanderRadius;
   final int wanderHeight;
-  final List<RouteNode> points;
-  final List<RouteNode> guides;
 
-  /// Points then guides, the numbering the `waypoint` trigger reports.
-  List<RouteNode> get nodes => <RouteNode>[...points, ...guides];
+  /// Positions and recording steps, in walking order.
+  final List<RouteEntry> points;
 
-  /// Links to draw between [nodes] indices: the walking order for sequence
+  /// Guides; each is a [RouteNode] unless it is missing a coordinate.
+  final List<RouteEntry> guides;
+
+  /// Points then guides, the numbering the `waypoint` trigger reports; a
+  /// recording step is numbered like any point.
+  List<RouteEntry> get nodes => <RouteEntry>[...points, ...guides];
+
+  /// The node numbered [number] when it has a position, else null.
+  RouteNode? positionOf(int number) {
+    final List<RouteEntry> all = nodes;
+    if (number < 0 || number >= all.length) return null;
+    final RouteEntry entry = all[number];
+    return entry is RouteNode ? entry : null;
+  }
+
+  /// Every node with a position, for bounds and drawing.
+  List<RouteNode> get placed => <RouteNode>[for (final RouteEntry entry in nodes) if (entry is RouteNode) entry];
+
+  /// Links to draw between [nodes] numbers: the walking order for sequence
   /// and pingpong (closing the loop when `loop`), every pair within
-  /// `linkDistance` for random, nothing for wander.
+  /// `linkDistance` for random, nothing for wander. A recording step has no
+  /// position, so no link is drawn to or from it.
   List<(int, int)> get links {
+    final List<RouteEntry> all = nodes;
+    bool placedPair((int, int) pair) => all[pair.$1] is RouteNode && all[pair.$2] is RouteNode;
     switch (order) {
       case 'sequence':
-        return <(int, int)>[for (int index = 1; index < points.length; index++) (index - 1, index), if (loop && points.length > 2) (points.length - 1, 0)];
-      case 'pingpong':
-        return <(int, int)>[for (int index = 1; index < points.length; index++) (index - 1, index)];
-      case 'random':
-        final List<RouteNode> all = nodes;
         return <(int, int)>[
-          for (int a = 0; a < all.length; a++)
-            for (int b = a + 1; b < all.length; b++)
-              if (all[a].distanceTo(all[b]) <= linkDistance &&
-                  (all[a].x - all[b].x).abs() <= 32 &&
-                  (all[a].z - all[b].z).abs() <= 32 &&
-                  (all[a].y - all[b].y).abs() <= 8)
-                (a, b),
-        ];
+          for (int index = 1; index < points.length; index++) (index - 1, index),
+          if (loop && points.length > 2) (points.length - 1, 0),
+        ].where(placedPair).toList();
+      case 'pingpong':
+        return <(int, int)>[for (int index = 1; index < points.length; index++) (index - 1, index)].where(placedPair).toList();
+      case 'random':
+        final List<(int, int)> found = <(int, int)>[];
+        for (int a = 0; a < all.length; a++) {
+          final RouteEntry first = all[a];
+          if (first is! RouteNode) continue;
+          for (int b = a + 1; b < all.length; b++) {
+            final RouteEntry second = all[b];
+            if (second is! RouteNode) continue;
+            if (first.distanceTo(second) <= linkDistance && (first.x - second.x).abs() <= 32 && (first.z - second.z).abs() <= 32 && (first.y - second.y).abs() <= 8) {
+              found.add((a, b));
+            }
+          }
+        }
+        return found;
       default:
         return const <(int, int)>[];
     }
@@ -105,10 +201,19 @@ class RouteSpec {
     if (guides.isNotEmpty && order != 'random') found.add(('guides', 'guides are for order random only'));
     if (guides.length > routeMaxGuides) found.add(('guides', 'at most $routeMaxGuides guides'));
     if (points.length + guides.length > routeMaxCoordinates) found.add(('points', 'points and guides together allow at most $routeMaxCoordinates'));
+    for (int index = 0; index < points.length; index++) {
+      final RouteEntry point = points[index];
+      if (point is! RouteStep) continue;
+      if (order == 'wander') found.add(('points[$index].recording', 'a recording step is not allowed with order wander'));
+      if (!routeRecordingId.hasMatch(point.recording)) found.add(('points[$index].recording', 'expected 1-64 lowercase letters, digits, _ or -'));
+      final int? toTick = point.toTick;
+      if (toTick != null && point.fromTick >= toTick) found.add(('points[$index].fromTick', 'must be below toTick'));
+    }
     if (mode == 'walk') {
-      for (int index = 0; index < nodes.length; index++) {
-        final RouteNode node = nodes[index];
-        if (node.y != node.y.roundToDouble()) {
+      final List<RouteEntry> all = nodes;
+      for (int index = 0; index < all.length; index++) {
+        final RouteEntry node = all[index];
+        if (node is RouteNode && node.y != node.y.roundToDouble()) {
           found.add((node.guide ? 'guides[${index - points.length}].y' : 'points[$index].y', 'walking routes need whole-block heights'));
         }
       }
@@ -179,10 +284,11 @@ JsonMap addRouteNode(JsonMap route, double x, double y, double z, {bool guide = 
   };
 }
 
-/// The route with node [index] of [key] moved to x and z, keeping its other fields.
+/// The route with node [index] of [key] moved to x and z, keeping its other
+/// fields. A recording step has no position and is left alone.
 JsonMap moveRouteNode(JsonMap route, String key, int index, double x, double z) {
   final List<Object?> list = List<Object?>.of(asList(route[key]));
-  if (index < 0 || index >= list.length) return route;
+  if (index < 0 || index >= list.length || (key == 'points' && asMap(list[index]).containsKey('recording'))) return route;
   list[index] = <String, Object?>{...asMap(list[index]), 'x': _clean(x), 'z': _clean(z)};
   return <String, Object?>{...route, key: list};
 }
@@ -199,6 +305,58 @@ JsonMap removeRouteNode(JsonMap route, String key, int index) {
     next[key] = list;
   }
   return next;
+}
+
+/// The route with a recording step appended.
+JsonMap addRouteStep(JsonMap route, String recording) => <String, Object?>{
+      ...route,
+      'points': <Object?>[...asList(route['points']), <String, Object?>{'recording': recording}],
+    };
+
+/// The route with [field] of node [index] of [key] set, or removed when
+/// [value] is null; every other key keeps its place.
+JsonMap setRouteNodeField(JsonMap route, String key, int index, String field, Object? value) {
+  final List<Object?> list = List<Object?>.of(asList(route[key]));
+  if (index < 0 || index >= list.length) return route;
+  final JsonMap next = <String, Object?>{...asMap(list[index])};
+  if (value == null) {
+    next.remove(field);
+  } else {
+    next[field] = value;
+  }
+  list[index] = next;
+  return <String, Object?>{...route, key: list};
+}
+
+const List<String> _positionFields = <String>['x', 'y', 'z', 'jitter'];
+const List<String> _stepFields = <String>['recording', 'fromTick', 'toTick', 'playback'];
+
+/// The route with point [index] made a step playing [recording]: x, y, z and
+/// jitter go, `recording` takes the place of the first coordinate, and the
+/// wait, weight, next and any other key stay where they were.
+JsonMap routePointToStep(JsonMap route, int index, String recording) =>
+    _convertPoint(route, index, _positionFields, <String, Object?>{'recording': recording});
+
+/// The route with step [index] made a position at x, y and z: the recording
+/// fields go and the coordinates take the place of `recording`.
+JsonMap routeStepToPosition(JsonMap route, int index, double x, double y, double z) =>
+    _convertPoint(route, index, _stepFields, _point(x, y, z));
+
+JsonMap _convertPoint(JsonMap route, int index, List<String> drop, JsonMap insert) {
+  final List<Object?> list = List<Object?>.of(asList(route['points']));
+  if (index < 0 || index >= list.length) return route;
+  final JsonMap next = <String, Object?>{};
+  bool placed = false;
+  for (final MapEntry<String, Object?> entry in asMap(list[index]).entries) {
+    if (drop.contains(entry.key)) {
+      if (!placed) next.addAll(insert);
+      placed = true;
+    } else if (!insert.containsKey(entry.key)) {
+      next[entry.key] = entry.value;
+    }
+  }
+  list[index] = placed ? next : <String, Object?>{...insert, ...next};
+  return <String, Object?>{...route, 'points': list};
 }
 
 /// The route with point [from] moved to position [to] in the walking order.
