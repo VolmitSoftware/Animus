@@ -2960,6 +2960,7 @@
         "int",
         "truthy",
         "same",
+        "same_world",
         "text",
         "random",
         "random_decimal",

@@ -616,7 +616,7 @@
     "behaviors/denizen/task/greet_task.json": "c6aa03283f78747d75e3ac6cb66324375fac0ecd27bdc4efc4fcdf7155a0a635",
     "behaviors/denizen/task/tally_task.json": "0a54e9a73a65ea40eafe895cd0995fd8fc0213600d01b909222b89b5169b5785",
     "behaviors/denizen/world-npc/dialogue_starter.json": "ab40a413045c6e2ed35de20b9e3021fcb3e3cf3618abf7a9e4e1228244cd14dd",
-    "behaviors/denizen/world/lantern_world.json": "f6300f00a0b226af769eecda3d867aec00aeffec58a4b1e15f8b99283482814c",
+    "behaviors/denizen/world/lantern_world.json": "346919c19786cdf0133b694aa5712072878ffe39f63280b30880bba10ba46bab",
     "guis/denizen/gate_menu.json": "fe8a3600f831d43d9dba48a1ee883f09818b3ef57bebb177ef9867b33f0f3d17",
     "state/behavior-state/global/animus/flags/denizen.json": "ad0ffdae740dc03415dde5b62533e1bfe364ccce56e2d022be544dfcfaa1d1fd",
     "state/behavior-state/player/00000000-0000-4000-8000-0000000000a1/animus/flags/denizen.json": "c22d3a09c5520bfdbca781cca7bcdea15477c4da001bd87a30ccfd71e7759fe0"

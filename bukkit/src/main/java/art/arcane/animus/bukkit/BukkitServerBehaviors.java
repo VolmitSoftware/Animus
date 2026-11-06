@@ -20,7 +20,6 @@ import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Server;
-import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.damage.DamageSource;
 import org.bukkit.entity.Entity;
@@ -75,10 +74,14 @@ final class BukkitServerBehaviors implements Listener, AutoCloseable {
     private volatile boolean closed;
     private List<Diagnostic> logged = List.of(); // global owner only
     private long serverTicks; // global owner only
+    /** The loaded worlds, refreshed with the server snapshot, so fact readers on any thread resolve worlds without the server. */
+    private volatile List<BukkitWorlds.Loaded> worlds;
 
     /** {@code servers} is null when behaviors are disabled; facts still serve NPC behaviors then. */
     BukkitServerBehaviors(JavaPlugin plugin, BukkitOwners owners, ServerTriggerDispatcher servers, SnapshotFacts facts, Consumer<String> log) {
         this.plugin = plugin; server = plugin.getServer(); this.owners = owners; this.servers = servers; this.facts = facts; this.log = log;
+        worlds = BukkitWorldLookup.loaded(server);
+        facts.worlds((String reference) -> BukkitWorlds.resolve(reference, worlds));
         ServerCommandSync bound = null;
         if (servers != null) {
             servers.worlds(this::world);
@@ -94,11 +97,7 @@ final class BukkitServerBehaviors implements Listener, AutoCloseable {
     SnapshotFacts facts() { return facts; }
 
     /** The name a trigger's world reference resolves to among the loaded worlds; events report worlds by name. */
-    private Optional<String> world(String reference) {
-        List<BukkitWorlds.Loaded> loaded = new ArrayList<>();
-        for (World world : server.getWorlds()) loaded.add(new BukkitWorlds.Loaded(world.getName(), world.getUID(), world.getKey().toString()));
-        return BukkitWorlds.resolve(reference, loaded);
-    }
+    private Optional<String> world(String reference) { return BukkitWorlds.resolve(reference, BukkitWorldLookup.loaded(server)); }
 
     void start() {
         server.getPluginManager().registerEvents(this, plugin);
@@ -168,6 +167,7 @@ final class BukkitServerBehaviors implements Listener, AutoCloseable {
     /** Global owner. The tick counts from when Animus enabled. */
     private void serverSnapshot() {
         serverTicks += SnapshotFacts.REFRESH_TICKS;
+        worlds = BukkitWorldLookup.loaded(server);
         List<UUID> online = new ArrayList<>();
         for (Player player : server.getOnlinePlayers()) online.add(player.getUniqueId());
         facts.server(SnapshotFacts.server(online.size(), server.getMaxPlayers(), serverTicks, System.currentTimeMillis(), online));

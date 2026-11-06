@@ -1,6 +1,7 @@
 package art.arcane.animus.bukkit.runtime;
 
 import art.arcane.animus.core.text.RichText;
+import art.arcane.animus.bukkit.BukkitWorldLookup;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
 import art.arcane.animus.bukkit.navigation.BukkitDoors;
 import art.arcane.animus.bukkit.navigation.BukkitTerrain;
@@ -111,9 +112,7 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
     }
 
     @Override public Optional<String> resolveWorld(String reference) {
-        World world;
-        try { world = plugin.getServer().getWorld(UUID.fromString(reference)); }
-        catch (IllegalArgumentException notUuid) { world = plugin.getServer().getWorld(reference); }
+        World world = BukkitWorldLookup.find(plugin.getServer(), reference);
         return world == null ? Optional.empty() : Optional.of(world.getUID().toString());
     }
     @Override public boolean worldLoaded(String world) { return terrain.worldLoaded(world); }

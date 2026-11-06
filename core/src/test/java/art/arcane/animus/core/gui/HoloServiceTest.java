@@ -98,6 +98,36 @@ class HoloServiceTest {
         assertTrue(displays.of(alex).isEmpty());
     }
 
+    @Test void aClickOnAnNpcHologramCountsOnlyInTheNpcsWorld() throws IOException {
+        java.util.UUID guard = java.util.UUID.fromString("8f0c2c52-6f0e-4f43-a3a3-9d1f8f8a0c11");
+        write("gui/holograms", "town:sign", SIGN.replace("[0, 64, 5]", "[0, 64, 500]"));
+        write("gui/text-animations", "town:blink", "{\"schemaVersion\": 1, \"revision\": 1, \"mode\": \"ascend\", \"frameIntervalMs\": 60000, \"frames\": [\"two\"]}");
+        write("npcs", "town:guard", """
+                {"schemaVersion": 1, "revision": 1, "uuid": "8f0c2c52-6f0e-4f43-a3a3-9d1f8f8a0c11", "id": "guard", "group": "town",
+                 "name": "Guard", "type": "minecraft:villager", "spawned": true,
+                 "position": {"world": "world", "x": 0, "y": 64, "z": 5, "yaw": 0, "pitch": 0},
+                 "modules": {"animus:gui": {"hologram": {"id": "town:sign", "offset": [0, 0, 0]}}}}
+                """);
+        runtime.npcs().reload();
+        reload();
+        living.active.put(guard, new art.arcane.animus.core.runtime.NpcRuntime.ActiveNpc("guard", "Guard",
+                new art.arcane.animus.core.virtual.VirtualNpcState(guard, new art.arcane.animus.core.virtual.WorldPosition("world", new art.arcane.animus.core.virtual.Vec3(0, 64, 5)), 0.6, 1.8, 20).snapshot()));
+        tick(1);
+        assertEquals(List.of("Page one for Alex"), displays.texts(alex));
+        DisplayEntity box = displays.hitboxes(alex).getFirst();
+        look(0, 64.125, 5);
+        living.active.put(guard, new art.arcane.animus.core.runtime.NpcRuntime.ActiveNpc("guard", "Guard",
+                new art.arcane.animus.core.virtual.VirtualNpcState(guard, new art.arcane.animus.core.virtual.WorldPosition("world_nether", new art.arcane.animus.core.virtual.Vec3(0, 64, 5)), 0.6, 1.8, 20).snapshot()));
+        displays.click(alex, box.id(), false);
+        living.active.put(guard, new art.arcane.animus.core.runtime.NpcRuntime.ActiveNpc("guard", "Guard",
+                new art.arcane.animus.core.virtual.VirtualNpcState(guard, new art.arcane.animus.core.virtual.WorldPosition("world", new art.arcane.animus.core.virtual.Vec3(0, 64, 5)), 0.6, 1.8, 20).snapshot()));
+        tick(1);
+        assertEquals(List.of("Page one for Alex"), displays.texts(alex), "the NPC was in another world at the click");
+        displays.click(alex, box.id(), false);
+        tick(1);
+        assertEquals(List.of("Page two"), displays.texts(alex));
+    }
+
     @Test void timedTextRefreshWaitsWhileNpcPacketsAreShortOfBudget() throws IOException {
         write("gui/holograms", "town:score", """
                 {"schemaVersion": 3, "revision": 1, "anchor": {"world": "world", "position": [0, 64, 5]},

@@ -9754,6 +9754,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "int",
         "truthy",
         "same",
+        "same_world",
         "text",
         "random",
         "random_decimal",

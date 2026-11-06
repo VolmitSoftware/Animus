@@ -248,6 +248,11 @@ List<String> _conditionTokens(List<String> raw) {
   return tokens;
 }
 
+/// A world fact gives a Bukkit name or a dimension key by platform, so a comparison with one resolves both sides.
+bool _world(_Expr expr) => expr.text == 'player.world' || expr.text == 'npc.world' || expr.text == 'context.world';
+
+String _equality(_Expr left, _Expr right) => _world(left) || _world(right) ? 'same_world' : 'same';
+
 /// Denizen's advanced matcher for the simple forms: alternatives with `|` and `*` at either end, ignoring case.
 _Result<_Cond> _matcher(_Expr value, String pattern) {
   final List<String> tests = <String>[];
@@ -269,7 +274,7 @@ _Result<_Cond> _matcher(_Expr value, String pattern) {
     } else if (end) {
       tests.add('starts_with($subject, ${_quote(core)})');
     } else {
-      tests.add('same(${_textual(value)}, ${_quote(core)})');
+      tests.add('${_equality(value, value)}(${_textual(value)}, ${_quote(core)})');
     }
   }
   return _Result<_Cond>.ok(_Atom(tests.length == 1 ? tests.first : '(${tests.join(' || ')})'));
@@ -985,7 +990,7 @@ class _Expressions {
       case 'include':
         return _expressionStep('append($e, $p)', 'l', next);
       case 'equals':
-        return _expressionStep('same($e, $p)', 'b', next);
+        return _expressionStep('${_equality(expr, parameter)}($e, $p)', 'b', next);
       case 'get':
         return parameter.kind == 'n' ? _expressionStep('get($e, ${_numeric(parameter)} - 1)', 'a', next) : _expressionStep('get($e, $p)', 'a', next);
       case 'substring':
@@ -1127,8 +1132,8 @@ class _Expressions {
     final _Expr l = left.value!;
     final _Expr r = right.value!;
     return _Result<_Cond>.ok(_Atom(switch (operator) {
-      '==' => 'same(${l.text}, ${r.text})',
-      '!=' => '!same(${l.text}, ${r.text})',
+      '==' => '${_equality(l, r)}(${l.text}, ${r.text})',
+      '!=' => '!${_equality(l, r)}(${l.text}, ${r.text})',
       'contains' => 'contains(${l.text}, ${r.text})',
       'in' => 'contains(${r.text}, ${l.text})',
       _ => '${_numeric(l)} $operator ${_numeric(r)}',

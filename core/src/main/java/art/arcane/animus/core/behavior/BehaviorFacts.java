@@ -24,4 +24,10 @@ public interface BehaviorFacts {
 
     /** The latest server snapshot. */
     Map<String, Object> server();
+
+    /**
+     * The form this platform's {@code *.world} facts give for a world name, dimension key or UUID: the name on Bukkit,
+     * the dimension key on mod servers. Empty when no such world is loaded or the platform resolves no worlds.
+     */
+    default Optional<String> world(String reference) { return Optional.empty(); }
 }

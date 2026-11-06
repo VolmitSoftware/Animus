@@ -289,6 +289,9 @@ class BehaviorEvalScope implements PExprScope {
       case 'same':
         arity(2, 2);
         return _same(args[0], args[1]);
+      case 'same_world':
+        arity(2, 2);
+        return _sampleWorld(expressionText(args[0])) == _sampleWorld(expressionText(args[1]));
       case 'text':
         arity(1, 1);
         return expressionText(args[0]);
@@ -324,6 +327,15 @@ class BehaviorEvalScope implements PExprScope {
     return null;
   }
 }
+
+/// A world as the sample server, whose main world is `world`, resolves it: the three vanilla dimension keys name its
+/// folders, and any other world compares as written, ignoring case.
+String _sampleWorld(String reference) => switch (reference.toLowerCase()) {
+      'minecraft:overworld' || 'overworld' => 'world',
+      'minecraft:the_nether' || 'the_nether' => 'world_nether',
+      'minecraft:the_end' || 'the_end' => 'world_the_end',
+      final String other => other,
+    };
 
 bool _same(Object? left, Object? right) {
   final double? a = left is double ? left : (left is String ? double.tryParse(left.trim()) : null);
