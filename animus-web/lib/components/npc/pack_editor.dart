@@ -36,7 +36,7 @@ class _PackEditorState extends State<PackEditor> {
 
   JsonMap get _pack => asMap(component.document.json);
 
-  void _write(JsonMap next, String what) => component.onJson(next, coalesce: 'pack:$what');
+  void _write(JsonMap next, String what) => component.onJson(writeAt(_pack, const <JsonStep>[], next), coalesce: 'pack:$what');
 
   @override
   Widget build(BuildContext context) {

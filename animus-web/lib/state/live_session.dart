@@ -415,6 +415,7 @@ class LiveSession {
   /// Validates every changed draft (or [only]) on the server.
   Future<bool> validate({Set<String>? only}) async =>
       await _run<bool>('Validating', () async {
+        await store.settled();
         final ServerBinding? server = binding;
         final WorkspaceSnapshot? workspace = store.workspace;
         if (server == null || workspace == null) return false;
@@ -473,6 +474,7 @@ class LiveSession {
   /// Shows the changed drafts (and [focus]) to the token's player only, or
   /// replaces the running preview.
   Future<void> startPreview({Set<String>? focus}) => _run<void>('Previewing', () async {
+        await store.settled();
         final ServerBinding? server = binding;
         final WorkspaceSnapshot? workspace = store.workspace;
         if (server == null || workspace == null) return;
@@ -543,6 +545,8 @@ class LiveSession {
   /// lost answer can always be asked for again.
   Future<bool> apply({String? message}) async =>
       await _run<bool>('Applying', () async {
+        // Edits still being saved go too.
+        await store.settled();
         final ServerBinding? server = binding;
         final WorkspaceSnapshot? workspace = store.workspace;
         if (server == null || workspace == null) return false;
@@ -694,8 +698,8 @@ class LiveSession {
         if (copy == null || document.hash == null) continue;
         final Object? source = withServerRevision(document.kind, copy.source, document.revision);
         stored[document.key] = (path: copy.path, source: source);
-        final AnimusDocument? draft = store.document(document.kind, document.id);
-        if (draft != null && jsonEquals(draft.json, copy.source)) documents.add(DocumentChange(document.kind, document.id, prettyJson(source)));
+        // Laid over the draft, so an edit made during the apply stays.
+        documents.add(DocumentChange.update(document.kind, document.id, (Object? latest) => rebaseJson(copy.source, source, latest)));
       }
       await store.commit(
         documents: documents,

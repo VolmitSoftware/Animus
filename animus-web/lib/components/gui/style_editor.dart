@@ -63,8 +63,9 @@ class DisplayStyleEditor extends StatelessWidget {
 
   final JsonMap style;
 
-  /// The new style, or null when every field is unset.
-  final void Function(JsonMap? style) onChanged;
+  /// The new style, or null when every field is unset, and the field that
+  /// changed.
+  final void Function(JsonMap? style, String field) onChanged;
   final String path;
   final List<Diagnostic> diagnostics;
   final String title;
@@ -74,7 +75,7 @@ class DisplayStyleEditor extends StatelessWidget {
 
   void _set(String key, Object? value) {
     final JsonMap next = withField(style, key, value);
-    onChanged(next.isEmpty ? null : next);
+    onChanged(next.isEmpty ? null : next, key);
   }
 
   Widget _field(_StyleField field) {

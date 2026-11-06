@@ -1,7 +1,6 @@
 import 'package:animus_editor/logic/gui/gui_expression.dart';
 import 'package:animus_editor/logic/gui/text_animation.dart';
 import 'package:animus_editor/mc/gui/gui_scene.dart';
-import 'package:animus_editor/mc/npc/npc_scene.dart';
 import 'package:test/test.dart';
 
 import 'fixtures.dart';
@@ -57,7 +56,8 @@ void main() {
     };
     String first(int nowMs) => hologramScene(sign, clock: GuiAnimationClock(from: 'shop:sign', animations: animations, nowMs: nowMs))
         .texts
-        .map((NpcText text) => text.lines.join())
+        .single
+        .lines
         .first;
     expect(first(0), '&e* &6Bakery');
     expect(first(500), '&6+ &6Bakery');

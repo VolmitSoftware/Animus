@@ -123,10 +123,6 @@ html.light {
   opacity: 0.5;
 }
 
-.animus-mc-text-line {
-  text-shadow: inherit;
-}
-
 .animus-mc-loading {
   position: absolute;
   inset: 0;

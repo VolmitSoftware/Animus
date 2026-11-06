@@ -375,7 +375,7 @@ class _DocumentPaneState extends State<DocumentPane> {
             path: r'$',
             diagnostics: _allDiagnostics(document),
             recordings: routeRecordings(workspace),
-            onChanged: (JsonMap value) => onJson(value, coalesce: 'route'),
+            onChanged: (JsonMap value, JsonMap from) => onJson(writeAt(from, const <JsonStep>[], value), coalesce: 'route'),
           ),
         ]),
       DocumentKind.group => NpcInspector.forGroup(
