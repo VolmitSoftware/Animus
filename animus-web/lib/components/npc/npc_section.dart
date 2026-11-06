@@ -8,6 +8,9 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../logic/help_text.dart';
+import '../info_tip.dart';
+
 /// Whether the page is phone width, where the inspector starts collapsed.
 bool get npcInspectorNarrow => web.window.matchMedia('(max-width: 520px)').matches;
 
@@ -56,8 +59,11 @@ class NpcSubhead extends StatelessWidget {
   final String? help;
 
   @override
-  Widget build(BuildContext context) => dom.div(classes: 'animus-npc-subhead', <Widget>[
-    dom.h4(<Widget>[Component.text(text)]),
-    if (help != null) dom.p(classes: 'animus-gui-help', <Widget>[Component.text(help!)]),
-  ]);
+  Widget build(BuildContext context) {
+    final ({String? hint, String? tip}) split = splitHelp(help);
+    return dom.div(classes: 'animus-npc-subhead', <Widget>[
+      labelWithTip(dom.h4(<Widget>[Component.text(text)]), split.tip, text),
+      if (split.hint != null) dom.p(classes: 'animus-gui-help', <Widget>[Component.text(split.hint!)]),
+    ]);
+  }
 }
