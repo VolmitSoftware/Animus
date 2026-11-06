@@ -268,10 +268,10 @@
   font-size: 0.8125rem;
 }
 
-/* Rows already name their selects; the select's own label stays for
+/* Rows already name their dropdowns; a dropdown's own caption stays for
    screen readers only. */
-.animus-behavior-editor [class$="-select-label"],
-.animus-server-behaviors .animus-gui-row [class$="-select-label"] {
+.animus-behavior-editor .animus-select-caption,
+.animus-server-behaviors .animus-gui-row .animus-select-caption {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -332,11 +332,6 @@
   min-width: 0;
 }
 
-.animus-behavior-editor [class$="-select-wrapper"] {
-  min-width: 0;
-  max-width: 100%;
-}
-
 /* Single-column grids size to their container, not to the widest select
    option, so deep trees and long capability names never push sideways. */
 .animus-behavior-tree,
@@ -352,8 +347,8 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
-.animus-behavior-editor select,
-.animus-server-behaviors select {
+.animus-behavior-editor .animus-select,
+.animus-server-behaviors .animus-select {
   min-width: 0;
   max-width: 100%;
 }

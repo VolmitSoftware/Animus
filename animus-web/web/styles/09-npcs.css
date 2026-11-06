@@ -1115,10 +1115,10 @@ html.light .animus-route-dot {
   }
 
   .animus-npc-folder-actions button,
-  .animus-npc-folder-actions select,
+  .animus-npc-folder-actions .animus-select-trigger,
   .animus-npc-folder-actions input,
   .animus-npc-bulk button,
-  .animus-npc-bulk select,
+  .animus-npc-bulk .animus-select-trigger,
   .animus-npc-bulk input:not([type="checkbox"]) {
     min-height: 44px;
   }

@@ -18,6 +18,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {openFromSidebar} = require('./support/shell.cjs');
+const {choose, chooseAndWait, dropdownShowing, dropdownWithOption, optionValues} = require('./support/select.cjs');
 
 const exportFolder = path.resolve(__dirname, '../../schema/fixtures/export');
 const shots = process.env.ANIMUS_SCREENSHOTS;
@@ -40,9 +41,12 @@ async function codeOf(page) {
   return JSON.parse(text);
 }
 
-/// A native select holding an option with [text].
-function selectWith(scope, text) {
-  return scope.locator('select', {has: scope.page().locator('option', {hasText: text})}).first();
+/// A dropdown holding an option with [text]: the one showing it as its
+/// placeholder, or else the first whose options include it.
+async function selectWith(scope, text) {
+  const shown = dropdownShowing(scope, text);
+  if (await shown.count()) return shown;
+  return dropdownWithOption(scope, text);
 }
 
 async function caretAt(page, needle, after) {
@@ -68,7 +72,7 @@ async function noOverflow(page, where) {
   });
   const chain = await page.evaluate(() => {
     const limit = document.documentElement.clientWidth;
-    const input = Array.from(document.querySelectorAll('input, textarea, select')).find(element => element.getBoundingClientRect().right > limit + 1);
+    const input = Array.from(document.querySelectorAll('input, textarea, button[role="combobox"]')).find(element => element.getBoundingClientRect().right > limit + 1);
     const out = [];
     for (let node = input; node && out.length < 14; node = node.parentElement) {
       const rect = node.getBoundingClientRect();
@@ -111,7 +115,7 @@ async function run(browser, viewport, tag, theme) {
   // Behaviors sit in the inspector's Behaviour part, closed until opened.
   const behaviour = inspector.locator('details[data-section="behaviour"]');
   if (!(await behaviour.evaluate((element) => element.open))) await behaviour.locator('summary').first().click();
-  await selectWith(inspector, 'Add a workspace behavior').selectOption('shop:keeper');
+  await choose(await selectWith(inspector, 'Add a workspace behavior'), 'shop:keeper');
   await page.waitForTimeout(300);
   await shot(page, `${tag}-npc-inspector`);
   let json = await codeOf(page);
@@ -140,11 +144,11 @@ async function run(browser, viewport, tag, theme) {
   await trigger.getByLabel('radius', {exact: true}).fill('8');
   await page.waitForTimeout(300);
   const step = editor.locator('[data-node-path="$.routines.wave.steps[1]"]');
-  await step.locator('.animus-node-tools select').first().selectOption('wait');
+  await chooseAndWait(step.locator('.animus-node-tools button[role="combobox"]').first(), 'wait');
   await step.getByLabel('ticks', {exact: true}).waitFor();
   await page.waitForTimeout(300);
   const wave = editor.locator('[data-routine="wave"]');
-  await selectWith(wave, 'Add step').selectOption('call');
+  await choose(await selectWith(wave, 'Add step'), 'call');
   await editor.locator('[data-node-path="$.routines.wave.steps[2]"]').waitFor();
   const say = editor.locator('[data-node-path="$.routines.main.steps[1].then"]');
   await say.locator('.animus-tip [role="tooltip"]', {hasText: 'Unavailable here'}).first().waitFor({state: 'attached'});
@@ -166,11 +170,11 @@ async function run(browser, viewport, tag, theme) {
   await flag.getByLabel('Variable 1 name').fill('names');
   await editor.locator('[data-variable="names"]').waitFor();
   const names = editor.locator('[data-variable="names"]');
-  await names.locator('select').first().selectOption('list');
+  await chooseAndWait(names.locator('button[role="combobox"]').first(), 'list');
   await names.getByRole('button', {name: 'Add item'}).click();
   await names.getByLabel('Starting value of names item 1', {exact: true}).fill('Alex');
   await page.waitForTimeout(300);
-  await selectWith(wave, 'Add step').selectOption('while');
+  await choose(await selectWith(wave, 'Add step'), 'while');
   const loop = editor.locator('[data-node-path="$.routines.wave.steps[3]"]');
   const expression = loop.getByLabel('Expression of step 4');
   await expression.fill('len(na');
@@ -182,18 +186,18 @@ async function run(browser, viewport, tag, theme) {
   await expression.fill('len(names) <');
   await loop.locator('.animus-gui-problem.is-error').first().waitFor();
   await expression.fill('len(names) < 1');
-  await wave.locator('.animus-add-node select').last().selectOption('foreach');
+  await choose(wave.locator('.animus-add-node button[role="combobox"]').last(), 'foreach');
   const each = editor.locator('[data-node-path="$.routines.wave.steps[4]"]');
   await each.waitFor();
-  await wave.locator('.animus-add-node select').last().selectOption('set');
+  await choose(wave.locator('.animus-add-node button[role="combobox"]').last(), 'set');
   const set = editor.locator('[data-node-path="$.routines.wave.steps[5]"]');
-  await set.locator('select', {has: page.locator('option', {hasText: /^item \(any\)$/})}).first().selectOption('item');
+  await chooseAndWait(await dropdownWithOption(set, /^item \(any\)$/), 'item');
   await page.waitForTimeout(200);
-  await set.locator('select').filter({has: page.locator('option', {hasText: 'From an expression'})}).first().selectOption('expression');
+  await chooseAndWait(await dropdownWithOption(set, 'From an expression'), 'expression');
   await set.getByLabel('Value of step 6 expression').fill('len(names)');
   await page.waitForTimeout(200);
   const greet = editor.locator('[data-node-path="$.routines.main.steps[1].else.steps[0]"]');
-  await greet.locator('[data-argument="text"] select').first().selectOption('template');
+  await chooseAndWait(greet.locator('[data-argument="text"] button[role="combobox"]').first(), 'template');
   await greet.getByLabel('Text template').fill('Hi {{ player.name }}');
   await page.waitForTimeout(300);
   await shot(page, `${tag}-behavior-v2`);
@@ -230,15 +234,15 @@ async function run(browser, viewport, tag, theme) {
 
   // The server switch swaps NPC events for server events.
   await page.getByRole('tab', {name: 'Visual'}).click();
-  const addTrigger = selectWith(editor, 'Add a trigger');
-  const events = () => addTrigger.evaluate(element => Array.from(element.options).map(option => option.value));
+  const addTrigger = await selectWith(editor, 'Add a trigger');
+  const events = () => optionValues(addTrigger);
   assert.ok((await events()).includes('interaction'), 'an NPC behavior offers interaction');
   assert.ok(!(await events()).includes('player_join'), 'an NPC behavior hides server events');
   await editor.getByLabel('Run on the server with no NPC').click();
   await page.waitForTimeout(300);
   assert.ok((await events()).includes('player_join'), 'a server behavior offers player_join');
   assert.ok(!(await events()).includes('interaction'), 'a server behavior hides NPC events');
-  await addTrigger.selectOption('player_join');
+  await choose(addTrigger, 'player_join');
   await editor.locator('[data-event="player_join"]').waitFor();
   await editor.locator('[data-event="interaction"] .animus-gui-problem.is-error').first().waitFor();
   await shot(page, `${tag}-server-switch`);
@@ -260,7 +264,7 @@ async function run(browser, viewport, tag, theme) {
   assert.equal(await docsOf(list, 'Server behaviors').getAttribute('href'), 'https://docs.volmitsoftware.com/animus/07-behaviors#server-behaviors');
   await list.getByRole('button', {name: 'Remove greeter:greeter from the list'}).click();
   await list.getByText('Nothing listed. Add one below.').waitFor();
-  await selectWith(list, 'Add a server behavior').selectOption('greeter:greeter');
+  await choose(await selectWith(list, 'Add a server behavior'), 'greeter:greeter');
   await list.locator('[data-behavior="greeter:greeter"]').waitFor();
   await shot(page, `${tag}-server-behaviors`);
   await noOverflow(page, `${tag} server behaviors`);

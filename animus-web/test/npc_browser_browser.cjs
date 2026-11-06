@@ -28,6 +28,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {sidebar, topbarAction} = require('./support/shell.cjs');
+const {chooseAndWait, valueOf} = require('./support/select.cjs');
 
 const folder = path.resolve(__dirname, 'fixtures/npc_browser');
 const site = process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })();
@@ -262,7 +263,7 @@ async function local(browser, viewport, tag, theme) {
   await select(page, 'crier');
   await select(page, 'harbor/dockhand');
   const picker = page.getByRole('group', {name: 'Bulk edit'});
-  await picker.getByLabel('Move to', {exact: true}).selectOption('harbor/docks');
+  await chooseAndWait(picker.getByLabel('Move to', {exact: true}), 'harbor/docks');
   await picker.getByRole('button', {name: 'Move to npcs/harbor/docks/'}).click();
   const docked = ['harbor/ferryman', 'harbor/docks/dockhand', 'harbor/docks/crier', 'town/baker', 'town/guard-north', 'town/guard-south', 'town/market/fishmonger', 'town/market/stalls/cartwright', 'wild/golem-keeper'];
   await waitRows(page, docked);
@@ -285,7 +286,7 @@ async function local(browser, viewport, tag, theme) {
   // Move a folder under another one, then undo.
   await folderItem(page, 'town/market').click();
   actions = await folderAction(page, 'Move');
-  await actions.getByLabel('Move npcs/town/market/ into').selectOption('harbor');
+  await chooseAndWait(actions.getByLabel('Move npcs/town/market/ into'), 'harbor');
   await actions.getByRole('button', {name: 'Move folder'}).click();
   await folderItem(page, 'harbor/market/stalls').waitFor();
   await waitRows(page, ['harbor/market/fishmonger', 'harbor/market/stalls/cartwright']);
@@ -356,7 +357,7 @@ async function local(browser, viewport, tag, theme) {
   await page.getByRole('checkbox', {name: 'Select every NPC shown'}).uncheck();
   await select(page, 'town/guard-north');
   await select(page, 'town/guard-south');
-  await bulk.getByLabel('Module to change').selectOption('animus:combat');
+  await chooseAndWait(bulk.getByLabel('Module to change'), 'animus:combat');
   await bulk.getByRole('button', {name: 'Disable', exact: true}).click();
   await page.waitForFunction(() => !document.querySelector('.animus-npc-row [data-feature="combat"]'));
   await shot(page, `${tag}-05-bulk-module`);
@@ -472,7 +473,7 @@ async function local(browser, viewport, tag, theme) {
 
   // Body: pose and owner.
   const body = await part(inspector, 'body');
-  await body.getByLabel('Pose', {exact: true}).selectOption('sitting');
+  await chooseAndWait(body.getByLabel('Pose', {exact: true}), 'sitting');
   await settle(page);
   const identity = await part(inspector, 'identity');
   await identity.getByLabel('Owner UUID').fill('Steve');
@@ -487,7 +488,7 @@ async function local(browser, viewport, tag, theme) {
   await hologram.getByLabel('Hologram line 1', {exact: true}).fill('&aHello there');
   await hologram.getByLabel('Hologram line 1', {exact: true}).blur();
   await hologram.locator('.animus-hologram-preview').getByText('Hello there').waitFor();
-  await hologram.getByRole('combobox', {name: 'Billboard', exact: true}).selectOption('vertical');
+  await chooseAndWait(hologram.getByRole('combobox', {name: 'Billboard', exact: true}), 'vertical');
   await settle(page);
   await shot(page, `${tag}-08-appearance`);
   json = await codeOf(page);
@@ -539,14 +540,14 @@ async function local(browser, viewport, tag, theme) {
   await stand.locator('[role="checkbox"][aria-checked="true"]').first().waitFor();
   await stand.getByLabel('Head x degrees', {exact: true}).fill('15');
   await stand.getByLabel('Head x degrees', {exact: true}).blur();
-  assert.equal(await keeperBody.getByLabel('Rig', {exact: true}).inputValue(), 'town:golem');
+  assert.equal(await valueOf(keeperBody.getByLabel('Rig', {exact: true})), 'town:golem');
   await keeperBody.getByRole('button', {name: 'Open rig'}).waitFor();
-  await keeperBody.getByLabel('Rig', {exact: true}).selectOption('');
+  await chooseAndWait(keeperBody.getByLabel('Rig', {exact: true}), '');
   await settle(page);
   json = await codeOf(page);
   assert.deepEqual(json.armorStand, {small: true, head: [15, 0, 0]});
   assert.equal(json.rig, undefined, 'picking no rig removes it');
-  await (await part(keeper, 'body')).getByLabel('Rig', {exact: true}).selectOption('town:golem');
+  await chooseAndWait((await part(keeper, 'body')).getByLabel('Rig', {exact: true}), 'town:golem');
   await settle(page);
   json = await codeOf(page);
   assert.deepEqual(json.rig, {id: 'town:golem'});

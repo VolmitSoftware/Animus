@@ -19,6 +19,8 @@ import 'behavior_inputs.dart';
 import 'behavior_nodes.dart';
 import 'behavior_operand.dart';
 import 'inspect_fields.dart';
+import '../select/suggest_input.dart';
+import '../../model/document_kind.dart';
 
 class CapabilityFields extends StatelessWidget {
   const CapabilityFields({required this.context, required this.node, required this.steps, required this.kind, super.key});
@@ -91,6 +93,7 @@ class CapabilityFields extends StatelessWidget {
             literal: InspectControl(
               field: argument,
               value: arguments[argument.key],
+              references: argumentReference(id, argument.key, arguments),
               path: _at(<JsonStep>['arguments', argument.key]),
               onChanged: (Object? next) => context.write(<JsonStep>[...steps, 'arguments', argument.key], next),
             ),
@@ -222,3 +225,17 @@ class CallArguments extends StatelessWidget {
     );
   }
 }
+
+/// The document kind a capability argument names: the GUI of
+/// `animus:open-gui` (a chest GUI unless its `kind` says otherwise) and the
+/// shop of `animus:open-shop`.
+DocumentKind? argumentReference(String? capability, String key, JsonMap arguments) => switch ((capability, key)) {
+      ('animus:open-gui', 'gui') => switch (asString(arguments['kind']) ?? 'inventory') {
+          'inventory' => DocumentKind.inventory,
+          'menu' => DocumentKind.menu,
+          'shop' => DocumentKind.shop,
+          _ => null,
+        },
+      ('animus:open-shop', 'shop') => DocumentKind.shop,
+      _ => null,
+    };

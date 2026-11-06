@@ -22,9 +22,9 @@ import '../../state/live_session.dart';
 import '../../state/workspace_repository.dart';
 import '../../state/workspace_route.dart';
 import '../gui/gui_fields.dart';
-import '../inspect/inspect_fields.dart';
 import 'npc_folders.dart';
 import '../../logic/inspect/schema_fields.dart';
+import '../select/suggest_input.dart';
 
 /// A bulk action that waits for a second press.
 enum _Confirm { none, delete, despawn }
@@ -318,6 +318,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
           dom.label(classes: 'animus-npc-filter-select', <Widget>[
             const dom.span(<Widget>[Component.text('Group')]),
             GuiSelect(
+              references: DocumentKind.group,
               id: 'animus-group-assign-group',
               value: group,
               options: groups.keys.toList(),
