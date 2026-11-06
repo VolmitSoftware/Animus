@@ -15,6 +15,20 @@ public final class NpcRepository {
     public record Validation(List<String> errors, int definitions) {
         public Validation { errors = List.copyOf(errors); }
     }
+    /**
+     * The published definitions together with the hash of the file each one was read from. A batch edit made from these
+     * expects those hashes, so a file that changed since is refused instead of overwritten.
+     */
+    public record Installed(Collection<NpcDefinition> definitions, Map<String, String> sourceHashes) {
+        public static final Installed NONE = new Installed(List.of(), Map.of());
+        public Installed { definitions = List.copyOf(definitions); sourceHashes = Map.copyOf(sourceHashes); }
+        /** The hash of the file {@code definition} was read from. */
+        public String expectedHash(NpcDefinition definition) throws IOException {
+            String hash = sourceHashes.get(definition.path());
+            if (hash == null) throw new IOException("Conflict: " + definition.path() + " was not read from the store");
+            return hash;
+        }
+    }
     private record ScanResult(List<String> diagnostics, int definitions) {}
     private final DocumentStore store;
     private final DefinitionCheckpoints checkpoints;
@@ -27,6 +41,8 @@ public final class NpcRepository {
     /** Immutable published registry; identity changes only when a valid edit/reload is published. */
     public Map<String, NpcDefinition> snapshot() { return active; }
     public Optional<NpcDefinition> find(String id) { return Optional.ofNullable(active.get(id)); }
+    /** The published definitions and the file hash each was read from, taken together. */
+    public synchronized Installed installed() { return new Installed(active.values(), hashes); }
     public List<String> diagnostics() { return problems.entrySet().stream().map(entry -> entry.getKey() + ": " + entry.getValue()).toList(); }
 
     /** Restores only known invalid existing files, never deleted definitions or unknown malformed records. */
@@ -56,15 +72,14 @@ public final class NpcRepository {
         Map<String, String> recovered = new TreeMap<>();
         Path directory = store.resolve("npcs");
         if (Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) {
-            for (Path file : JsonDocumentTree.files(directory)) {
+            for (Path file : JsonDocumentTree.files(directory, NpcPaths.TREE_DEPTH)) {
                 String path = "npcs/" + directory.relativize(file).toString().replace('\\', '/');
                 if (reads.size() >= 100_000) throw new IOException("NPC definition limit exceeded: 100000");
                 try {
-                    DefinitionCheckpoints.Saved saved = startup ? checkpoints.read(path).orElse(null) : null;
+                    DefinitionCheckpoints.Saved saved = startup && NpcPaths.file(path) ? checkpoints.read(path).orElse(null) : null;
                     try {
                         String json = JsonDocuments.read(file);
-                        NpcDefinition definition = NpcDefinition.parse(json);
-                        if (!store.resolve(definition.path()).equals(file)) throw new IOException("$.id/group: must match file path");
+                        NpcDefinition definition = NpcDefinition.read(path, json);
                         NpcDefinition previous = startup && saved != null ? saved.definition() : active.get(definition.id());
                         if (!allowOlderRevision && previous != null && definition.revision() < previous.revision()) throw new IOException("$.revision: cannot decrease");
                         reads.put(path, new Read(path, definition, JsonDocuments.hash(json), null));

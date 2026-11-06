@@ -18,7 +18,6 @@ import java.util.*;
 
 /** Shared, filesystem-only administration. The platform is responsible for permission and scheduling. */
 public final class Administration {
-    public static final List<String> COMMANDS = List.of("status", "list", "create", "inspect", "edit", "clone", "delete", "spawn", "despawn", "validate", "reload", "import", "rollback");
     private final AnimusRuntime runtime;
     public Administration(AnimusRuntime runtime) { this.runtime = runtime; }
     /** The main budgets of config.toml as they run now; a hotload changes this line without a restart. */
@@ -36,139 +35,139 @@ public final class Administration {
                 + " relay " + (runtime.editorRelaySettings().enabled() ? "on" : "off");
     }
 
-    public List<String> execute(String[] args) throws IOException {
-        if (args.length == 0 || args[0].equals("status")) {
-            List<String> lines = new ArrayList<>(List.of(runtime.status(), "NPC definitions: " + runtime.npcs().all().size(), settingsInEffect()));
-            if (!runtime.npcs().diagnostics().isEmpty()) lines.add("Definition file problems: " + runtime.npcs().diagnostics().size() + "; validate for field errors; retained definitions remain active");
-            return List.copyOf(lines);
+    public List<String> status() {
+        List<String> lines = new ArrayList<>(List.of(runtime.status(), "NPC definitions: " + runtime.npcs().all().size(), settingsInEffect()));
+        if (!runtime.npcs().diagnostics().isEmpty()) lines.add("Definition file problems: " + runtime.npcs().diagnostics().size() + "; validate for field errors; retained definitions remain active");
+        return List.copyOf(lines);
+    }
+
+    /** Every definition as {@code id | name | revision}, in repository order. */
+    public List<String> rows() {
+        return runtime.npcs().all().stream().map((NpcDefinition definition) -> definition.id() + " | " + definition.name() + " | revision " + definition.revision()).toList();
+    }
+
+    public String inspect(String id) throws IOException { return runtime.npcs().draft(id).document().toString(); }
+
+    public String create(String id, String type, String world, double x, double y, double z, String group, String name) throws IOException {
+        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) throw new IOException("Coordinates must be numbers");
+        JsonObject object = new JsonObject();
+        object.addProperty("schemaVersion", 1); object.addProperty("revision", 1);
+        object.addProperty("uuid", UUID.randomUUID().toString()); object.addProperty("id", id);
+        object.addProperty("type", type); object.addProperty("group", group);
+        object.addProperty("name", name);
+        object.addProperty("spawned", false);
+        JsonObject position = new JsonObject(); position.addProperty("world", world);
+        position.addProperty("x", x); position.addProperty("y", y); position.addProperty("z", z);
+        position.addProperty("yaw", 0); position.addProperty("pitch", 0); object.add("position", position);
+        NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(object));
+        String tx = runtime.npcs().apply(new NpcRepository.Draft(definition.path(), "missing", 0, object));
+        return "Created dormant " + definition.id() + "; transaction " + tx;
+    }
+
+    /** Merges the top-level fields of a JSON object into the definition. */
+    public String edit(String id, String patch) throws IOException {
+        NpcRepository.Draft draft = runtime.npcs().draft(id);
+        JsonObject fields = JsonDocuments.object(patch);
+        JsonObject edited = draft.document(); fields.entrySet().forEach(e -> edited.add(e.getKey(), e.getValue()));
+        return "Saved; transaction " + runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), edited));
+    }
+
+    public String spawned(String id, boolean spawn) throws IOException {
+        NpcRepository.Draft draft = runtime.npcs().draft(id);
+        JsonObject document = draft.document();
+        document.addProperty("spawned", spawn);
+        String tx = runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
+        return (spawn ? "Spawn requested for " : "Despawn requested for ") + id + "; transaction " + tx;
+    }
+
+    public String duplicate(String id, String copy) throws IOException {
+        JsonObject object = runtime.npcs().draft(id).document();
+        object.addProperty("id", copy); object.addProperty("uuid", UUID.randomUUID().toString());
+        object.addProperty("revision", 1); object.addProperty("spawned", false); object.remove("migration");
+        NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(object));
+        return "Cloned; transaction " + runtime.npcs().apply(new NpcRepository.Draft(definition.path(), "missing", 0, object));
+    }
+
+    public String delete(String id) throws IOException { return "Deleted; rollback transaction " + runtime.npcs().delete(id); }
+
+    public List<String> validate() throws IOException { return checked("validate", runtime.npcs().validate()); }
+
+    public List<String> reload() throws IOException { return checked("reload", runtime.npcs().reload()); }
+
+    private List<String> checked(String operation, List<String> errors) {
+        return errors.isEmpty() ? List.of(operation + " successful; " + runtime.npcs().all().size() + " active definitions") : errors;
+    }
+
+    /** One step of the Citizens drop-in flow; the catalogs its transactions touched reload even when it fails part way. */
+    public List<String> citizens(CitizensStep step) throws IOException {
+        CitizensDropIn dropIn = new CitizensDropIn(runtime.documents(), runtime.npcs(), runtime.importHost()).combatLimit(runtime.combatBudgets().maximumNpcs());
+        List<String> lines;
+        try { lines = new ArrayList<>(step.run(dropIn)); }
+        catch (IOException | RuntimeException failure) { catalogs(dropIn.committed(), dropIn.rolledBack()); throw failure; }
+        lines.addAll(catalogs(dropIn.committed(), dropIn.rolledBack()));
+        if (dropIn.settingsChanged()) {
+            // accept commands and rollback edit config.toml; apply it now instead of waiting for a hotload.
+            try { runtime.applySettings(art.arcane.animus.core.config.PluginSettings.load(runtime.documents())); }
+            catch (IOException | RuntimeException failure) { lines.add("config.toml changed but was not applied (" + failure.getMessage() + "); it applies at the next hotload or restart"); }
         }
-        return switch (args[0]) {
-            case "list" -> {
-                if (args.length > 2) throw new IOException("list [page]");
-                int page;
-                try { page = args.length == 2 ? Integer.parseInt(args[1]) : 1; }
-                catch (NumberFormatException e) { throw new IOException("Page must be a positive integer"); }
-                if (page < 1) throw new IOException("Page must be a positive integer");
-                List<String> lines = new ArrayList<>();
-                lines.add("NPC definitions: " + runtime.npcs().all().size() + "; page " + page);
-                runtime.npcs().all().stream().skip((page - 1L) * 20).limit(20)
-                        .map(d -> d.id() + " | " + d.name() + " | revision " + d.revision()).forEach(lines::add);
-                yield lines;
-            }
-            case "inspect" -> { count(args, 2); yield List.of(runtime.npcs().draft(args[1]).document().toString()); }
-            case "create" -> {
-                if (args.length < 9) throw new IOException("create <id> <namespace:type> <world> <x> <y> <z> <group> <name...>");
-                JsonObject object = new JsonObject();
-                object.addProperty("schemaVersion", 1); object.addProperty("revision", 1);
-                object.addProperty("uuid", UUID.randomUUID().toString()); object.addProperty("id", args[1]);
-                object.addProperty("type", args[2]); object.addProperty("group", args[7]);
-                object.addProperty("name", String.join(" ", Arrays.copyOfRange(args, 8, args.length)));
-                object.addProperty("spawned", false);
-                JsonObject position = new JsonObject(); position.addProperty("world", args[3]);
-                try { position.addProperty("x", Double.parseDouble(args[4])); position.addProperty("y", Double.parseDouble(args[5])); position.addProperty("z", Double.parseDouble(args[6])); }
-                catch (NumberFormatException e) { throw new IOException("Coordinates must be numbers"); }
-                position.addProperty("yaw", 0); position.addProperty("pitch", 0); object.add("position", position);
-                NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(object));
-                String tx = runtime.npcs().apply(new NpcRepository.Draft(definition.path(), "missing", 0, object));
-                yield List.of("Created dormant " + definition.id() + "; transaction " + tx);
-            }
-            case "edit" -> {
-                if (args.length < 3) throw new IOException("edit <id> <JSON object patch>");
-                NpcRepository.Draft draft = runtime.npcs().draft(args[1]);
-                JsonObject patch = JsonDocuments.object(String.join(" ", Arrays.copyOfRange(args, 2, args.length)));
-                JsonObject edited = draft.document(); patch.entrySet().forEach(e -> edited.add(e.getKey(), e.getValue()));
-                yield List.of("Saved; transaction " + runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), edited)));
-            }
-            case "spawn", "despawn" -> {
-                count(args, 2);
-                NpcRepository.Draft draft = runtime.npcs().draft(args[1]);
-                JsonObject document = draft.document();
-                boolean spawn = args[0].equals("spawn");
-                document.addProperty("spawned", spawn);
-                String tx = runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
-                yield List.of((spawn ? "Spawn requested for " : "Despawn requested for ") + args[1] + "; transaction " + tx);
-            }
-            case "clone" -> {
-                count(args, 3);
-                JsonObject object = runtime.npcs().draft(args[1]).document();
-                object.addProperty("id", args[2]); object.addProperty("uuid", UUID.randomUUID().toString());
-                object.addProperty("revision", 1); object.addProperty("spawned", false); object.remove("migration");
-                NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(object));
-                yield List.of("Cloned; transaction " + runtime.npcs().apply(new NpcRepository.Draft(definition.path(), "missing", 0, object)));
-            }
-            case "delete" -> { count(args, 2); yield List.of("Deleted; rollback transaction " + runtime.npcs().delete(args[1])); }
-            case "validate", "reload" -> {
-                count(args, 1);
-                List<String> errors = args[0].equals("reload") ? runtime.npcs().reload() : runtime.npcs().validate();
-                yield errors.isEmpty() ? List.of(args[0] + " successful; " + runtime.npcs().all().size() + " active definitions") : errors;
-            }
-            case "import" -> {
-                if (args.length >= 2 && args[1].equalsIgnoreCase("citizens")) {
-                    CitizensDropIn dropIn = new CitizensDropIn(runtime.documents(), runtime.npcs(), runtime.importHost()).combatLimit(runtime.combatBudgets().maximumNpcs());
-                    List<String> lines;
-                    try { lines = new ArrayList<>(dropIn.execute(Arrays.copyOfRange(args, 2, args.length))); }
-                    catch (IOException | RuntimeException failure) { catalogs(dropIn.committed(), dropIn.rolledBack()); throw failure; }
-                    lines.addAll(catalogs(dropIn.committed(), dropIn.rolledBack()));
-                    yield lines;
-                }
-                if (args.length < 3) throw new IOException("import citizens [apply|review|accept|rollback] | import preview <inbox-file> [converter=<namespace:name>] [oldWorld=newWorld ...] | apply <import-id> | stage <import-id> [reject|replace|duplicate <label>] | apply-plan <import-id> <application-id>");
-                CitizensImporter importer = new CitizensImporter();
-                if (args[1].equals("preview")) {
-                    if (!args[2].matches("[a-zA-Z0-9_-]+\\.[a-zA-Z0-9]{1,8}")) throw new IOException("Use a plain filename under imports/inbox/");
-                    Map<String, String> worlds = new TreeMap<>();
-                    Optional<String> converter = Optional.empty();
-                    for (int i = 3; i < args.length; i++) {
-                        if (args[i].startsWith("converter=") && converter.isEmpty()) { converter = Optional.of(args[i].substring(10)); continue; }
-                        String[] pair = args[i].split("=", 2);
-                        if (pair.length != 2 || pair[0].isBlank() || pair[1].isBlank() || worlds.putIfAbsent(pair[0], pair[1]) != null) throw new IOException("Invalid world mapping: " + args[i]);
-                    }
-                    Path file = runtime.documents().resolve("imports/inbox/" + args[2]);
-                    CitizensImporter.Preview preview;
-                    if (converter.isEmpty() && args[2].endsWith(".yml") && CitizensImporter.recognizes(JsonDocuments.read(file)))
-                        preview = importer.preview(file, runtime.documents(), worlds);
-                    else {
-                        if (!worlds.isEmpty()) throw new IOException("World mappings apply only to Citizens imports");
-                        ImportConverters.Source source = ModuleImports.source(file);
-                        ModuleHooks.Converter selected = ModuleImports.select(runtime.moduleHooks(), source, converter);
-                        preview = ModuleImports.preview(runtime.documents(), source, selected);
-                        if (preview.valid() != preview.records())
-                            yield List.of("Preview " + preview.id() + " by " + selected.descriptor().key(), "Records: " + preview.records() + ", valid: " + preview.valid(),
-                                    "Review " + preview.directory().resolve("report.json") + "; fix the source or converter before import apply.");
-                    }
-                    yield List.of("Preview " + preview.id(), "Records: " + preview.records() + ", valid: " + preview.valid() + ", skins: " + preview.skins(), "Review " + preview.directory().resolve("report.json") + " before import apply.");
-                }
-                if (args[1].equals("stage")) {
-                    if (args.length > 5) throw new IOException("import stage <import-id> [reject|replace|duplicate <label>]");
-                    var application = ImportApplications.stage(runtime.documents(), args[2], args.length > 3 ? args[3] : "reject", args.length > 4 ? args[4] : null);
-                    yield List.of("Application " + application.applicationId(),
-                            "Mode: " + application.mode() + "; records: " + application.records() + "; replacements: " + application.replacements(),
-                            "Review " + application.report(),
-                            "Apply with /animus import apply-plan " + args[2] + " " + application.applicationId());
-                }
-                String tx;
-                if (args[1].equals("apply")) { count(args, 3); tx = importer.apply(runtime.documents(), args[2]); }
-                else if (args[1].equals("apply-plan")) { count(args, 4); tx = ImportApplications.apply(runtime.documents(), args[2], args[3]); }
-                else throw new IOException("Expected import preview, stage, apply or apply-plan");
-                List<String> errors = runtime.npcs().reload();
-                List<String> notes = catalogs(List.of(tx), false);
-                if (!errors.isEmpty()) throw new IOException("Import stored; these definition files were refused and keep their last valid version: " + String.join("; ", errors));
-                List<String> lines = new ArrayList<>(List.of("Installed dormant definitions; transaction " + tx));
-                lines.addAll(notes);
-                yield lines;
-            }
-            case "rollback" -> {
-                count(args, 2);
-                String tx = runtime.documents().rollback(args[1]);
-                // Rebuild after an explicit undo, which intentionally restores older revisions.
-                List<String> errors = runtime.npcs().reloadAfterRollback();
-                List<String> notes = catalogs(List.of(tx), true);
-                if (!errors.isEmpty()) throw new IOException("Rollback stored; reload failed: " + String.join("; ", errors));
-                List<String> lines = new ArrayList<>(List.of("Rolled back; inverse transaction " + tx));
-                lines.addAll(notes);
-                yield lines;
-            }
-            default -> throw new IOException("Commands: " + String.join(", ", COMMANDS));
-        };
+        return lines;
+    }
+    @FunctionalInterface public interface CitizensStep { List<String> run(CitizensDropIn dropIn) throws IOException; }
+
+    /**
+     * Converts a file under {@code imports/inbox/}: a Citizens save, or any format a module converter reads.
+     * {@code worlds} renames Citizens worlds; a converter is chosen by key or by the file.
+     */
+    public List<String> preview(String file, Optional<String> converter, Map<String, String> worlds) throws IOException {
+        if (!file.matches("[a-zA-Z0-9_-]+\\.[a-zA-Z0-9]{1,8}")) throw new IOException("Use a plain filename under imports/inbox/");
+        CitizensImporter importer = new CitizensImporter();
+        Path path = runtime.documents().resolve("imports/inbox/" + file);
+        CitizensImporter.Preview preview;
+        if (converter.isEmpty() && file.endsWith(".yml") && CitizensImporter.recognizes(JsonDocuments.read(path)))
+            preview = importer.preview(path, runtime.documents(), worlds);
+        else {
+            if (!worlds.isEmpty()) throw new IOException("World mappings apply only to Citizens imports");
+            ImportConverters.Source source = ModuleImports.source(path);
+            ModuleHooks.Converter selected = ModuleImports.select(runtime.moduleHooks(), source, converter);
+            preview = ModuleImports.preview(runtime.documents(), source, selected);
+            if (preview.valid() != preview.records())
+                return List.of("Preview " + preview.id() + " by " + selected.descriptor().key(), "Records: " + preview.records() + ", valid: " + preview.valid(),
+                        "Review " + preview.directory().resolve("report.json") + "; fix the source or converter before import apply.");
+        }
+        return List.of("Preview " + preview.id(), "Records: " + preview.records() + ", valid: " + preview.valid() + ", skins: " + preview.skins(), "Review " + preview.directory().resolve("report.json") + " before import apply.");
+    }
+
+    /** Stages how a preview lands next to existing definitions: {@code reject}, {@code replace} or {@code duplicate} with a copy label. */
+    public List<String> stage(String importId, String mode, Optional<String> label) throws IOException {
+        ImportApplications.Preview application = ImportApplications.stage(runtime.documents(), importId, mode, label.orElse(null));
+        return List.of("Application " + application.applicationId(),
+                "Mode: " + application.mode() + "; records: " + application.records() + "; replacements: " + application.replacements(),
+                "Review " + application.report(),
+                "Apply with /animus import apply-plan " + importId + " " + application.applicationId());
+    }
+
+    public List<String> apply(String importId) throws IOException { return installed(new CitizensImporter().apply(runtime.documents(), importId)); }
+
+    public List<String> applyPlan(String importId, String applicationId) throws IOException { return installed(ImportApplications.apply(runtime.documents(), importId, applicationId)); }
+
+    private List<String> installed(String tx) throws IOException {
+        List<String> errors = runtime.npcs().reload();
+        List<String> notes = catalogs(List.of(tx), false);
+        if (!errors.isEmpty()) throw new IOException("Import stored; these definition files were refused and keep their last valid version: " + String.join("; ", errors));
+        List<String> lines = new ArrayList<>(List.of("Installed dormant definitions; transaction " + tx));
+        lines.addAll(notes);
+        return lines;
+    }
+
+    public List<String> rollback(String transaction) throws IOException {
+        String tx = runtime.documents().rollback(transaction);
+        // Rebuild after an explicit undo, which intentionally restores older revisions.
+        List<String> errors = runtime.npcs().reloadAfterRollback();
+        List<String> notes = catalogs(List.of(tx), true);
+        if (!errors.isEmpty()) throw new IOException("Rollback stored; reload failed: " + String.join("; ", errors));
+        List<String> lines = new ArrayList<>(List.of("Rolled back; inverse transaction " + tx));
+        lines.addAll(notes);
+        return lines;
     }
     /**
      * Reloads the shops, GUIs, holograms, rigs and behaviors these committed transactions touched. The caller has already
@@ -182,5 +181,4 @@ public final class Administration {
         if (!change.empty()) runtime.catalogs().reload(change);
         return List.of();
     }
-    private static void count(String[] args, int expected) throws IOException { if (args.length != expected) throw new IOException("Incorrect argument count for " + args[0]); }
 }

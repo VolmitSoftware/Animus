@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.packet;
 
+import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.Load;
 import art.arcane.animus.core.metrics.PacketKind;
@@ -188,7 +189,8 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
 
     private void report(Throwable failure) {
         if (reportedFailure.compareAndSet(false, true))
-            plugin.getLogger().warning("Display packet failed: " + failure.getClass().getSimpleName() + ": " + failure.getMessage());
+            AnimusLog.shared().routine("viewers had display packet failures", String.valueOf(System.identityHashCode(this)),
+                    "Display packet failed: " + failure.getClass().getSimpleName() + ": " + failure.getMessage(), plugin.getLogger()::warning);
     }
 
     private static final class Session {

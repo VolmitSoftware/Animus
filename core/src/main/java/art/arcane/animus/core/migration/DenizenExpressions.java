@@ -244,6 +244,8 @@ final class DenizenExpressions {
     }
 
     private Result<Expr> fallback(Expr expr, String raw, Scope scope, Pending pending) {
+        // A flag test and a constant never fail, so their fallback is never used.
+        if (expr.flag() == null && expr.kind() == 'b' && (expr.text().equals("true") || expr.text().startsWith("has_flag("))) return Result.ok(expr);
         if (expr.flag() == null) return Result.fail("the || fallback works only on a flag read; other tags have no unset value");
         Result<Expr> value = value(raw, scope, pending);
         if (value.failed()) return value;
@@ -257,15 +259,15 @@ final class DenizenExpressions {
         String label = "tag " + tag.label();
         if (base.isEmpty() && first.parameter().isPresent()) return definition(first.parameter().get(), scope);
         return switch (base) {
-            case "player" -> first.parameter().isPresent() ? Result.fail("tags of another player have no Animus expression") : player(parts, scope);
+            case "player" -> first.parameter().isPresent() ? Result.fail("tags of another player have no Animus expression") : player(parts, scope, pending);
             case "npc" -> {
                 if (first.parameter().isPresent()) yield Result.fail("tags of another NPC have no Animus expression");
                 if (scope.server) yield Result.fail(label + " needs an NPC; server behaviors have none");
-                yield npc(parts);
+                yield npc(parts, scope, pending);
             }
-            case "server" -> server(parts);
+            case "server" -> server(parts, scope, pending);
             case "util" -> util(parts, scope, pending);
-            case "context" -> context(parts, scope);
+            case "context" -> context(parts, scope, pending);
             case "element" -> {
                 if (first.parameter().isEmpty()) yield Result.fail("element without a value");
                 Result<Expr> value = value(first.parameter().get(), scope, pending);
@@ -320,24 +322,44 @@ final class DenizenExpressions {
         return Result.ok(new Step(Expr.of(text.toString(), 'a'), 1));
     }
 
-    private Result<Step> flagRead(String scope, Part part, int next) {
+    private Result<Step> flagRead(String scope, Part part, int next, Scope from, Pending pending) {
         if (part.parameter().isEmpty()) return Result.fail("flag tag without a name");
-        Optional<String> name = DenizenConverter.flagName(part.parameter().get());
-        if (part.parameter().get().contains("<") || name.isEmpty()) return Result.fail("flag name " + part.parameter().get() + " cannot be an Animus flag name");
-        String prefix = "flag(" + quote(scope) + ", " + quote(name.get()) + ", ";
-        if (part.name().equalsIgnoreCase("has_flag")) return Result.ok(new Step(Expr.of("has_flag(" + quote(scope) + ", " + quote(name.get()) + ")", 'b'), next));
+        Result<String> name = flagNameExpression(part.parameter().get(), from, pending);
+        if (name.failed()) return Result.fail(name.reason());
+        String prefix = "flag(" + quote(scope) + ", " + name.value() + ", ";
+        if (part.name().equalsIgnoreCase("has_flag")) return Result.ok(new Step(Expr.of("has_flag(" + quote(scope) + ", " + name.value() + ")", 'b'), next));
         return Result.ok(new Step(new Expr(prefix + "'')", 'a', prefix), next));
+    }
+
+    /**
+     * A flag name as an expression: a literal Animus flag name, or written text joined with tags such as
+     * {@code npc_done_<npc.id>}, whose written parts are mapped as literal names are.
+     */
+    private Result<String> flagNameExpression(String raw, Scope scope, Pending pending) {
+        if (!raw.contains("<")) {
+            Optional<String> name = DenizenConverter.flagName(raw);
+            return name.isEmpty() ? Result.fail("flag name " + raw + " cannot be an Animus flag name") : Result.ok(quote(name.get()));
+        }
+        StringBuilder mapped = new StringBuilder();
+        for (DenizenArgs.Segment segment : DenizenArgs.segments(raw)) {
+            if (segment.tag()) { mapped.append('<').append(segment.text()).append('>'); continue; }
+            String lowered = segment.text().toLowerCase(Locale.ROOT);
+            if (!lowered.matches("[a-z0-9_.]*")) return Result.fail("flag name " + raw + " cannot be an Animus flag name");
+            mapped.append(lowered.replace('.', '-'));
+        }
+        Result<Expr> name = value(mapped.toString(), scope, pending);
+        return name.failed() ? Result.fail(name.reason()) : Result.ok(textual(name.value()));
     }
 
     private static Optional<String> attributeName(List<Part> parts, int index) {
         return index < parts.size() && parts.get(index).parameter().isEmpty() ? Optional.of(parts.get(index).name().toLowerCase(Locale.ROOT)) : Optional.empty();
     }
 
-    private Result<Step> player(List<Part> parts, Scope scope) {
+    private Result<Step> player(List<Part> parts, Scope scope, Pending pending) {
         if (parts.size() == 1) return Result.ok(new Step(Expr.of("player.uuid", 's'), 1));
         Part part = parts.get(1);
         String attribute = part.name().toLowerCase(Locale.ROOT);
-        if (attribute.equals("flag") || attribute.equals("has_flag")) return flagRead("player", part, 2);
+        if (attribute.equals("flag") || attribute.equals("has_flag")) return flagRead("player", part, 2, scope, pending);
         if (attribute.equals("has_permission")) return Result.fail("has_permission works only as an if condition");
         if (part.parameter().isPresent()) return Result.fail("tag player." + attribute + " has no Animus expression");
         Optional<String> next = attributeName(parts, 2);
@@ -350,7 +372,7 @@ final class DenizenExpressions {
             case "xp_level", "level" -> fact("player.level", 'n', 2);
             case "gamemode" -> fact("player.gamemode", 's', 2);
             case "is_op" -> fact("player.op", 'b', 2);
-            case "is_sneaking" -> fact("player.sneaking", 'b', 2);
+            case "is_sneaking" -> fact(scope.context.containsKey("sneaking") ? "context.sneaking" : "player.sneaking", 'b', 2);
             case "is_flying" -> fact("player.flying", 'b', 2);
             case "is_online" -> fact("player.online", 'b', 2);
             case "world" -> fact("player.world", 's', next.isPresent() && next.get().equals("name") ? 3 : 2);
@@ -372,11 +394,11 @@ final class DenizenExpressions {
         return fact(root + ".location", 's', 2);
     }
 
-    private Result<Step> npc(List<Part> parts) {
+    private Result<Step> npc(List<Part> parts, Scope scope, Pending pending) {
         if (parts.size() == 1) return Result.ok(new Step(Expr.of("npc.uuid", 's'), 1));
         Part part = parts.get(1);
         String attribute = part.name().toLowerCase(Locale.ROOT);
-        if (attribute.equals("flag") || attribute.equals("has_flag")) return flagRead("npc", part, 2);
+        if (attribute.equals("flag") || attribute.equals("has_flag")) return flagRead("npc", part, 2, scope, pending);
         if (part.parameter().isPresent()) return Result.fail("tag npc." + attribute + " has no Animus expression");
         Optional<String> next = attributeName(parts, 2);
         return switch (attribute) {
@@ -391,11 +413,11 @@ final class DenizenExpressions {
         };
     }
 
-    private Result<Step> server(List<Part> parts) {
+    private Result<Step> server(List<Part> parts, Scope scope, Pending pending) {
         if (parts.size() == 1) return Result.fail("tag server has no Animus expression");
         Part part = parts.get(1);
         String attribute = part.name().toLowerCase(Locale.ROOT);
-        if (attribute.equals("flag") || attribute.equals("has_flag")) return flagRead("global", part, 2);
+        if (attribute.equals("flag") || attribute.equals("has_flag")) return flagRead("global", part, 2, scope, pending);
         Optional<String> next = attributeName(parts, 2);
         return switch (attribute) {
             case "online_players" -> next.isPresent() && (next.get().equals("size") || next.get().equals("count"))
@@ -446,11 +468,18 @@ final class DenizenExpressions {
 
     private static final Map<String, String> CONTEXT_KINDS = Map.of("args", "l", "first", "b");
 
-    private Result<Step> context(List<Part> parts, Scope scope) {
+    private Result<Step> context(List<Part> parts, Scope scope, Pending pending) {
         if (parts.size() < 2 || parts.get(1).parameter().isPresent()) return Result.fail("tag context has no Animus expression");
         String key = parts.get(1).name().toLowerCase(Locale.ROOT);
         String mapped = scope.context.get(key);
         if (mapped == null) return Result.fail("context." + key + " is not passed by the Animus trigger for this event");
+        // The clicked entity of an NPC event is always the NPC, and Denizen writes the hand as mainhand or offhand.
+        if (key.equals("entity") && mapped.equals("npc")) {
+            if (attributeName(parts, 2).filter("is_npc"::equals).isPresent()) return fact("true", 'b', 3);
+            Result<Step> npc = npc(parts.subList(1, parts.size()), scope, pending);
+            return npc.failed() ? npc : Result.ok(new Step(npc.value().expr(), npc.value().next() + 1));
+        }
+        if (key.equals("hand") && mapped.equals("hand")) return fact("replace(context.hand, '_', '')", 's', 2);
         int next = 2;
         if ((key.equals("origin_world") || key.equals("destination_world")) && attributeName(parts, 2).filter("name"::equals).isPresent()) next = 3;
         String kind = CONTEXT_KINDS.getOrDefault(mapped, "s");

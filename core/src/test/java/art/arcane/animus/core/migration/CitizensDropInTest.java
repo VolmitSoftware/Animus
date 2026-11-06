@@ -1,5 +1,6 @@
 package art.arcane.animus.core.migration;
 
+import java.util.Map;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.CatalogChange;
 import art.arcane.animus.core.RuntimeEnvironment;
@@ -68,7 +69,7 @@ class CitizensDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             assertTrue(dropIn(store, npcs).startupNotice().isEmpty());
-            IOException missing = assertThrows(IOException.class, () -> dropIn(store, npcs).execute(new String[0]));
+            IOException missing = assertThrows(IOException.class, () -> dropIn(store, npcs).preview("reject", Optional.empty(), Map.of()));
             assertTrue(missing.getMessage().contains("No Citizens save found"));
         }
     }
@@ -111,45 +112,45 @@ class CitizensDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
-            String staged = joined(flow.execute(new String[0]));
+            String staged = joined(flow.preview("reject", Optional.empty(), Map.of()));
             assertTrue(staged.contains("3 NPCs, 3 valid"), staged);
-            assertTrue(staged.contains("npcs/world-r0_-1/ 1") && staged.contains("npcs/world-r0_0/ 1") && staged.contains("npcs/world_nether-r0_0/ 1"), staged);
+            assertTrue(staged.contains("Folders: npcs/world/ 2, npcs/world_nether/ 1"), staged);
             assertTrue(staged.contains("1 shops"), staged);
             assertTrue(staged.contains("Off until accepted: spawn 2, patrols 0, combat 1, riding 1, shops 1, builder 0"), staged);
-            assertTrue(staged.contains("Kept, not run: denizen 1, waypoints 1"), staged);
+            assertTrue(staged.contains("Kept, not run: denizen 1\n") || staged.endsWith("Kept, not run: denizen 1"), staged);
             assertTrue(staged.contains("1 .schem/.nbt files") && staged.contains("1 old .schematic"), staged);
             assertTrue(staged.endsWith("Next: /animus import citizens apply"), staged);
             assertTrue(npcs.all().isEmpty());
             assertTrue(flow.startupNotice().orElseThrow().contains("staged and not applied"));
 
             citizens.set(true);
-            IOException refused = assertThrows(IOException.class, () -> flow.execute(new String[]{"apply"}));
+            IOException refused = assertThrows(IOException.class, () -> flow.applyStaged());
             assertTrue(refused.getMessage().contains("Citizens is still enabled"));
             citizens.set(false);
 
-            String applied = joined(flow.execute(new String[]{"apply"}));
+            String applied = joined(flow.applyStaged());
             assertTrue(applied.contains("Shops installed"), applied);
             assertEquals(3, npcs.all().size());
             NpcDefinition guard = npcs.find("citizens-1").orElseThrow();
-            assertEquals("npcs/world-r0_-1/citizens-1.json", guard.path());
+            assertEquals("npcs/world/citizens-1.json", guard.path());
             assertFalse(guard.spawned());
             assertEquals(10.5, guard.json().getAsJsonObject("position").get("x").getAsDouble());
             assertNotNull(store.read("shops/dtltraders/bakery.json"));
             assertTrue(Files.exists(store.resolve("schematics/hut.schem")));
-            assertThrows(IOException.class, () -> flow.execute(new String[0]));
+            assertThrows(IOException.class, () -> flow.preview("reject", Optional.empty(), Map.of()));
 
-            String review = joined(flow.execute(new String[]{"review"}));
+            String review = joined(flow.reviewApplied());
             assertTrue(review.contains("spawn: 2 waiting") && review.contains("combat: 1 waiting") && review.contains("riding: 1 waiting")
                     && review.contains("shops: 1 waiting") && review.contains("builder: 0 waiting"), review);
-            assertTrue(review.contains("waypoints 1") && review.contains("denizen 1"), review);
+            assertTrue(review.contains("Kept but not run: denizen 1") && !review.contains("waypoints 1"), "an empty waypoint set is not a kept route: " + review);
 
-            String combat = joined(flow.execute(new String[]{"accept", "combat"}));
+            String combat = joined(flow.acceptCategories(List.of("combat")));
             assertTrue(combat.contains("combat 1"), combat);
             JsonObject armed = npcs.find("citizens-1").orElseThrow().json().getAsJsonObject("modules").getAsJsonObject("animus:combat");
             assertTrue(armed.get("enabled").getAsBoolean() && armed.get("reviewAccepted").getAsBoolean());
             assertFalse(npcs.find("citizens-1").orElseThrow().spawned());
 
-            flow.execute(new String[]{"accept", "all"});
+            flow.acceptCategories(List.of("all"));
             assertTrue(npcs.find("citizens-1").orElseThrow().spawned());
             assertTrue(npcs.find("citizens-2").orElseThrow().spawned());
             assertFalse(npcs.find("citizens-3").orElseThrow().spawned(), "Citizens had it despawned");
@@ -164,14 +165,14 @@ class CitizensDropInTest {
             citizens.set(false);
             assertTrue(DefinitionSpec.spawned(npcs.find("citizens-1").orElseThrow()));
 
-            String rolledBack = joined(flow.execute(new String[]{"rollback"}));
+            String rolledBack = joined(flow.rollbackApplied());
             assertTrue(rolledBack.contains("undone"), rolledBack);
             assertTrue(npcs.all().isEmpty());
-            assertNull(store.read("npcs/world-r0_-1/citizens-1.json"));
+            assertNull(store.read("npcs/world/citizens-1.json"));
             assertNull(store.read("shops/dtltraders/bakery.json"));
             assertFalse(Files.exists(store.resolve("schematics/hut.schem")));
 
-            flow.execute(new String[]{"apply"});
+            flow.applyStaged();
             assertEquals(3, npcs.all().size());
         }
     }
@@ -200,13 +201,13 @@ class CitizensDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs).combatLimit(1);
-            flow.execute(new String[0]);
-            flow.execute(new String[]{"apply"});
-            String review = joined(flow.execute(new String[]{"review"}));
+            flow.preview("reject", Optional.empty(), Map.of());
+            flow.applyStaged();
+            String review = joined(flow.reviewApplied());
             assertTrue(review.contains("Combat capacity: 2 guards; at most 1 fight or scan at once ([combat] maximumNpcs)"), review);
-            String accepted = joined(flow.execute(new String[]{"accept", "combat"}));
+            String accepted = joined(flow.acceptCategories(List.of("combat")));
             assertTrue(accepted.contains("Combat: 2 guards accepted; at most 1 fight or scan at once ([combat] maximumNpcs)"), accepted);
-            String roomy = joined(dropIn(store, npcs).combatLimit(256).execute(new String[]{"review"}));
+            String roomy = joined(dropIn(store, npcs).combatLimit(256).reviewApplied());
             assertFalse(roomy.contains("fight or scan at once"), roomy);
         }
     }
@@ -226,9 +227,21 @@ class CitizensDropInTest {
                 """);
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
-            String preview = joined(dropIn(store, npcs).execute(new String[0]));
-            assertTrue(preview.contains("1 NPCs, 1 valid") && preview.contains("1 mob skins kept for review"), preview);
+            String preview = joined(dropIn(store, npcs).preview("reject", Optional.empty(), Map.of()));
+            assertTrue(preview.contains("1 NPCs, 1 valid") && preview.contains("1 skins on non-player NPCs kept unused (Citizens shows skins only on player NPCs)"), preview);
         }
+    }
+
+    /** Citizens writes a waypoints trait with only its provider, and no points, for most NPCs; there is no route to keep. */
+    @Test void anEmptyWaypointSetIsNotCountedAsKeptButNotRun() throws IOException {
+        JsonObject empty = JsonDocuments.object("""
+                {"modules": {"citizens:review": {"waypoints": {"provider": "linear"}}}}""");
+        JsonObject guided = JsonDocuments.object("""
+                {"modules": {"citizens:review": {"waypoints": {"provider": "guided", "guided": {"distance": 12.0}}}}}""");
+        JsonObject points = JsonDocuments.object("""
+                {"modules": {"citizens:review": {"waypoints": {"provider": "linear", "linear": {"points": [{"location": {"world": "w", "x": 1, "y": 2, "z": 3}}]}}}}}""");
+        assertEquals(java.util.Map.of(), CitizensDropIn.preserved(List.of(empty, guided)));
+        assertEquals(java.util.Map.of("waypoints", 1), CitizensDropIn.preserved(List.of(empty, guided, points)));
     }
 
     @Test void worldMappingsAndModesPassThroughToTheReviewedPlan() throws Exception {
@@ -237,13 +250,13 @@ class CitizensDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
-            String staged = joined(flow.execute(new String[]{"duplicate", "copy", "world=survival"}));
-            assertTrue(staged.contains("npcs/survival-r0_-1/ 1") && staged.contains("npcs/survival-r0_0/ 1") && staged.contains("Application duplicate"), staged);
-            flow.execute(new String[]{"apply"});
+            String staged = joined(flow.preview("duplicate", Optional.of("copy"), Map.of("world", "survival")));
+            assertTrue(staged.contains("Folders: npcs/survival/ 2, npcs/world_nether/ 1") && staged.contains("Application duplicate"), staged);
+            flow.applyStaged();
             assertEquals("copy-copy", npcs.find("citizens-1-copy").orElseThrow().group());
             assertEquals("survival", npcs.find("citizens-1-copy").orElseThrow().json().getAsJsonObject("position").get("world").getAsString());
-            assertThrows(IOException.class, () -> flow.execute(new String[]{"accept", "everything"}));
-            assertThrows(IOException.class, () -> flow.execute(new String[]{"bogus"}));
+            assertThrows(IOException.class, () -> flow.acceptCategories(List.of("everything")));
+            assertThrows(IOException.class, () -> flow.preview("bogus", Optional.empty(), Map.of()));
             assertTrue(JsonDocuments.object(store.read(CitizensDropIn.STATE)).get("state").getAsString().equals("applied"));
         }
     }
@@ -277,13 +290,13 @@ class CitizensDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
-            String staged = joined(flow.execute(new String[0]));
+            String staged = joined(flow.preview("reject", Optional.empty(), Map.of()));
             assertTrue(staged.contains("Converted: 1 patrol routes (2 points), look-close on 1 NPCs, 1 text and 1 command behaviors"), staged);
             assertTrue(staged.contains("Off until accepted: spawn 1, patrols 1, combat 0"), staged);
             assertTrue(staged.contains("Kept, not run: nothing"), staged);
             assertTrue(staged.contains("Commands: 1 behaviors stay denied until listed in config.toml [behaviors.actions] commandBehaviors (for example citizens:commands-5)"), staged);
 
-            String applied = joined(flow.execute(new String[]{"apply"}));
+            String applied = joined(flow.applyStaged());
             assertTrue(applied.contains("behaviors/citizens/ and load now"), applied);
             assertNotNull(store.read("behaviors/citizens/text-5.json"));
             assertNotNull(store.read("behaviors/citizens/commands-5.json"));
@@ -293,24 +306,71 @@ class CitizensDropInTest {
             assertFalse(modules.getAsJsonObject("animus:navigation").get("enabled").getAsBoolean());
             assertTrue(modules.getAsJsonObject("animus:look-close").get("enabled").getAsBoolean(), "look-close needs no review of its own");
 
-            String review = joined(flow.execute(new String[]{"review"}));
+            String review = joined(flow.reviewApplied());
             assertTrue(review.contains("patrols: 1 waiting"), review);
             assertTrue(review.contains("Commands: 1 behaviors stay denied"), review);
 
-            String spawn = joined(flow.execute(new String[]{"accept", "spawn"}));
+            String spawn = joined(flow.acceptCategories(List.of("spawn")));
             assertTrue(spawn.contains("spawn 1"), spawn);
             assertFalse(npcs.find("citizens-5").orElseThrow().json().getAsJsonObject("modules").getAsJsonObject("animus:navigation").get("enabled").getAsBoolean(),
                     "spawning leaves the patrol off");
-            String patrols = joined(flow.execute(new String[]{"accept", "patrols"}));
+            String patrols = joined(flow.acceptCategories(List.of("patrols")));
             assertTrue(patrols.contains("patrols 1"), patrols);
             JsonObject navigation = npcs.find("citizens-5").orElseThrow().json().getAsJsonObject("modules").getAsJsonObject("animus:navigation");
             assertTrue(navigation.get("enabled").getAsBoolean() && navigation.get("reviewAccepted").getAsBoolean());
 
-            flow.execute(new String[]{"rollback"});
+            flow.rollbackApplied();
             assertTrue(npcs.all().isEmpty());
             assertNull(store.read("behaviors/citizens/text-5.json"));
             assertNull(store.read("behaviors/citizens/commands-5.json"));
         }
+    }
+
+    /** The preview names the namespaces command behaviors need; accept commands adds them to config.toml, and rollback takes them out. */
+    @Test void acceptCommandsAllowsTheImportedCommandNamespacesAndRollbackRemovesThem() throws Exception {
+        Files.createDirectories(root.resolve("plugins/Animus/imports"));
+        Files.writeString(root.resolve("plugins/Animus/imports/saves.yml"), PATROLS);
+        Path config = root.resolve("plugins/Animus/config.toml");
+        String original = """
+                # Server notes stay.
+                statusMessage = "Hello"
+
+                [behaviors.actions]
+                # Who may run commands.
+                commandNamespaces = ["quests"]
+                actionsPerTick = 64
+                """;
+        Files.writeString(config, original);
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            CitizensDropIn flow = dropIn(store, npcs);
+            String staged = joined(flow.preview("reject", Optional.empty(), Map.of()));
+            assertTrue(staged.contains("needs command namespace citizens") && staged.contains("accept commands"), staged);
+            flow.applyStaged();
+            String review = joined(flow.reviewApplied());
+            assertTrue(review.contains("accept commands"), review);
+            assertEquals(original, Files.readString(config), "nothing changes before accept commands");
+
+            String accepted = joined(flow.acceptCategories(List.of("commands")));
+            assertTrue(accepted.contains("commandNamespaces") && accepted.contains("citizens"), accepted);
+            assertTrue(flow.settingsChanged());
+            String allowed = Files.readString(config);
+            assertTrue(allowed.contains("commandNamespaces = [\"quests\", \"citizens\"]"), allowed);
+            assertTrue(allowed.contains("# Server notes stay.") && allowed.contains("# Who may run commands.") && allowed.contains("actionsPerTick = 64"), allowed);
+            assertEquals(List.of("quests", "citizens"), art.arcane.animus.core.config.PluginSettings.parse(allowed, config).behaviors().actions().commandNamespaces());
+            assertTrue(joined(flow.acceptCategories(List.of("commands"))).contains("already allowed"));
+
+            flow.rollbackApplied();
+            assertEquals(original, Files.readString(config), "rollback takes out only what accept added");
+        }
+    }
+
+    @Test void acceptCommandsAddsTheActionsTableWhenConfigHasNone() throws Exception {
+        assertEquals("statusMessage = \"Hi\"\n\n[behaviors.actions]\ncommandNamespaces = [\"citizens\", \"denizen\"]\n",
+                CommandAllowList.with("statusMessage = \"Hi\"\n", List.of("citizens", "denizen")));
+        assertEquals("[behaviors.actions]\ncommandNamespaces = []\nqueuedActions = 9\n",
+                CommandAllowList.with("[behaviors.actions]\ncommandNamespaces = [\n  \"citizens\",\n]\nqueuedActions = 9\n", List.of()));
+        assertEquals(List.of("citizens", "denizen"), CommandAllowList.namespaces(List.of("denizen:a", "citizens:commands-1", "denizen:b")));
     }
 
     @Test void importCommandsReloadTheCatalogsTheyWriteAndForgetDeletedBehaviors() throws Exception {
@@ -323,16 +383,16 @@ class CitizensDropInTest {
             runtime.importHost(new CitizensDropIn.Host(Optional.of(root.resolve("plugins")), citizens::get, () -> false, () -> false));
             runtime.catalogs((CatalogChange change, java.util.function.Consumer<String> problems) -> reloads.add(change));
             Administration admin = new Administration(runtime);
-            admin.execute(new String[]{"import", "citizens"});
+            admin.citizens((CitizensDropIn dropIn) -> dropIn.preview("reject", Optional.empty(), Map.of()));
             assertTrue(reloads.isEmpty(), "staging installs nothing");
-            admin.execute(new String[]{"import", "citizens", "apply"});
+            admin.citizens(CitizensDropIn::applyStaged);
             CatalogChange applied = reloads.getLast();
             assertTrue(applied.kinds().containsAll(Set.of(DocumentKind.SHOP, DocumentKind.BEHAVIOR)), applied.toString());
             assertFalse(applied.kinds().contains(DocumentKind.NPC), "the import already reloaded NPCs");
             assertFalse(applied.rollback());
-            admin.execute(new String[]{"import", "citizens", "accept", "all"});
+            admin.citizens((CitizensDropIn dropIn) -> dropIn.acceptCategories(List.of("all")));
             reloads.clear();
-            admin.execute(new String[]{"import", "citizens", "rollback"});
+            admin.citizens(CitizensDropIn::rollbackApplied);
             CatalogChange rolledBack = reloads.getLast();
             assertTrue(rolledBack.rollback());
             assertTrue(rolledBack.kinds().containsAll(Set.of(DocumentKind.SHOP, DocumentKind.BEHAVIOR)), rolledBack.toString());

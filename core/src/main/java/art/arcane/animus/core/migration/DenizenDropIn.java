@@ -2,7 +2,7 @@ package art.arcane.animus.core.migration;
 
 import art.arcane.animus.core.behavior.catalog.ServerBehaviorList;
 import art.arcane.animus.core.storage.JsonDocuments;
-import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -12,7 +12,6 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -57,7 +56,7 @@ final class DenizenDropIn {
         JsonObject report = preview.report();
         lines.add("Denizen " + found.label() + ": " + scripts(report) + " scripts; " + preview.behaviors() + " behaviors for " + preview.bindings() + " NPCs; "
                 + preview.flagsImported() + " flag values imported, " + preview.flagsPreserved() + " kept; " + preview.preserved() + " items kept with reasons; report " + part.get("report").getAsString());
-        commandLine(report).ifPresent(lines::add);
+        commandLine(report, store).ifPresent(lines::add);
         return lines;
     }
 
@@ -67,15 +66,29 @@ final class DenizenDropIn {
         return total;
     }
 
-    static Optional<String> commandLine(JsonObject report) {
+    static Optional<String> commandLine(JsonObject report, DocumentStore store) throws IOException {
         JsonArray commands = report.getAsJsonArray("commandBehaviors");
         if (commands == null || commands.isEmpty()) return Optional.empty();
+        List<String> ids = new ArrayList<>();
+        for (JsonElement id : commands) ids.add(id.getAsString());
         return Optional.of("Denizen commands: " + commands.size() + " behaviors use animus:command and stay denied until listed in config.toml [behaviors.actions] commandBehaviors (for example "
-                + commands.get(0).getAsString() + "), or commandNamespaces = [\"denizen\"] for all of them; read each one in behaviors/denizen/ first, then restart");
+                + commands.get(0).getAsString() + "), or commandNamespaces = [\"denizen\"] for all of them; read each one in behaviors/denizen/ first; "
+                + CommandAllowList.advice(store, CommandAllowList.namespaces(ids)));
+    }
+
+    /** The applied import's behaviors that run server commands; none when no Denizen import is applied. */
+    static List<String> commandBehaviors(DocumentStore store, JsonObject state) throws IOException {
+        if (!applied(state)) return List.of();
+        String report = store.read(state.getAsJsonObject("denizen").get("report").getAsString());
+        if (report == null) return List.of();
+        JsonArray commands = JsonDocuments.object(report).getAsJsonArray("commandBehaviors");
+        List<String> ids = new ArrayList<>();
+        if (commands != null) for (JsonElement id : commands) ids.add(id.getAsString());
+        return ids;
     }
 
     /** Applies the staged import, binding behaviors to the installed NPCs. Adds its transaction to {@code transactions}. */
-    static List<String> apply(DocumentStore store, JsonObject state, Collection<NpcDefinition> installed, JsonArray transactions) throws IOException {
+    static List<String> apply(DocumentStore store, JsonObject state, NpcRepository.Installed installed, JsonArray transactions) throws IOException {
         JsonObject part = state.getAsJsonObject("denizen");
         DenizenImporter.Applied applied = new DenizenImporter().apply(store, part.get("importId").getAsString(), installed);
         transactions.add(applied.transaction());

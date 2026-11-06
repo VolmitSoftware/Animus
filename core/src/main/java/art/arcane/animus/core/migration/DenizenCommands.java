@@ -38,6 +38,9 @@ final class DenizenCommands {
 
     DenizenCommands(DenizenConverter converter, DenizenExpressions expressions) { this.converter = converter; this.expressions = expressions; }
 
+    /** The click-time condition of an NPC event and the {@code determine cancelled} line it reaches. */
+    record Consume(Item item, String condition) {}
+
     /** Converted steps, or the reason the command is kept. */
     record Converted(List<JsonObject> steps, String reason) {
         static Converted of(JsonObject... steps) { return new Converted(List.of(steps), ""); }
@@ -107,6 +110,13 @@ final class DenizenCommands {
                 case "determine" -> {
                     boolean passive = false;
                     for (Arg arg : command.args()) if (arg.is("passively")) passive = true;
+                    if (item == scope.cancel) {
+                        converter.outcome(scope, item, "command", "determine", true, "");
+                        if (passive) continue;
+                        steps.add(plain("return"));
+                        preserveItems(scope, items, index + 1, "never runs: after determine");
+                        return steps;
+                    }
                     if (passive) { converter.outcome(scope, item, "command", "determine", false, "determine passively sets a value and goes on; a routine returns only by ending"); continue; }
                     steps.addAll(determine(item, command, scope));
                     preserveItems(scope, items, index + 1, "never runs: after determine");
@@ -119,6 +129,12 @@ final class DenizenCommands {
                     index = end - 1;
                 }
                 case "else" -> preserveTree(scope, item, "else without a matching if");
+                case "ratelimit" -> {
+                    if (item.children().isPresent()) { preserveTree(scope, item, "no Animus equivalent for the ratelimit block"); continue; }
+                    Converted converted = ratelimit(item, command, scope);
+                    converter.outcome(scope, item, "command", "ratelimit", converted.reason().isEmpty(), converted.reason());
+                    steps.addAll(converted.steps());
+                }
                 case "repeat", "foreach", "while" -> {
                     if (item.children().isEmpty()) steps.addAll(control(item, command, scope));
                     else steps.addAll(loop(item, command, scope));
@@ -145,6 +161,71 @@ final class DenizenCommands {
 
     void preserveItems(Scope scope, List<Item> items, int from, String reason) {
         for (int index = from; index < items.size(); index++) preserveTree(scope, items.get(index), reason);
+    }
+
+    /**
+     * The {@code consume} condition of an NPC click event: the event's switch guards and the top-level
+     * {@code if ...: stop} guards before a top-level {@code determine cancelled}, all of which hold when the click
+     * reaches it. Other lines in between run without deciding anything. Empty when the event never cancels or when
+     * something before the cancel cannot be decided as the click arrives: a block, a wait, or a guard that reads
+     * definitions, runs a procedure or checks a permission.
+     */
+    Optional<Consume> consume(List<Item> items, List<Cond> guards, Scope scope) {
+        List<String> parts = new ArrayList<>();
+        for (Cond guard : guards) {
+            if (DenizenExpressions.capabilities(guard)) return Optional.empty();
+            parts.add(DenizenExpressions.render(guard));
+        }
+        for (int index = 0; index < items.size(); index++) {
+            Item item = items.get(index);
+            Command command = DenizenArgs.command(item.text());
+            if (command.name().equals("determine")) {
+                boolean cancelled = false;
+                for (Arg arg : command.args()) {
+                    if (arg.is("cancelled")) cancelled = true;
+                    else if (!arg.is("passively")) return Optional.empty();
+                }
+                if (!cancelled || item.children().isPresent()) return Optional.empty();
+                return Optional.of(new Consume(item, parts.isEmpty() ? "true" : String.join(" && ", parts)));
+            }
+            if (command.name().equals("wait")) return Optional.empty();
+            if (item.children().isEmpty()) continue;
+            if (!command.name().equals("if") || index + 1 < items.size() && DenizenArgs.command(items.get(index + 1).text()).name().equals("else")) return Optional.empty();
+            List<Item> body = item.children().get().items();
+            if (body.isEmpty() || !DenizenArgs.command(body.getLast().text()).name().equals("stop") || body.getLast().children().isPresent()) return Optional.empty();
+            List<String> tokens = new ArrayList<>();
+            DenizenArgs.split(item.text(), tokens, new ArrayList<>());
+            Scope probe = Scope.of(new DenizenConverter.Doc(false), false, scope.container, Optional.empty(), -1, scope.context);
+            Pending pending = new Pending();
+            Result<Cond> condition = expressions.condition(tokens.subList(1, tokens.size()), probe, pending);
+            if (condition.failed() || !pending.steps.isEmpty() || !probe.doc.variables.isEmpty() || !probe.doc.routines.isEmpty() || DenizenExpressions.capabilities(condition.value())) return Optional.empty();
+            Cond stops = condition.value();
+            String rendered = DenizenExpressions.render(stops);
+            if (rendered.equals("true")) return Optional.empty();
+            if (rendered.equals("false") || rendered.equals("!(true)")) continue;
+            parts.add(stops instanceof DenizenExpressions.Not not ? DenizenExpressions.render(not.inner()) : "!(" + rendered + ")");
+        }
+        return Optional.empty();
+    }
+
+    /** {@code ratelimit <player> 2s}: a per-player flag that expires after the window, checked and set where the line runs. Expiry counts whole seconds. */
+    private Converted ratelimit(Item item, Command command, Scope scope) {
+        if (command.args().size() != 2 || !command.args().getFirst().prefix().isEmpty() || !playerTarget(command.args().getFirst().value()))
+            return Converted.kept("ratelimit keyed on anything but the player has no Animus equivalent");
+        OptionalLong ticks = DenizenArgs.ticks(raw(command.args().get(1)));
+        if (ticks.isEmpty()) return Converted.kept("ratelimit needs a literal duration");
+        long seconds = Math.max(1, (ticks.getAsLong() + 19) / 20);
+        if (seconds > 31_536_000) return Converted.kept("ratelimit longer than a year");
+        String flag = converter.ratelimitFlag(scope.container, item.line());
+        JsonObject guard = new JsonObject();
+        guard.addProperty("type", "condition");
+        guard.addProperty("expression", "has_flag('player', " + DenizenExpressions.quote(flag) + ")");
+        guard.add("then", plain("return"));
+        JsonObject arguments = new JsonObject();
+        arguments.addProperty("name", flag);
+        arguments.addProperty("scope", "player");
+        arguments.addProperty("expireSeconds", seconds);
+        return Converted.of(guard, action("animus:set-flag", arguments));
     }
 
     /** {@code determine} ends a task or procedure with its value; elsewhere it would change an event, so it is kept and the routine still ends. */
@@ -410,6 +491,7 @@ final class DenizenCommands {
             case "look" -> scope.server ? Converted.kept(DenizenConverter.NO_NPC) : look(command);
             case "walk" -> scope.server ? Converted.kept(DenizenConverter.NO_NPC) : walk(command);
             case "equip" -> scope.server ? Converted.kept(DenizenConverter.NO_NPC) : equip(command);
+            case "trait" -> scope.server ? Converted.kept(DenizenConverter.NO_NPC) : trait(command);
             case "playsound" -> sound(command, scope);
             case "playeffect" -> particle(command, scope);
             case "actionbar" -> actionbar(command, scope, pending);
@@ -704,13 +786,55 @@ final class DenizenCommands {
                 default -> { return Converted.kept("argument " + arg.prefix() + ": has no Animus equivalent"); }
             }
         }
+        if (name.isPresent() && name.get().contains("<")) return dynamic(name.get(), path, save, positional, named, scope, pending);
         Container task;
         if (name.isEmpty() && path.isPresent() && scope.container.type().equals("task")) task = scope.container;
         else {
-            if (name.isEmpty() || name.get().contains("<")) return Converted.kept("running a computed script has no Animus equivalent");
+            if (name.isEmpty()) return Converted.kept("running a computed script has no Animus equivalent");
             task = converter.containers.get(name.get().toLowerCase(Locale.ROOT));
         }
         if (task == null) return Converted.kept("no script named " + name.orElse(""));
+        return callTask(task, path, save, positional, named, scope, pending);
+    }
+
+    /**
+     * {@code run <npc.flag[name]>}: the script the flag names, chosen when the line runs from the task scripts that a
+     * {@code flag} command or an NPC's saved flags give that flag. A value naming none of them runs nothing.
+     */
+    private Converted dynamic(String raw, Optional<String> path, Optional<String> save, List<String> positional, Map<String, String> named, Scope scope, Pending pending) {
+        if (!raw.startsWith("<") || !raw.endsWith(">") || DenizenArgs.tagEnd(raw, 0) != raw.length() - 1) return Converted.kept("running a computed script has no Animus equivalent");
+        DenizenArgs.Tag tag = DenizenArgs.tag(raw.substring(1, raw.length() - 1));
+        String base = tag.base().toLowerCase(Locale.ROOT);
+        String flagScope = base.equals("npc") ? "npc" : base.equals("player") ? "player" : base.equals("server") ? "global" : "";
+        if (flagScope.isEmpty() || tag.parts().size() != 2 || tag.parts().getFirst().parameter().isPresent() || !tag.parts().get(1).name().equalsIgnoreCase("flag")
+                || tag.parts().get(1).parameter().isEmpty() || tag.parts().get(1).parameter().get().contains("<"))
+            return Converted.kept("running a computed script has no Animus equivalent");
+        if (flagScope.equals("npc") && scope.server) return Converted.kept(DenizenConverter.NO_NPC);
+        if (save.isPresent() || path.isPresent()) return Converted.kept("save: and path: of a script chosen by a flag have no Animus equivalent");
+        Optional<String> flag = DenizenConverter.flagName(tag.parts().get(1).parameter().get());
+        if (flag.isEmpty()) return Converted.kept("flag name " + tag.parts().get(1).parameter().get() + " cannot be an Animus flag name");
+        List<Container> tasks = new ArrayList<>();
+        for (String value : converter.flagValues(flagScope, flag.get())) {
+            Container task = converter.containers.get(value);
+            if (task != null && task.type().equals("task")) tasks.add(task);
+        }
+        if (tasks.isEmpty()) return Converted.kept("no script gives the flag " + flag.get() + " the name of a task script");
+        String read = "lower(text(flag(" + DenizenExpressions.quote(flagScope) + ", " + DenizenExpressions.quote(flag.get()) + ", '')))";
+        List<JsonObject> calls = new ArrayList<>();
+        for (Container task : tasks) {
+            Converted call = callTask(task, Optional.empty(), Optional.empty(), positional, named, scope, pending);
+            if (!call.reason().isEmpty()) return call;
+            calls.add(DenizenConverter.sequence(call.steps()));
+        }
+        Optional<JsonObject> chain = Optional.empty();
+        for (int index = tasks.size() - 1; index >= 0; index--) {
+            Cond chosen = new DenizenExpressions.Atom("same(" + read + ", " + DenizenExpressions.quote(tasks.get(index).name().toLowerCase(Locale.ROOT)) + ")");
+            chain = Optional.of(DenizenExpressions.build(chosen, calls.get(index), chain));
+        }
+        return Converted.of(chain.orElseThrow());
+    }
+
+    private Converted callTask(Container task, Optional<String> path, Optional<String> save, List<String> positional, Map<String, String> named, Scope scope, Pending pending) {
         if (!task.type().equals("task")) return Converted.kept("only task scripts can become routines");
         String key = path.map((String value) -> value.toLowerCase(Locale.ROOT)).orElse("script");
         Optional<Node> body = task.body().get(key);
@@ -770,6 +894,8 @@ final class DenizenCommands {
         if (as == null) return Converted.kept("execute needs as_server, as_op or as_player");
         String line = String.join(" ", words).trim();
         if (line.startsWith("/")) line = line.substring(1);
+        String[] split = line.split("\\s+");
+        if (split[0].equalsIgnoreCase("sentinel")) return sentinel(List.of(split).subList(1, split.length), scope);
         Result<Text> text = text(line, scope, pending, true, 1024);
         if (text.failed()) return Converted.kept(text.reason());
         if (!text.value().dynamic() && text.value().literal().isBlank()) return Converted.kept("command is empty");
@@ -777,6 +903,70 @@ final class DenizenCommands {
         action.text("command", text.value());
         if (as.equals("player")) action.put("as", "player");
         return Converted.of(action.node("animus:command"));
+    }
+
+    /**
+     * A {@code /sentinel} command. Sentinel is replaced by animus:combat, so the forms that act on the NPC now become
+     * combat-control on the behavior's own NPC: attacking, forgiving and guarding the triggering player. Target types and
+     * Sentinel settings are animus:combat settings, so those lines are kept with the reason.
+     */
+    private Converted sentinel(List<String> words, Scope scope) {
+        if (scope.server) return Converted.kept("sentinel acts on an NPC, and " + DenizenConverter.NO_NPC);
+        List<String> rest = new ArrayList<>();
+        for (int i = 0; i < words.size(); i++) {
+            String word = words.get(i);
+            String id = word.equalsIgnoreCase("--id") && i + 1 < words.size() ? words.get(++i)
+                    : word.toLowerCase(Locale.ROOT).startsWith("--id=") ? word.substring(5) : null;
+            if (id == null) { rest.add(word); continue; }
+            if (!id.equalsIgnoreCase("<npc.id>") && !id.equalsIgnoreCase("<npc>")) return Converted.kept("sentinel names another NPC with --id; animus:combat acts on the behavior's own NPC");
+        }
+        String operation = rest.isEmpty() ? "" : rest.getFirst().toLowerCase(Locale.ROOT);
+        List<String> arguments = rest.isEmpty() ? List.of() : rest.subList(1, rest.size());
+        boolean player = arguments.size() == 1 && triggeringPlayer(arguments.getFirst());
+        Action action = new Action();
+        switch (operation) {
+            case "addtarget", "removetarget" -> {
+                if (!player) return Converted.kept("sentinel " + String.join(" ", rest) + ": target types are animus:combat settings; set them in the NPC's animus:combat targets");
+                // Taking the player off the target list stops the attack on them; combat-control releases the current target.
+                action.put("operation", operation.equals("addtarget") ? "target" : "release");
+                if (operation.equals("addtarget")) action.put("target", "player");
+            }
+            case "forgive", "forgiveall" -> {
+                if (!arguments.isEmpty()) return Converted.kept("sentinel " + operation + " with arguments has no combat action");
+                action.put("operation", "release");
+            }
+            case "guard" -> {
+                if (!arguments.isEmpty() && !player) return Converted.kept("sentinel guard guards only the triggering player in Animus");
+                action.put("operation", "guard");
+                if (player) action.put("target", "player");
+            }
+            case "" -> { return Converted.kept("sentinel without a subcommand"); }
+            default -> { return Converted.kept("sentinel " + operation + " has no combat action; set it in the NPC's animus:combat settings"); }
+        }
+        return Converted.of(action.node("animus:combat-control"));
+    }
+
+    /** The player who triggered the behavior, as Sentinel's target syntax names them. */
+    private static boolean triggeringPlayer(String value) {
+        String lowered = value.toLowerCase(Locale.ROOT);
+        if (lowered.startsWith("player:")) lowered = lowered.substring(7);
+        return lowered.equals("<player>") || lowered.equals("<player.name>") || lowered.equals("<player.uuid>");
+    }
+
+    /** {@code trait state:true|false sentinel}: Sentinel on or off becomes the NPC's combat on or off. */
+    private Converted trait(Command command) {
+        String state = "toggle", name = null;
+        for (Arg arg : command.args()) {
+            if (arg.prefix().equals("state")) state = arg.value().toLowerCase(Locale.ROOT);
+            else if (arg.prefix().equals("to") && npcTarget(arg.value())) continue;
+            else if (arg.prefix().isEmpty() && name == null) name = arg.value().toLowerCase(Locale.ROOT);
+            else return Converted.kept("trait argument " + raw(arg) + " has no Animus equivalent");
+        }
+        if (!"sentinel".equals(name)) return Converted.kept("no Animus equivalent for the " + (name == null ? "unnamed" : name) + " trait");
+        if (!state.equals("true") && !state.equals("false")) return Converted.kept("trait toggles Sentinel without saying on or off; use state:true or state:false");
+        Action action = new Action();
+        action.put("operation", state.equals("true") ? "enable" : "disable");
+        return Converted.of(action.node("animus:combat-control"));
     }
 
     Optional<String> material(String value) {

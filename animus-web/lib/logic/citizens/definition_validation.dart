@@ -29,10 +29,11 @@ List<String> validateDefinition(JObject object) {
   _integer(object, 'revision', BigInt.one, javaLongMax, errors);
   final String uuid = _string(object, 'uuid', errors);
   if (!canonicalUuid(uuid)) errors.add(r'$.uuid: expected canonical UUID');
-  for (final String key in const <String>['id', 'group']) {
-    if (!RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$').hasMatch(_string(object, key, errors))) {
-      errors.add('\$.$key: expected 1–64 lowercase letters, digits, _ or -');
-    }
+  if (!RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$').hasMatch(_string(object, 'id', errors))) {
+    errors.add(r'$.id: expected 1–64 lowercase letters, digits, _ or -');
+  }
+  if (!RegExp(r'^(?:[a-z0-9][a-z0-9_-]{0,63}(?:/[a-z0-9][a-z0-9_-]{0,63}){0,7})?$').hasMatch(_string(object, 'group', errors))) {
+    errors.add(r'$.group: expected the folder under npcs/: empty, or up to 8 names of 1–64 lowercase letters, digits, _ or - joined by /');
   }
   if (!displayText(_string(object, 'name', errors))) errors.add('\$.name: expected at most $maxText characters without control characters');
   if (!RegExp(r'^[a-z0-9_]+:[a-z0-9_/]+$').hasMatch(_string(object, 'type', errors))) errors.add(r'$.type: expected namespace:type');

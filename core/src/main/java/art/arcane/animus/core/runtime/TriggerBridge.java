@@ -23,8 +23,9 @@ public final class TriggerBridge {
     }
     public void activated(UUID npc) { dispatcher.activated(npc); }
     public void removed(UUID npc) { dispatcher.deactivated(npc); }
-    public void interaction(UUID npc, UUID viewer, TriggerEvent.Action action, boolean preview) {
-        if (!preview) dispatcher.publish(new TriggerEvent.Interaction(npc, viewer, action));
+    /** Publishes an accepted click; true when a behavior consumes it, so default handling must skip it. Previews never fire or consume. */
+    public boolean interaction(UUID npc, UUID viewer, TriggerEvent.Action action, boolean sneaking, TriggerEvent.Hand hand, boolean preview) {
+        return !preview && dispatcher.click(new TriggerEvent.Interaction(npc, viewer, action, sneaking, hand));
     }
     public void waypoint(UUID npc, int waypoint) { dispatcher.publish(new TriggerEvent.Waypoint(npc, waypoint)); }
     public void animationFinished(UUID npc, String animation, int layer) { dispatcher.publish(new TriggerEvent.AnimationFinished(npc, animation, layer)); }

@@ -108,6 +108,8 @@ void main() {
       expect((modules['citizens:review']! as Map<String, Object?>).containsKey('skintrait'), isTrue);
       final Map<String, Object?> report = jsonDecode(preview.files['reports/32.json']!) as Map<String, Object?>;
       expect((report['fields']! as Map<String, Object?>)['/traits/skintrait/textureRaw'], 'UNSUPPORTED_PRESERVED');
+      expect((report['reasons']! as Map<String, Object?>)['/traits/skintrait/textureRaw'],
+          'Citizens draws skins only on player NPCs, so this frog never showed it; kept for when the NPC becomes a player');
       expect(CitizensReview.of(preview).conversions['skinsKept'], 1);
       final JObject skinnedMob = JObject()
         ..addString('type', 'minecraft:frog')
@@ -272,11 +274,11 @@ void main() {
     });
 
     test('group folders', () {
-      expect(citizensGroup('World Nether', JInt.of(-1), JInt.of(600)), 'world-nether-r-1_1');
-      expect(citizensGroup('__spawn__', null, null), 'spawn');
-      expect(citizensGroup(r'$$$', JInt.of(0), JInt.of(0)), 'citizens');
-      expect(citizensGroup('world', const JString('1'), JInt.of(0)), 'world');
-      expect(citizensGroup('a' * 80, null, null).length, 48);
+      expect(citizensGroup('World Nether'), 'world-nether');
+      expect(citizensGroup('__spawn__'), 'spawn');
+      expect(citizensGroup(r'$$$'), 'citizens');
+      expect(citizensGroup('world'), 'world');
+      expect(citizensGroup('a' * 80).length, 48);
     });
   });
 }

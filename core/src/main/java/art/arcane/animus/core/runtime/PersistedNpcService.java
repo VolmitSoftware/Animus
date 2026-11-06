@@ -1,5 +1,6 @@
 package art.arcane.animus.core.runtime;
 
+import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.building.BuildNpcs;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
@@ -11,6 +12,7 @@ import art.arcane.animus.core.mount.MountReference;
 import art.arcane.animus.core.mount.SeatGeometry;
 import art.arcane.animus.core.navigation.BlockPos;
 import art.arcane.animus.core.navigation.BodyMobility;
+import art.arcane.animus.core.navigation.BodyTerrain;
 import art.arcane.animus.core.navigation.CaptureProvenance;
 import art.arcane.animus.core.navigation.DoorPassage;
 import art.arcane.animus.core.navigation.IdleFall;
@@ -121,7 +123,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private static final int MAX_DEFINITIONS = 100_000, MAX_ACTIVE = 10_000, MAX_SKIN_READS = 8, MAX_ROUTE_READS = 8;
     private static final int RECONCILE_WORK = 64, MAX_ISSUED_IDS = 8192;
     /** Collision cells one step may check; a route waits for a later tick when fewer are left. */
-    private static final int MOTION_CELLS = 256;
+    private static final int MOTION_CELLS = 256, STUCK_CELLS = 1024;
     /** A sleeping route looks for a nearby player again after this many ticks. */
     private static final int AWAKE_RECHECK_TICKS = 20;
     private static final int SUPPORT_UPDATES = 16, SUPPORT_CELLS = 4096;
@@ -862,10 +864,12 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
      */
     private void blockLeg(Route route, String reason) {
         Value value = route.value;
-        if (!value.blockedWarned) {
-            value.blockedWarned = true;
-            host.warn(blockedLeg(value.spec.definition().id(), route.waypoint, route.origin, route.goal, reason,
-                    route.leg != null && value.movement.teleportsWhenStuck()));
+        String id = value.spec.definition().id();
+        boolean once = AnimusLog.shared().debug();
+        if (!once || !value.blockedWarned) {
+            if (once) value.blockedWarned = true;
+            AnimusLog.shared().routine(BLOCKED_LEGS, id, blockedLeg(id, route.waypoint, route.origin, route.goal, reason,
+                    route.leg != null && value.movement.teleportsWhenStuck()), host::warn);
         }
         failLeg(route, reason);
     }
@@ -873,6 +877,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
      * The one log line for an NPC whose leg terrain blocks; shared by every runtime. An NPC whose movement teleports when
      * stuck goes on from the point instead of stopping.
      */
+    /** The routine diagnostic kind of a blocked leg, counted per NPC while debug mode is off. */
+    public static final String BLOCKED_LEGS = "NPCs hit blocked route legs";
+
     public static String blockedLeg(String npc, int waypoint, Vec3 from, WorldPosition to, String reason, boolean teleports) {
         return "NPC " + npc + (teleports ? " teleported" : " stopped") + ": terrain blocks its route leg" + (waypoint < 0 ? "" : " to waypoint " + waypoint)
                 + " from " + block(from) + " to " + block(to.point()) + " in " + to.world() + " (" + reason + "); later blocked legs of this NPC are not logged";
@@ -945,10 +952,23 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (route.execution != null) route.execution.cancel();
         route.plan = null; route.result = null; route.execution = null;
         routeOrder.remove(route);
-        value.state.move(route.goal); index.upsert(value.state.snapshot());
+        value.state.move(stuckTarget(route.goal, route.mode, moveWidth(value), moveHeight(value), host.collision(route.goal.world())));
+        index.upsert(value.state.snapshot());
         value.poseRevision++; setPose(value, value.yaw, 0, true);
         arrive(route);
         return true;
+    }
+    /**
+     * Where a stuck leg's teleport puts the body; shared by every runtime. A walking or swimming body stands on the footing
+     * of its waypoint's block, on top of it when the waypoint names the ground under the feet. A flyer, or terrain that
+     * cannot be read, keeps the waypoint itself.
+     */
+    public static WorldPosition stuckTarget(WorldPosition goal, MovementProfile.Mode mode, double hullWidth, double hullHeight, MotionValidator.Sampler terrain) {
+        if (mode == MovementProfile.Mode.FLY) return goal;
+        Vec3 point = goal.point();
+        BodyTerrain.Rest rest = new BodyTerrain(hullWidth, hullHeight, mode == MovementProfile.Mode.SWIM, STUCK_CELLS, terrain)
+                .footing(point.x(), point.z(), (int) Math.floor(point.y()));
+        return rest.usable() ? new WorldPosition(goal.world(), new Vec3(point.x(), rest.feet(), point.z())) : goal;
     }
     private void routeStatus(Route route, String state, String detail) {
         route.value.navigationStatus = state + "; route=" + route.id + "; waypoint=" + route.waypoint + "; goal=" + route.goal.point()
@@ -1042,7 +1062,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                         else if (next == LongLeg.Next.RETRY) routeStatus(route, "replanning", "attempt " + route.longLeg.attempts() + " after " + planned.status());
                         else {
                             route.segment = next == LongLeg.Next.SEGMENT;
-                            Vec3 end = route.segment ? planned.path().getLast().point() : route.goal.point();
+                            Vec3 end = next == LongLeg.Next.FINAL ? route.goal.point() : planned.path().getLast().point();
                             route.execution = new PathExecution(value.state.snapshot().position().point(), planned.path(), end, profile(value, route.mode));
                             routeStatus(route, "moving", moving(route.segment));
                         }
@@ -1623,10 +1643,13 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                 || body.value.state.snapshot().revision() != validated.npc().revision()
                 || !DefinitionSpec.spawned(runtime.npcs().snapshot().get(body.value.spec.definition().id()))) return;
         accepted++;
-        if (triggers != null) triggers.interaction(body.body.uuid(), host.id(viewer.player),
-                action == RuntimeHost.Interaction.ATTACK ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT, false);
+        boolean consumed = triggers != null && triggers.interaction(body.body.uuid(), host.id(viewer.player),
+                action == RuntimeHost.Interaction.ATTACK ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT,
+                input.secondaryAction(), TriggerEvent.Interaction.hand(input.hand()), false);
         InteractionObserver observed = observer;
         if (observed != null) observed.accepted(body.body.uuid(), host.id(viewer.player), action == RuntimeHost.Interaction.ATTACK, validated.distance(), false);
+        // A behavior that consumes the click owns it: modules, riding and selection never see it.
+        if (consumed) return;
         InteractionListener<P> listener = interactions;
         if (listener != null && listener.interacted(viewer.player, body.body.uuid(), action == RuntimeHost.Interaction.ATTACK, input.secondaryAction())) return;
         // A sneaking interaction keeps its administrative meaning, so a rideable NPC can still be selected.
@@ -1635,9 +1658,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             if (refusal != null) host.tell(viewer.player, "Cannot ride " + body.value.spec.name() + ": " + refusal);
             return;
         }
-        if (host.permitted(viewer.player, "animus.admin")) {
-            select(host.id(viewer.player), body.value.spec.definition().id());
-            host.tell(viewer.player, "Selected " + body.value.spec.definition().id() + " via " + action);
+        // Click selection tells an administrator once; clicking the selected NPC again, as play does, stays quiet.
+        String id = body.value.spec.definition().id();
+        if (host.permitted(viewer.player, "animus.admin") && !selection(host.id(viewer.player)).filter(id::equals).isPresent()) {
+            select(host.id(viewer.player), id);
+            host.tell(viewer.player, "Selected " + id + " via " + action);
         }
     }
 

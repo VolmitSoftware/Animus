@@ -108,11 +108,9 @@ class EditorPartsTest {
 
     @Test
     void service_pairLinkDecodesToReachableCode() throws Exception {
-        int port;
-        try (java.net.ServerSocket socket = new java.net.ServerSocket(0)) { port = socket.getLocalPort(); }
         Path data = directory.resolve("server");
         Files.createDirectories(data);
-        Files.writeString(data.resolve("config.toml"), "statusMessage = \"Hello\"\n[editor]\nlistenerEnabled = true\nrelayEnabled = false\nport = " + port + "\n");
+        Files.writeString(data.resolve("config.toml"), "statusMessage = \"Hello\"\n[editor]\nlistenerEnabled = true\nrelayEnabled = false\nport = 0\n");
         art.arcane.animus.core.AnimusRuntime runtime = new art.arcane.animus.core.AnimusRuntime(
                 new art.arcane.animus.core.RuntimeEnvironment(art.arcane.animus.core.Platform.BUKKIT, "26.2", data));
         runtime.start();
@@ -123,7 +121,11 @@ class EditorPartsTest {
                 EditorService.PairingLink link = service.pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
                 assertTrue(link.link().startsWith("https://animus-editor.web.app/#/pair/ANM1."));
                 PairingCode code = PairingCode.decode(link.link().substring(link.link().indexOf("ANM1.")));
-                assertEquals(Optional.of("http://127.0.0.1:" + port), code.directUrl());
+                // Port 0 binds a free port, and the link carries the one actually bound.
+                String direct = code.directUrl().orElseThrow();
+                assertTrue(direct.startsWith("http://127.0.0.1:"), direct);
+                int port = Integer.parseInt(direct.substring("http://127.0.0.1:".length()));
+                assertTrue(port > 0, direct);
                 assertEquals(Optional.empty(), code.relayUrl(), "the relay is off in this config");
                 assertEquals(EditorIdentity.loadOrCreate(runtime.documents()).fingerprint(), code.fingerprint());
                 assertTrue(service.status().stream().anyMatch((String line) -> line.startsWith("Editor listener http://127.0.0.1:" + port)));
@@ -143,16 +145,16 @@ class EditorPartsTest {
 
     @Test
     void pairOptions_keyedValues() {
-        EditorTokens.Grant grant = EditorCommands.grant(actor(EditorHarness.ADMIN), new String[]{"laptop", "scopes=read,validate", "groups=town,harbor", "expires=12h"}, 7);
+        EditorTokens.Grant grant = EditorCommands.grant(actor(EditorHarness.ADMIN), "laptop", "read,validate", "town,harbor", "12h", 7);
         assertEquals("laptop", grant.label());
         assertEquals(List.of(EditorScope.READ, EditorScope.VALIDATE), grant.scopes());
         assertEquals(List.of("town", "harbor"), grant.groups());
         assertEquals(Duration.ofHours(12), grant.lifetime());
         assertEquals(Optional.of(EditorHarness.ADMIN), grant.admin());
-        EditorTokens.Grant defaults = EditorCommands.grant(actor(null), new String[0], 7);
+        EditorTokens.Grant defaults = EditorCommands.grant(actor(null), "", "", "", "", 7);
         assertEquals(EditorScope.DEFAULT_PAIRING, defaults.scopes());
         assertEquals(Duration.ofDays(7), defaults.lifetime());
-        assertThrows(IllegalArgumentException.class, () -> EditorCommands.grant(actor(null), new String[]{"scopes=root"}, 7));
-        assertThrows(IllegalArgumentException.class, () -> EditorCommands.grant(actor(null), new String[]{"expires=forever"}, 7));
+        assertThrows(IllegalArgumentException.class, () -> EditorCommands.grant(actor(null), "", "root", "", "", 7));
+        assertThrows(IllegalArgumentException.class, () -> EditorCommands.grant(actor(null), "", "", "", "forever", 7));
     }
 }

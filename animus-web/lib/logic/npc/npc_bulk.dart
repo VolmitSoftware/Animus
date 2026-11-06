@@ -75,7 +75,7 @@ NpcBulkResult removeTag(List<NpcEntry> entries, String tag) => _each(entries, (N
 NpcBulkResult moveToFolder(List<NpcEntry> entries, String folder, Set<String> taken) {
   if (!npcFolderPattern.hasMatch(folder)) {
     return NpcBulkResult(const <DocumentChange>[], <String, String>{
-      for (final NpcEntry entry in entries) entry.key: 'Folders use 1-64 of a-z, 0-9, _ and -.',
+      for (final NpcEntry entry in entries) entry.key: 'Folders use 1-64 of a-z, 0-9, _ and -, up to 8 deep joined by /.',
     }, 0);
   }
   final List<DocumentChange> changes = <DocumentChange>[];

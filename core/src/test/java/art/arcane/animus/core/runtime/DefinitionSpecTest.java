@@ -61,6 +61,12 @@ class DefinitionSpecTest {
     }
 
     @Test void activationWarningsLogEachFailureOnceUntilItChangesOrClears() {
+        art.arcane.animus.core.AnimusLog.shared().debug(true);
+        try { activationWarningsInDebugMode(); }
+        finally { art.arcane.animus.core.AnimusLog.shared().debug(false); }
+    }
+
+    private void activationWarningsInDebugMode() {
         List<String> logged = new ArrayList<>();
         ActivationWarnings warnings = new ActivationWarnings(logged::add);
         warnings.failed("frog", "$.skin: textures require a player body");

@@ -3,6 +3,10 @@ package art.arcane.animus.core.hotload;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.RuntimeCatalogs;
 import art.arcane.animus.core.RuntimeEnvironment;
+import art.arcane.animus.core.command.BehaviorCommands;
+import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.config.ModuleSettings;
+import art.arcane.animus.core.extension.ExtensionRuntime;
 import art.arcane.animus.core.gui.FakeNpcRuntime;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
@@ -14,6 +18,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Queue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import org.junit.jupiter.api.AfterEach;
@@ -38,7 +45,7 @@ class HotloadServiceTest {
         runtime.start();
         Executor files = runtime.fileExecutor((Runnable task, art.arcane.animus.core.extension.MutationLane.EngineTaskEvent event, Throwable failure) -> {});
         runtime.catalogs(new RuntimeCatalogs(new RuntimeCatalogs.Parts(runtime, () -> refreshed.add("npcs"), () -> null,
-                () -> refreshed.add("shops"), () -> refreshed.add("holograms"), (String line) -> {})));
+                () -> { refreshed.add("shops"); return Completed.now(); }, () -> { refreshed.add("holograms"); return Completed.now(); }, (String line) -> {})));
         hotload = new HotloadService(new HotloadService.Parts(runtime, files, Runnable::run, new FakeNpcRuntime<Object>((java.util.UUID id) -> Optional.empty()),
                 (List<String> sent, boolean sound) -> { lines.addAll(sent); dings.add(sound); }, () -> refreshed.add("screens"), (String line) -> {}));
         hotload.listen();
@@ -180,6 +187,72 @@ class HotloadServiceTest {
         assertTrue(shown.stream().anyMatch((String line) -> line.startsWith("[Animus]: Animus Hotloaded: [behaviors/town/greeter.json] [entry]")), shown.toString());
         assertTrue(shown.stream().anyMatch((String line) -> line.startsWith("[Animus]: Animus Hotload refused: [shops/town/baker.json] ")), shown.toString());
         assertTrue(refreshed.contains("shops") || shown.stream().noneMatch((String line) -> line.contains("Hotloaded: [shops")));
+    }
+
+    @Test void aBehaviorRunRightAfterTheNoticeUsesTheHotloadedVersion() throws Exception {
+        Path behavior = root.resolve("behaviors/town/greeter.json");
+        Files.createDirectories(behavior.getParent());
+        String source = "{\"schemaVersion\":1,\"revision\":REV,\"id\":\"town:greeter\",\"entry\":\"main\",\"routines\":{\"main\":{\"type\":\"wait\",\"ticks\":1}}}";
+        Files.writeString(behavior, source.replace("REV", "1"));
+        new art.arcane.animus.core.admin.Administration(runtime).create("test", "minecraft:player", "world", 0, 64, 0, "default", "Test");
+        java.util.concurrent.atomic.AtomicReference<BehaviorCommands> ready = new java.util.concurrent.atomic.AtomicReference<>();
+        ExtensionRuntime extensions = new ExtensionRuntime(root.resolve("modules"), art.arcane.animus.api.Platform.PAPER, runtime.definitionGateway(),
+                new ModuleSettings(false, 4, 1000, 250), (String line) -> {}, (ExtensionRuntime.State state) -> ready.get().modulesInitialized(state));
+        BehaviorCommands behaviors = new BehaviorCommands(root, runtime, extensions, (String line) -> {});
+        ready.set(behaviors);
+        Queue<Runnable> replies = new ConcurrentLinkedQueue<>();
+        List<String> runs = new CopyOnWriteArrayList<>();
+        CommandActor console = new CommandActor() {
+            @Override public boolean permitted(String node) { return true; }
+            @Override public void tell(String message) { runs.add(message); }
+            @Override public Optional<java.util.UUID> player() { return Optional.empty(); }
+            @Override public boolean reply(Runnable action) { replies.add(action); return true; }
+        };
+        List<String> atNotice = new CopyOnWriteArrayList<>();
+        hotload.close();
+        runtime.catalogs(new RuntimeCatalogs(new RuntimeCatalogs.Parts(runtime, () -> {}, () -> behaviors, Completed::now, Completed::now, (String line) -> {})));
+        hotload = new HotloadService(new HotloadService.Parts(runtime, runtime.fileExecutor((Runnable task, art.arcane.animus.core.extension.MutationLane.EngineTaskEvent event, Throwable failure) -> {}),
+                Runnable::run, new FakeNpcRuntime<Object>((java.util.UUID id) -> Optional.empty()), (List<String> sent, boolean sound) -> {
+                    if (sent.stream().noneMatch((String line) -> line.contains("behaviors/town/greeter.json"))) return;
+                    atNotice.add(behaviors.statusLines().getFirst());
+                    behaviors.run(console, "test", "town:greeter");
+                }, () -> {}, (String line) -> {}));
+        hotload.listen();
+        hotload.cycle();
+        try {
+            extensions.start();
+            until(() -> behaviors.statusLines().getFirst().startsWith("Behaviors READY"), replies);
+            Files.writeString(behavior, source.replace("REV", "2").replace("\"ticks\":1", "\"ticks\":2"));
+            settle();
+            assertEquals(1, atNotice.size(), atNotice.toString());
+            assertTrue(atNotice.getFirst().contains("catalog-generation=2"), atNotice.getFirst());
+            until(() -> runs.stream().anyMatch((String line) -> line.startsWith("Behavior run:")), replies);
+            String run = runs.stream().filter((String line) -> line.startsWith("Behavior run:")).findFirst().orElseThrow();
+            assertTrue(run.startsWith("Behavior run: OK"), run);
+            java.util.regex.Matcher id = java.util.regex.Pattern.compile("execution=([a-f0-9-]{36})").matcher(run);
+            assertTrue(id.find(), run);
+            java.util.UUID execution = java.util.UUID.fromString(id.group(1));
+            until(() -> behaviors.diagnosticRuntime().inspect(execution).isPresent(), replies);
+            assertEquals(2, behaviors.diagnosticRuntime().inspect(execution).orElseThrow().behaviorRevision());
+        } finally {
+            behaviors.close();
+            extensions.close();
+        }
+    }
+
+    /** A shop or hologram reload that has nothing queued. */
+    private static final class Completed {
+        static CompletableFuture<Void> now() { return CompletableFuture.completedFuture(null); }
+    }
+
+    private static void until(java.util.function.BooleanSupplier condition, Queue<Runnable> replies) throws InterruptedException {
+        long end = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+        while (!condition.getAsBoolean() && System.nanoTime() < end) {
+            for (Runnable reply; (reply = replies.poll()) != null; ) reply.run();
+            Thread.sleep(5);
+        }
+        for (Runnable reply; (reply = replies.poll()) != null; ) reply.run();
+        assertTrue(condition.getAsBoolean());
     }
 
     @Test void stateAndGeneratedFoldersAreNotWatched() throws Exception {
