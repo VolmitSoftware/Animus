@@ -1,0 +1,14 @@
+{
+  "status": "applied",
+  "changeId": "chg_00000002",
+  "idempotencyKey": "6f1c2d3e4f5a6b7d",
+  "documents": [
+    {
+      "kind": "npc",
+      "id": "town/market/greeter",
+      "revision": 2,
+      "hash": "sha256:dba0082ec68e72d47fa926dcc91fb9b00961ceb4342554a0c2aa567144a5a6d3",
+      "from": {"id": "examples/greeter"}
+    }
+  ]
+}

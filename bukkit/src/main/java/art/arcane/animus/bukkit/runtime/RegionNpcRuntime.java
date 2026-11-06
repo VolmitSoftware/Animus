@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.bukkit.BukkitWorldLookup;
 import art.arcane.animus.core.config.CombatBudgets;
 import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.RuntimeGauges;
@@ -495,22 +496,17 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     Geometry geometry(String type) { return geometries.get(type); }
     World world(String id) { return regions.world(id); }
     /** On the changed block's region thread: marks the NPCs standing on it, each checks its footing on its own owner tick. */
-    private void terrainChanged(String world, BlockPos at) {
+    void terrainChanged(String world, BlockPos at) {
         if (!available()) return;
         for (UUID npc : IdleFall.standingOn(index, world, at)) {
             RegionActor actor = byUuid.get(npc);
             if (actor != null) actor.supportWanted = true;
         }
     }
+    /** The runtime key, the UUID, of the world a definition names by name, UUID or dimension key. */
     private String worldKey(String name) {
-        UUID id = worldId(name);
-        return id == null ? null : id.toString();
-    }
-    private UUID worldId(String name) {
-        World world;
-        try { world = plugin.getServer().getWorld(UUID.fromString(name)); }
-        catch (IllegalArgumentException notUuid) { world = plugin.getServer().getWorld(name); }
-        return world == null ? null : world.getUID();
+        World world = BukkitWorldLookup.find(plugin.getServer(), name);
+        return world == null ? null : world.getUID().toString();
     }
     /** A failure outside any viewer's session: shown in status and logged once per cause. */
     void noteFailure(String operation, String context, String error) { failures.record(operation, context, error); }

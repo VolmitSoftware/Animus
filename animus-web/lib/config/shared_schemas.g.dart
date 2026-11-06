@@ -81,6 +81,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "counter": "X-Animus-Counter: a strictly increasing integer per token on every mutating request (POST and DELETE except pair). A value at or below the last accepted one is refused with counter-replayed.",
     "origin": "Origin must equal one of [editor] allowedOrigins exactly, or the request is refused with origin-not-allowed."
   },
+  "changeSets": {
+    "write": "A change with source writes the document; baseRevision and baseHash null create one that must not exist yet.",
+    "delete": "A change with delete removes the document; it needs the baseRevision and baseHash of what it removes.",
+    "move": "A change with source and from moves the document from from.id to id in one transaction: the file at id is written with revision one above the old one and the file at from.id is removed. baseRevision and baseHash are those of the document at from.id. A conflict names from.id when that document changed or is gone, and id when a document already exists there. The applied answer lists id with from, the catalog event lists id and deletes from.id, and undoing the change moves the document back."
+  },
   "endpoints": [
     {"method": "GET", "path": "/v1/hello", "scope": null, "request": null, "responses": {"200": "hello-response"}},
     {"method": "POST", "path": "/v1/pair", "scope": null, "auth": "pairing-secret", "request": "pair-request", "responses": {"200": "pair-response", "401": "error-response", "410": "error-response"}},
@@ -114,7 +119,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   },
   "kinds": {
     "npc": {"folder": "npcs", "applyScope": "apply:npcs", "schema": "generated/npc.schema.json"},
-    "route": {"folder": "routes", "applyScope": "apply:npcs", "schema": null},
+    "route": {"folder": "routes", "applyScope": "apply:npcs", "schema": "generated/route.schema.json"},
     "recording": {"folder": "recordings", "applyScope": "apply:npcs", "schema": "recording-v1.schema.json"},
     "skin": {"folder": "skins", "applyScope": "apply:npcs", "schema": null},
     "group": {"folder": "groups", "applyScope": "apply:npcs", "schema": "group-v1.schema.json"},
@@ -127,7 +132,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "text-animation": {"folder": "gui/text-animations", "applyScope": "apply:gui", "schema": null},
     "presets": {"folder": "gui", "applyScope": "apply:gui", "schema": "gloss/gloss-presets.schema.json"},
     "rig": {"folder": "rigs", "applyScope": "apply:rigs", "schema": "rig-v1.schema.json"},
-    "animation": {"folder": "animations", "applyScope": "apply:rigs", "schema": "animation-v1.schema.json"}
+    "animation": {"folder": "animations", "applyScope": "apply:rigs", "schema": "animation-v1.schema.json"},
+    "server-behaviors": {"folder": "", "applyScope": "apply:behaviors", "schema": "server-behaviors-v1.schema.json"}
   },
   "pairing": {
     "prefix": "ANM1.",
@@ -182,7 +188,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "protocol": {"const": 1},
     "scope": {"enum": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs", "import", "spawn", "admin"]},
     "kind": {
-      "enum": ["npc", "route", "recording", "skin", "group", "behavior", "pack", "shop", "inventory", "menu", "hologram", "text-animation", "presets", "rig", "animation"],
+      "enum": ["npc", "route", "recording", "skin", "group", "behavior", "pack", "shop", "inventory", "menu", "hologram", "text-animation", "presets", "rig", "animation", "server-behaviors"],
       "description": "Document kinds. Folders and apply scopes are listed in editor-v1.endpoints.json."
     },
     "documentId": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[a-z0-9_.:/-]+$", "description": "The kind's own id: group/id for NPCs, namespace:path for behaviors, shops, GUIs, rigs and animations, the SHA-256 for skins, the relative path for menus."},
@@ -335,7 +341,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "schemas": {
           "type": "object",
-          "description": "Schema name (npc, behavior, pack, completions, shop, inventory, rig, animation and the Gloss kinds) to schema document.",
+          "description": "Schema name (npc, route, behavior, pack, completions, shop, inventory, rig, animation and the Gloss kinds) to schema document.",
           "additionalProperties": {"type": "object"}
         }
       }
@@ -365,6 +371,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "change": {
       "type": "object",
+      "description": "One document of a change set: source writes it, delete removes it. A move is source with from: the document leaves from.id for id in one step, its base is the document at from.id, and id must not exist yet.",
       "additionalProperties": false,
       "required": ["kind", "id", "baseRevision", "baseHash"],
       "properties": {
@@ -373,12 +380,21 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "baseRevision": {"type": ["integer", "null"], "minimum": 0, "description": "null creates a document that must not exist yet."},
         "baseHash": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
         "source": {"type": "object"},
-        "delete": {"const": true}
+        "delete": {"const": true},
+        "from": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id"],
+          "properties": {"id": {"$ref": "#/$defs/documentId"}},
+          "description": "The id this document moves from, same kind. baseRevision and baseHash are those of the document at that id. The server writes the new file and removes the old one in one transaction, with revision one above the old one, and refuses with conflict when the old document changed or the new id exists."
+        }
       },
       "oneOf": [
         {"required": ["source"], "not": {"required": ["delete"]}},
-        {"required": ["delete"], "not": {"required": ["source"]}, "properties": {"baseRevision": {"type": "integer"}, "baseHash": {"type": "string"}}}
-      ]
+        {"required": ["delete"], "not": {"anyOf": [{"required": ["source"]}, {"required": ["from"]}]}, "properties": {"baseRevision": {"type": "integer"}, "baseHash": {"type": "string"}}}
+      ],
+      "if": {"required": ["from"]},
+      "then": {"properties": {"baseRevision": {"type": "integer"}, "baseHash": {"type": "string"}}}
     },
     "change-set": {
       "type": "object",
@@ -445,7 +461,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "kind": {"$ref": "#/$defs/kind"},
               "id": {"$ref": "#/$defs/documentId"},
               "revision": {"$ref": "#/$defs/revision"},
-              "hash": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}], "description": "null after a delete."}
+              "hash": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}], "description": "null after a delete."},
+              "from": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id"],
+                "properties": {"id": {"$ref": "#/$defs/documentId"}},
+                "description": "Set when the document moved here from this id, which no longer exists. Undoing a move answers the old id, with from naming the id it left."
+              }
             }
           }
         }
@@ -783,6 +806,124 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "server": {
+            "const": true
+          }
+        },
+        "required": [
+          "server"
+        ]
+      },
+      "then": {
+        "properties": {
+          "variables": {
+            "additionalProperties": {
+              "properties": {
+                "scope": {
+                  "enum": [
+                    "execution",
+                    "player",
+                    "global"
+                  ],
+                  "description": "A server behavior has no NPC: execution, player or global."
+                }
+              }
+            }
+          },
+          "triggers": {
+            "items": {
+              "properties": {
+                "event": {
+                  "enum": [
+                    "timer",
+                    "module",
+                    "player_join",
+                    "player_quit",
+                    "player_chat",
+                    "command",
+                    "server_start",
+                    "player_death",
+                    "player_respawn",
+                    "player_world_change",
+                    "player_area",
+                    "player_inventory_open",
+                    "player_inventory_close",
+                    "player_inventory_click",
+                    "player_item_drop",
+                    "player_item_pickup",
+                    "player_item_consume",
+                    "player_block_click",
+                    "player_block_place",
+                    "player_block_break",
+                    "player_damaged",
+                    "player_damage_entity",
+                    "player_kill"
+                  ],
+                  "description": "A server behavior uses server events only."
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "event": {
+                        "const": "timer"
+                      }
+                    },
+                    "required": [
+                      "event"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "intervalTicks": {
+                        "type": "integer",
+                        "minimum": 20,
+                        "maximum": 72000,
+                        "description": "Server behaviors use at least 20 ticks."
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "triggers": {
+            "items": {
+              "properties": {
+                "event": {
+                  "enum": [
+                    "interaction",
+                    "proximity",
+                    "spawn",
+                    "despawn",
+                    "damage",
+                    "death",
+                    "waypoint",
+                    "timer",
+                    "dialogue_choice",
+                    "module",
+                    "build_finished",
+                    "build_paused",
+                    "animation_finished"
+                  ],
+                  "description": "Server events need \"server\": true."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "identifier": {
       "type": "string",
@@ -4985,7 +5126,20 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "server_start",
             "player_death",
             "player_respawn",
-            "player_world_change"
+            "player_world_change",
+            "player_area",
+            "player_inventory_open",
+            "player_inventory_close",
+            "player_inventory_click",
+            "player_item_drop",
+            "player_item_pickup",
+            "player_item_consume",
+            "player_block_click",
+            "player_block_place",
+            "player_block_break",
+            "player_damaged",
+            "player_damage_entity",
+            "player_kill"
           ],
           "description": "What starts the run."
         },
@@ -5315,6 +5469,201 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "then": {
             "$ref": "#/$defs/trigger-player_world_change"
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_area"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_area"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_inventory_open"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_inventory_open"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_inventory_close"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_inventory_close"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_inventory_click"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_inventory_click"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_item_drop"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_item_drop"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_item_pickup"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_item_pickup"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_item_consume"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_item_consume"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_block_click"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_block_click"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_block_place"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_block_place"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_block_break"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_block_break"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_damaged"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_damaged"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_damage_entity"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_damage_entity"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "player_kill"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-player_kill"
+          }
         }
       ]
     },
@@ -5387,7 +5736,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "enter",
             "leave"
           ],
-          "description": "Entering or leaving the radius."
+          "description": "Entering or leaving the radius or area."
         },
         "radius": {
           "type": "number",
@@ -6022,6 +6371,552 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id",
         "event"
       ]
+    },
+    "trigger-player_area": {
+      "type": "object",
+      "description": "A player enters or leaves a cuboid or ellipsoid area, checked every half second and on join and quit. Runs read context.area, context.world and context.cause (join, move or quit).",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_area"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "phase": {
+          "enum": [
+            "enter",
+            "leave"
+          ],
+          "description": "Entering or leaving the radius or area."
+        },
+        "area": {
+          "$ref": "#/$defs/identifier",
+          "description": "The area's name, read by runs as context.area. Triggers that name the same area in the same world share it."
+        },
+        "world": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 64,
+          "description": "The world the area is in."
+        },
+        "cuboid": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "number",
+            "minimum": -3.0E7,
+            "maximum": 3.0E7
+          },
+          "description": "Two opposite corner blocks, x1, y1, z1, x2, y2, z2, both included. Give this or ellipsoid."
+        },
+        "ellipsoid": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "number",
+            "minimum": -3.0E7,
+            "maximum": 3.0E7
+          },
+          "description": "A centre x, y, z and three radii in blocks. Give this or cuboid."
+        }
+      },
+      "required": [
+        "id",
+        "event",
+        "phase",
+        "area",
+        "world"
+      ]
+    },
+    "trigger-player_inventory_open": {
+      "type": "object",
+      "description": "A player opens an inventory. Runs read context.inventory_type. cancel keeps it closed.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_inventory_open"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "inventory": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_inventory_close": {
+      "type": "object",
+      "description": "A player closes an inventory. Runs read context.inventory_type.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_inventory_close"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "inventory": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_inventory_click": {
+      "type": "object",
+      "description": "A player clicks a slot of an open inventory. Runs read context.inventory_type, context.click, context.slot and context.item. cancel undoes the click.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_inventory_click"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "inventory": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."
+        },
+        "click": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "The click: left or right on a block; left, right, shift_left, shift_right, middle, number_key, double_click, drop and so on in an inventory. Omit for every click."
+        },
+        "item": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_item_drop": {
+      "type": "object",
+      "description": "A player drops an item. Runs read context.item and context.amount. cancel keeps it in the inventory.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_item_drop"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "item": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_item_pickup": {
+      "type": "object",
+      "description": "A player picks up an item. Runs read context.item and context.amount. cancel leaves it on the ground.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_item_pickup"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "item": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_item_consume": {
+      "type": "object",
+      "description": "A player finishes eating or drinking an item. Runs read context.item. cancel keeps the item.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_item_consume"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "item": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_block_click": {
+      "type": "object",
+      "description": "A player left or right clicks a block. Runs read context.block, context.click (left or right), context.hand, context.location, context.world, context.x, context.y and context.z. cancel stops the click.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_block_click"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "block": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
+        },
+        "click": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "The click: left or right on a block; left, right, shift_left, shift_right, middle, number_key, double_click, drop and so on in an inventory. Omit for every click."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_block_place": {
+      "type": "object",
+      "description": "A player places a block. Runs read context.block and its location. cancel stops the placement.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_block_place"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "block": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_block_break": {
+      "type": "object",
+      "description": "A player breaks a block. Runs read context.block and its location. cancel keeps the block.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_block_break"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "block": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_damaged": {
+      "type": "object",
+      "description": "A player takes damage. Runs read context.cause, context.damage and context.damager (an entity type, empty for none). cancel prevents the damage.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_damaged"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "cause": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A damage type such as fall, lava or player_attack. Omit for every cause."
+        },
+        "damager": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_damage_entity": {
+      "type": "object",
+      "description": "A player hits a living entity that is not an NPC. Runs read context.entity, context.entity_uuid, context.cause and context.damage. cancel prevents the damage.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_damage_entity"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "entity": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-player_kill": {
+      "type": "object",
+      "description": "A player kills a living entity. Runs read context.entity and context.entity_uuid.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "player_kill"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "entity": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
     }
   },
   "examples": [
@@ -6060,6 +6955,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "text": {
           "type": "string",
@@ -6082,6 +6978,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -6120,6 +7017,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "operation": {
           "type": "string",
@@ -6219,6 +7117,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "id": {
           "type": "string",
@@ -6251,6 +7150,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "operation": {
           "type": "string",
@@ -6278,6 +7178,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": true,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "command": {
           "type": "string",
@@ -6308,6 +7209,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -6339,6 +7241,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "title": {
           "type": "string",
@@ -6371,6 +7274,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "item": {
           "type": "string",
@@ -6409,6 +7313,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "permission": {
           "type": "string",
@@ -6425,6 +7330,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "x": {
           "type": "number",
@@ -6468,6 +7374,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "text": {
           "type": "string",
@@ -6500,6 +7407,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "route": {
           "type": "string",
@@ -6569,6 +7477,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "spawned": {
           "type": "boolean",
@@ -6606,6 +7515,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "gui": {
           "type": "string",
@@ -6638,6 +7548,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "shop": {
           "type": "string",
@@ -6660,6 +7571,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "animation": {
           "type": "string",
@@ -6698,6 +7610,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "recording": {
           "type": "string",
@@ -6733,6 +7646,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "sound": {
           "type": "string",
@@ -6789,6 +7703,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "radius": {
           "type": "number",
@@ -6809,6 +7724,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "pose": {
           "type": "string",
@@ -6825,6 +7741,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -6880,6 +7797,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {}
     },
     {
@@ -6889,6 +7807,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "text": {
           "type": "string",
@@ -6925,6 +7844,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "name": {
           "type": "string",
@@ -6962,6 +7882,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "slot": {
           "type": "string",
@@ -6991,6 +7912,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -7033,6 +7955,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -7079,6 +8002,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "particle": {
           "type": "string",
@@ -7135,6 +8059,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "layer": {
           "type": "integer",
@@ -7157,6 +8082,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {}
     },
     {
@@ -7166,6 +8092,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "item": {
           "type": "string",
@@ -7194,6 +8121,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "target": {
           "type": "string",
@@ -7272,6 +8200,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "title": {
           "type": "string",
@@ -7401,7 +8330,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "enter",
             "leave"
           ],
-          "description": "Entering or leaving the radius."
+          "description": "Entering or leaving the radius or area."
         },
         "radius": {
           "type": "number",
@@ -7771,6 +8700,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player joins the server. first: true matches only first joins, false only returning players.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "first"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -7834,6 +8766,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player sends a chat message, optionally matching a case-insensitive pattern with * wildcards.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "message"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -7870,6 +8805,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player or the console runs the Animus-managed command this trigger registers.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "command",
+        "alias",
+        "args",
+        "raw_args"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -7959,6 +8900,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player dies.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "message"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -8017,6 +8961,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player moves to another world, optionally only from or to named worlds.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "from",
+        "to"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -8053,6 +9001,580 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "maxLength": 64,
           "pattern": "\\S",
           "description": "Fires only when entering this world. Omit for any world."
+        }
+      }
+    },
+    "player_area": {
+      "description": "A player enters or leaves a cuboid or ellipsoid area, checked every half second and on join and quit. Runs read context.area, context.world and context.cause (join, move or quit).",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_area"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "phase": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "enter",
+            "leave"
+          ],
+          "description": "Entering or leaving the radius or area."
+        },
+        "area": {
+          "type": "identifier",
+          "required": true,
+          "description": "The area's name, read by runs as context.area. Triggers that name the same area in the same world share it."
+        },
+        "world": {
+          "type": "string",
+          "required": true,
+          "maxLength": 64,
+          "pattern": "\\S",
+          "description": "The world the area is in."
+        },
+        "cuboid": {
+          "type": "array",
+          "required": false,
+          "description": "Two opposite corner blocks, x1, y1, z1, x2, y2, z2, both included. Give this or ellipsoid."
+        },
+        "ellipsoid": {
+          "type": "array",
+          "required": false,
+          "description": "A centre x, y, z and three radii in blocks. Give this or cuboid."
+        }
+      }
+    },
+    "player_inventory_open": {
+      "description": "A player opens an inventory. Runs read context.inventory_type. cancel keeps it closed.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_inventory_open"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "inventory": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_inventory_close": {
+      "description": "A player closes an inventory. Runs read context.inventory_type.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_inventory_close"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "inventory": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."
+        }
+      }
+    },
+    "player_inventory_click": {
+      "description": "A player clicks a slot of an open inventory. Runs read context.inventory_type, context.click, context.slot and context.item. cancel undoes the click.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_inventory_click"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "inventory": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."
+        },
+        "click": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "The click: left or right on a block; left, right, shift_left, shift_right, middle, number_key, double_click, drop and so on in an inventory. Omit for every click."
+        },
+        "item": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_item_drop": {
+      "description": "A player drops an item. Runs read context.item and context.amount. cancel keeps it in the inventory.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_item_drop"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "item": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_item_pickup": {
+      "description": "A player picks up an item. Runs read context.item and context.amount. cancel leaves it on the ground.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_item_pickup"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "item": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_item_consume": {
+      "description": "A player finishes eating or drinking an item. Runs read context.item. cancel keeps the item.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_item_consume"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "item": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_block_click": {
+      "description": "A player left or right clicks a block. Runs read context.block, context.click (left or right), context.hand, context.location, context.world, context.x, context.y and context.z. cancel stops the click.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_block_click"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "block": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
+        },
+        "click": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "The click: left or right on a block; left, right, shift_left, shift_right, middle, number_key, double_click, drop and so on in an inventory. Omit for every click."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_block_place": {
+      "description": "A player places a block. Runs read context.block and its location. cancel stops the placement.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_block_place"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "block": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_block_break": {
+      "description": "A player breaks a block. Runs read context.block and its location. cancel keeps the block.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_block_break"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "block": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_damaged": {
+      "description": "A player takes damage. Runs read context.cause, context.damage and context.damager (an entity type, empty for none). cancel prevents the damage.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_damaged"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "cause": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A damage type such as fall, lava or player_attack. Omit for every cause."
+        },
+        "damager": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_damage_entity": {
+      "description": "A player hits a living entity that is not an NPC. Runs read context.entity, context.entity_uuid, context.cause and context.damage. cancel prevents the damage.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_damage_entity"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "entity": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_kill": {
+      "description": "A player kills a living entity. Runs read context.entity and context.entity_uuid.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_kill"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "entity": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
         }
       }
     }
@@ -8338,7 +9860,156 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "variables",
       "routines",
       "triggers"
-    ]
+    ],
+    "expressions": {
+      "maxLength": 4096,
+      "namePattern": "^[a-z][a-z0-9_]{0,63}$",
+      "roots": [
+        "player",
+        "npc",
+        "server",
+        "context"
+      ],
+      "reserved": [
+        "context",
+        "false",
+        "npc",
+        "player",
+        "server",
+        "true"
+      ],
+      "facts": {
+        "player": [
+          "name",
+          "uuid",
+          "online",
+          "health",
+          "max_health",
+          "food",
+          "level",
+          "world",
+          "x",
+          "y",
+          "z",
+          "location",
+          "gamemode",
+          "op",
+          "sneaking",
+          "flying",
+          "item_in_hand",
+          "item_in_hand_amount"
+        ],
+        "npc": [
+          "name",
+          "id",
+          "citizens_id",
+          "uuid",
+          "spawned",
+          "health",
+          "world",
+          "x",
+          "y",
+          "z",
+          "location"
+        ],
+        "server": [
+          "online_players",
+          "players",
+          "max_players",
+          "tick",
+          "time_millis"
+        ]
+      },
+      "flagScopes": [
+        "player",
+        "npc",
+        "relationship",
+        "global"
+      ],
+      "functions": [
+        "get",
+        "has",
+        "keys",
+        "values",
+        "put",
+        "remove",
+        "append",
+        "insert",
+        "index_of",
+        "first",
+        "last",
+        "slice",
+        "reverse",
+        "sort",
+        "sum",
+        "join",
+        "split",
+        "range",
+        "trim",
+        "replace",
+        "starts_with",
+        "ends_with",
+        "num",
+        "int",
+        "truthy",
+        "same",
+        "same_world",
+        "text",
+        "random",
+        "random_decimal",
+        "chance",
+        "pick",
+        "flag",
+        "has_flag",
+        "quest",
+        "players",
+        "player_info",
+        "player_flag",
+        "player_has_flag"
+      ],
+      "standardFunctions": [
+        "abs",
+        "align",
+        "alpha",
+        "argb",
+        "bar",
+        "ceil",
+        "clamp",
+        "contains",
+        "cos",
+        "fixed",
+        "flash",
+        "floor",
+        "hex",
+        "len",
+        "lerp",
+        "lower",
+        "marquee",
+        "max",
+        "min",
+        "mix",
+        "mod",
+        "number",
+        "odometer",
+        "palette",
+        "plain",
+        "pow",
+        "readable",
+        "rgb",
+        "round",
+        "scanner",
+        "scramble",
+        "select",
+        "sin",
+        "smoothstep",
+        "str",
+        "timeline",
+        "typewriter",
+        "upper",
+        "wave",
+        "wipe"
+      ]
+    }
   }
 }
 ''',
@@ -8387,12 +10058,23 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "name": {
       "type": "string",
       "pattern": "\\S",
+      "maxLength": 256,
       "description": "The displayed name."
     },
     "type": {
       "type": "string",
       "pattern": "^[a-z0-9_]+:[a-z0-9_/]+$",
-      "description": "An entity type such as minecraft:player."
+      "description": "An entity type such as minecraft:player. The examples are the bodies every transport draws.",
+      "examples": [
+        "minecraft:armadillo",
+        "minecraft:armor_stand",
+        "minecraft:ender_dragon",
+        "minecraft:frog",
+        "minecraft:horse",
+        "minecraft:llama",
+        "minecraft:player",
+        "minecraft:turtle"
+      ]
     },
     "spawned": {
       "type": "boolean",
@@ -8440,10 +10122,418 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         }
       }
     },
+    "owner": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "description": "The owning player's UUID, canonical and lowercase. Modules may use it for their own permission rules."
+    },
     "skin": {
       "type": "string",
       "pattern": "^[a-f0-9]{64}$",
       "description": "SHA-256 of a skin document under skins/."
+    },
+    "equipment": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Items the body wears and holds, by slot.",
+      "properties": {
+        "main_hand": {
+          "$ref": "#/$defs/item"
+        },
+        "off_hand": {
+          "$ref": "#/$defs/item"
+        },
+        "head": {
+          "$ref": "#/$defs/item"
+        },
+        "chest": {
+          "$ref": "#/$defs/item"
+        },
+        "legs": {
+          "$ref": "#/$defs/item"
+        },
+        "feet": {
+          "$ref": "#/$defs/item"
+        },
+        "body": {
+          "$ref": "#/$defs/item"
+        },
+        "saddle": {
+          "$ref": "#/$defs/item"
+        }
+      }
+    },
+    "pose": {
+      "enum": [
+        "standing",
+        "sneaking",
+        "sleeping",
+        "swimming",
+        "sitting"
+      ],
+      "description": "The body pose. Only standing applies to bodies other than minecraft:player."
+    },
+    "hologram": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Text lines above the body. & colour codes such as &a are drawn in colour.",
+      "required": [
+        "lines"
+      ],
+      "properties": {
+        "lines": {
+          "type": "array",
+          "description": "Top line first, at most 16.",
+          "minItems": 0,
+          "maxItems": 16,
+          "items": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "A line with extra space above or below it.",
+                "required": [
+                  "text"
+                ],
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "maxLength": 256
+                  },
+                  "marginTop": {
+                    "type": "number",
+                    "minimum": -4.0,
+                    "maximum": 4.0,
+                    "description": "Blocks of space above the line."
+                  },
+                  "marginBottom": {
+                    "type": "number",
+                    "minimum": -4.0,
+                    "maximum": 4.0,
+                    "description": "Blocks of space below the line."
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "lineHeight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 4.0,
+          "description": "Blocks between lines; gives each line its own display."
+        },
+        "viewRange": {
+          "type": "number",
+          "minimum": 1.0,
+          "maximum": 512.0,
+          "description": "Blocks from which the text is seen."
+        },
+        "billboard": {
+          "enum": [
+            "center",
+            "fixed",
+            "horizontal",
+            "vertical"
+          ],
+          "description": "How the text turns toward the viewer. center by default."
+        },
+        "shadowed": {
+          "type": "boolean",
+          "description": "Draw a shadow under the text."
+        },
+        "seeThrough": {
+          "type": "boolean",
+          "description": "Show the text through blocks."
+        },
+        "interpolationDelay": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1200,
+          "description": "Ticks before a change starts to animate."
+        },
+        "interpolationDuration": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1200,
+          "description": "Ticks a change takes to animate."
+        }
+      }
+    },
+    "nameplate": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Whether the name shows above the body.",
+      "properties": {
+        "visible": {
+          "type": "boolean",
+          "description": "True by default."
+        }
+      }
+    },
+    "armorStand": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:armor_stand bodies only: parts shown and pose angles in degrees.",
+      "properties": {
+        "small": {
+          "type": "boolean",
+          "description": "A small stand."
+        },
+        "arms": {
+          "type": "boolean",
+          "description": "Show arms."
+        },
+        "basePlate": {
+          "type": "boolean",
+          "description": "Show the base plate. True by default."
+        },
+        "invisible": {
+          "type": "boolean",
+          "description": "Hide the stand and show only what it wears."
+        },
+        "head": {
+          "type": "array",
+          "description": "[x, y, z] degrees; omit for the default pose.",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number",
+            "minimum": -360,
+            "maximum": 360
+          }
+        },
+        "body": {
+          "type": "array",
+          "description": "[x, y, z] degrees; omit for the default pose.",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number",
+            "minimum": -360,
+            "maximum": 360
+          }
+        },
+        "leftArm": {
+          "type": "array",
+          "description": "[x, y, z] degrees; omit for the default pose.",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number",
+            "minimum": -360,
+            "maximum": 360
+          }
+        },
+        "rightArm": {
+          "type": "array",
+          "description": "[x, y, z] degrees; omit for the default pose.",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number",
+            "minimum": -360,
+            "maximum": 360
+          }
+        },
+        "leftLeg": {
+          "type": "array",
+          "description": "[x, y, z] degrees; omit for the default pose.",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number",
+            "minimum": -360,
+            "maximum": 360
+          }
+        },
+        "rightLeg": {
+          "type": "array",
+          "description": "[x, y, z] degrees; omit for the default pose.",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number",
+            "minimum": -360,
+            "maximum": 360
+          }
+        }
+      }
+    },
+    "glowing": {
+      "type": "boolean",
+      "description": "An outline glow in the team colour."
+    },
+    "teamColor": {
+      "enum": [
+        "black",
+        "dark_blue",
+        "dark_green",
+        "dark_aqua",
+        "dark_red",
+        "dark_purple",
+        "gold",
+        "gray",
+        "dark_gray",
+        "blue",
+        "green",
+        "aqua",
+        "red",
+        "light_purple",
+        "yellow",
+        "white"
+      ],
+      "description": "The colour of the glow and the name."
+    },
+    "baby": {
+      "type": "boolean",
+      "description": "A baby body, for types that have one."
+    },
+    "usingItem": {
+      "type": "boolean",
+      "description": "Holds the main-hand item raised."
+    },
+    "listed": {
+      "type": "boolean",
+      "description": "Player bodies only: show an entry in the tab list."
+    },
+    "gravity": {
+      "type": "boolean",
+      "description": "False keeps the body where it is placed. True by default."
+    },
+    "inventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A stored inventory for behaviors and modules to read. Nothing draws it.",
+      "required": [
+        "size",
+        "slots"
+      ],
+      "properties": {
+        "size": {
+          "description": "Slots: a multiple of 9 up to 72.",
+          "enum": [
+            9,
+            18,
+            27,
+            36,
+            45,
+            54,
+            63,
+            72
+          ]
+        },
+        "slots": {
+          "type": "object",
+          "description": "Items by slot number from 0, each inside size.",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]?)$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/item"
+          }
+        }
+      }
+    },
+    "poses": {
+      "type": "object",
+      "description": "Named look directions the animus:pose action turns to. They change where the NPC looks, never its body pose.",
+      "maxProperties": 64,
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "yaw"
+        ],
+        "properties": {
+          "yaw": {
+            "type": "number",
+            "minimum": -360,
+            "maximum": 360
+          },
+          "pitch": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "description": "0 by default."
+          }
+        }
+      }
+    },
+    "movement": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How this NPC walks wherever it walks. A route's own speed wins over speed.",
+      "properties": {
+        "speed": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "Blocks per second."
+        },
+        "avoidWater": {
+          "type": "boolean",
+          "description": "False lets a walking route cross water at the surface. True by default."
+        },
+        "fly": {
+          "type": "boolean",
+          "description": "Routes fly."
+        },
+        "openDoors": {
+          "type": "boolean",
+          "description": "Walk through wooden doors, fence gates and trapdoors, closing them behind."
+        },
+        "stepHeight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1.5,
+          "description": "Blocks the body climbs without jumping."
+        },
+        "maximumFall": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16,
+          "description": "Blocks the body drops."
+        },
+        "pathRange": {
+          "type": "number",
+          "minimum": 1.0,
+          "maximum": 256.0,
+          "description": "Blocks one plan reaches; longer legs walk in segments."
+        },
+        "arrivalMargin": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 4.0,
+          "description": "Blocks from a point that count as reaching it."
+        },
+        "stuck": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "What an NPC that has stopped getting closer does.",
+          "properties": {
+            "afterTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 12000,
+              "description": "100 by default."
+            },
+            "teleport": {
+              "type": "boolean",
+              "description": "Teleport to the point; false stops instead. True by default."
+            }
+          }
+        }
+      }
     },
     "behaviors": {
       "type": "array",
@@ -8476,15 +10566,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "rig": {
       "type": "object",
-      "description": "The rig under rigs/ this NPC's body shows.",
       "additionalProperties": false,
+      "description": "The rig under rigs/ this NPC's body shows.",
       "required": [
         "id"
       ],
       "properties": {
         "id": {
           "type": "string",
-          "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$"
+          "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$",
+          "maxLength": 256
         }
       }
     },
@@ -8525,12 +10616,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 "walk",
                 "swim",
                 "fly"
-              ]
+              ],
+              "description": "walk by default. Walking points stand on whole-block heights."
             },
             "speed": {
               "type": "number",
               "minimum": 1,
-              "maximum": 5
+              "maximum": 5,
+              "description": "Blocks per second. 2 by default."
             },
             "order": {
               "enum": [
@@ -8714,18 +10807,20 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             },
             "wander": {
               "type": "object",
-              "description": "Order wander only.",
               "additionalProperties": false,
+              "description": "Order wander only.",
               "properties": {
                 "radius": {
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 32
+                  "maximum": 32,
+                  "description": "Blocks from a centre."
                 },
                 "height": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 8
+                  "maximum": 8,
+                  "description": "Blocks up or down from a centre."
                 }
               }
             }
@@ -9103,10 +11198,738 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             }
           ]
         },
+        "animus:combat": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Fighting, guarding, health and death. An unknown setting is refused so a typo cannot weaken a rule.",
+          "properties": {
+            "enabled": {
+              "description": "Literal true turns combat on; anything else leaves it off."
+            },
+            "reviewAccepted": {
+              "description": "Imported NPCs fight only once this is literal true."
+            },
+            "targets": {
+              "$ref": "#/$defs/seekingRules",
+              "description": "Who the NPC attacks."
+            },
+            "ignores": {
+              "$ref": "#/$defs/ignoringRules",
+              "description": "Who the NPC never attacks, even when a target rule matches."
+            },
+            "avoids": {
+              "$ref": "#/$defs/seekingRules",
+              "description": "Who the NPC keeps away from."
+            },
+            "targeting": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "scanRange": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 256,
+                  "description": "Blocks. 16 by default."
+                },
+                "scanIntervalTicks": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 200,
+                  "description": "10 by default."
+                },
+                "reactionTicks": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 200,
+                  "description": "0 by default."
+                },
+                "memoryTicks": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1200,
+                  "description": "60 by default."
+                },
+                "retainTarget": {
+                  "type": "boolean"
+                },
+                "fightBack": {
+                  "type": "boolean",
+                  "description": "True by default."
+                },
+                "lineOfSight": {
+                  "enum": [
+                    "required",
+                    "ignored",
+                    "field_of_view"
+                  ],
+                  "description": "required by default."
+                }
+              }
+            },
+            "avoidance": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "range": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 64,
+                  "description": "Blocks. 10 by default."
+                },
+                "fleeWhenAttacked": {
+                  "type": "boolean"
+                },
+                "returnPoint": {
+                  "$ref": "#/$defs/location"
+                }
+              }
+            },
+            "squad": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "\\S",
+                  "maxLength": 256,
+                  "description": "NPCs of one squad alert each other."
+                },
+                "alertRange": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 64,
+                  "description": "Blocks. 16 by default."
+                }
+              }
+            },
+            "guard": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "player": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                  "description": "Guard this player."
+                },
+                "npc": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                  "description": "Guard this NPC, by its uuid."
+                },
+                "followDistance": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 64,
+                  "description": "7 by default."
+                },
+                "pointRange": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 16,
+                  "description": "4 by default."
+                },
+                "assist": {
+                  "type": "boolean",
+                  "description": "Attack whatever the guarded player or NPC attacks."
+                },
+                "catchUpDistance": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 256,
+                  "description": "Teleport near the charge beyond this; 0 never teleports. 24 by default."
+                },
+                "replanDistance": {
+                  "type": "number",
+                  "minimum": 0.25,
+                  "maximum": 16,
+                  "description": "1.5 by default."
+                }
+              },
+              "not": {
+                "required": [
+                  "player",
+                  "npc"
+                ]
+              }
+            },
+            "pursuit": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "closeChase": {
+                  "type": "boolean",
+                  "description": "True by default."
+                },
+                "rangedChase": {
+                  "type": "boolean"
+                },
+                "speed": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "4 by default."
+                },
+                "giveUpRange": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 256,
+                  "description": "32 by default."
+                },
+                "leashRange": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 256,
+                  "description": "64 by default."
+                },
+                "returnToPost": {
+                  "type": "boolean",
+                  "description": "True by default."
+                },
+                "teleportWhenStuck": {
+                  "type": "boolean"
+                },
+                "replanTicks": {
+                  "type": "integer",
+                  "minimum": 5,
+                  "maximum": 200,
+                  "description": "20 by default."
+                },
+                "region": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_,'+/-]{1,64}$",
+                  "description": "A protection region the fight stays inside."
+                }
+              }
+            },
+            "melee": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "True by default."
+                },
+                "damage": {
+                  "type": "number",
+                  "minimum": 0.01,
+                  "maximum": 100,
+                  "description": "2 by default."
+                },
+                "reach": {
+                  "type": "number",
+                  "minimum": 0.5,
+                  "maximum": 6,
+                  "description": "3 by default."
+                },
+                "cooldownTicks": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1200,
+                  "description": "20 by default."
+                },
+                "knockback": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 4,
+                  "description": "0.4 by default."
+                },
+                "fromEquipment": {
+                  "type": "boolean"
+                },
+                "weaponDamage": {
+                  "type": "object",
+                  "description": "Damage by held item id, at most 64.",
+                  "maxProperties": 64,
+                  "propertyNames": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+                  },
+                  "additionalProperties": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  }
+                }
+              }
+            },
+            "ranged": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "weapon": {
+                  "enum": [
+                    "arrow",
+                    "spectral_arrow",
+                    "trident",
+                    "snowball",
+                    "egg",
+                    "fireball",
+                    "small_fireball",
+                    "wither_skull",
+                    "llama_spit",
+                    "potion"
+                  ],
+                  "description": "arrow by default."
+                },
+                "damage": {
+                  "type": "number",
+                  "minimum": 0.01,
+                  "maximum": 100,
+                  "description": "3 by default."
+                },
+                "range": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 256,
+                  "description": "24 by default."
+                },
+                "minimumRange": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 256
+                },
+                "cooldownTicks": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1200,
+                  "description": "40 by default."
+                },
+                "velocity": {
+                  "type": "number",
+                  "minimum": 0.5,
+                  "maximum": 4,
+                  "description": "1.6 by default."
+                },
+                "inaccuracy": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 16
+                },
+                "safeShot": {
+                  "type": "boolean",
+                  "description": "True by default."
+                },
+                "knockback": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 4,
+                  "description": "0.2 by default."
+                },
+                "effect": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+                    },
+                    "amplifier": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9,
+                      "description": "0 by default."
+                    },
+                    "durationTicks": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 72000,
+                      "description": "200 by default."
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "description": "Potion only: the effect it applies."
+                },
+                "fromEquipment": {
+                  "type": "boolean"
+                },
+                "useAmmo": {
+                  "type": "boolean"
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "weapon": {
+                        "const": "potion"
+                      }
+                    },
+                    "required": [
+                      "weapon"
+                    ]
+                  },
+                  "then": {
+                    "required": [
+                      "effect"
+                    ]
+                  },
+                  "else": {
+                    "not": {
+                      "required": [
+                        "effect"
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            "defense": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "maximumHealth": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 2048,
+                  "description": "20 by default."
+                },
+                "armor": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "Share of damage absorbed."
+                },
+                "invincible": {
+                  "type": "boolean"
+                },
+                "knockback": {
+                  "type": "boolean",
+                  "description": "True by default."
+                },
+                "protectedFromIgnored": {
+                  "type": "boolean"
+                },
+                "protectFromRange": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 256
+                },
+                "healRateTicks": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 72000,
+                  "description": "0 never heals."
+                },
+                "invulnerableTicks": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100,
+                  "description": "10 by default."
+                },
+                "armorFromEquipment": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "death": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "drops": {
+                  "type": "array",
+                  "description": "At most 32.",
+                  "minItems": 0,
+                  "maxItems": 32,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "item": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+                      },
+                      "amount": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 64,
+                        "description": "1 by default."
+                      },
+                      "chance": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "1 by default."
+                      }
+                    },
+                    "required": [
+                      "item"
+                    ]
+                  }
+                },
+                "experience": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                },
+                "victimDrops": {
+                  "type": "boolean",
+                  "description": "True by default."
+                }
+              }
+            },
+            "respawn": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "delayTicks": {
+                  "type": "integer",
+                  "minimum": -1,
+                  "maximum": 72000,
+                  "description": "-1 never respawns. 100 by default."
+                },
+                "locations": {
+                  "type": "array",
+                  "description": "At most 16.",
+                  "minItems": 0,
+                  "maxItems": 16,
+                  "items": {
+                    "$ref": "#/$defs/location"
+                  }
+                },
+                "deleteOnDeath": {
+                  "type": "boolean",
+                  "description": "Delete the definition on death; needs delayTicks -1."
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "deleteOnDeath": {
+                        "const": true
+                      }
+                    },
+                    "required": [
+                      "deleteOnDeath"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "delayTicks": {
+                        "const": -1
+                      }
+                    },
+                    "required": [
+                      "delayTicks"
+                    ]
+                  }
+                }
+              ]
+            },
+            "greetings": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "friendly": {
+                  "type": "string",
+                  "pattern": "\\S",
+                  "maxLength": 256,
+                  "description": "Said to players it would not target."
+                },
+                "hostile": {
+                  "type": "string",
+                  "pattern": "\\S",
+                  "maxLength": 256,
+                  "description": "Said to players it would target."
+                },
+                "range": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 64,
+                  "description": "10 by default."
+                },
+                "cooldownTicks": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 72000,
+                  "description": "100 by default."
+                }
+              }
+            },
+            "targetableByMobs": {
+              "type": "boolean",
+              "description": "Nearby hostile mobs may attack the NPC."
+            },
+            "preservedSettings": {
+              "description": "Kept from an import."
+            },
+            "historicalStatistics": {
+              "description": "Kept from an import."
+            },
+            "migrationReport": {
+              "description": "Kept from an import."
+            }
+          }
+        },
+        "animus:shop": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The shop a click opens. A sneaking administrator selects the NPC instead.",
+          "required": [
+            "shop"
+          ],
+          "properties": {
+            "shop": {
+              "type": "string",
+              "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_/-]{1,191}$",
+              "description": "A shop id such as town:baker."
+            },
+            "openOn": {
+              "enum": [
+                "right",
+                "left",
+                "both"
+              ],
+              "description": "Which click opens it. right by default."
+            },
+            "imported": {
+              "description": "Kept from an import."
+            },
+            "reviewAccepted": {
+              "type": "boolean",
+              "description": "An imported binding opens nothing until this is true."
+            }
+          }
+        },
+        "animus:gui": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "A chest GUI, menu, shop or Gloss menu a click opens, and a hologram that follows the NPC.",
+          "minProperties": 1,
+          "properties": {
+            "open": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "inventory",
+                    "menu",
+                    "shop",
+                    "gloss"
+                  ],
+                  "description": "inventory by default."
+                },
+                "id": {
+                  "type": "string",
+                  "description": "An id such as town:menu, or a Gloss menu path such as lobby/main."
+                },
+                "openOn": {
+                  "enum": [
+                    "right",
+                    "left",
+                    "both"
+                  ],
+                  "description": "Which click opens it. right by default."
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "kind": {
+                        "const": "gloss"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$"
+                      }
+                    }
+                  },
+                  "else": {
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9_-]+:[a-z0-9_/-]+$"
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "hologram": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9_-]+:[a-z0-9_/-]+$",
+                  "description": "A hologram id such as town:sign."
+                },
+                "offset": {
+                  "type": "array",
+                  "description": "[x, y, z] blocks from the NPC's feet; omit to sit above its head.",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "items": {
+                    "type": "number",
+                    "minimum": -16,
+                    "maximum": 16
+                  }
+                }
+              }
+            }
+          }
+        },
+        "animus:hire": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Hiring this NPC as a bodyguard: the price, the items and how long one hire lasts.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "False turns hiring off and keeps the terms."
+            },
+            "price": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1000000000,
+              "description": "Economy money one hire costs."
+            },
+            "items": {
+              "type": "array",
+              "description": "Items one hire costs, at most 6.",
+              "minItems": 0,
+              "maxItems": 6,
+              "items": {
+                "$ref": "#/$defs/item"
+              }
+            },
+            "durationMinutes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10080,
+              "description": "60 by default; a renewal adds the same again."
+            },
+            "permission": {
+              "type": "string",
+              "pattern": "^[a-z0-9_.-]{1,128}$",
+              "description": "A permission node the hirer must hold."
+            }
+          }
+        },
         "animus:mount": {
           "type": "object",
-          "description": "Rides another NPC.",
           "additionalProperties": false,
+          "description": "Rides another NPC.",
           "properties": {
             "enabled": {
               "type": "boolean"
@@ -9139,8 +11962,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "animus:riding": {
           "type": "object",
-          "description": "Lets a real player ride this NPC.",
           "additionalProperties": false,
+          "description": "Lets a real player ride this NPC.",
           "properties": {
             "enabled": {
               "type": "boolean"
@@ -9202,8 +12025,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "animus:look-close": {
           "type": "object",
-          "description": "Turns the NPC toward the nearest player in range while it is spawned.",
           "additionalProperties": false,
+          "description": "Turns the NPC toward the nearest player in range while it is spawned.",
           "properties": {
             "enabled": {
               "type": "boolean",
@@ -9229,8 +12052,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             },
             "randomLook": {
               "type": "object",
-              "description": "With nobody to look at, turn to a random facing every delayTicks.",
               "additionalProperties": false,
+              "description": "With nobody to look at, turn to a random facing every delayTicks.",
               "properties": {
                 "enabled": {
                   "type": "boolean",
@@ -9244,24 +12067,24 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 },
                 "yaw": {
                   "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
                   "items": {
                     "type": "number",
                     "minimum": -360,
                     "maximum": 360
                   },
-                  "minItems": 2,
-                  "maxItems": 2,
                   "description": "[minimum, maximum] yaw in degrees. [0, 360] by default."
                 },
                 "pitch": {
                   "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
                   "items": {
                     "type": "number",
                     "minimum": -90,
                     "maximum": 90
                   },
-                  "minItems": 2,
-                  "maxItems": 2,
                   "description": "[minimum, maximum] pitch in degrees. [0, 0] by default."
                 }
               }
@@ -9269,6 +12092,596 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           }
         }
       }
+    }
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "An item: its id, a count and the component text of a give command.",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$",
+          "description": "namespace:item, such as minecraft:iron_sword.",
+          "maxLength": 128
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 99,
+          "description": "1 by default."
+        },
+        "components": {
+          "type": "string",
+          "pattern": "^\\[.*\\]$",
+          "description": "Text after the item id in a give command, such as [enchantment_glint_override=true].",
+          "maxLength": 4096
+        },
+        "imported": {
+          "type": "object",
+          "description": "Source item data from an import, kept and never interpreted."
+        }
+      }
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "world": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 256
+        },
+        "x": {
+          "type": "number",
+          "minimum": -30000000,
+          "maximum": 30000000
+        },
+        "y": {
+          "type": "number",
+          "minimum": -30000000,
+          "maximum": 30000000
+        },
+        "z": {
+          "type": "number",
+          "minimum": -30000000,
+          "maximum": 30000000
+        }
+      },
+      "required": [
+        "world",
+        "x",
+        "y",
+        "z"
+      ]
+    },
+    "seekingRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "categories": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "enum": [
+              "players",
+              "npcs",
+              "mobs",
+              "monsters",
+              "animals"
+            ]
+          },
+          "description": "players, npcs, mobs, monsters or animals."
+        },
+        "entityTypes": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string"
+          }
+        },
+        "players": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string"
+          },
+          "description": "Player names."
+        },
+        "npcs": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string"
+          },
+          "description": "NPC ids."
+        },
+        "names": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string"
+          },
+          "description": "Display names."
+        },
+        "squads": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string"
+          }
+        },
+        "owner": {
+          "type": "boolean",
+          "description": "The NPC's owner."
+        },
+        "patterns": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "players": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string"
+              }
+            },
+            "npcs": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string"
+              }
+            },
+            "names": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mainHand": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string"
+              }
+            },
+            "offHand": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string"
+              }
+            },
+            "worn": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "healthAbove": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Percent of maximum health."
+        },
+        "healthBelow": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Percent of maximum health."
+        },
+        "permissions": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.*-]{1,128}$"
+          }
+        },
+        "groups": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,64}$"
+          }
+        },
+        "effects": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+          }
+        },
+        "all": {
+          "type": "array",
+          "description": "Rule sets that must all match one entity.",
+          "minItems": 0,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/nestedRules"
+          }
+        },
+        "together": {
+          "type": "array",
+          "description": "Groups of 2 to 8 rule sets matched by entities near each other.",
+          "minItems": 0,
+          "maxItems": 16,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 8,
+            "items": {
+              "$ref": "#/$defs/nestedRules"
+            }
+          }
+        },
+        "events": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kinds": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "enum": [
+                  "player_hurts_player",
+                  "player_hurts_mob",
+                  "mob_hurts_mob",
+                  "player_hurts_npc",
+                  "npc_hurts_npc"
+                ]
+              }
+            },
+            "playerAttacks": {
+              "$ref": "#/$defs/nestedRules"
+            },
+            "anyAttacks": {
+              "$ref": "#/$defs/nestedRules"
+            }
+          }
+        },
+        "chat": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "pattern": "\\S",
+            "maxLength": 128
+          },
+          "description": "Words in chat that make the speaker a target."
+        }
+      }
+    },
+    "ignoringRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "categories": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "enum": [
+              "players",
+              "npcs",
+              "mobs",
+              "monsters",
+              "animals"
+            ]
+          },
+          "description": "players, npcs, mobs, monsters or animals."
+        },
+        "entityTypes": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string"
+          }
+        },
+        "players": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string"
+          },
+          "description": "Player names."
+        },
+        "npcs": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string"
+          },
+          "description": "NPC ids."
+        },
+        "names": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string"
+          },
+          "description": "Display names."
+        },
+        "squads": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string"
+          }
+        },
+        "owner": {
+          "type": "boolean",
+          "description": "The NPC's owner."
+        },
+        "patterns": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "players": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string"
+              }
+            },
+            "npcs": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string"
+              }
+            },
+            "names": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mainHand": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string"
+              }
+            },
+            "offHand": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string"
+              }
+            },
+            "worn": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "healthAbove": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Percent of maximum health."
+        },
+        "healthBelow": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Percent of maximum health."
+        },
+        "permissions": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.*-]{1,128}$"
+          }
+        },
+        "groups": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,64}$"
+          }
+        },
+        "effects": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+          }
+        },
+        "all": {
+          "type": "array",
+          "description": "Rule sets that must all match one entity.",
+          "minItems": 0,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/nestedRules"
+          }
+        }
+      }
+    },
+    "nestedRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "categories": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "enum": [
+              "players",
+              "npcs",
+              "mobs",
+              "monsters",
+              "animals"
+            ]
+          },
+          "description": "players, npcs, mobs, monsters or animals."
+        },
+        "entityTypes": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string"
+          }
+        },
+        "players": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string"
+          },
+          "description": "Player names."
+        },
+        "npcs": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string"
+          },
+          "description": "NPC ids."
+        },
+        "names": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string"
+          },
+          "description": "Display names."
+        },
+        "squads": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string"
+          }
+        },
+        "owner": {
+          "type": "boolean",
+          "description": "The NPC's owner."
+        },
+        "patterns": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "players": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string"
+              }
+            },
+            "npcs": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string"
+              }
+            },
+            "names": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mainHand": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string"
+              }
+            },
+            "offHand": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string"
+              }
+            },
+            "worn": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "healthAbove": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Percent of maximum health."
+        },
+        "healthBelow": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Percent of maximum health."
+        },
+        "permissions": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.*-]{1,128}$"
+          }
+        },
+        "groups": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]{1,64}$"
+          }
+        },
+        "effects": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+          }
+        }
+      },
+      "minProperties": 1
     }
   },
   "allOf": [
@@ -9328,6 +12741,40 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               }
             }
           }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:player"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "pose": {
+            "enum": [
+              "standing"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:armor_stand"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "armorStand"
+          ]
         }
       }
     }
@@ -9399,6 +12846,423 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     }
   }
+}
+''',
+  'generated/route.schema.json': r'''
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Animus reusable route",
+  "description": "routes/<id>.json: points NPCs follow when their animus:navigation names this route. Unknown fields are kept as written.",
+  "type": "object",
+  "required": [
+    "schemaVersion"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "mode": {
+      "enum": [
+        "walk",
+        "swim",
+        "fly"
+      ],
+      "description": "walk by default. Walking points stand on whole-block heights."
+    },
+    "speed": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "Blocks per second. 2 by default."
+    },
+    "order": {
+      "enum": [
+        "sequence",
+        "pingpong",
+        "random",
+        "wander"
+      ],
+      "description": "How the next point is chosen. sequence by default."
+    },
+    "loop": {
+      "type": "boolean",
+      "description": "Order sequence only: start again from the first point."
+    },
+    "waitTicks": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 12000
+        },
+        {
+          "type": "array",
+          "description": "[min, max] in ticks, min not above max.",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 12000
+          }
+        }
+      ],
+      "description": "Wait before the first leg and after each arrival: ticks, or [min, max] drawn per arrival."
+    },
+    "seed": {
+      "enum": [
+        "npc",
+        "random"
+      ],
+      "description": "npc (default): choices stable per NPC and route, across restarts. random: mixed with the clock."
+    },
+    "startOffset": {
+      "enum": [
+        "first",
+        "random"
+      ],
+      "description": "random: start at a random point after a random 0..waitTicks wait. first by default."
+    },
+    "jitter": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 8,
+      "description": "Leg goals move by a random whole-block x/z offset within this radius."
+    },
+    "points": {
+      "type": "array",
+      "description": "Route points in the NPC's world; wander centres for order wander.",
+      "minItems": 0,
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "required": [
+          "x",
+          "y",
+          "z"
+        ],
+        "properties": {
+          "x": {
+            "type": "number",
+            "minimum": -29999984,
+            "maximum": 29999984
+          },
+          "y": {
+            "type": "number",
+            "minimum": -29999984,
+            "maximum": 29999984
+          },
+          "z": {
+            "type": "number",
+            "minimum": -29999984,
+            "maximum": 29999984
+          },
+          "waitTicks": {
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 12000
+              },
+              {
+                "type": "array",
+                "description": "[min, max] in ticks, min not above max.",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 12000
+                }
+              }
+            ],
+            "description": "Wait after arriving here, instead of the route's."
+          },
+          "jitter": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 8,
+            "description": "Jitter radius of this point, instead of the route's."
+          },
+          "weight": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "description": "Order random only: how often this point is chosen."
+          },
+          "next": {
+            "type": "array",
+            "description": "Order sequence only: after this point, the next point is drawn from these by weight.",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "to"
+              ],
+              "properties": {
+                "to": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 255
+                },
+                "weight": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "guides": {
+      "type": "array",
+      "description": "Order random only: helper nodes a path may pass through.",
+      "minItems": 0,
+      "maxItems": 1024,
+      "items": {
+        "type": "object",
+        "required": [
+          "x",
+          "y",
+          "z"
+        ],
+        "properties": {
+          "x": {
+            "type": "number",
+            "minimum": -29999984,
+            "maximum": 29999984
+          },
+          "y": {
+            "type": "number",
+            "minimum": -29999984,
+            "maximum": 29999984
+          },
+          "z": {
+            "type": "number",
+            "minimum": -29999984,
+            "maximum": 29999984
+          }
+        }
+      }
+    },
+    "linkDistance": {
+      "type": "number",
+      "minimum": 1.0,
+      "maximum": 256.0,
+      "description": "Order random only: the longest link between two nodes."
+    },
+    "wander": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Order wander only.",
+      "properties": {
+        "radius": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32,
+          "description": "Blocks from a centre."
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8,
+          "description": "Blocks up or down from a centre."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "order": {
+            "const": "wander"
+          }
+        },
+        "required": [
+          "order"
+        ]
+      },
+      "then": {
+        "properties": {
+          "points": {
+            "maxItems": 64
+          }
+        }
+      },
+      "else": {
+        "required": [
+          "points"
+        ],
+        "properties": {
+          "points": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "loop"
+        ]
+      },
+      "then": {
+        "properties": {
+          "order": {
+            "const": "sequence"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "guides"
+        ]
+      },
+      "then": {
+        "properties": {
+          "order": {
+            "const": "random"
+          }
+        },
+        "required": [
+          "order"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "linkDistance"
+        ]
+      },
+      "then": {
+        "properties": {
+          "order": {
+            "const": "random"
+          }
+        },
+        "required": [
+          "order"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "wander"
+        ]
+      },
+      "then": {
+        "properties": {
+          "order": {
+            "const": "wander"
+          }
+        },
+        "required": [
+          "order"
+        ]
+      }
+    },
+    {
+      "if": {
+        "not": {
+          "properties": {
+            "order": {
+              "const": "random"
+            }
+          },
+          "required": [
+            "order"
+          ]
+        }
+      },
+      "then": {
+        "properties": {
+          "points": {
+            "items": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "weight"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "order"
+        ],
+        "not": {
+          "properties": {
+            "order": {
+              "const": "sequence"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "points": {
+            "items": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "next"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "order": {
+            "const": "wander"
+          }
+        },
+        "required": [
+          "order"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "jitter"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "not": {
+        "required": [
+          "route"
+        ]
+      }
+    }
+  ]
 }
 ''',
   'gloss/fixtures/animation-flash.json': r'''
@@ -16004,6 +19868,33 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     }
   }
+}
+''',
+  'server-behaviors-v1.schema.json': r'''
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://animus.volmitsoftware.com/schema/server-behaviors-v1.schema.json",
+  "title": "Animus server behaviors",
+  "description": "server-behaviors.json at the data folder root. Only the server behaviors listed here run. Each id names a behavior with \"server\": true. The Java ServerBehaviorList parser is authoritative.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "behaviors"],
+  "properties": {
+    "schemaVersion": {"const": 1, "description": "Always 1."},
+    "behaviors": {
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "description": "Server behaviors to run, at most 256. A missing file runs none; an invalid file runs none until it is fixed.",
+      "items": {
+        "type": "string",
+        "maxLength": 256,
+        "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$",
+        "description": "A behavior id, namespace:path, of a behavior with \"server\": true."
+      }
+    }
+  },
+  "examples": [{"schemaVersion": 1, "behaviors": ["town:welcome"]}]
 }
 ''',
   'shop-v1.schema.json': r'''

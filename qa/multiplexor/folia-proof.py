@@ -80,7 +80,7 @@ try:
             ('animus proof status',r'.*Packet proof unavailable on Folia.*'),
             ('animus proof control status',r'.*Proof presentation requires a player viewer.*'),
             ('animus combat status',r'.*Combat unavailable: .*Folia.*'),
-            ('animus navigation folia-qa status',r'.*Navigation folia-qa: disabled in config\.toml.*')]:
+            ('animus navigation status folia-qa',r'.*Navigation folia-qa: disabled in config\.toml.*')]:
             disabled.append(console(session,log,command,pattern))
         ready=console(session,log,'animus foliaproof status',r'.*Folia stationary proof ready.*admitted=0/8.*')
         transcript=evidence/f'{phase}-client.ndjson'

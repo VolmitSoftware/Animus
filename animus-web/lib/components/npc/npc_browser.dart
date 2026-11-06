@@ -9,16 +9,23 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../logic/gui/gui_text.dart';
 import '../../logic/npc/npc_bulk.dart';
 import '../../logic/npc/npc_catalog.dart';
+import '../../logic/npc/npc_paths.dart';
 import '../../model/document_kind.dart';
+import '../../services/skin_images.dart';
 import '../../state/editor_store.dart';
 import '../../state/live_session.dart';
 import '../../state/workspace_repository.dart';
 import '../../state/workspace_route.dart';
 import '../gui/gui_fields.dart';
 import '../inspect/inspect_fields.dart';
+import 'npc_folders.dart';
 import '../../logic/inspect/schema_fields.dart';
+
+/// A bulk action that waits for a second press.
+enum _Confirm { none, delete, despawn }
 
 class NpcBrowser extends StatefulWidget {
   const NpcBrowser({required this.store, required this.workspace, this.session, super.key});
@@ -39,8 +46,12 @@ class _NpcBrowserState extends State<NpcBrowser> {
   String _tag = '';
   String _folder = '';
   String? _module;
-  bool _confirmDelete = false;
+  _Confirm _confirm = _Confirm.none;
   bool _busy = false;
+
+  /// The bulk move's picked folder (`/` is `npcs/`) and a typed new path,
+  /// which wins when set.
+  String _moveTarget = '/';
 
   List<NpcEntry> get _all => npcEntries(component.workspace.documents);
 
@@ -50,13 +61,13 @@ class _NpcBrowserState extends State<NpcBrowser> {
 
   void _typeSearch(String value) => setState(() {
     _search = value;
-    _confirmDelete = false;
+    _confirm = _Confirm.none;
   });
 
   void _setSearch(String value) => setState(() {
     _search = value;
     _searchEpoch++;
-    _confirmDelete = false;
+    _confirm = _Confirm.none;
   });
 
   Future<void> _bulk(String action, NpcBulkResult result) async {
@@ -86,7 +97,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
           _selected
             ..removeAll(removed)
             ..addAll(written);
-          _confirmDelete = false;
+          _confirm = _Confirm.none;
         });
       }
     } finally {
@@ -97,7 +108,10 @@ class _NpcBrowserState extends State<NpcBrowser> {
   Future<void> _spawnOnServer(List<NpcEntry> selected, bool spawn) async {
     final LiveSession? session = component.session;
     if (session == null) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _confirm = _Confirm.none;
+    });
     try {
       await session.spawnNpcs(<String>[for (final NpcEntry entry in selected) entry.key], spawn: spawn);
     } finally {
@@ -130,7 +144,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
               key: ValueKey<String>('npc-search:$_searchEpoch'),
               value: _search,
               label: 'Search NPCs',
-              placeholder: 'Name, id, tag:guard, folder:town, has:combat, is:despawned',
+              placeholder: 'Name, id, tag:guard, folder:town, folder:=town, has:combat',
               onChanged: _typeSearch,
             ),
             if (_search.isNotEmpty) Button.ghost(label: 'Clear search', size: ButtonSize.small, onPressed: () => _setSearch('')),
@@ -198,54 +212,38 @@ class _NpcBrowserState extends State<NpcBrowser> {
     );
   }
 
-  Widget _folders(List<NpcEntry> all) {
-    final List<NpcFolder> folders = npcFolders(all);
-    final List<(String, int)> tags = npcTags(all);
-    String? folder;
+  /// The folder the search narrows to with `folder:` (subtree), or `''`.
+  String get _selectedFolder {
+    String folder = '';
     for (final NpcTerm term in NpcQuery.parse(_search).terms) {
-      if (term.field == 'folder' && !term.negated) folder = term.value;
+      if (term.field == 'folder' && !term.negated && !term.value.startsWith('=')) folder = term.value;
     }
-    void open(String? name) {
-      String next = _search;
-      if (folder != null) next = toggleTerm(next, 'folder', folder);
-      if (name != null) next = toggleTerm(next, 'folder', name);
-      _setSearch(next);
-    }
+    return folder;
+  }
 
+  /// Filters the list to [folder] and its subtree, replacing any folder term.
+  void _openFolder(String folder) {
+    String next = _search;
+    for (final NpcTerm term in NpcQuery.parse(_search).terms) {
+      if (term.field == 'folder' && !term.negated) next = toggleTerm(next, 'folder', term.value);
+    }
+    if (folder.isNotEmpty) next = toggleTerm(next, 'folder', folder);
+    _setSearch(next);
+  }
+
+  Widget _folders(List<NpcEntry> all) {
+    final List<(String, int)> tags = npcTags(all);
     return dom.nav(
       classes: 'animus-npc-folders',
       attributes: const <String, String>{'aria-label': 'Folders and tags'},
       <Widget>[
-        const dom.h3(<Widget>[Component.text('Folders')]),
-        dom.ul(
-          classes: 'animus-npc-tree',
-          attributes: const <String, String>{'role': 'tree'},
-          <Widget>[
-            dom.li(
-              attributes: <String, String>{'role': 'treeitem', 'aria-selected': '${folder == null}'},
-              <Widget>[
-                _treeButton('npcs/', all.length, folder == null, () => open(null), 'All folders'),
-                dom.ul(
-                  attributes: const <String, String>{'role': 'group'},
-                  <Widget>[
-                    for (final NpcFolder entry in folders)
-                      dom.li(
-                        attributes: <String, String>{'role': 'treeitem', 'aria-selected': '${folder == entry.name}'},
-                        <Widget>[
-                          _treeButton(
-                            '${entry.name}/',
-                            entry.count,
-                            folder == entry.name,
-                            () => open(folder == entry.name ? null : entry.name),
-                            'Folder ${entry.name}',
-                          ),
-                        ],
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ],
+        NpcFolderPanel(
+          key: ValueKey<String>('npc-folders:${component.workspace.id}'),
+          store: component.store,
+          workspaceId: component.workspace.id,
+          entries: all,
+          selected: _selectedFolder,
+          onSelect: _openFolder,
         ),
         const dom.h3(<Widget>[Component.text('Tags')]),
         if (tags.isEmpty)
@@ -259,25 +257,24 @@ class _NpcBrowserState extends State<NpcBrowser> {
     );
   }
 
-  Widget _treeButton(String label, int count, bool selected, void Function() onPressed, String name) => dom.button(
-    classes: 'animus-npc-tree-item${selected ? ' is-selected' : ''}',
-    attributes: <String, String>{'type': 'button', 'aria-label': name, 'aria-pressed': '$selected'},
-    events: <String, void Function(web.Event)>{'click': (web.Event _) => onPressed()},
-    <Widget>[
-      dom.span(<Widget>[Component.text(label)]),
-      dom.span(classes: 'animus-count', <Widget>[Component.text('$count')]),
-    ],
-  );
-
   Widget _bulkBar(List<NpcEntry> all, List<NpcEntry> selected, Set<String> keys) {
     final List<String> selectedTags = npcTags(selected).map(((String, int) tag) => tag.$1).toList();
     final List<String> modules = moduleKeys(selected);
     final String? module = _module != null && modules.contains(_module) ? _module : null;
     final LiveSession? session = component.session;
+    final bool canSpawn = session?.connection.token?.has('spawn') ?? false;
     final String count = '${selected.length} NPC${selected.length == 1 ? '' : 's'}';
     return dom.div(
       classes: 'animus-npc-bulk',
-      attributes: const <String, String>{'role': 'toolbar', 'aria-label': 'Bulk edit'},
+      attributes: const <String, String>{'role': 'group', 'aria-label': 'Bulk edit'},
+      events: <String, void Function(web.Event)>{
+        'keydown': (web.Event event) {
+          if ((event as web.KeyboardEvent).key == 'Escape' && _confirm != _Confirm.none) {
+            event.preventDefault();
+            setState(() => _confirm = _Confirm.none);
+          }
+        },
+      },
       <Widget>[
         dom.div(classes: 'animus-npc-bulk-head', <Widget>[
           dom.strong(<Widget>[Component.text('$count selected')]),
@@ -302,31 +299,20 @@ class _NpcBrowserState extends State<NpcBrowser> {
             GuiSelect(
               value: null,
               options: selectedTags,
-              noneLabel: 'Remove a tag',
+              label: 'Remove a tag',
+              noneLabel: 'Pick a tag to remove',
               onChanged: (String? tag) {
                 if (tag != null) _bulk('Untagged', removeTag(selected, tag));
               },
             ),
         ]),
-        dom.div(classes: 'animus-npc-bulk-group', <Widget>[
-          const dom.span(classes: 'animus-npc-bulk-label', <Widget>[Component.text('Folder')]),
-          SuggestInput(
-            value: _folder,
-            label: 'Folder',
-            placeholder: 'town',
-            suggestions: <FieldOption>[for (final NpcFolder folder in npcFolders(all)) FieldOption(folder.name)],
-            onChanged: (String value) => setState(() => _folder = value.trim().toLowerCase()),
-          ),
-          Button.secondary(
-            label: 'Move to folder',
-            size: ButtonSize.small,
-            disabled: _busy || !npcFolderPattern.hasMatch(_folder),
-            onPressed: () => _bulk('Moved', moveToFolder(selected, _folder, keys)),
-          ),
-        ]),
+        _moveGroup(all, selected, keys),
         dom.div(classes: 'animus-npc-bulk-group', <Widget>[
           const dom.span(classes: 'animus-npc-bulk-label', <Widget>[Component.text('Module')]),
-          GuiSelect(value: module, options: modules, noneLabel: 'Pick a module', onChanged: (String? value) => setState(() => _module = value)),
+          if (modules.isEmpty)
+            const dom.span(classes: 'animus-muted', <Widget>[Component.text('The selection has no modules.')])
+          else
+            GuiSelect(value: module, options: modules, label: 'Module to change', noneLabel: 'Pick a module', onChanged: (String? value) => setState(() => _module = value)),
           Button.secondary(
             label: 'Enable',
             size: ButtonSize.small,
@@ -355,29 +341,41 @@ class _NpcBrowserState extends State<NpcBrowser> {
             disabled: _busy,
             onPressed: () => _bulk('Set despawned on', setSpawned(selected, false)),
           ),
-          if (session != null) ...<Widget>[
+          if (session != null && canSpawn) ...<Widget>[
             Button.secondary(
               label: 'Spawn on server',
               size: ButtonSize.small,
               disabled: _busy || !session.online,
               onPressed: () => _spawnOnServer(selected, true),
             ),
-            Button.secondary(
-              label: 'Despawn on server',
-              size: ButtonSize.small,
-              disabled: _busy || !session.online,
-              onPressed: () => _spawnOnServer(selected, false),
-            ),
+            if (_confirm != _Confirm.despawn)
+              Button.secondary(
+                label: 'Despawn on server',
+                size: ButtonSize.small,
+                disabled: _busy || !session.online,
+                onPressed: () => setState(() => _confirm = _Confirm.despawn),
+              )
+            else ...<Widget>[
+              Button.destructive(label: 'Despawn $count now', size: ButtonSize.small, disabled: _busy || !session.online, onPressed: () => _spawnOnServer(selected, false)),
+              Button.ghost(label: 'Keep them spawned', size: ButtonSize.small, onPressed: () => setState(() => _confirm = _Confirm.none)),
+            ],
           ],
+          if (session != null && !canSpawn)
+            const dom.span(classes: 'animus-muted', <Widget>[
+              Component.text('Spawning on the server needs the spawn scope; pair again with it to spawn and despawn from here.'),
+            ]),
         ]),
         dom.div(classes: 'animus-npc-bulk-group', <Widget>[
-          if (!_confirmDelete)
-            Button.ghost(label: 'Delete', size: ButtonSize.small, disabled: _busy, onPressed: () => setState(() => _confirmDelete = true))
+          if (_confirm != _Confirm.delete)
+            Button.ghost(label: 'Delete', size: ButtonSize.small, disabled: _busy, onPressed: () => setState(() => _confirm = _Confirm.delete))
           else ...<Widget>[
             Button.destructive(label: 'Delete $count', size: ButtonSize.small, disabled: _busy, onPressed: () => _bulk('Deleted', deleteNpcs(selected))),
-            Button.ghost(label: 'Keep them', size: ButtonSize.small, onPressed: () => setState(() => _confirmDelete = false)),
+            Button.ghost(label: 'Keep them', size: ButtonSize.small, onPressed: () => setState(() => _confirm = _Confirm.none)),
+            const dom.span(classes: 'animus-muted', <Widget>[Component.text('Escape keeps them. Undo brings deleted NPCs back.')]),
           ],
         ]),
+        if (_confirm == _Confirm.despawn)
+          const dom.p(classes: 'animus-muted', <Widget>[Component.text('Despawning acts on the server at once and is not part of undo. Escape keeps them spawned.')]),
         if (session != null)
           const dom.p(classes: 'animus-muted', <Widget>[
             Component.text('Edits join the drafts; Apply sends them as one change set. Spawn and despawn act on the server at once.'),
@@ -386,10 +384,65 @@ class _NpcBrowserState extends State<NpcBrowser> {
     );
   }
 
+  /// Move to folder: the tree as a picker, or a typed path for a new folder.
+  Widget _moveGroup(List<NpcEntry> all, List<NpcEntry> selected, Set<String> keys) {
+    final String typed = normalizeNpcFolder(_folder);
+    final String target = _folder.trim().isNotEmpty ? typed : (_moveTarget == '/' ? '' : _moveTarget);
+    final String? problem = _folder.trim().isEmpty ? null : npcFolderProblem(typed);
+    return dom.div(classes: 'animus-npc-bulk-group', <Widget>[
+      const dom.span(classes: 'animus-npc-bulk-label', <Widget>[Component.text('Folder')]),
+      NpcFolderPicker(
+        root: npcFolderTree(all, extra: NpcFolderMemory.created(component.workspace.id)),
+        value: _moveTarget,
+        label: 'Move to',
+        onChanged: (String value) => setState(() => _moveTarget = value),
+      ),
+      const dom.label(classes: 'animus-npc-folder-label', htmlFor: 'animus-npc-move-path', <Widget>[Component.text('Or a new path')]),
+      GuiTextInput(
+        id: 'animus-npc-move-path',
+        value: _folder,
+        label: 'Or a new path',
+        placeholder: 'town/market',
+        onChanged: (String value) => setState(() => _folder = value),
+      ),
+      Button.secondary(
+        label: 'Move to npcs/${target.isEmpty ? '' : '$target/'}',
+        size: ButtonSize.small,
+        disabled: _busy || problem != null,
+        attributes: const <String, String>{'data-testid': 'bulk-move'},
+        onPressed: () => _bulk('Moved', moveToFolder(selected, target, keys)),
+      ),
+      if (problem != null) dom.span(classes: 'animus-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(problem)]),
+    ]);
+  }
+
   Widget _list(List<NpcEntry> shown, bool allShown) {
     if (shown.isEmpty) {
-      return dom.p(classes: 'animus-muted animus-npc-empty', <Widget>[
-        Component.text(_all.isEmpty ? 'This workspace has no NPCs.' : 'No NPC matches the search.'),
+      if (_all.isEmpty) {
+        return dom.div(classes: 'animus-npc-empty', <Widget>[
+          const dom.p(<Widget>[Component.text('This workspace has no NPCs yet.')]),
+          dom.a(
+            classes: 'animus-npc-empty-action',
+            href: NewDocumentRoute(component.workspace.id, DocumentKind.npc).format(),
+            <Widget>[const Component.text('Create an NPC')],
+          ),
+        ]);
+      }
+      final String folder = _selectedFolder;
+      if (folder.isNotEmpty && NpcQuery.parse(_search).terms.length == 1) {
+        return dom.div(classes: 'animus-npc-empty', <Widget>[
+          dom.p(<Widget>[Component.text('npcs/$folder/ holds no NPCs yet. Select NPCs and move them here, or create one in it.')]),
+          dom.a(
+            classes: 'animus-npc-empty-action',
+            href: NewDocumentRoute.inFolder(component.workspace.id, DocumentKind.npc, folder).format(),
+            <Widget>[Component.text('New NPC in npcs/$folder/')],
+          ),
+          Button.secondary(label: 'Show every NPC', size: ButtonSize.small, onPressed: () => _setSearch('')),
+        ]);
+      }
+      return dom.div(classes: 'animus-npc-empty', <Widget>[
+        dom.p(<Widget>[Component.text('No NPC matches "${_search.trim()}".')]),
+        Button.secondary(label: 'Clear search', size: ButtonSize.small, onPressed: () => _setSearch('')),
       ]);
     }
     return dom.div(
@@ -397,6 +450,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
       attributes: const <String, String>{'role': 'list', 'aria-label': 'NPCs'},
       <Widget>[
         dom.div(classes: 'animus-npc-row is-head', <Widget>[
+          dom.label(classes: 'animus-npc-check', <Widget>[
           dom.input(
             type: dom.InputType.checkbox,
             checked: allShown,
@@ -412,11 +466,12 @@ class _NpcBrowserState extends State<NpcBrowser> {
                       _selected.remove(entry.key);
                     }
                   }
-                  _confirmDelete = false;
+                  _confirm = _Confirm.none;
                 });
               },
             },
           ),
+          ]),
           const dom.span(<Widget>[Component.text('Name')]),
           const dom.span(classes: 'animus-npc-col-type', <Widget>[Component.text('Type')]),
           const dom.span(classes: 'animus-npc-col-world', <Widget>[Component.text('World')]),
@@ -434,6 +489,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
       classes: 'animus-npc-row${selected ? ' is-selected' : ''}',
       attributes: <String, String>{'role': 'listitem', 'data-npc': entry.key},
       <Widget>[
+        dom.label(classes: 'animus-npc-check', <Widget>[
         dom.input(
           type: dom.InputType.checkbox,
           checked: selected,
@@ -447,14 +503,18 @@ class _NpcBrowserState extends State<NpcBrowser> {
                 } else {
                   _selected.remove(entry.key);
                 }
-                _confirmDelete = false;
+                _confirm = _Confirm.none;
               });
             },
           },
         ),
+        ]),
         dom.div(classes: 'animus-npc-name', <Widget>[
-          dom.a(href: DocumentRoute(component.workspace.id, DocumentKind.npc, entry.key).format(), <Widget>[Component.text(entry.name)]),
-          dom.code(classes: 'animus-muted', <Widget>[Component.text(entry.key)]),
+          _face(entry),
+          dom.div(classes: 'animus-npc-name-text', <Widget>[
+            dom.a(href: DocumentRoute(component.workspace.id, DocumentKind.npc, entry.key).format(), <Widget>[Component.text(guiPlainText(entry.name))]),
+            dom.code(classes: 'animus-muted', <Widget>[Component.text(entry.key)]),
+          ]),
         ]),
         dom.span(classes: 'animus-npc-col-type', <Widget>[Component.text(entry.type.startsWith('minecraft:') ? entry.type.substring(10) : entry.type)]),
         dom.span(classes: 'animus-npc-col-world', <Widget>[Component.text(entry.world)]),
@@ -466,9 +526,29 @@ class _NpcBrowserState extends State<NpcBrowser> {
               dom.span(classes: 'animus-tag', attributes: <String, String>{'data-feature': feature.key}, <Widget>[Component.text(feature.label)]),
           if (!entry.spawned) const dom.span(classes: 'animus-tag is-muted', <Widget>[Component.text('despawned')]),
           if (!entry.valid)
-            dom.span(classes: 'animus-badge is-error', attributes: const <String, String>{'title': 'Errors'}, <Widget>[Component.text('${entry.errors}')]),
+            dom.span(
+              classes: 'animus-badge is-error',
+              attributes: <String, String>{
+                'title': '${entry.errors} error${entry.errors == 1 ? '' : 's'} in this definition; open it to see them',
+                'aria-label': '${entry.errors} error${entry.errors == 1 ? '' : 's'}',
+              },
+              <Widget>[Component.text('${entry.errors}')],
+            ),
         ]),
       ],
+    );
+  }
+
+  /// The skin's face when its PNG is loaded, else a plain placeholder head.
+  Widget _face(NpcEntry entry) {
+    final Object? skin = entry.json['skin'];
+    final LoadedSkin? loaded = skin is String ? SkinImages.forKey(skin) : null;
+    if (loaded == null) return const dom.span(classes: 'animus-skin-face is-blank is-small', attributes: <String, String>{'aria-hidden': 'true'}, <Widget>[]);
+    return dom.span(
+      classes: 'animus-skin-face is-small',
+      attributes: const <String, String>{'aria-hidden': 'true'},
+      styles: dom.Styles(raw: <String, String>{'background-image': 'url("${loaded.dataUrl}")'}),
+      const <Widget>[],
     );
   }
 }

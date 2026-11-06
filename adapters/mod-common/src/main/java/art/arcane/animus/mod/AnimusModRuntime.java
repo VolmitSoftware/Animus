@@ -158,7 +158,7 @@ public final class AnimusModRuntime {
             LOGGER.info(next.guis.status());
             next.builds = new BuildService<>(next.runtime, next.living, files, new VanillaBuildPlatform(server, next.host.terrain()), next.runtime.moduleHooks().buildProtection(BuildProtection.NONE),
                     "none (mod servers have no standard protection API; a module protection hook can deny block changes)", next.ticks::every,
-                    () -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); }, LOGGER::info, null);
+                    () -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); }, LOGGER::info, null, null);
             LOGGER.info(next.builds.status());
             DialogueTriggers dialogue = new DialogueTriggers(() -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); });
             next.builtins = new BuiltinCapabilities(new VanillaBehaviorPlatform(server, next.living, next.combat, next.builds, next.ticks, () -> owner.guis),
@@ -386,4 +386,6 @@ public final class AnimusModRuntime {
     }
     boolean helperHit(Projectile projectile, HitResult hit) { Running active = running; return active != null && active.combat.helperHit(projectile, hit); }
     boolean suppressesDrops(LivingEntity entity) { Running active = running; return active != null && active.combat.suppressesDrops(entity); }
+    /** Server behaviors of the running server, or null. */
+    ModServerBehaviors serverBehaviors() { Running active = running; return active == null ? null : active.serverBehaviors; }
 }

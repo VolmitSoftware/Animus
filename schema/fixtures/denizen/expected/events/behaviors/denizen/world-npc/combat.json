@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:world-npc/combat",
+  "entry": "on-player-damages-npc",
+  "routines": {
+    "on-player-damages-npc": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "expression": "!(has_flag('npc', 'protected'))",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:actionbar",
+          "arguments": {
+            "text": "&cThis NPC is protected"
+          }
+        }
+      ]
+    },
+    "on-player-damages-entity": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "expression": "!(true)",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "You hit NPC {{ npc.name }}."
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "on-player-damages-npc",
+      "event": "interaction",
+      "action": "attack",
+      "consume": "has_flag('npc', 'protected')",
+      "routine": "on-player-damages-npc"
+    },
+    {
+      "id": "on-player-damages-entity",
+      "event": "interaction",
+      "action": "attack",
+      "routine": "on-player-damages-entity"
+    }
+  ]
+}

@@ -72,5 +72,13 @@ JsonMap newDocument(DocumentKind kind, String id) => switch (kind) {
             <String, Object?>{'item': <String, Object?>{'type': 'item', 'item': 'minecraft:emerald'}},
           ],
         },
+      DocumentKind.textAnimation => <String, Object?>{
+          'schemaVersion': 1,
+          'revision': 1,
+          'mode': 'ascend',
+          'frameIntervalMs': 500,
+          'frames': <Object?>['&e*  ', '&e * ', '&e  *'],
+        },
+      DocumentKind.presets => <String, Object?>{'schemaVersion': 1, 'revision': 1},
       _ => <String, Object?>{},
     };

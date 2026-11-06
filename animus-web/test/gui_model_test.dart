@@ -105,6 +105,11 @@ void main() {
         'gui/inventories/town/board.json': <String>[],
         'gui/inventories/town/gloss-only.json': <String>[r"$.keys.X.actions[1].type: action 'camera' is not available in Animus"],
         'gui/menus/town/hub.json': <String>[],
+        'gui/presets.json': <String>[],
+        'gui/text-animations/town/sparkle.json': <String>[
+          r"$.preset: Gloss presets are not available in Animus; inline the preset's fields",
+          r'$.mode: expected one of [ascend, ascend_descend, descend, random]',
+        ],
         'shops/town/market.json': <String>[],
       });
     });
@@ -127,9 +132,9 @@ void main() {
         },
       };
       expect(<String>[for (final Diagnostic d in validateGui(DocumentKind.inventory, doc)) if (d.code == refusedCode) '${d.path}: ${d.message}'], <String>[
-        r"$.preset: Gloss presets are not available in Animus; copy the preset's fields in",
-        r"$.keys.a.type: component 'slider' is a holographic menu component and is not available in a chest window",
-        r"$.keys.b.icon.type: icon 'block' has no meaning in a chest window and is not available in Animus",
+        r"$.preset: Gloss presets are not available in Animus; inline the preset's fields",
+        r"$.keys.a.type: component 'slider' is a holographic menu component and has no meaning in a chest window",
+        r"$.keys.b.icon.type: icon 'block' is a holographic menu icon and cannot be drawn in a chest window",
         r"$.keys.b.actions[0].steps[0].type: action 'glow' is not available in Animus",
         r"$.keys.b.actions[0].once: sequence field 'once' is not available in Animus",
       ]);
@@ -364,35 +369,46 @@ void main() {
         now: 0,
       );
       expect(exported.skipped, <String>['Chest GUIs: town:board uses animus: actions, which Gloss cannot run']);
-      expect(exported.exported, 3, reason: 'gloss-only, hub and welcome; the shop is not a Gloss kind');
+      expect(exported.exported, 5, reason: 'gloss-only, hub, welcome, sparkle and presets; the shop is not a Gloss kind');
       final JsonMap bundle = jsonDecode(exported.bundle) as JsonMap;
-      expect(asList(asMap(bundle['workspace'])['documents']).map((Object? d) => asMap(d)['runtimeId']).toSet(), <String>{'town.hub', 'town.welcome', 'town.gloss-only'});
+      expect(asList(asMap(bundle['workspace'])['documents']).map((Object? d) => asMap(d)['runtimeId']).toSet(), <String>{'town.hub', 'town.welcome', 'town.gloss-only', 'town.sparkle', 'presets'});
       final GlossImport back = readGlossBundle(exported.bundle);
-      // Gloss ids carry no namespace, so town:welcome leaves as town.welcome
-      // and comes back into the gloss namespace, as the server's import does.
-      const Map<String, String> returned = <String, String>{
-        'hologram:gloss:town-welcome': 'hologram:town:welcome',
-        'menu:gloss:town-hub': 'menu:town:hub',
-        'inventory:gloss:town-gloss-only': 'inventory:town:gloss-only',
-      };
+      // The Animus id rides in the Gloss title, so ids come back unchanged
+      // even though town:welcome leaves as town.welcome.
+      expect(back.notes, isEmpty);
+      expect(back.documents, hasLength(5));
       for (final GlossImportedDocument document in back.documents) {
-        final String key = returned['${document.location}'] ?? '${document.location}';
-        final AnimusDocument original = folder.documents.firstWhere((AnimusDocument d) => '${d.kind.wireName}:${d.id}' == key);
-        if (key != '${document.location}') {
-          expect(document.path, '${document.location.kind.folder}/gloss/${document.location.id.substring(6)}.json');
-          expect(document.source, original.source);
-          continue;
-        }
+        final AnimusDocument original = folder.documents.firstWhere((AnimusDocument d) => d.kind == document.location.kind && d.id == document.location.id);
         expect(document.path, original.path);
         expect(document.source, original.source);
       }
+    });
+
+    test('should map ids as GlossIds and take a title back only when it maps to the Gloss id', () {
+      expect(glossIdForAnimus(DocumentKind.inventory, 'town:menu'), 'town.menu');
+      expect(animusIdForGloss(DocumentKind.inventory, 'town.menu'), 'gloss:town-menu');
+      expect(animusIdFromBundle(DocumentKind.inventory, 'town.menu', 'town:menu'), 'town:menu');
+      expect(animusIdFromBundle(DocumentKind.inventory, 'town.menu', 'town:other'), 'gloss:town-menu');
+      expect(animusIdFromBundle(DocumentKind.menu, 'lobby.shops/food', 'lobby:shops/food'), 'lobby:shops/food');
+      expect(animusIdFromBundle(DocumentKind.hologram, 'spawn', 'Spawn sign'), 'gloss:spawn');
+    });
+
+    test('should note folders, images and titles it does not keep, and list conflicts', () {
+      final Map<String, Object?> bundle = jsonDecode(File('test/fixtures/gloss_bundle/gloss-workspace.json').readAsStringSync()) as Map<String, Object?>;
+      final GlossImport imported = readGlossBundle(jsonEncode(bundle));
+      expect(imported.notes, contains(startsWith('Folders (Lobby) are not kept')));
+      expect(imported.notes, contains(startsWith('1 image is not imported')));
+      expect(imported.notes, contains('Lobby menu: the Gloss title is not kept; the document is gloss:lobby/main.'));
+      final AnimusDocument existing = validateSource(imported.documents.first.location, imported.documents.first.path, imported.documents.first.source, schemas);
+      expect(glossConflicts(imported, <AnimusDocument>[existing]), <DocumentLocation>[imported.documents.first.location]);
+      expect(glossConflicts(imported, const <AnimusDocument>[]), isEmpty);
     });
   });
 
   group('export and editing', () {
     test('should give every new document a path that locates back to it and passes validation', () {
       for (final DocumentKind kind in guiKinds) {
-        final String id = 'example:${kind.wireName}';
+        final String id = kind == DocumentKind.presets ? 'presets' : 'example:${kind.wireName}';
         final String path = documentPath(kind, id);
         expect(locateDocument(path), DocumentLocation(kind, id), reason: path);
         final AnimusDocument document = validateSource(DocumentLocation(kind, id), path, prettyJson(newDocument(kind, id)), schemas);

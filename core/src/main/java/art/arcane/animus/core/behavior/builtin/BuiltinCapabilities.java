@@ -89,6 +89,8 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     /** Capabilities that need an NPC body or NPC presence; a server behavior's run refuses them as no-npc. */
     private static final Set<String> NPC_ONLY = Set.of("say", "look", "navigate", "stop-navigation", "play-recording", "resume-patrol", "set-appearance", "set-equipment", "combat-control",
             "build", "play-animation", "stop-animation", "npc-state", "player-in-range", "choices");
+    /** Whether a capability needs an NPC body or NPC presence, so a server behavior cannot run it. */
+    public static boolean npcOnly(Key key) { return key.namespace().equals(NAMESPACE) && NPC_ONLY.contains(key.name()); }
     private static final String PERMISSION = "[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*";
 
     /** Decides what a capability may do when previewed and whether it needs the platform owner. */
@@ -238,7 +240,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
 
     private <T> CompletionStage<T> invoke(Spec spec, Body<T> body, Invocation invocation) throws IOException {
         Call call = new Call(invocation, JsonDocuments.object(invocation.argumentsJson()));
-        if (NPC_ONLY.contains(spec.key.name())) requireNpc(call);
+        if (npcOnly(spec.key)) requireNpc(call);
         if (invocation.preview() && refusedInPreview(spec, call.arguments))
             throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "preview-refused", spec.key + " is not available in a preview");
         return body.run(call);

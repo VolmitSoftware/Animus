@@ -8,6 +8,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "text": {
           "type": "string",
@@ -30,6 +31,7 @@
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -68,6 +70,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "operation": {
           "type": "string",
@@ -167,6 +170,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "id": {
           "type": "string",
@@ -199,6 +203,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "operation": {
           "type": "string",
@@ -226,6 +231,7 @@
       "privileged": true,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "command": {
           "type": "string",
@@ -256,6 +262,7 @@
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -287,6 +294,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "title": {
           "type": "string",
@@ -319,6 +327,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "item": {
           "type": "string",
@@ -357,6 +366,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "permission": {
           "type": "string",
@@ -373,6 +383,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "x": {
           "type": "number",
@@ -416,6 +427,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "text": {
           "type": "string",
@@ -448,6 +460,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "route": {
           "type": "string",
@@ -517,6 +530,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "spawned": {
           "type": "boolean",
@@ -554,6 +568,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "gui": {
           "type": "string",
@@ -586,6 +601,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "shop": {
           "type": "string",
@@ -608,6 +624,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "animation": {
           "type": "string",
@@ -646,6 +663,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "recording": {
           "type": "string",
@@ -681,6 +699,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "sound": {
           "type": "string",
@@ -737,6 +756,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "radius": {
           "type": "number",
@@ -757,6 +777,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "pose": {
           "type": "string",
@@ -773,6 +794,7 @@
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -828,6 +850,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {}
     },
     {
@@ -837,6 +860,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "text": {
           "type": "string",
@@ -873,6 +897,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "name": {
           "type": "string",
@@ -910,6 +935,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "slot": {
           "type": "string",
@@ -939,6 +965,7 @@
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -981,6 +1008,7 @@
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -1027,6 +1055,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "particle": {
           "type": "string",
@@ -1083,6 +1112,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "layer": {
           "type": "integer",
@@ -1105,6 +1135,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {}
     },
     {
@@ -1114,6 +1145,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "item": {
           "type": "string",
@@ -1142,6 +1174,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "target": {
           "type": "string",
@@ -1220,6 +1253,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "title": {
           "type": "string",
@@ -1349,7 +1383,7 @@
             "enter",
             "leave"
           ],
-          "description": "Entering or leaving the radius."
+          "description": "Entering or leaving the radius or area."
         },
         "radius": {
           "type": "number",
@@ -1719,6 +1753,9 @@
       "description": "A player joins the server. first: true matches only first joins, false only returning players.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "first"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -1782,6 +1819,9 @@
       "description": "A player sends a chat message, optionally matching a case-insensitive pattern with * wildcards.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "message"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -1818,6 +1858,12 @@
       "description": "A player or the console runs the Animus-managed command this trigger registers.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "command",
+        "alias",
+        "args",
+        "raw_args"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -1907,6 +1953,9 @@
       "description": "A player dies.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "message"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -1965,6 +2014,10 @@
       "description": "A player moves to another world, optionally only from or to named worlds.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "from",
+        "to"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -2001,6 +2054,580 @@
           "maxLength": 64,
           "pattern": "\\S",
           "description": "Fires only when entering this world. Omit for any world."
+        }
+      }
+    },
+    "player_area": {
+      "description": "A player enters or leaves a cuboid or ellipsoid area, checked every half second and on join and quit. Runs read context.area, context.world and context.cause (join, move or quit).",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_area"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "phase": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "enter",
+            "leave"
+          ],
+          "description": "Entering or leaving the radius or area."
+        },
+        "area": {
+          "type": "identifier",
+          "required": true,
+          "description": "The area's name, read by runs as context.area. Triggers that name the same area in the same world share it."
+        },
+        "world": {
+          "type": "string",
+          "required": true,
+          "maxLength": 64,
+          "pattern": "\\S",
+          "description": "The world the area is in."
+        },
+        "cuboid": {
+          "type": "array",
+          "required": false,
+          "description": "Two opposite corner blocks, x1, y1, z1, x2, y2, z2, both included. Give this or ellipsoid."
+        },
+        "ellipsoid": {
+          "type": "array",
+          "required": false,
+          "description": "A centre x, y, z and three radii in blocks. Give this or cuboid."
+        }
+      }
+    },
+    "player_inventory_open": {
+      "description": "A player opens an inventory. Runs read context.inventory_type. cancel keeps it closed.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_inventory_open"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "inventory": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_inventory_close": {
+      "description": "A player closes an inventory. Runs read context.inventory_type.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_inventory_close"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "inventory": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."
+        }
+      }
+    },
+    "player_inventory_click": {
+      "description": "A player clicks a slot of an open inventory. Runs read context.inventory_type, context.click, context.slot and context.item. cancel undoes the click.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_inventory_click"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "inventory": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."
+        },
+        "click": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "The click: left or right on a block; left, right, shift_left, shift_right, middle, number_key, double_click, drop and so on in an inventory. Omit for every click."
+        },
+        "item": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_item_drop": {
+      "description": "A player drops an item. Runs read context.item and context.amount. cancel keeps it in the inventory.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_item_drop"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "item": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_item_pickup": {
+      "description": "A player picks up an item. Runs read context.item and context.amount. cancel leaves it on the ground.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_item_pickup"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "item": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_item_consume": {
+      "description": "A player finishes eating or drinking an item. Runs read context.item. cancel keeps the item.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_item_consume"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "item": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_block_click": {
+      "description": "A player left or right clicks a block. Runs read context.block, context.click (left or right), context.hand, context.location, context.world, context.x, context.y and context.z. cancel stops the click.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_block_click"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "block": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
+        },
+        "click": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "The click: left or right on a block; left, right, shift_left, shift_right, middle, number_key, double_click, drop and so on in an inventory. Omit for every click."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_block_place": {
+      "description": "A player places a block. Runs read context.block and its location. cancel stops the placement.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_block_place"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "block": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_block_break": {
+      "description": "A player breaks a block. Runs read context.block and its location. cancel keeps the block.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_block_break"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "block": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_damaged": {
+      "description": "A player takes damage. Runs read context.cause, context.damage and context.damager (an entity type, empty for none). cancel prevents the damage.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_damaged"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "cause": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A damage type such as fall, lava or player_attack. Omit for every cause."
+        },
+        "damager": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_damage_entity": {
+      "description": "A player hits a living entity that is not an NPC. Runs read context.entity, context.entity_uuid, context.cause and context.damage. cancel prevents the damage.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_damage_entity"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "entity": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "player_kill": {
+      "description": "A player kills a living entity. Runs read context.entity and context.entity_uuid.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_kill"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "entity": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
         }
       }
     }
@@ -2286,6 +2913,155 @@
       "variables",
       "routines",
       "triggers"
-    ]
+    ],
+    "expressions": {
+      "maxLength": 4096,
+      "namePattern": "^[a-z][a-z0-9_]{0,63}$",
+      "roots": [
+        "player",
+        "npc",
+        "server",
+        "context"
+      ],
+      "reserved": [
+        "context",
+        "false",
+        "npc",
+        "player",
+        "server",
+        "true"
+      ],
+      "facts": {
+        "player": [
+          "name",
+          "uuid",
+          "online",
+          "health",
+          "max_health",
+          "food",
+          "level",
+          "world",
+          "x",
+          "y",
+          "z",
+          "location",
+          "gamemode",
+          "op",
+          "sneaking",
+          "flying",
+          "item_in_hand",
+          "item_in_hand_amount"
+        ],
+        "npc": [
+          "name",
+          "id",
+          "citizens_id",
+          "uuid",
+          "spawned",
+          "health",
+          "world",
+          "x",
+          "y",
+          "z",
+          "location"
+        ],
+        "server": [
+          "online_players",
+          "players",
+          "max_players",
+          "tick",
+          "time_millis"
+        ]
+      },
+      "flagScopes": [
+        "player",
+        "npc",
+        "relationship",
+        "global"
+      ],
+      "functions": [
+        "get",
+        "has",
+        "keys",
+        "values",
+        "put",
+        "remove",
+        "append",
+        "insert",
+        "index_of",
+        "first",
+        "last",
+        "slice",
+        "reverse",
+        "sort",
+        "sum",
+        "join",
+        "split",
+        "range",
+        "trim",
+        "replace",
+        "starts_with",
+        "ends_with",
+        "num",
+        "int",
+        "truthy",
+        "same",
+        "same_world",
+        "text",
+        "random",
+        "random_decimal",
+        "chance",
+        "pick",
+        "flag",
+        "has_flag",
+        "quest",
+        "players",
+        "player_info",
+        "player_flag",
+        "player_has_flag"
+      ],
+      "standardFunctions": [
+        "abs",
+        "align",
+        "alpha",
+        "argb",
+        "bar",
+        "ceil",
+        "clamp",
+        "contains",
+        "cos",
+        "fixed",
+        "flash",
+        "floor",
+        "hex",
+        "len",
+        "lerp",
+        "lower",
+        "marquee",
+        "max",
+        "min",
+        "mix",
+        "mod",
+        "number",
+        "odometer",
+        "palette",
+        "plain",
+        "pow",
+        "readable",
+        "rgb",
+        "round",
+        "scanner",
+        "scramble",
+        "select",
+        "sin",
+        "smoothstep",
+        "str",
+        "timeline",
+        "typewriter",
+        "upper",
+        "wave",
+        "wipe"
+      ]
+    }
   }
 }

@@ -357,6 +357,99 @@ class EditorApiTest {
         assertEquals(422, response.status());
     }
 
+    /** A change that moves [current] (the document at its old id) to [id] with [source]. */
+    private static JsonObject move(String id, String from, JsonObject current, JsonObject source) {
+        JsonObject change = change("npc", id, current, source);
+        JsonObject origin = new JsonObject();
+        origin.addProperty("id", from);
+        change.add("from", origin);
+        return change;
+    }
+
+    private JsonObject movedGreeter() throws Exception {
+        JsonObject source = greeter().getAsJsonObject("source").deepCopy();
+        source.addProperty("group", "town/market");
+        return source;
+    }
+
+    @Test
+    void apply_move_writesNewPathRemovesOldAndKeepsTheRevisionChain() throws Exception {
+        String token = harness.token();
+        Frames sink = new Frames();
+        Map<String, String> headers = Map.of("Authorization", "Bearer " + token, "Origin", EditorHarness.ORIGIN);
+        harness.api.openEvents(new EditorRequest(EditorRequest.Transport.DIRECT, "GET", "/v1/events", headers, Optional.empty()), sink).toCompletableFuture().get(5, TimeUnit.SECONDS);
+        JsonObject current = greeter();
+        long before = current.get("revision").getAsLong();
+        EditorResponse response = harness.send("POST", "/v1/changes", token, set("key-0000000000000011", move("town/market/greeter", "examples/greeter", current, movedGreeter())));
+        assertEquals(200, response.status(), () -> response.body().toString());
+        JsonObject version = valid("change-applied", response).getAsJsonArray("documents").get(0).getAsJsonObject();
+        assertEquals("town/market/greeter", version.get("id").getAsString());
+        assertEquals("examples/greeter", version.getAsJsonObject("from").get("id").getAsString());
+        assertEquals(before + 1, version.get("revision").getAsLong());
+        assertNull(harness.read(GREETER));
+        String stored = harness.read("npcs/town/market/greeter.json");
+        assertNotNull(stored);
+        assertEquals("sha256:" + JsonDocuments.hash(stored), version.get("hash").getAsString());
+        for (int tick = 0; tick < 4; tick++) harness.api.parts().events().tick();
+        JsonObject catalog = sink.frames.stream().filter((JsonObject frame) -> frame.get("type").getAsString().equals("catalog")).findFirst().orElseThrow();
+        assertTrue(schema.check("event", catalog).isEmpty(), catalog::toString);
+        assertEquals("town/market/greeter", catalog.getAsJsonArray("documents").get(0).getAsJsonObject().get("id").getAsString());
+        assertEquals("examples/greeter", catalog.getAsJsonArray("deleted").get(0).getAsJsonObject().get("id").getAsString());
+    }
+
+    @Test
+    void apply_move_whenTheOldDocumentChanged_isConflictNamingTheOldId() throws Exception {
+        String token = harness.token();
+        JsonObject stale = greeter();
+        assertEquals(200, harness.send("POST", "/v1/changes", token, set("key-0000000000000012", change("npc", "examples/greeter", stale, renamed(stale, "First")))).status());
+        EditorResponse response = harness.send("POST", "/v1/changes", token, set("key-0000000000000013", move("town/market/greeter", "examples/greeter", stale, movedGreeter())));
+        assertEquals(409, response.status());
+        JsonObject conflict = valid("change-conflict", response).getAsJsonArray("conflicts").get(0).getAsJsonObject();
+        assertEquals("examples/greeter", conflict.get("id").getAsString());
+        assertEquals("First", conflict.getAsJsonObject("current").getAsJsonObject("source").get("name").getAsString());
+        assertNotNull(harness.read(GREETER));
+        assertNull(harness.read("npcs/town/market/greeter.json"));
+    }
+
+    @Test
+    void apply_move_ontoAnExistingDocument_isConflictNamingTheTarget() throws Exception {
+        String token = harness.token();
+        JsonObject current = greeter();
+        JsonObject occupant = current.getAsJsonObject("source").deepCopy();
+        occupant.addProperty("id", "keeper");
+        occupant.addProperty("group", "town/market");
+        occupant.addProperty("uuid", "11111111-2222-3333-4444-555555555555");
+        assertEquals(200, harness.send("POST", "/v1/changes", token, set("key-0000000000000014", change("npc", "town/market/keeper", null, occupant))).status());
+        JsonObject source = movedGreeter();
+        source.addProperty("id", "keeper");
+        EditorResponse response = harness.send("POST", "/v1/changes", token, set("key-0000000000000015", move("town/market/keeper", "examples/greeter", current, source)));
+        assertEquals(409, response.status());
+        JsonObject conflict = valid("change-conflict", response).getAsJsonArray("conflicts").get(0).getAsJsonObject();
+        assertEquals("town/market/keeper", conflict.get("id").getAsString());
+        assertTrue(conflict.get("baseRevision").isJsonNull());
+        assertNotNull(harness.read(GREETER));
+    }
+
+    @Test
+    void undo_move_movesTheDocumentBack() throws Exception {
+        String token = harness.token();
+        String original = harness.read(GREETER);
+        JsonObject applied = valid("change-applied", harness.send("POST", "/v1/changes", token, set("key-0000000000000016",
+                move("town/market/greeter", "examples/greeter", greeter(), movedGreeter()))));
+        JsonObject undo = new JsonObject();
+        undo.addProperty("idempotencyKey", "key-0000000000000017");
+        EditorResponse undone = harness.send("POST", "/v1/changes/" + applied.get("changeId").getAsString() + "/undo", token, undo);
+        assertEquals(200, undone.status(), () -> undone.body().toString());
+        JsonArray documents = valid("change-applied", undone).getAsJsonArray("documents");
+        assertEquals(1, documents.size());
+        JsonObject back = documents.get(0).getAsJsonObject();
+        assertEquals("examples/greeter", back.get("id").getAsString());
+        assertEquals("town/market/greeter", back.getAsJsonObject("from").get("id").getAsString());
+        assertEquals(original, harness.read(GREETER));
+        assertNull(harness.read("npcs/town/market/greeter.json"));
+        assertTrue(harness.host.rollbacks.getLast());
+    }
+
     @Test
     void preview_refusedCapability_consoleToken_andRunningPreview() throws Exception {
         String token = harness.token();

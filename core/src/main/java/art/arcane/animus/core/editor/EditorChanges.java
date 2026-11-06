@@ -71,11 +71,20 @@ public final class EditorChanges {
         for (EditorMessages.Change change : set.documents()) {
             EditorDocuments.Location location = documents.locate(change.kind(), change.id());
             EditorDocuments.Stored current = documents.read(location);
-            boolean matches = change.baseRevision().isEmpty() ? !current.exists()
-                    : current.exists() && current.revision() == change.baseRevision().get() && current.hash().equals(change.baseHash().orElseThrow());
-            if (!matches) { conflicts.add(conflict(change.kind(), change.id(), change.baseRevision(), change.baseHash(), current)); continue; }
+            // A move's base is the document at its old id; the new id must be free.
+            EditorDocuments.Location origin = change.move() ? documents.locate(change.kind(), change.from().orElseThrow()) : null;
+            EditorDocuments.Stored base = origin == null ? current : documents.read(origin);
+            if (origin != null && current.exists()) { conflicts.add(conflict(change.kind(), change.id(), Optional.empty(), Optional.empty(), current)); continue; }
+            boolean matches = change.baseRevision().isEmpty() ? !base.exists()
+                    : base.exists() && base.revision() == change.baseRevision().get() && base.hash().equals(change.baseHash().orElseThrow());
+            if (!matches) { conflicts.add(conflict(change.kind(), origin == null ? change.id() : origin.id(), change.baseRevision(), change.baseHash(), base)); continue; }
             kinds.add(change.kind());
             touched.add(reference(location));
+            if (origin != null) {
+                touched.add(reference(origin));
+                writes.add(new DocumentStore.Change(origin.path(), plain(base.content()), null));
+                deleted.add(ref(change.kind(), origin.id()));
+            }
             if (change.delete()) {
                 writes.add(new DocumentStore.Change(location.path(), plain(current.content()), null));
                 applied.add(version(change.kind(), change.id(), current.revision(), null));
@@ -83,17 +92,19 @@ public final class EditorChanges {
                 continue;
             }
             JsonObject source = change.source().orElseThrow().deepCopy();
-            long revision = EditorDocuments.REVISIONED.contains(change.kind()) ? current.revision() + 1 : 0;
+            long revision = EditorDocuments.REVISIONED.contains(change.kind()) ? base.revision() + 1 : 0;
             if (EditorDocuments.REVISIONED.contains(change.kind())) source.addProperty("revision", revision);
             JsonArray diagnostics = documents.validate(change.kind(), change.id(), source);
-            if (change.kind() == DocumentKind.NPC && current.exists()) identity(current.content(), source, diagnostics);
-            if (change.kind() == DocumentKind.NPC && !current.exists() && !EditorDocuments.hasErrors(diagnostics)) collisions(location, source, diagnostics);
+            if (change.kind() == DocumentKind.NPC && base.exists()) identity(base.content(), source, diagnostics);
+            if (change.kind() == DocumentKind.NPC && !current.exists() && !EditorDocuments.hasErrors(diagnostics)) collisions(location, origin, source, diagnostics);
             if (change.kind() == DocumentKind.NPC && !EditorDocuments.hasErrors(diagnostics)) groupReferences(set, source, diagnostics);
             if (EditorDocuments.hasErrors(diagnostics)) invalid.add(documentDiagnostics(change.kind(), change.id(), diagnostics));
             String content = change.kind() == DocumentKind.RECORDING && !EditorDocuments.hasErrors(diagnostics) ? recording(source) : JsonDocuments.write(source);
             String hash = "sha256:" + JsonDocuments.hash(content);
             writes.add(new DocumentStore.Change(location.path(), plain(current.content()), content));
-            applied.add(version(change.kind(), change.id(), revision, hash));
+            JsonObject written = version(change.kind(), change.id(), revision, hash);
+            if (origin != null) written.add("from", moved(origin.id()));
+            applied.add(written);
             catalog.add(catalogEntry(change.kind(), change.id(), location.path(), revision, hash));
         }
         if (!conflicts.isEmpty()) {
@@ -139,10 +150,16 @@ public final class EditorChanges {
         Optional<Outcome> replay = replay(key, requestHash);
         if (replay.isPresent()) return replay.get();
         Map<String, JsonObject> applied = new HashMap<>();
-        for (JsonElement element : record.getAsJsonObject("result").getAsJsonArray("documents"))
-            applied.put(element.getAsJsonObject().get("kind").getAsString() + "\n" + element.getAsJsonObject().get("id").getAsString(), element.getAsJsonObject());
+        // A move's old id has no entry of its own: it was absent after the apply. Undo moves the document back.
+        Map<String, String> movedBack = new HashMap<>();
+        for (JsonElement element : record.getAsJsonObject("result").getAsJsonArray("documents")) {
+            JsonObject entry = element.getAsJsonObject();
+            applied.put(entry.get("kind").getAsString() + "\n" + entry.get("id").getAsString(), entry);
+            if (entry.has("from")) movedBack.put(entry.get("kind").getAsString() + "\n" + entry.getAsJsonObject("from").get("id").getAsString(), entry.get("id").getAsString());
+        }
         List<DocumentStore.Change> writes = new ArrayList<>();
-        JsonArray conflicts = new JsonArray(), result = new JsonArray(), catalog = new JsonArray(), deleted = new JsonArray(), touched = new JsonArray();
+        JsonArray conflicts = new JsonArray(), catalog = new JsonArray(), deleted = new JsonArray(), touched = new JsonArray();
+        Map<String, JsonObject> result = new LinkedHashMap<>();
         for (DocumentStore.Change inverse : store.inverse(changeId)) {
             EditorDocuments.Location location = byPath.get(inverse.path());
             // The editor record and NPC checkpoint pointers are engine state; the commit invalidates stale checkpoints itself.
@@ -150,18 +167,26 @@ public final class EditorChanges {
             EditorDocuments.Stored current = documents.read(location);
             JsonObject after = applied.get(location.kind().wireName() + "\n" + location.id());
             if (!plain(current.content()).equals(inverse.expectedHash())) {
-                Optional<Long> revision = Optional.of(after.get("revision").getAsLong());
-                Optional<String> hash = after.get("hash").isJsonNull() ? Optional.empty() : Optional.of(after.get("hash").getAsString());
-                conflicts.add(conflict(location.kind(), location.id(), hash.isPresent() ? revision : Optional.empty(), hash, current));
+                Optional<String> hash = after == null || after.get("hash").isJsonNull() ? Optional.empty() : Optional.of(after.get("hash").getAsString());
+                Optional<Long> revision = hash.isPresent() ? Optional.of(after.get("revision").getAsLong()) : Optional.empty();
+                conflicts.add(conflict(location.kind(), location.id(), revision, hash, current));
                 continue;
             }
             writes.add(inverse);
             touched.add(reference(location));
             long revision = inverse.content() == null ? after.get("revision").getAsLong() : EditorDocuments.revision(inverse.content());
             String hash = inverse.content() == null ? null : "sha256:" + JsonDocuments.hash(inverse.content());
-            result.add(version(location.kind(), location.id(), revision, hash));
+            result.put(location.kind().wireName() + "\n" + location.id(), version(location.kind(), location.id(), revision, hash));
             if (hash == null) deleted.add(ref(location.kind(), location.id()));
             else catalog.add(catalogEntry(location.kind(), location.id(), location.path(), revision, hash));
+        }
+        for (Map.Entry<String, String> move : movedBack.entrySet()) {
+            String kind = move.getKey().substring(0, move.getKey().indexOf('\n'));
+            JsonObject back = result.get(move.getKey());
+            JsonObject leaving = result.get(kind + "\n" + move.getValue());
+            if (back == null || leaving == null || !leaving.get("hash").isJsonNull()) continue;
+            result.remove(kind + "\n" + move.getValue());
+            back.add("from", moved(move.getValue()));
         }
         if (!conflicts.isEmpty()) {
             JsonObject body = new JsonObject();
@@ -173,7 +198,9 @@ public final class EditorChanges {
         }
         if (writes.isEmpty()) throw new EditorError(EditorError.Code.NOT_FOUND, "Change " + changeId + " wrote no editor documents to undo.");
         String transaction = UUID.randomUUID().toString();
-        JsonObject body = appliedBody(transaction, key, result);
+        JsonArray versions = new JsonArray();
+        result.values().forEach(versions::add);
+        JsonObject body = appliedBody(transaction, key, versions);
         writes.add(record(key, requestHash, tokenId, "applied", transaction, touched, body));
         store.commit(transaction, writes);
         index().put(transaction, key);
@@ -281,13 +308,13 @@ public final class EditorChanges {
         } catch (IOException unreadable) { /* A broken stored file may be replaced by any valid definition. */ }
     }
 
-    /** NPC ids and uuids are unique across groups, as the registry requires. */
-    private void collisions(EditorDocuments.Location location, JsonObject source, JsonArray diagnostics) throws IOException {
-        String shortId = location.id().substring(location.id().indexOf('/') + 1);
+    /** NPC ids and uuids are unique across folders, as the registry requires. A move's old file is leaving, so it is no collision. */
+    private void collisions(EditorDocuments.Location location, EditorDocuments.Location origin, JsonObject source, JsonArray diagnostics) throws IOException {
+        String shortId = location.id().substring(location.id().lastIndexOf('/') + 1);
         String uuid = source.has("uuid") && source.get("uuid").isJsonPrimitive() ? source.get("uuid").getAsString() : "";
         for (EditorDocuments.Location other : documents.list(List.of(DocumentKind.NPC))) {
-            if (other.path().equals(location.path())) continue;
-            if (other.id().substring(other.id().indexOf('/') + 1).equals(shortId)) {
+            if (other.path().equals(location.path()) || origin != null && other.path().equals(origin.path())) continue;
+            if (other.id().substring(other.id().lastIndexOf('/') + 1).equals(shortId)) {
                 diagnostics.add(EditorDocuments.diagnostic("error", "$.id", "NPC id " + shortId + " is already used by " + other.id(), "identity"));
                 return;
             }
@@ -362,6 +389,12 @@ public final class EditorChanges {
         entry.addProperty("revision", revision);
         entry.addProperty("hash", hash);
         return entry;
+    }
+
+    private static JsonObject moved(String from) {
+        JsonObject origin = new JsonObject();
+        origin.addProperty("id", from);
+        return origin;
     }
 
     private static JsonObject ref(DocumentKind kind, String id) {

@@ -6,18 +6,15 @@ import art.arcane.animus.core.behavior.BehaviorNodeType;
 import art.arcane.animus.core.behavior.BehaviorExpression;
 import art.arcane.animus.core.behavior.BehaviorProgram;
 import art.arcane.animus.core.behavior.BehaviorValues;
+import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
 import art.arcane.animus.core.behavior.catalog.PackManifest;
+import art.arcane.animus.core.behavior.trigger.ServerEvent;
 import art.arcane.animus.core.behavior.trigger.TriggerBinding;
 import art.arcane.animus.core.behavior.trigger.TriggerCompiler;
 import art.arcane.animus.core.behavior.trigger.TriggerKind;
-import art.arcane.animus.core.control.RideSettings;
-import art.arcane.animus.core.control.LookClose;
-import art.arcane.animus.core.navigation.WaypointSettings;
-import art.arcane.animus.core.mount.MountDeclaration;
-import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.gui.GuiExpression;
 import art.arcane.animus.core.schema.CapabilitySchema;
 import art.arcane.animus.core.storage.JsonDocuments;
-import art.arcane.animus.core.storage.NpcPaths;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -38,7 +35,7 @@ import java.util.Set;
 public final class BehaviorSchemaGenerator {
     public static final String DIALECT = "https://json-schema.org/draft/2020-12/schema";
     public static final int MAXIMUM_DOCUMENT_BYTES = 2 * 1024 * 1024, MAXIMUM_TOTAL_BYTES = 4 * 1024 * 1024;
-    public static final String BEHAVIOR = "schemas/behavior.schema.json", NPC = "schemas/npc.schema.json", PACK = "schemas/pack.schema.json", COMPLETIONS = "schemas/completions.json";
+    public static final String BEHAVIOR = "schemas/behavior.schema.json", NPC = "schemas/npc.schema.json", PACK = "schemas/pack.schema.json", ROUTE = "schemas/route.schema.json", COMPLETIONS = "schemas/completions.json";
     private static final String IDENTIFIER = "^[a-z0-9][a-z0-9_-]{0,63}$";
     private static final String KEY = "^[a-z0-9][a-z0-9_-]{0,63}:[a-z0-9][a-z0-9_-]{0,63}$";
     private static final String BEHAVIOR_ID = "^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$";
@@ -50,7 +47,8 @@ public final class BehaviorSchemaGenerator {
     public static Map<String, String> generate(List<Capabilities.Availability> capabilities) {
         Map<String, String> documents = new LinkedHashMap<>();
         documents.put(BEHAVIOR, JsonDocuments.write(behaviorSchema(capabilities)));
-        documents.put(NPC, JsonDocuments.write(npcSchema()));
+        documents.put(NPC, JsonDocuments.write(NpcSchemaGenerator.schema()));
+        documents.put(ROUTE, JsonDocuments.write(NpcSchemaGenerator.routeSchema()));
         documents.put(PACK, JsonDocuments.write(packSchema()));
         documents.put(COMPLETIONS, JsonDocuments.write(completions(capabilities)));
         long total = 0;
@@ -111,6 +109,9 @@ public final class BehaviorSchemaGenerator {
             }
         }
         root.add("properties", properties);
+        JsonArray serverRules = new JsonArray();
+        serverRules.add(serverRule());
+        root.add("allOf", serverRules);
         JsonObject definitions = new JsonObject();
         definitions.add("identifier", described(pattern(IDENTIFIER), "1-64 lowercase letters, digits, _ or -, starting with a letter or digit."));
         definitions.add("module-capability", moduleCapability());
@@ -149,6 +150,40 @@ public final class BehaviorSchemaGenerator {
         examples.add(example);
         root.add("examples", examples);
         return root;
+    }
+
+    /**
+     * What {@code "server": true} changes, as the compiler checks it: only server events, a timer of at least
+     * {@link TriggerCompiler#MIN_SERVER_INTERVAL_TICKS} ticks, and no npc or relationship variables. Without it, only NPC events.
+     */
+    private static JsonObject serverRule() {
+        JsonObject condition = property("server", constant(true));
+        condition.add("required", strings("server"));
+        JsonObject server = new JsonObject();
+        JsonObject serverProperties = new JsonObject();
+        JsonObject scope = described(choices(List.of("execution", "player", "global")), "A server behavior has no NPC: execution, player or global.");
+        JsonObject variable = new JsonObject();
+        variable.add("properties", property("scope", scope).getAsJsonObject("properties"));
+        JsonObject variables = new JsonObject();
+        variables.add("additionalProperties", variable);
+        serverProperties.add("variables", variables);
+        JsonObject serverTrigger = property("event", described(choices(TriggerCompiler.names(true)), "A server behavior uses server events only."));
+        JsonArray timer = new JsonArray();
+        timer.add(when("event", TriggerKind.TIMER.jsonName(), property("intervalTicks",
+                described(range("integer", TriggerCompiler.MIN_SERVER_INTERVAL_TICKS, TriggerCompiler.MAX_INTERVAL_TICKS), "Server behaviors use at least " + TriggerCompiler.MIN_SERVER_INTERVAL_TICKS + " ticks."))));
+        serverTrigger.add("allOf", timer);
+        JsonObject serverTriggers = new JsonObject();
+        serverTriggers.add("items", serverTrigger);
+        serverProperties.add("triggers", serverTriggers);
+        server.add("properties", serverProperties);
+        JsonObject npcTriggers = new JsonObject();
+        npcTriggers.add("items", property("event", described(choices(TriggerCompiler.names(false)), "Server events need \"server\": true.")));
+        JsonObject npc = property("triggers", npcTriggers);
+        JsonObject rule = new JsonObject();
+        rule.add("if", condition);
+        rule.add("then", server);
+        rule.add("else", npc);
+        return rule;
     }
 
     /** Registered capabilities of one kind, each with its description for editors. */
@@ -441,7 +476,7 @@ public final class BehaviorSchemaGenerator {
             case "cooldownTicks" -> new Field(described(range("integer", 0, TriggerCompiler.MAX_COOLDOWN_TICKS), "Overrides the configured cooldown, per trigger on each NPC."), "integer", false);
             case "action" -> new Field(described(choices(lower(TriggerBinding.InteractionFilter.values())), "Which hit fires it; interact by default."), "string", false);
             case "consume" -> new Field(described(expressionText(), "An expression checked when the click arrives, over flags, facts, context.sneaking and context.hand. When it holds, the click belongs to this behavior: shops, hiring, GUIs, riding and selection do not see it. Omit to leave the click to them."), "expression", false);
-            case "phase" -> new Field(described(choices(lower(TriggerBinding.Phase.values())), "Entering or leaving the radius."), "string", true);
+            case "phase" -> new Field(described(choices(lower(TriggerBinding.Phase.values())), "Entering or leaving the radius or area."), "string", true);
             case "radius" -> {
                 JsonObject radius = type("number");
                 radius.addProperty("exclusiveMinimum", 0);
@@ -469,325 +504,19 @@ public final class BehaviorSchemaGenerator {
             case "usage" -> new Field(described(bounded(TriggerCompiler.MAX_COMMAND_TEXT), "Usage text shown in the server's command help."), "string", false);
             case "from" -> new Field(described(bounded(TriggerCompiler.MAX_WORLD_NAME), "Fires only when leaving this world. Omit for any world."), "string", false);
             case "to" -> new Field(described(bounded(TriggerCompiler.MAX_WORLD_NAME), "Fires only when entering this world. Omit for any world."), "string", false);
+            case "area" -> new Field(described(reference("identifier"), "The area's name, read by runs as context.area. Triggers that name the same area in the same world share it."), "identifier", true);
+            case "world" -> new Field(described(bounded(TriggerCompiler.MAX_WORLD_NAME), "The world the area is in."), "string", true);
+            case "cuboid" -> new Field(described(coordinates(), "Two opposite corner blocks, x1, y1, z1, x2, y2, z2, both included. Give this or ellipsoid."), "array", false);
+            case "ellipsoid" -> new Field(described(coordinates(), "A centre x, y, z and three radii in blocks. Give this or cuboid."), "array", false);
+            case "inventory" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."), "string", false);
+            case "click" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "The click: left or right on a block; left, right, shift_left, shift_right, middle, number_key, double_click, drop and so on in an inventory. Omit for every click."), "string", false);
+            case "item" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."), "string", false);
+            case "block" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."), "string", false);
+            case "cause" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "A damage type such as fall, lava or player_attack. Omit for every cause."), "string", false);
+            case "damager", "entity" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."), "string", false);
+            case "cancel" -> new Field(described(expressionText(), "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."), "expression", false);
             default -> throw new IllegalStateException("No schema for trigger field " + name);
         };
-    }
-
-    /** Validation of NPC definitions as files and commands see it; unknown fields and modules are preserved. */
-    public static JsonObject npcSchema() {
-        JsonObject root = new JsonObject();
-        root.addProperty("$schema", DIALECT);
-        root.addProperty("title", "Animus NPC definition");
-        root.addProperty("description", "npcs/<folders>/<id>.json, in npcs/ itself or up to " + NpcPaths.MAX_FOLDERS + " folders deep. Unknown fields and modules are kept as written.");
-        root.addProperty("type", "object");
-        root.add("required", strings("schemaVersion", "revision", "uuid", "id", "group", "name", "type", "spawned", "position"));
-        JsonObject properties = new JsonObject();
-        properties.add("schemaVersion", constant(1));
-        properties.add("revision", described(range("integer", 1, Long.MAX_VALUE), "Raise this with every edit."));
-        properties.add("uuid", described(pattern("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"), "A canonical lowercase UUID that never changes."));
-        properties.add("id", described(pattern(IDENTIFIER), "Matches the file name."));
-        properties.add("group", described(pattern("^" + NpcPaths.FOLDER + "$"), "The folder under npcs/, empty for npcs/ itself. Animus sets it from where the file is."));
-        properties.add("name", described(pattern(NONBLANK), "The displayed name."));
-        properties.add("type", described(pattern("^[a-z0-9_]+:[a-z0-9_/]+$"), "An entity type such as minecraft:player."));
-        properties.add("spawned", described(type("boolean"), "Whether the NPC is presented."));
-        JsonObject position = type("object");
-        position.add("required", strings("world", "x", "y", "z", "yaw", "pitch"));
-        JsonObject coordinates = new JsonObject();
-        coordinates.add("world", pattern(NONBLANK));
-        for (String axis : List.of("x", "y", "z", "yaw", "pitch")) coordinates.add(axis, range("number", -30_000_000, 30_000_000));
-        position.add("properties", coordinates);
-        properties.add("position", position);
-        properties.add("skin", described(pattern("^[a-f0-9]{64}$"), "SHA-256 of a skin document under skins/."));
-        JsonObject behaviors = described(type("array"), "Behaviors whose triggers this NPC runs.");
-        behaviors.add("items", pattern("^[a-z0-9_-]+:[a-z0-9_/-]+$"));
-        properties.add("behaviors", behaviors);
-        JsonObject tags = described(type("array"), "Labels for finding and grouping NPCs in the editor; at most 32.");
-        tags.add("items", pattern("^[a-z0-9][a-z0-9_-]{0,31}$"));
-        tags.addProperty("maxItems", NpcDefinition.MAX_TAGS);
-        tags.addProperty("uniqueItems", true);
-        properties.add("tags", tags);
-        JsonObject groups = described(type("array"), "Trait groups under groups/ whose values this NPC takes, in merge order; the NPC's own fields win.");
-        groups.add("items", pattern("^[a-z0-9][a-z0-9_-]{0,63}$"));
-        groups.addProperty("minItems", 1);
-        groups.addProperty("maxItems", NpcDefinition.MAX_GROUPS);
-        groups.addProperty("uniqueItems", true);
-        properties.add("groups", groups);
-        JsonObject rig =described(type("object"), "The rig under rigs/ this NPC's body shows.");
-        rig.addProperty("additionalProperties", false);
-        rig.add("required", strings("id"));
-        rig.add("properties", property("id", pattern("^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$")).getAsJsonObject("properties"));
-        properties.add("rig", rig);
-        JsonObject modules = described(type("object"), "Per-NPC module settings, keyed by namespace:name. Unknown modules are kept.");
-        JsonObject known = new JsonObject();
-        known.add("animus:navigation", navigation());
-        known.add(MountDeclaration.MODULE, mount());
-        known.add(RideSettings.MODULE, riding());
-        known.add(LookClose.MODULE, lookClose());
-        modules.add("properties", known);
-        properties.add("modules", modules);
-        root.add("properties", properties);
-        JsonArray rules = new JsonArray();
-        JsonObject imported = new JsonObject();
-        JsonObject migration = new JsonObject();
-        migration.add("required", strings("migration"));
-        imported.add("if", migration);
-        JsonObject reviewed = new JsonObject();
-        reviewed.add("animus:navigation", reviewRequired());
-        reviewed.add(RideSettings.MODULE, reviewRequired());
-        JsonObject reviewedModules = new JsonObject();
-        reviewedModules.add("properties", reviewed);
-        imported.add("then", property("modules", reviewedModules));
-        rules.add(imported);
-        root.add("allOf", rules);
-        return root;
-    }
-    private static JsonObject reviewRequired() {
-        JsonObject then = new JsonObject();
-        then.add("required", strings("reviewAccepted"));
-        then.add("properties", property("reviewAccepted", constant(true)).getAsJsonObject("properties"));
-        return whenEnabled(then);
-    }
-    private static JsonObject whenEnabled(JsonObject then) {
-        JsonObject rule = new JsonObject();
-        JsonObject enabled = new JsonObject();
-        enabled.add("properties", property("enabled", constant(true)).getAsJsonObject("properties"));
-        enabled.add("required", strings("enabled"));
-        rule.add("if", enabled);
-        rule.add("then", then);
-        return rule;
-    }
-    private static JsonObject navigation() {
-        JsonObject navigation = described(type("object"), "Native waypoints, or a reusable route under routes/.");
-        JsonObject properties = new JsonObject();
-        properties.add("enabled", type("boolean"));
-        properties.add("reviewAccepted", type("boolean"));
-        properties.add("route", pattern(IDENTIFIER));
-        JsonObject recording = pattern(IDENTIFIER);
-        recording.addProperty("maxLength", 64);
-        properties.add("recording", described(recording, "A recording under recordings/ to play instead of a route."));
-        properties.add("playback", described(choices(List.of("once", "loop", "pingpong")), "Recording only: once, loop (the default) or pingpong."));
-        properties.add("mode", choices(List.of("walk", "swim", "fly")));
-        properties.add("speed", range("number", 1, 5));
-        properties.add("order", described(choices(List.of("sequence", "pingpong", "random", "wander")), "How the next point is chosen. sequence by default."));
-        properties.add("loop", described(type("boolean"), "Order sequence only: start again from the first point."));
-        properties.add("waitTicks", described(waitTicks(), "Wait before the first leg and after each arrival: ticks, or [min, max] drawn per arrival."));
-        properties.add("seed", described(choices(List.of("npc", "random")), "npc (default): choices stable per NPC and route, across restarts. random: mixed with the clock."));
-        properties.add("startOffset", described(choices(List.of("first", "random")), "random: start at a random point after a random 0..waitTicks wait. first by default."));
-        properties.add("jitter", described(range("integer", 0, WaypointSettings.MAXIMUM_JITTER), "Leg goals move by a random whole-block x/z offset within this radius."));
-        JsonObject point = coordinate();
-        JsonObject pointFields = point.getAsJsonObject("properties");
-        pointFields.add("waitTicks", described(waitTicks(), "Wait after arriving here, instead of the route's."));
-        pointFields.add("jitter", described(range("integer", 0, WaypointSettings.MAXIMUM_JITTER), "Jitter radius of this point, instead of the route's."));
-        pointFields.add("weight", described(range("integer", 1, WaypointSettings.MAXIMUM_WEIGHT), "Order random only: how often this point is chosen."));
-        JsonObject junction = type("object");
-        junction.addProperty("additionalProperties", false);
-        junction.add("required", strings("to"));
-        JsonObject way = new JsonObject();
-        way.add("to", range("integer", 0, WaypointSettings.MAXIMUM_POINTS - 1));
-        way.add("weight", range("integer", 1, WaypointSettings.MAXIMUM_WEIGHT));
-        junction.add("properties", way);
-        pointFields.add("next", list(junction, 1, WaypointSettings.MAXIMUM_JUNCTIONS, "Order sequence only: after this point, the next point is drawn from these by weight."));
-        properties.add("points", list(point, 0, WaypointSettings.MAXIMUM_POINTS, "Route points in the NPC's world; wander centres for order wander."));
-        properties.add("guides", list(coordinate(), 0, WaypointSettings.MAXIMUM_GUIDES, "Order random only: helper nodes a path may pass through."));
-        properties.add("linkDistance", described(range("number", WaypointSettings.MINIMUM_LINK_DISTANCE, WaypointSettings.MAXIMUM_LINK_DISTANCE), "Order random only: the longest link between two nodes."));
-        JsonObject wander = described(type("object"), "Order wander only.");
-        wander.addProperty("additionalProperties", false);
-        JsonObject area = new JsonObject();
-        area.add("radius", range("integer", 1, WaypointSettings.Wander.MAXIMUM_RADIUS));
-        area.add("height", range("integer", 0, WaypointSettings.Wander.MAXIMUM_HEIGHT));
-        wander.add("properties", area);
-        properties.add("wander", wander);
-        navigation.add("properties", properties);
-        JsonObject routed = new JsonObject();
-        JsonObject hasRoute = new JsonObject();
-        hasRoute.add("required", strings("route"));
-        routed.add("if", hasRoute);
-        JsonObject exclusive = new JsonObject();
-        List<String> routedExcludes = new ArrayList<>(WaypointSettings.ROUTE_FIELDS);
-        routedExcludes.add("recording");
-        exclusive.add("not", anyRequired(routedExcludes));
-        routed.add("then", exclusive);
-        JsonObject inline = new JsonObject();
-        JsonObject wandering = new JsonObject();
-        wandering.add("if", orderIs("wander"));
-        JsonObject centres = new JsonObject();
-        JsonObject fewer = new JsonObject();
-        fewer.addProperty("maxItems", WaypointSettings.MAXIMUM_WANDER_CENTRES);
-        centres.add("properties", property("points", fewer).getAsJsonObject("properties"));
-        wandering.add("then", centres);
-        JsonObject listed = new JsonObject();
-        listed.add("required", strings("points"));
-        JsonObject some = new JsonObject();
-        some.addProperty("minItems", 1);
-        listed.add("properties", property("points", some).getAsJsonObject("properties"));
-        wandering.add("else", listed);
-        JsonArray inlineRules = new JsonArray();
-        inlineRules.add(wandering);
-        inline.add("allOf", inlineRules);
-        JsonObject played = new JsonObject();
-        JsonObject hasRecording = new JsonObject();
-        hasRecording.add("required", strings("recording"));
-        played.add("if", hasRecording);
-        JsonObject recordingExclusive = new JsonObject();
-        recordingExclusive.add("not", anyRequired(WaypointSettings.ROUTE_FIELDS));
-        played.add("then", recordingExclusive);
-        played.add("else", inline);
-        routed.add("else", played);
-        JsonArray rules = new JsonArray();
-        rules.add(whenEnabled(routed));
-        JsonObject playbackRule = new JsonObject();
-        JsonObject hasPlayback = new JsonObject();
-        hasPlayback.add("required", strings("playback"));
-        playbackRule.add("if", hasPlayback);
-        playbackRule.add("then", hasRecording);
-        rules.add(whenEnabled(playbackRule));
-        rules.add(onlyWithOrder("loop", "sequence", true));
-        rules.add(onlyWithOrder("guides", "random", false));
-        rules.add(onlyWithOrder("linkDistance", "random", false));
-        rules.add(onlyWithOrder("wander", "wander", false));
-        rules.add(pointOnlyWithOrder("weight", "random", false));
-        rules.add(pointOnlyWithOrder("next", "sequence", true));
-        JsonObject noJitter = new JsonObject();
-        noJitter.add("if", orderIs("wander"));
-        JsonObject refused = new JsonObject();
-        refused.add("not", anyRequired(List.of("jitter")));
-        noJitter.add("then", refused);
-        rules.add(noJitter);
-        navigation.add("allOf", rules);
-        return navigation;
-    }
-    private static JsonObject waitTicks() {
-        JsonObject between = list(range("integer", 0, WaypointSettings.MAXIMUM_WAIT), 2, 2, "[min, max] in ticks, min not above max.");
-        JsonArray either = new JsonArray();
-        either.add(range("integer", 0, WaypointSettings.MAXIMUM_WAIT));
-        either.add(between);
-        JsonObject wait = new JsonObject();
-        wait.add("oneOf", either);
-        return wait;
-    }
-    /** A point field that only one order reads; the default order counts when it is the default. */
-    private static JsonObject pointOnlyWithOrder(String field, String order, boolean isDefault) {
-        JsonObject rule = new JsonObject();
-        JsonObject other = new JsonObject();
-        if (isDefault) {
-            other.add("required", strings("order"));
-            JsonObject same = new JsonObject();
-            same.add("properties", property("order", constant(order)).getAsJsonObject("properties"));
-            other.add("not", same);
-        } else other.add("not", orderIs(order));
-        rule.add("if", other);
-        JsonObject without = new JsonObject();
-        without.add("not", anyRequired(List.of(field)));
-        JsonObject items = new JsonObject();
-        items.add("items", without);
-        rule.add("then", property("points", items));
-        return rule;
-    }
-    private static JsonObject coordinate() {
-        JsonObject point = type("object");
-        point.add("required", strings("x", "y", "z"));
-        JsonObject axes = new JsonObject();
-        for (String axis : List.of("x", "y", "z")) axes.add(axis, range("number", -29_999_984, 29_999_984));
-        point.add("properties", axes);
-        return point;
-    }
-    private static JsonObject anyRequired(List<String> keys) {
-        JsonObject conflicting = new JsonObject();
-        JsonArray any = new JsonArray();
-        for (String key : keys) { JsonObject present = new JsonObject(); present.add("required", strings(key)); any.add(present); }
-        conflicting.add("anyOf", any);
-        return conflicting;
-    }
-    private static JsonObject orderIs(String order) {
-        JsonObject condition = new JsonObject();
-        condition.add("properties", property("order", constant(order)).getAsJsonObject("properties"));
-        condition.add("required", strings("order"));
-        return condition;
-    }
-    /** The field may appear only with the given order; the default order counts when it is the default. */
-    private static JsonObject onlyWithOrder(String field, String order, boolean isDefault) {
-        JsonObject rule = new JsonObject();
-        JsonObject present = new JsonObject();
-        present.add("required", strings(field));
-        rule.add("if", present);
-        JsonObject then = new JsonObject();
-        then.add("properties", property("order", constant(order)).getAsJsonObject("properties"));
-        if (!isDefault) then.add("required", strings("order"));
-        rule.add("then", then);
-        return rule;
-    }
-    private static JsonObject lookClose() {
-        JsonObject look = described(type("object"), "Turns the NPC toward the nearest player in range while it is spawned.");
-        look.addProperty("additionalProperties", false);
-        JsonObject properties = new JsonObject();
-        properties.add("enabled", described(type("boolean"), "True when the object is present."));
-        properties.add("range", described(range("number", LookClose.MINIMUM_RANGE, LookClose.MAXIMUM_RANGE), "Blocks. 10 by default."));
-        properties.add("lineOfSight", described(type("boolean"), "Only look at players it can see."));
-        properties.add("whileNavigating", described(type("boolean"), "Also look while following a route."));
-        properties.add("npcs", described(type("boolean"), "Also look at the nearest other NPC when no player is in range."));
-        JsonObject random = described(type("object"), "With nobody to look at, turn to a random facing every delayTicks.");
-        random.addProperty("additionalProperties", false);
-        JsonObject randomProperties = new JsonObject();
-        randomProperties.add("enabled", described(type("boolean"), "True by default."));
-        randomProperties.add("delayTicks", described(range("integer", 1, LookClose.MAXIMUM_RANDOM_DELAY), "Ticks between random turns. 60 by default."));
-        randomProperties.add("yaw", described(angles(-360, 360), "[minimum, maximum] yaw in degrees. [0, 360] by default."));
-        randomProperties.add("pitch", described(angles(-90, 90), "[minimum, maximum] pitch in degrees. [0, 0] by default."));
-        random.add("properties", randomProperties);
-        properties.add("randomLook", random);
-        look.add("properties", properties);
-        return look;
-    }
-    private static JsonObject angles(int minimum, int maximum) {
-        JsonObject array = type("array");
-        array.add("items", range("number", minimum, maximum));
-        array.addProperty("minItems", 2);
-        array.addProperty("maxItems", 2);
-        return array;
-    }
-    private static JsonObject mount() {
-        JsonObject mount = described(type("object"), "Rides another NPC.");
-        mount.addProperty("additionalProperties", false);
-        JsonObject properties = new JsonObject();
-        properties.add("enabled", type("boolean"));
-        properties.add("vehicle", described(pattern(IDENTIFIER), "The vehicle NPC's id."));
-        mount.add("properties", properties);
-        JsonObject disabled = new JsonObject();
-        disabled.add("properties", property("enabled", constant(false)).getAsJsonObject("properties"));
-        disabled.add("required", strings("enabled"));
-        JsonObject rule = new JsonObject();
-        rule.add("if", disabled);
-        JsonObject vehicle = new JsonObject();
-        vehicle.add("required", strings("vehicle"));
-        rule.add("else", vehicle);
-        JsonArray rules = new JsonArray();
-        rules.add(rule);
-        mount.add("allOf", rules);
-        return mount;
-    }
-    private static JsonObject riding() {
-        JsonObject riding = described(type("object"), "Lets a real player ride this NPC.");
-        riding.addProperty("additionalProperties", false);
-        JsonObject properties = new JsonObject();
-        properties.add("enabled", type("boolean"));
-        properties.add("reviewAccepted", type("boolean"));
-        properties.add("permission", type("string"));
-        properties.add("speed", type("number"));
-        properties.add("leash", type("number"));
-        properties.add("lifetimeSeconds", type("number"));
-        riding.add("properties", properties);
-        JsonObject limits = new JsonObject();
-        JsonObject bounded = new JsonObject();
-        JsonObject permission = pattern("^[a-z0-9_-]+(\\.[a-z0-9_-]+)*$");
-        permission.addProperty("maxLength", 128);
-        bounded.add("permission", permission);
-        bounded.add("speed", range("number", RideSettings.MINIMUM_SPEED, RideSettings.MAXIMUM_SPEED));
-        bounded.add("leash", range("number", RideSettings.MINIMUM_LEASH, RideSettings.MAXIMUM_LEASH));
-        bounded.add("lifetimeSeconds", range("integer", RideSettings.MINIMUM_LIFETIME_SECONDS, RideSettings.MAXIMUM_LIFETIME_SECONDS));
-        limits.add("properties", bounded);
-        JsonArray rules = new JsonArray();
-        rules.add(whenEnabled(limits));
-        riding.add("allOf", rules);
-        return riding;
     }
 
     public static JsonObject packSchema() {
@@ -843,6 +572,7 @@ public final class BehaviorSchemaGenerator {
             entry.addProperty("privileged", descriptor.privileged());
             entry.addProperty("available", availability.available());
             entry.addProperty("reason", availability.reason());
+            entry.addProperty("reach", BuiltinCapabilities.npcOnly(descriptor.key()) ? "npc" : "both");
             JsonObject schema = argumentSchema(descriptor);
             Set<String> required = names(schema.get("required"));
             JsonObject arguments = new JsonObject();
@@ -865,6 +595,8 @@ public final class BehaviorSchemaGenerator {
             trigger.addProperty("description", kind.description());
             trigger.addProperty("carriesPlayer", kind.carriesPlayer());
             trigger.addProperty("reach", kind.reach().name().toLowerCase(Locale.ROOT));
+            List<String> context = ServerEvent.contextKeys(kind);
+            if (!context.isEmpty()) trigger.add("context", strings(context.toArray(String[]::new)));
             JsonObject fields = new JsonObject();
             for (String name : kind.keys()) {
                 Field field = name.equals("event") ? new Field(constant(kind.jsonName()), "event", true) : triggerField(name);
@@ -891,9 +623,28 @@ public final class BehaviorSchemaGenerator {
         language.add("variableScopes", strings(scopes().toArray(String[]::new)));
         language.add("variableLifetimes", strings(lifetimes().toArray(String[]::new)));
         language.add("documentFields", strings(documentFields().toArray(String[]::new)));
+        language.add("expressions", expressionLanguage());
         root.add("language", language);
         return root;
     }
+    /** What behavior expressions can name: roots, facts, flag scopes and functions, with the declared-name rule. */
+    private static JsonObject expressionLanguage() {
+        JsonObject language = new JsonObject();
+        language.addProperty("maxLength", BehaviorExpression.MAX_LENGTH);
+        language.addProperty("namePattern", "^" + BehaviorExpression.NAME.pattern() + "$");
+        language.add("roots", strings(BehaviorExpression.ROOTS.toArray(String[]::new)));
+        language.add("reserved", strings(new java.util.TreeSet<>(BehaviorExpression.RESERVED).toArray(String[]::new)));
+        JsonObject facts = new JsonObject();
+        facts.add("player", strings(BehaviorExpression.PLAYER_FACTS.toArray(String[]::new)));
+        facts.add("npc", strings(BehaviorExpression.NPC_FACTS.toArray(String[]::new)));
+        facts.add("server", strings(BehaviorExpression.SERVER_FACTS.toArray(String[]::new)));
+        language.add("facts", facts);
+        language.add("flagScopes", strings(BehaviorExpression.FLAG_SCOPES.toArray(String[]::new)));
+        language.add("functions", strings(BehaviorExpression.FUNCTIONS.toArray(String[]::new)));
+        language.add("standardFunctions", strings(GuiExpression.STANDARD_FUNCTIONS.toArray(String[]::new)));
+        return language;
+    }
+
     private static JsonObject completion(Field field) {
         JsonObject entry = completion(field.schema(), field.required());
         entry.addProperty("type", field.completion());
@@ -959,6 +710,14 @@ public final class BehaviorSchemaGenerator {
         JsonObject schema = type(type);
         schema.addProperty("minimum", minimum);
         schema.addProperty("maximum", maximum);
+        return schema;
+    }
+    /** Six numbers within the world border. */
+    private static JsonObject coordinates() {
+        JsonObject schema = type("array");
+        schema.addProperty("minItems", 6);
+        schema.addProperty("maxItems", 6);
+        schema.add("items", range("number", -TriggerCompiler.MAX_COORDINATE, TriggerCompiler.MAX_COORDINATE));
         return schema;
     }
     private static JsonObject list(JsonObject items, int minimum, int maximum, String description) {

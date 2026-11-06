@@ -50,7 +50,7 @@
     },
     "on-player-joins-2": {
       "type": "condition",
-      "expression": "same(player.world, 'world_nether')",
+      "expression": "same_world(player.world, 'world_nether')",
       "then": {
         "type": "sequence",
         "steps": [

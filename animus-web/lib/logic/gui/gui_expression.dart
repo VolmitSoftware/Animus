@@ -116,6 +116,7 @@ final class GuiSampleScope implements PExprScope {
     'viewer.uuid': '8667ba71-b85a-4004-af54-457a9734eed7',
     'player.uuid': '8667ba71-b85a-4004-af54-457a9734eed7',
     'viewer.world': 'world',
+    'viewer.world_key': 'minecraft:overworld',
     'viewer.health': 20.0,
     'viewer.level': 12.0,
     'viewer.food': 20.0,

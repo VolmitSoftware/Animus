@@ -2,6 +2,7 @@ package art.arcane.animus.core.editor;
 
 import art.arcane.animus.api.Capabilities;
 import art.arcane.animus.core.behavior.schema.BehaviorSchemaGenerator;
+import art.arcane.animus.core.behavior.schema.NpcSchemaGenerator;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonObject;
 import java.io.IOException;
@@ -31,6 +32,7 @@ public final class EditorSchemas {
         names.put("menu", "gloss/gloss.schema.json");
         names.put("hologram", "gloss/gloss-holograms.schema.json");
         names.put("presets", "gloss/gloss-presets.schema.json");
+        names.put("server-behaviors", "server-behaviors-v1.schema.json");
         return Map.copyOf(names);
     }
 
@@ -38,7 +40,8 @@ public final class EditorSchemas {
     public synchronized JsonObject response(List<Capabilities.Availability> capabilities) throws IOException {
         if (cached != null && capabilities.equals(cachedFor)) return cached;
         JsonObject schemas = new JsonObject();
-        schemas.add("npc", BehaviorSchemaGenerator.npcSchema());
+        schemas.add("npc", NpcSchemaGenerator.schema());
+        schemas.add("route", NpcSchemaGenerator.routeSchema());
         schemas.add("behavior", BehaviorSchemaGenerator.behaviorSchema(capabilities));
         schemas.add("pack", BehaviorSchemaGenerator.packSchema());
         schemas.add("completions", BehaviorSchemaGenerator.completions(capabilities));

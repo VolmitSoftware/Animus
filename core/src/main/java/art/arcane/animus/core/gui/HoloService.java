@@ -300,7 +300,9 @@ public final class HoloService<P, S> implements AutoCloseable {
                 Optional<String> slot = view.displays.slot(click.entityId());
                 if (slot.isEmpty()) continue;
                 HologramRender.Box box = view.boxes.get(slot.get());
-                if (box == null || !view.shown || !pose.get().in(view.npc.isPresent() ? HoloService.world(pose.get()) : view.document.world())) return;
+                Optional<String> world = view.npc.isPresent()
+                        ? living.active(view.npc.get()).map((NpcRuntime.ActiveNpc npc) -> npc.state().position().world()) : Optional.of(view.document.world());
+                if (box == null || !view.shown || world.isEmpty() || !pose.get().in(world.get())) return;
                 double[] eye = {pose.get().x(), pose.get().eyeY(), pose.get().z()};
                 if (!box.hit(eye, look(pose.get().yaw(), pose.get().pitch()), HOLOGRAM_REACH, CLICK_SLACK)) return;
                 new GuiActions<>(new HologramActions(viewer, view)).click(view.document.actions(), kind, hologramScope(viewer, view));

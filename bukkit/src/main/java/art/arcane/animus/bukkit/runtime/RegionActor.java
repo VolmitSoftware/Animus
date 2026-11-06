@@ -144,7 +144,7 @@ final class RegionActor implements RegionOwner.Body {
     private long nextLook;
     float yaw, pitch;
     private boolean onGround = true;
-    private long pose, arrivals, turns, appearance, equipmentRevision, revision;
+    private long pose, arrivals, turns, appearance, equipmentRevision, revision, swings;
     private double fallSpeed;
     private Route route;
     private WaypointProgress waypoints;
@@ -159,7 +159,7 @@ final class RegionActor implements RegionOwner.Body {
     /** The pose and motion a playback shows, published with {@link #lookRevision}; swings count up for viewers to send. */
     private NpcPose lookPose = NpcPose.STANDING;
     private int lookMotion;
-    private long lookRevision, swings;
+    private long lookRevision;
     private BodyLook look;
     private String displayName;
     private BodySkin displaySkin;
@@ -457,7 +457,7 @@ final class RegionActor implements RegionOwner.Body {
      * the NPC to that region like any chunk crossing. False when the destination is not known to be loaded.
      */
     boolean combatTeleport(WorldPosition destination) {
-        if (seated || riding.active() || !state.snapshot().active()) return false;
+        if (!placeable(state.snapshot().active(), seated, riding)) return false;
         World world = host.world(destination.world());
         if (world == null) return false;
         ChunkPosition chunk = destination.chunk();
@@ -470,10 +470,12 @@ final class RegionActor implements RegionOwner.Body {
         if (!host.knownLoaded(chunk)) return false;
         long epoch = owner.ownership().state().token() == null ? -1 : owner.ownership().state().token().epoch();
         return host.regions.execute(chunk, () -> clearSpot(world, destination, width, height).ifPresent((WorldPosition spot) -> owner.submit(new OwnerMailbox.Work() {
-            @Override public void run() { if (state.snapshot().active() && !seated && riding == null) place(spot); }
+            @Override public void run() { if (placeable(state.snapshot().active(), seated, riding)) place(spot); }
             @Override public void refuse(String reason) { /* The NPC went dormant; it stays where it was. */ }
         })));
     }
+    /** Whether combat may place the NPC somewhere else: it is active, sits on no seat and carries no rider. */
+    static boolean placeable(boolean active, boolean seated, ActorRide riding) { return active && !seated && !riding.active(); }
     /** On the owner of the destination: a clear, supported spot in the destination's block column. */
     private Optional<WorldPosition> clearSpot(World world, WorldPosition destination, double width, double height) {
         ChunkOwnership owned = (int x, int z) -> host.regions.owns(world, x, z, x, z);
@@ -493,10 +495,32 @@ final class RegionActor implements RegionOwner.Body {
         stopRoute("cancelled by combat lifecycle/position change");
         combatChanged(before, state.move(spot));
     }
+    /** Where this NPC stands guard: its definition's position, unless it patrols waypoints or a reusable route. */
+    Optional<WorldPosition> post() {
+        if (!state.snapshot().active() || routeSource != null || WaypointSettings.parse(spec.definition()).isPresent()) return Optional.empty();
+        return Optional.of(spec.position());
+    }
+    /** A short step onto clear, supported ground at the point, swept along the way, within ground this region holds. */
+    boolean combatStep(WorldPosition to) {
+        if (!placeable(state.snapshot().active(), seated, riding)) return false;
+        WorldPosition from = state.snapshot().position();
+        World world = host.world(to.world());
+        if (world == null || !to.world().equals(from.world())) return false;
+        ChunkPosition chunk = to.chunk();
+        if (!host.regions.owns(world, chunk.x(), chunk.z(), chunk.x(), chunk.z())) return false;
+        Optional<WorldPosition> spot = clearSpot(world, to, hullWidth(), hullHeight());
+        if (spot.isEmpty()) return false;
+        ChunkOwnership owned = (int x, int z) -> host.regions.owns(world, x, z, x, z);
+        if (!LiveMovementProbe.check(world, owned, from.point(), spot.get().point(), hullWidth(), hullHeight(), MotionValidator.Medium.GROUND, true, 256).clear()) return false;
+        place(spot.get());
+        return true;
+    }
+    /** Back to the definition's facing, standing. */
+    void restorePose() { setPose(spec.yaw(), spec.pitch(), true); publish(true); }
     /** Knockback: a short slide onto clear, supported ground this region holds; otherwise the NPC stays put. */
     void combatKnockback(Vec3 direction, double strength) {
         double horizontal = Math.hypot(direction.x(), direction.z());
-        if (horizontal < .0001 || seated || riding.active() || !state.snapshot().active()) return;
+        if (horizontal < .0001 || !placeable(state.snapshot().active(), seated, riding)) return;
         double distance = Math.min(1.5, strength);
         WorldPosition from = state.snapshot().position();
         World world = host.world(from.world());
@@ -753,6 +777,29 @@ final class RegionActor implements RegionOwner.Body {
         publish(true);
     }
     WorldPosition position() { return state.snapshot().position(); }
+
+    // ---- Builds, on the owner ----
+
+    /** A route is running or about to be planned. */
+    boolean routing() { return route != null || routeRead != null; }
+    /** Swings the arm for every viewer, which sees the new count on its own region. */
+    void swing() { swings++; publish(true); }
+    /**
+     * Moves the NPC at once onto clear, supported ground this region holds and has loaded, as a build's last resort;
+     * false leaves it where it is. A move into another chunk hands the NPC on at the end of its next turn.
+     */
+    boolean relocate(WorldPosition destination) {
+        if (seated || mount || riding.active() || !owner.riders().isEmpty() || !state.snapshot().active() || !destination.world().equals(state.snapshot().position().world())) return false;
+        World world = host.world(destination.world());
+        if (world == null) return false;
+        ChunkOwnership owned = (int x, int z) -> host.regions.owns(world, x, z, x, z);
+        ChunkPosition chunk = destination.chunk();
+        if (!owned.owns(chunk.x(), chunk.z()) || !world.isChunkLoaded(chunk.x(), chunk.z())) return false;
+        if (!LiveMovementProbe.check(world, owned, destination.point(), destination.point(), hullWidth(), hullHeight(), MotionValidator.Medium.GROUND, true, 256).clear())
+            return false;
+        place(destination);
+        return true;
+    }
 
     private void navigate() {
         Route current = route;

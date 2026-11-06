@@ -8,15 +8,24 @@
 }
 
 .animus-views.is-split .animus-gui-editor {
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .animus-gui-stage,
 .animus-gui-inspector,
 .animus-gui-preview {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
   min-width: 0;
+}
+
+/* The preview column is the focal point: the chest window grows to fill
+   it, up to a slot size where the pixel art still reads crisply. */
+.animus-gui-stage,
+.animus-gui-preview {
+  container-type: inline-size;
+  align-content: start;
 }
 
 .animus-gui-inspector {
@@ -33,23 +42,17 @@
   min-width: 0;
 }
 
-.animus-gui-tabs {
-  flex-wrap: wrap;
-}
-
 /* The chest window, as the client paints it. */
 
 .animus-chest-screen {
-  --animus-slot: clamp(1.75rem, 8vw, 2.5rem);
+  --animus-slot: clamp(2rem, calc((100cqi - 2.5rem) / 9), 3.5rem);
   display: grid;
   gap: 0.5rem;
   width: max-content;
   max-width: 100%;
   padding: 0.75rem 0.875rem 0.875rem;
   border: 3px solid #373737;
-  border-radius: 4px;
   background: #c6c6c6;
-  box-shadow: inset 2px 2px #fff, inset -2px -2px #555;
   color: #404040;
   overflow-x: auto;
 }
@@ -68,6 +71,17 @@
   width: max-content;
 }
 
+/* While a brush is chosen a drag paints instead of scrolling. */
+.animus-chest.is-painting {
+  touch-action: none;
+}
+
+.animus-gui-component-list [aria-pressed="true"] {
+  background: var(--secondary, var(--animus-panel));
+  color: var(--foreground, inherit);
+  border-color: var(--primary, #ff5fa8);
+}
+
 .animus-chest-slot {
   position: relative;
   display: block;
@@ -75,10 +89,9 @@
   height: var(--animus-slot);
   padding: 0;
   margin: 0;
-  border: 0;
-  border-radius: 0;
+  box-sizing: border-box;
+  border: 2px solid #373737;
   background: #8b8b8b;
-  box-shadow: inset 2px 2px #373737, inset -2px -2px #fff;
   font: inherit;
   color: inherit;
   cursor: default;
@@ -91,11 +104,19 @@ button.animus-chest-slot {
 button.animus-chest-slot:hover,
 button.animus-chest-slot:focus-visible {
   background: #a5a5a5;
-  outline: none;
 }
 
+button.animus-chest-slot:focus-visible {
+  z-index: 2;
+  outline: 3px solid var(--ring, #ffb3d6);
+  outline-offset: 0;
+}
+
+/* The one pink in the window: the slot being edited. */
 .animus-chest-slot.is-selected {
-  box-shadow: inset 0 0 0 2px #f8f8f8, inset 0 0 0 4px #1d6fd8;
+  border-color: #0d0d0f;
+  outline: 2px solid var(--primary, #ff5fa8);
+  outline-offset: -4px;
 }
 
 .animus-chest-slot.is-hidden .animus-chest-face {
@@ -164,18 +185,19 @@ button.animus-chest-slot:focus-visible {
   max-width: 22rem;
   padding: 0.3rem 0.45rem;
   border: 2px solid #25025a;
-  border-radius: 3px;
   background: rgba(16, 0, 16, 0.94);
   font-family: "Minecraft", var(--font-mono);
   font-size: 0.8125rem;
   line-height: 1.3;
   text-align: start;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   pointer-events: none;
 }
 
 .animus-chest-slot:hover .animus-chest-tooltip,
-.animus-chest-slot:focus-visible .animus-chest-tooltip {
+.animus-chest-slot:focus-visible .animus-chest-tooltip,
+.animus-chest-slot.is-selected .animus-chest-tooltip.is-pinned {
   display: grid;
 }
 
@@ -236,7 +258,7 @@ button.animus-chest-slot:focus-visible {
 
 .animus-gui-problem.is-warning,
 .animus-gui-problem.is-info {
-  color: #d8a338;
+  color: var(--animus-warning);
 }
 
 .animus-gui-text {
@@ -253,11 +275,19 @@ button.animus-chest-slot:focus-visible {
   min-height: 2rem;
   padding: 0.3rem 0.5rem;
   border: 1px solid var(--animus-border);
-  border-radius: 0.375rem;
-  background: var(--input, transparent);
-  color: inherit;
+  background: var(--background, #0d0d0f);
+  color: var(--foreground, inherit);
   font: inherit;
   font-size: 0.875rem;
+}
+
+.animus-gui-input::placeholder {
+  color: var(--animus-muted);
+  opacity: 1;
+}
+
+.animus-gui-input:hover {
+  border-color: var(--animus-muted);
 }
 
 .animus-gui-input.is-code {
@@ -281,7 +311,6 @@ button.animus-chest-slot:focus-visible {
 
 .animus-gui-sample {
   padding: 0.2rem 0.4rem;
-  border-radius: 0.25rem;
   background: #1f1f1f;
   font-size: 0.8125rem;
   overflow-wrap: anywhere;
@@ -299,9 +328,8 @@ button.animus-chest-slot:focus-visible {
   max-height: 14rem;
   overflow: auto;
   border: 1px solid var(--animus-border);
-  border-radius: 0.375rem;
   background: var(--popover, var(--animus-panel));
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  border-color: var(--input, #7a747b);
 }
 
 .animus-gui-completions li {
@@ -309,7 +337,6 @@ button.animus-chest-slot:focus-visible {
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.25rem 0.375rem;
-  border-radius: 0.25rem;
   font-size: 0.8125rem;
   cursor: pointer;
 }
@@ -338,7 +365,6 @@ button.animus-chest-slot:focus-visible {
 
 .animus-gui-section {
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
   padding: 0.375rem 0.625rem;
   min-width: 0;
 }
@@ -368,7 +394,6 @@ button.animus-chest-slot:focus-visible {
   gap: 0.5rem;
   padding: 0.5rem;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
   min-width: 0;
 }
 
@@ -399,7 +424,7 @@ button.animus-chest-slot:focus-visible {
 .animus-gui-note {
   margin: 0;
   font-size: 0.75rem;
-  color: #d8a338;
+  color: var(--animus-warning);
 }
 
 .animus-gui-component-list {
@@ -429,7 +454,7 @@ button.animus-chest-slot:focus-visible {
 
 @media (max-width: 1100px) {
   .animus-gui-editor {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .animus-gui-inspector {
@@ -439,7 +464,17 @@ button.animus-chest-slot:focus-visible {
 
 @media (max-width: 520px) {
   .animus-gui-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Thumb-sized targets: a 9-wide window scrolls inside its frame rather
+     than shrinking slots below 44 px. */
+  .animus-chest-screen {
+    --animus-slot: 2.75rem;
+  }
+
+  .animus-gui-input {
+    min-height: 2.75rem;
   }
 
   .animus-gui-label {
@@ -450,4 +485,104 @@ button.animus-chest-slot:focus-visible {
     left: 0;
     top: calc(100% + 2px);
   }
+}
+
+/* Read by assistive technology, not shown. */
+.animus-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.animus-gui-select {
+  display: inline-flex;
+  min-width: 0;
+}
+
+/* Section tabs share the view tabs' frame, tab and selected rule
+   (`.animus-tabs`, `.animus-tab`). */
+.animus-gui-tabs .animus-tab:disabled {
+  opacity: 0.5;
+}
+
+/* Menu component pick zones over the stage: invisible until hovered, and
+   a pink ring on the selected one. */
+.animus-gui-pick {
+  position: absolute;
+  min-width: 16px;
+  min-height: 16px;
+  margin: -4px;
+  padding: 4px;
+  border: 1px dashed transparent;
+  box-sizing: content-box;
+  transition: border-color 120ms ease-out;
+}
+
+.animus-gui-pick[data-gizmo] {
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.animus-gui-pick:hover {
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+.animus-gui-pick.is-selected {
+  border: 2px solid var(--primary, #ff5fa8);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animus-gui-pick {
+    transition: none;
+  }
+}
+
+/* Hologram rows and the text animation preview. */
+.animus-gui-holo-row {
+  display: grid;
+  gap: 0.375rem;
+  padding: 0.5rem;
+  border: 1px solid var(--animus-border);
+  min-width: 0;
+}
+
+.animus-gui-holo-extras {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.375rem 0.75rem;
+}
+
+.animus-gui-fix {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--animus-error);
+}
+
+.animus-gui-anim-preview {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.animus-gui-anim-stage {
+  display: grid;
+  place-items: center;
+  min-height: 8rem;
+  padding: 1rem;
+  background: #0d0d0f;
+  color: #ffffff;
+  font-size: 1.25rem;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.animus-gui-editor.is-single {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 56rem;
 }

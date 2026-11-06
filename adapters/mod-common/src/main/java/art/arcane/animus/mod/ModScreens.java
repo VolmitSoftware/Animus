@@ -11,10 +11,10 @@ import art.arcane.animus.core.inventory.ItemOps;
 import art.arcane.animus.core.inventory.MatchRule;
 import art.arcane.animus.core.inventory.TradeInventory;
 import art.arcane.animus.core.npc.NpcItem;
+import art.arcane.animus.core.platform.ModWorlds;
 import com.mojang.brigadier.ParseResults;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.List;
 import java.util.Locale;
@@ -43,7 +43,6 @@ import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.world.BossEvent;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.level.Level;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.SimpleMenuProvider;
@@ -80,7 +79,7 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
     @Override public String name(ServerPlayer player) { return player.getGameProfile().name(); }
     @Override public Object viewer(ServerPlayer player, String property) {
         return switch (property) {
-            case "world" -> ModWorldKeys.key(player.level());
+            case "world", "world_key" -> ModWorldKeys.key(player.level());
             case "health" -> (double) player.getHealth();
             case "level" -> player.experienceLevel;
             case "food" -> player.getFoodData().getFoodLevel();
@@ -178,9 +177,7 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
     @Override public void broadcast(String text) { server.getPlayerList().broadcastSystemMessage(ModText.component(text), false); }
 
     @Override public Optional<Pose> pose(ServerPlayer player) {
-        Set<String> worlds = new HashSet<>();
-        worlds.add(ModWorldKeys.key(player.level()));
-        if (player.level().dimension() == Level.OVERWORLD) worlds.add(server.getWorldData().getLevelName());
+        Set<String> worlds = ModWorlds.aliases(ModWorldKeys.key(player.level()), server.getWorldData().getLevelName());
         return Optional.of(new Pose(worlds, player.getX(), player.getY(), player.getZ(), player.getEyeY(), player.getYRot(), player.getXRot(), player.isShiftKeyDown()));
     }
 

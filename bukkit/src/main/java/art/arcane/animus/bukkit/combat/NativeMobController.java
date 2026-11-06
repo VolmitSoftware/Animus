@@ -5,6 +5,7 @@ import java.lang.reflect.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CancellationException;
+import org.bukkit.World;
 import org.bukkit.entity.*;
 import org.bukkit.plugin.Plugin;
 
@@ -12,16 +13,20 @@ import org.bukkit.plugin.Plugin;
  * Exact-version access to an EXISTING real hostile mob whose AI runs on goal selectors. No entity constructor or fake
  * attack target is used. Brain-driven mobs such as piglins and ranged mobs such as skeletons are not controlled.
  */
-final class NativeMobController {
+public final class NativeMobController {
+    /** Whether the calling thread may read the chunk: loaded on Bukkit and Paper; also owned by this region on Folia. */
+    @FunctionalInterface public interface ChunkAccess { boolean readable(World world, int chunkX, int chunkZ); }
     /** Melee hostile mobs whose AI is held entirely by their goal selectors, so suspending and restoring them is exact. */
-    static final Set<EntityType> TYPES = Set.of(EntityType.ZOMBIE, EntityType.HUSK, EntityType.DROWNED, EntityType.ZOMBIE_VILLAGER, EntityType.VINDICATOR);
+    public static final Set<EntityType> TYPES = Set.of(EntityType.ZOMBIE, EntityType.HUSK, EntityType.DROWNED, EntityType.ZOMBIE_VILLAGER, EntityType.VINDICATOR);
     private static final Map<UUID, Object> CLAIMS = new ConcurrentHashMap<>();
     private final Method handle, navigation, goals, unwrap, priority, addGoal, removeGoal, getPath, copyPath, nodeCount, nodePos;
     private final Method stop, createPath, movePath, getX, getZ, setMaxNodes;
     private final Constructor<?> blockPos;
+    private final ChunkAccess chunks;
     private final Field goalSelector, targetSelector, speed, pathFinder, maxNodes, multiplier, targetPos, delayed, reachRange, lastRecompute;
 
-    NativeMobController(Plugin plugin, String version) throws ReflectiveOperationException {
+    public NativeMobController(Plugin plugin, String version, ChunkAccess chunks) throws ReflectiveOperationException {
+        this.chunks = Objects.requireNonNull(chunks);
         if (!Set.of("26.1.2", "26.2", "26.3").contains(version)) throw new IllegalArgumentException("Unsupported mob adapter version: " + version);
         Class<?> mob = type("net.minecraft.world.entity.Mob");
         Class<?> nav = type("net.minecraft.world.entity.ai.navigation.PathNavigation");
@@ -45,7 +50,8 @@ final class NativeMobController {
         reachRange = field(nav, "reachRange"); lastRecompute = field(nav, "timeLastRecompute");
     }
 
-    Lease acquire(Mob mob) throws ReflectiveOperationException {
+    /** On the mob's owner. */
+    public Lease acquire(Mob mob) throws ReflectiveOperationException {
         if (!TYPES.contains(mob.getType()) || !mob.isValid() || mob.isDead() || !mob.hasAI() || !mob.isAware())
             throw new IllegalArgumentException("Control requires a live, aware, AI-enabled zombie, husk, drowned, zombie villager or vindicator");
         if (CLAIMS.size() >= 128) throw new IllegalStateException("Global mob ownership limit reached");
@@ -80,7 +86,7 @@ final class NativeMobController {
         for (GoalEntry entry : entries) if (!existing.contains(entry.goal)) addGoal.invoke(selector, entry.priority, entry.goal);
     }
 
-    final class Lease implements AutoCloseable {
+    public final class Lease implements AutoCloseable {
         private final Mob mob;
         private final Object token, nativeMob, nav, movementGoals, targetingGoals;
         private final List<GoalEntry> originalMovement, originalTargeting;
@@ -113,14 +119,14 @@ final class NativeMobController {
             if (!owned()) throw new IllegalStateException("Mob control was denied or another controller changed its goals/target");
             acquired = true;
         }
-        boolean owned() throws ReflectiveOperationException {
+        public boolean owned() throws ReflectiveOperationException {
             Object currentPath = getPath.invoke(nav);
             return !closed && CLAIMS.get(mob.getUniqueId()) == token && navigation.invoke(nativeMob) == nav
                     && ((Collection<?>) goals.invoke(movementGoals)).isEmpty() && ((Collection<?>) goals.invoke(targetingGoals)).isEmpty()
                     && targetPos.get(nav) == null && (currentPath == null || currentPath == ownedPath)
                     && mob.getTarget() == null && mob.hasAI() && mob.isAware();
         }
-        boolean plan(Vec3 destination, int pathLength, int visitedNodeLimit, double speedModifier) throws ReflectiveOperationException {
+        public boolean plan(Vec3 destination, int pathLength, int visitedNodeLimit, double speedModifier) throws ReflectiveOperationException {
             if (!owned()) throw new CancellationException("Mob ownership changed");
             Object finder = pathFinder.get(nav);
             int previousNodes = maxNodes.getInt(finder); float previousMultiplier = multiplier.getFloat(nav);
@@ -142,7 +148,7 @@ final class NativeMobController {
             ownedPath = getPath.invoke(nav);
             return result;
         }
-        void halt() throws ReflectiveOperationException { if (owned()) { stop.invoke(nav); ownedPath = null; } }
+        public void halt() throws ReflectiveOperationException { if (owned()) { stop.invoke(nav); ownedPath = null; } }
         boolean usesChunk(int x, int z) throws ReflectiveOperationException {
             if (ownedPath == null) return false;
             for (int i = 0, count = (int) nodeCount.invoke(ownedPath); i < count; i++) {
@@ -153,6 +159,11 @@ final class NativeMobController {
         }
         private void suppressRecomputation() throws ReflectiveOperationException { targetPos.set(nav, null); delayed.setBoolean(nav, false); }
         void closeForUnavailableTerrain() throws ReflectiveOperationException { restorePath = false; close(); }
+        /**
+         * The mob is gone (removed, unloaded or retired by its scheduler): only the claim is released, without touching the
+         * mob. A mob that loads again is built with its own goals.
+         */
+        public void forget() { closed = true; CLAIMS.remove(mob.getUniqueId(), token); }
         @Override public void close() throws ReflectiveOperationException {
             if (closed) return;
             List<Throwable> failures = new ArrayList<>();
@@ -198,7 +209,7 @@ final class NativeMobController {
         private boolean originalPathLoaded() throws ReflectiveOperationException {
             for (int i = 0, count = (int) nodeCount.invoke(originalPath); i < count; i++) {
                 Object pos = nodePos.invoke(originalPath, i);
-                if (!mob.getWorld().isChunkLoaded(((int) getX.invoke(pos)) >> 4, ((int) getZ.invoke(pos)) >> 4)) return false;
+                if (!chunks.readable(mob.getWorld(), ((int) getX.invoke(pos)) >> 4, ((int) getZ.invoke(pos)) >> 4)) return false;
             }
             return true;
         }

@@ -8,12 +8,49 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../services/server/error_copy.dart';
 import '../../services/server/server_connection.dart';
 import '../../services/server/server_imports.dart';
 import '../../services/server/server_profiles.dart';
 import '../../services/server/transport.dart';
 import '../../state/server_hub.dart';
 import '../gui/gui_fields.dart';
+import 'connection_pill.dart';
+import 'live_confirm.dart';
+
+/// An import state in words.
+String importStateLabel(String state) => switch (state) {
+      'none' => 'Nothing staged',
+      'staged' => 'Staged, not installed',
+      'applied' => 'Installed, waiting for review',
+      'rolled-back' => 'Rolled back',
+      _ => state,
+    };
+
+/// A review category in words.
+String importCategoryLabel(String category) => switch (category) {
+      'spawn' => 'Spawning',
+      'patrols' => 'Patrols',
+      'combat' => 'Combat',
+      'riding' => 'Riding',
+      'shops' => 'Shops',
+      'builder' => 'Builds',
+      'denizen' => 'Denizen behaviors',
+      _ => category,
+    };
+
+/// One issue from a staged report: a line of text, or an object with a
+/// message and the record it is about.
+String importIssueLine(Object? issue) {
+  if (issue is String) return issue;
+  if (issue is Map<String, Object?>) {
+    final Object? message = issue['message'] ?? issue['reason'] ?? issue['code'];
+    final Object? subject = issue['id'] ?? issue['record'] ?? issue['shop'] ?? issue['npc'] ?? issue['file'];
+    final String text = message is String ? message : 'An issue with no description';
+    return subject == null ? text : '$subject: $text';
+  }
+  return '$issue';
+}
 
 class ServerImportPanel extends StatefulWidget {
   const ServerImportPanel({required this.hub, required this.uploads, required this.worlds, super.key});
@@ -37,8 +74,11 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
   ImportReview? _review;
   String? _error;
   String? _busy;
-  bool _confirmRollback = false;
+  /// The write waiting for its inline confirm: apply, accept-all or rollback.
+  String? _confirm;
   final Set<String> _accept = <String>{};
+
+  static String _actionId(String action) => 'animus-import-$action';
 
   @override
   void initState() {
@@ -72,7 +112,7 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
     setState(() {
       _busy = what;
       _error = null;
-      _confirmRollback = false;
+      _confirm = null;
     });
     try {
       final ImportReview review = await step(imports);
@@ -82,11 +122,13 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
         _accept.retainAll(<String>{for (final String category in importCategories) if ((review.pending[category] ?? 0) > 0) category});
       });
     } on ImportRefused catch (refused) {
-      if (mounted) setState(() => _error = refused.message);
-    } on NotConnected {
-      if (mounted) setState(() => _error = 'The server is not connected.');
+      if (mounted) setState(() => _error = refused.detail == null ? refused.message : '${refused.message} The server said: ${refused.detail}');
+    } on NotConnected catch (offline) {
+      if (mounted) setState(() => _error = offline.status.message ?? 'The server is not connected. Press Connect, then try again.');
     } on TransportFailure catch (failure) {
-      if (mounted) setState(() => _error = 'The ${failure.path.label.toLowerCase()} path failed: ${failure.message}');
+      if (mounted) setState(() => _error = failure.message);
+    } on Object {
+      if (mounted) setState(() => _error = transportCopy('dropped').text);
     } finally {
       if (mounted) setState(() => _busy = null);
     }
@@ -97,7 +139,7 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
     for (final ImportUpload upload in component.uploads) {
       last = await imports.upload(upload);
     }
-    if (last == null) throw const ImportRefused('invalid-request', 'Choose a Citizens or Shopkeepers save above first.');
+    if (last == null) throw const ImportRefused('invalid-request', 'No file is chosen. Choose a Citizens or Shopkeepers save above first.');
     return imports.stage(mode: _mode, label: _mode == 'duplicate' ? _label.trim() : null, worlds: component.worlds);
   }
 
@@ -134,8 +176,10 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
               _error = null;
             }),
           ),
-          dom.span(classes: 'animus-muted', attributes: const <String, String>{'data-testid': 'import-connection'}, <Widget>[
-            Component.text(status?.label ?? 'Offline'),
+          dom.span(attributes: const <String, String>{'data-testid': 'import-connection'}, <Widget>[
+            if (status != null) ConnectionPill(status: status, hasToken: connection?.token != null),
+            if (status != null && phaseHint(status, hasToken: connection?.token != null).isNotEmpty)
+              dom.span(classes: 'animus-muted', <Widget>[Component.text(' ${phaseHint(status, hasToken: connection?.token != null)}')]),
           ]),
           if (!online && connection != null)
             Button.secondary(label: 'Connect', size: ButtonSize.small, onPressed: () => component.hub.connect(connection.profile.id)),
@@ -143,7 +187,7 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
         ]),
         if (online && !scoped)
           const dom.p(classes: 'animus-citizens-error', attributes: <String, String>{'role': 'alert'}, <Widget>[
-            Component.text('This token has no import scope. Pair again with /animus editor pair scopes=read,import,apply:npcs,apply:behaviors,apply:gui.'),
+            Component.text('This pairing cannot import. Run /animus editor pair scopes=read,import,apply:npcs,apply:behaviors,apply:gui on the server and open the new link.'),
           ]),
         if (path == ConnectionPath.relay)
           dom.p(classes: 'animus-muted', attributes: const <String, String>{'data-testid': 'import-relay-note'}, <Widget>[
@@ -184,7 +228,7 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
           dom.p(classes: 'animus-citizens-error', attributes: const <String, String>{'role': 'alert', 'data-testid': 'import-problem'}, <Widget>[Component.text(problem)]),
         if (_error != null)
           dom.div(classes: 'animus-citizens-error', attributes: const <String, String>{'role': 'alert', 'data-testid': 'import-error'}, <Widget>[
-            const dom.h3(<Widget>[Component.text('The server refused')]),
+            const dom.h3(<Widget>[Component.text('Not imported')]),
             dom.p(<Widget>[Component.text(_error!)]),
           ]),
         if (review != null) ..._reviewView(review),
@@ -202,8 +246,8 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
     ];
     final bool busy = _busy != null;
     return <Widget>[
+      dom.p(attributes: const <String, String>{'data-testid': 'import-state'}, <Widget>[dom.strong(<Widget>[Component.text(importStateLabel(review.state))])]),
       dom.div(classes: 'animus-stats', attributes: const <String, String>{'data-testid': 'import-review'}, <Widget>[
-        _stat(review.state, 'state'),
         if (citizens['records'] != null) _stat('${citizens['records']}', 'Citizens records'),
         if (citizens['valid'] != null) _stat('${citizens['valid']}', 'valid'),
         if (citizens['skins'] != null) _stat('${citizens['skins']}', 'unique skins'),
@@ -223,35 +267,46 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
       if (issues.isNotEmpty)
         dom.details(<Widget>[
           dom.summary(<Widget>[Component.text('Issues (${issues.length})')]),
-          dom.ul(classes: 'animus-citizens-lines', <Widget>[for (final Object? issue in issues) dom.li(<Widget>[Component.text('$issue')])]),
+          dom.ul(classes: 'animus-citizens-lines', <Widget>[for (final Object? issue in issues) dom.li(<Widget>[Component.text(importIssueLine(issue))])]),
         ]),
-      dom.div(classes: 'animus-row', <Widget>[
-        if (importId != null && (review.state == 'staged' || review.state == 'rolled-back'))
-          Button.primary(
-            label: _busy == 'Applying' ? 'Applying' : 'Apply',
-            icon: ArcaneIcon.check(),
-            disabled: busy,
-            onPressed: () => _run('Applying', (ServerImports i) => i.apply(importId)),
-          ),
-        if (importId != null && review.state == 'applied')
-          Button(
-            label: _confirmRollback ? 'Confirm roll back' : 'Roll back',
-            icon: ArcaneIcon.undo(),
-            variant: _confirmRollback ? ButtonVariant.destructive : ButtonVariant.secondary,
-            disabled: busy,
-            onPressed: () {
-              if (!_confirmRollback) {
-                setState(() => _confirmRollback = true);
-                return;
-              }
-              _run('Rolling back', (ServerImports i) => i.rollback(importId));
-            },
-          ),
-      ]),
-      if (_confirmRollback)
-        const dom.p(classes: 'animus-muted', <Widget>[
-          Component.text('Rolling back undoes every acceptance, the shops, the generated behaviors and the NPC definitions of this import. '
-              'The staged preview stays, so it can be applied again.'),
+      if (importId != null && _confirm == 'apply')
+        LiveConfirm(
+          question: 'Install this import on the server?',
+          detail: 'Its NPCs are installed despawned, with patrols, combat, riding, shops and builds off until you accept them. Roll back undoes it.',
+          confirmLabel: 'Install import',
+          returnFocus: _actionId('apply'),
+          onConfirm: () => _run('Applying', (ServerImports i) => i.apply(importId)),
+          onCancel: () => setState(() => _confirm = null),
+        )
+      else if (importId != null && _confirm == 'rollback')
+        LiveConfirm(
+          question: 'Roll back this import on the server?',
+          detail: 'Every acceptance, the shops, the generated behaviors and the NPC definitions of this import are removed. '
+              'The staged preview stays, so it can be applied again.',
+          confirmLabel: 'Roll back',
+          destructive: true,
+          returnFocus: _actionId('rollback'),
+          onConfirm: () => _run('Rolling back', (ServerImports i) => i.rollback(importId)),
+          onCancel: () => setState(() => _confirm = null),
+        )
+      else
+        dom.div(classes: 'animus-row', <Widget>[
+          if (importId != null && (review.state == 'staged' || review.state == 'rolled-back'))
+            Button.primary(
+              label: _busy == 'Applying' ? 'Applying' : 'Apply',
+              icon: ArcaneIcon.check(),
+              disabled: busy,
+              attributes: <String, String>{'id': _actionId('apply')},
+              onPressed: () => setState(() => _confirm = 'apply'),
+            ),
+          if (importId != null && review.state == 'applied')
+            Button.secondary(
+              label: 'Roll back',
+              icon: ArcaneIcon.undo(),
+              disabled: busy,
+              attributes: <String, String>{'id': _actionId('rollback')},
+              onPressed: () => setState(() => _confirm = 'rollback'),
+            ),
         ]),
       if (importId != null && review.state == 'applied') ..._acceptView(review, importId),
     ];
@@ -263,26 +318,37 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
           for (final String category in importCategories)
             ArcaneCheckbox(
               checked: _accept.contains(category),
-              label: '$category: ${review.pending[category] ?? 0} waiting',
+              label: '${importCategoryLabel(category)}: ${review.pending[category] ?? 0} waiting',
               size: ComponentSize.sm,
               disabled: (review.pending[category] ?? 0) == 0,
               onChanged: (bool on) => setState(() => on ? _accept.add(category) : _accept.remove(category)),
             ),
         ]),
-        dom.div(classes: 'animus-row', <Widget>[
-          Button.secondary(
-            label: 'Accept selected',
-            size: ButtonSize.small,
-            disabled: _busy != null || _accept.isEmpty,
-            onPressed: () => _run('Accepting', (ServerImports i) => i.accept(importId, _accept.toList())),
-          ),
-          Button.secondary(
-            label: 'Accept all',
-            size: ButtonSize.small,
-            disabled: _busy != null || review.waiting == 0,
-            onPressed: () => _run('Accepting', (ServerImports i) => i.accept(importId, const <String>['all'])),
-          ),
-        ]),
+        if (_confirm == 'accept-all')
+          LiveConfirm(
+            question: 'Accept every waiting category on the server?',
+            detail: '${review.waiting} change${review.waiting == 1 ? '' : 's'} go live at once: NPCs spawn, and patrols, combat, riding, shops and builds turn on.',
+            confirmLabel: 'Accept all',
+            returnFocus: _actionId('accept-all'),
+            onConfirm: () => _run('Accepting', (ServerImports i) => i.accept(importId, const <String>['all'])),
+            onCancel: () => setState(() => _confirm = null),
+          )
+        else
+          dom.div(classes: 'animus-row', <Widget>[
+            Button.secondary(
+              label: 'Accept selected',
+              size: ButtonSize.small,
+              disabled: _busy != null || _accept.isEmpty,
+              onPressed: () => _run('Accepting', (ServerImports i) => i.accept(importId, _accept.toList())),
+            ),
+            Button.secondary(
+              label: 'Accept all',
+              size: ButtonSize.small,
+              disabled: _busy != null || review.waiting == 0,
+              attributes: <String, String>{'id': _actionId('accept-all')},
+              onPressed: () => setState(() => _confirm = 'accept-all'),
+            ),
+          ]),
       ];
 
   Widget _stat(String value, String label) => dom.div(classes: 'animus-stat', <Widget>[

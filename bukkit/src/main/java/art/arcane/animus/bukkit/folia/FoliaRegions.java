@@ -1,9 +1,9 @@
 package art.arcane.animus.bukkit.folia;
 
+import art.arcane.animus.bukkit.BukkitWorldLookup;
 import art.arcane.animus.bukkit.runtime.RegionScheduler;
 import art.arcane.animus.core.virtual.ChunkPosition;
 import java.lang.reflect.Method;
-import java.util.UUID;
 import java.util.function.Consumer;
 import org.bukkit.Server;
 import org.bukkit.World;
@@ -70,10 +70,10 @@ public final class FoliaRegions implements RegionScheduler {
     }
     /** Repeats on the player's owner until cancelled or the player retires. */
     public AutoCloseable repeat(Player player, Runnable action, Runnable retired) { return repeat(player, action, retired, 1L, 1L); }
-    /** Repeats on the player's owner every {@code period} ticks until cancelled or the player retires. */
-    public AutoCloseable repeat(Player player, Runnable action, Runnable retired, long delay, long period) {
+    /** Repeats on the entity's owner every {@code period} ticks until cancelled or the entity retires. */
+    public AutoCloseable repeat(Entity entity, Runnable action, Runnable retired, long delay, long period) {
         try {
-            Object task = entityRepeat.invoke(entityScheduler.invoke(player), plugin, (Consumer<Object>) ignored -> action.run(), retired, delay, period);
+            Object task = entityRepeat.invoke(entityScheduler.invoke(entity), plugin, (Consumer<Object>) ignored -> action.run(), retired, delay, period);
             if (task == null) { retired.run(); return () -> {}; }
             return () -> cancel.invoke(task);
         } catch (ReflectiveOperationException | RuntimeException failure) { retired.run(); return () -> {}; }
@@ -135,12 +135,16 @@ public final class FoliaRegions implements RegionScheduler {
             return new Tick(data, (long) regionTick.invoke(data));
         } catch (ReflectiveOperationException | RuntimeException failure) { return null; }
     }
-    /** Folia loads no world after startup, so a found world stays valid; a missing one is looked up again. */
+    /**
+     * A world by UUID, name or dimension key. Folia loads no world after startup, so a found world stays valid; a
+     * missing one is looked up again.
+     */
     public World world(String id) {
         World cached = worlds.get(id);
         if (cached != null) return cached;
-        try { World found = server.getWorld(UUID.fromString(id)); if (found != null) worlds.put(id, found); return found; }
-        catch (IllegalArgumentException invalid) { return null; }
+        World found = BukkitWorldLookup.find(server, id);
+        if (found != null) worlds.put(id, found);
+        return found;
     }
     private static boolean invokeBoolean(Method method, Object target, Object... arguments) {
         try { return (boolean) method.invoke(target, arguments); }

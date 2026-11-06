@@ -99,6 +99,9 @@ public final class TriggerCompiler {
             case PLAYER_CHAT -> new TriggerBinding.PlayerChat(object.has("pattern") ? Optional.of(bounded(object, "pattern", path, MAX_PATTERN)) : Optional.empty());
             case COMMAND -> command(object, path);
             case PLAYER_WORLD_CHANGE -> new TriggerBinding.WorldChange(optional(object, "from", path, MAX_WORLD_NAME), optional(object, "to", path, MAX_WORLD_NAME));
+            case PLAYER_AREA -> area(object, path);
+            case PLAYER_INVENTORY_OPEN, PLAYER_INVENTORY_CLOSE, PLAYER_INVENTORY_CLICK, PLAYER_ITEM_DROP, PLAYER_ITEM_PICKUP, PLAYER_ITEM_CONSUME,
+                 PLAYER_BLOCK_CLICK, PLAYER_BLOCK_PLACE, PLAYER_BLOCK_BREAK, PLAYER_DAMAGED, PLAYER_DAMAGE_ENTITY, PLAYER_KILL -> worldEvent(kind, object, path);
             case DIALOGUE_CHOICE -> new TriggerBinding.DialogueChoice(identifier(object, "dialogue", path),
                     object.has("choice") ? Optional.of(identifier(object, "choice", path)) : Optional.empty());
             case MODULE -> new TriggerBinding.ModuleEvent(key(text(object, "key", path), path + ".key"));
@@ -113,10 +116,62 @@ public final class TriggerCompiler {
     }
 
     /** A click-time condition: it reads flags, facts and the click's context, and no variables, since no run exists yet. */
-    private static BehaviorExpression consume(JsonObject object, String path) {
-        String source = text(object, "consume", path);
-        try { return BehaviorExpression.compile(source, Set.of(), path + ".consume"); }
-        catch (BehaviorExpression.Invalid invalid) { throw new Invalid(path + ".consume", invalid.getMessage()); }
+    private static BehaviorExpression consume(JsonObject object, String path) { return condition(object, "consume", path); }
+    private static BehaviorExpression condition(JsonObject object, String key, String path) {
+        String source = text(object, key, path);
+        try { return BehaviorExpression.compile(source, Set.of(), path + "." + key); }
+        catch (BehaviorExpression.Invalid invalid) { throw new Invalid(path + "." + key, invalid.getMessage()); }
+    }
+
+    /** Filter patterns: namespaced keys or bare names such as {@code stone}, lowercase types and actions, with {@code *} wildcards. */
+    public static final String FILTER = "[a-z0-9_.*:/-]{1,128}";
+    /** An event's filters and its cancel condition, checked as the event happens over flags, facts and the event's context. */
+    private static TriggerBinding.WorldEvent worldEvent(TriggerKind kind, JsonObject object, String path) {
+        java.util.TreeMap<String, String> filters = new java.util.TreeMap<>();
+        for (String field : kind.fields()) {
+            if (!TriggerKind.FILTERS.containsKey(field) || !object.has(field)) continue;
+            String value = text(object, field, path);
+            if (kind == TriggerKind.PLAYER_BLOCK_CLICK && field.equals("click") && !value.equals("left") && !value.equals("right")) throw new Invalid(path + ".click", "expected left or right");
+            if (!value.matches(FILTER)) throw new Invalid(path + "." + field, "expected a lowercase name or namespaced key such as minecraft:stone, with * matching any text");
+            filters.put(field, value);
+        }
+        return new TriggerBinding.WorldEvent(kind, filters, object.has("cancel") ? Optional.of(condition(object, "cancel", path)) : Optional.empty());
+    }
+
+    /** Coordinates stay within the world border; ellipsoid radii run from a tenth of a block to {@link #MAX_AREA_RADIUS}. */
+    public static final double MAX_COORDINATE = 30_000_000, MAX_AREA_RADIUS = 100_000;
+    private static TriggerBinding.Area area(JsonObject object, String path) {
+        if (!object.has("phase")) throw new Invalid(path + ".phase", "expected enter or leave");
+        TriggerBinding.Phase phase = named(TriggerBinding.Phase.class, text(object, "phase", path), path + ".phase", "enter or leave");
+        String name = identifier(object, "area", path);
+        String world = bounded(object, "world", path, MAX_WORLD_NAME);
+        if (object.has("cuboid") == object.has("ellipsoid")) throw new Invalid(path + ".cuboid", "expected exactly one of cuboid or ellipsoid");
+        TriggerBinding.Shape shape = object.has("cuboid") ? TriggerBinding.Shape.CUBOID : TriggerBinding.Shape.ELLIPSOID;
+        String key = shape == TriggerBinding.Shape.CUBOID ? "cuboid" : "ellipsoid";
+        double[] bounds = numbers(object.get(key), path + "." + key);
+        if (shape == TriggerBinding.Shape.CUBOID) {
+            for (int axis = 0; axis < 3; axis++) {
+                double low = Math.min(bounds[axis], bounds[axis + 3]), high = Math.max(bounds[axis], bounds[axis + 3]);
+                bounds[axis] = Math.floor(low); bounds[axis + 3] = Math.floor(high);
+            }
+        } else {
+            for (int axis = 3; axis < 6; axis++) if (bounds[axis] < 0.1 || bounds[axis] > MAX_AREA_RADIUS)
+                throw new Invalid(path + ".ellipsoid", "expected radii from 0.1 to " + (int) MAX_AREA_RADIUS + " blocks");
+        }
+        return new TriggerBinding.Area(phase, name, world, shape, bounds);
+    }
+    private static double[] numbers(JsonElement raw, String field) {
+        String message = "expected six numbers: x1, y1, z1, x2, y2, z2 for a cuboid, or x, y, z and three radii for an ellipsoid";
+        if (raw == null || !raw.isJsonArray() || raw.getAsJsonArray().size() != 6) throw new Invalid(field, message);
+        double[] values = new double[6];
+        for (int index = 0; index < 6; index++) {
+            JsonElement item = raw.getAsJsonArray().get(index);
+            if (!item.isJsonPrimitive() || !item.getAsJsonPrimitive().isNumber()) throw new Invalid(field, message);
+            double value = item.getAsDouble();
+            if (!Double.isFinite(value) || Math.abs(value) > MAX_COORDINATE) throw new Invalid(field, message);
+            values[index] = value;
+        }
+        return values;
     }
 
     private static TriggerBinding.Command command(JsonObject object, String path) {

@@ -1,5 +1,7 @@
 package art.arcane.animus.bukkit.gui;
 
+import art.arcane.animus.bukkit.BukkitWorldLookup;
+
 import art.arcane.animus.core.inventory.TradeInventory;
 import art.arcane.animus.core.shop.ShopDocument;
 import art.arcane.animus.core.shop.ShopStock;
@@ -67,14 +69,7 @@ final class BukkitShopStock {
         return ShopStock.of(ShopStock.combined(parts));
     }
 
-    private World world(String name) {
-        World named = server.getWorld(name);
-        if (named != null) return named;
-        NamespacedKey key = NamespacedKey.fromString(name);
-        if (key == null) return null;
-        for (World world : server.getWorlds()) if (world.getKey().equals(key)) return world;
-        return null;
-    }
+    private World world(String name) { return BukkitWorldLookup.find(server, name); }
 
     private boolean owned(World world, int chunkX, int chunkZ) {
         if (chunkOwned == null) return server.isPrimaryThread();

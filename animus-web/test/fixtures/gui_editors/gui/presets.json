@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "defaults": {
+    "animations": {"frameIntervalMs": 250}
+  },
+  "presets": {
+    "animations": {
+      "glow": {"extends": null, "values": {"mode": "ascend_descend"}}
+    }
+  }
+}

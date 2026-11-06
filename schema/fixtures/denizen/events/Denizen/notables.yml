@@ -1,0 +1,15 @@
+# Synthetic Denizen notables for the converter fixtures. Not taken from any server.
+Cuboids:
+  market:
+    object: cu@world,0,60,0,20,80,20
+    flags: ''
+  old_mill:
+    object: cu@-5,60,-5,world|5,70,5,world
+    flags: ''
+  split_yard:
+    object: cu@world,0,0,0,1,1,1,4,4,4,5,5,5
+    flags: ''
+Ellipsoids:
+  pond:
+    object: ellipsoid@100.123456789012,62,100.5,world,6,3.25,6
+    flags: ''

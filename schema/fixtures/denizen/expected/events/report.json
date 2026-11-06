@@ -1,0 +1,419 @@
+{
+  "schemaVersion": 1,
+  "converterVersion": 4,
+  "importId": "91f205bdb64950733781e880ed871830d606796130d062a85b2ba3089ed26ead",
+  "notice": "Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.",
+  "sources": {
+    "scripts/events.dsc": "9d765b2f62f059fa34b19bc2b80da56e906549c5827ccd561f9a8814b2cd52b0",
+    "citizens": "e24c0193d3be211d5b0e122b24e44dbb6b2419d16e05b7e0725d25cd819188a0",
+    "server_flags.dat": "b7065edb7528ec537a6da528f089d788e787620e5e532f2d1722c4c331654609",
+    "notables.yml": "75b1e7fda8bc2585dfb27d1b3b91187938546d87dc859e4ab0b704211542fb61",
+    "player_flags/00000000-0000-4000-8000-0000000000b1.dat": "67c7d17fc3a03a61642eac6b06315cc1acf9e703b1834d7e582eaf9bcdd77d54"
+  },
+  "behaviors": 8,
+  "containers": {
+    "assignment": {
+      "total": 1,
+      "converted": 1,
+      "partial": 0,
+      "preserved": 0
+    },
+    "task": {
+      "total": 1,
+      "converted": 1,
+      "partial": 0,
+      "preserved": 0
+    },
+    "world": {
+      "total": 5,
+      "converted": 2,
+      "partial": 3,
+      "preserved": 0
+    }
+  },
+  "commands": {
+    "actionbar": {
+      "converted": 3,
+      "preserved": 0
+    },
+    "determine": {
+      "converted": 7,
+      "preserved": 2
+    },
+    "flag": {
+      "converted": 6,
+      "preserved": 0
+    },
+    "foreach": {
+      "converted": 2,
+      "preserved": 0
+    },
+    "if": {
+      "converted": 11,
+      "preserved": 0
+    },
+    "narrate": {
+      "converted": 18,
+      "preserved": 4
+    },
+    "note": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "playsound": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "ratelimit": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "stop": {
+      "converted": 9,
+      "preserved": 0
+    },
+    "title": {
+      "converted": 3,
+      "preserved": 0
+    }
+  },
+  "events": {
+    "on click": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player breaks *_log": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player clicks diamond in inventory click:shift_left": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player clicks entity": {
+      "converted": 0,
+      "preserved": 1
+    },
+    "world on player clicks in inventory": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player closes chest": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player consumes bread": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player damaged by fall": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player damaged by zombie": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player damages entity": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player damages entity priority:10": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player damages npc": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player dies": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player drops item": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player enters area": {
+      "converted": 0,
+      "preserved": 1
+    },
+    "world on player enters arena": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player enters market": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player enters pond": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player enters split_yard": {
+      "converted": 0,
+      "preserved": 1
+    },
+    "world on player exits market": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player exits old_mill": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player kills zombie": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player left clicks block": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player opens inventory": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player picks up dragon_breath": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player places tnt": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player right clicks chest with:stick": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on projectile hits": {
+      "converted": 0,
+      "preserved": 1
+    },
+    "world on server start": {
+      "converted": 1,
+      "preserved": 0
+    }
+  },
+  "tags": {
+    "&a": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "&c": {
+      "mapped": 2,
+      "unmapped": 0
+    },
+    "&e": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "[definition]": {
+      "mapped": 6,
+      "unmapped": 0
+    },
+    "context.area": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "context.cause": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "context.click": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "context.damage": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "context.damager": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "context.entity": {
+      "mapped": 2,
+      "unmapped": 0
+    },
+    "context.final_damage": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "context.inventory": {
+      "mapped": 2,
+      "unmapped": 0
+    },
+    "context.item": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "context.location": {
+      "mapped": 4,
+      "unmapped": 0
+    },
+    "context.slot": {
+      "mapped": 2,
+      "unmapped": 0
+    },
+    "cuboid": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "npc.has_flag": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "npc.id": {
+      "mapped": 2,
+      "unmapped": 0
+    },
+    "npc.name": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "player": {
+      "mapped": 4,
+      "unmapped": 0
+    },
+    "player.has_flag": {
+      "mapped": 5,
+      "unmapped": 0
+    },
+    "server.flag": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "server.online_players": {
+      "mapped": 4,
+      "unmapped": 0
+    }
+  },
+  "flags": {
+    "imported": {
+      "global": 1,
+      "npc": 0,
+      "player": 2,
+      "relationship": 0
+    },
+    "preserved": 0
+  },
+  "bindings": {
+    "citizens-7": [
+      "denizen:assignment/npc_story",
+      "denizen:world-npc/combat"
+    ]
+  },
+  "npcUuids": {
+    "citizens-7": "00000000-0000-4000-8000-000000000007"
+  },
+  "behaviorStatus": {
+    "denizen:assignment/npc_story": "complete",
+    "denizen:task/broadcasts": "complete",
+    "denizen:world-npc/combat": "partial",
+    "denizen:world/areas": "partial",
+    "denizen:world/blocks": "partial",
+    "denizen:world/combat": "partial",
+    "denizen:world/inventories": "complete",
+    "denizen:world/items": "complete"
+  },
+  "commandBehaviors": [],
+  "serverBehaviors": [
+    "denizen:world/areas",
+    "denizen:world/blocks",
+    "denizen:world/combat",
+    "denizen:world/inventories",
+    "denizen:world/items"
+  ],
+  "guis": [],
+  "sounds": {
+    "entity_experience_orb_pickup": "minecraft:entity.experience_orb.pickup"
+  },
+  "issues": [
+    "notables.yml: cuboid split_yard is not one box or one ellipsoid with literal numbers; its area events are kept"
+  ],
+  "preserved": [
+    {
+      "source": "events.dsc:14",
+      "container": "areas",
+      "kind": "command",
+      "item": "determine",
+      "reason": "determine changes the event's outcome, and Animus cannot cancel or change this event; the routine still ends here"
+    },
+    {
+      "source": "events.dsc:21",
+      "container": "areas",
+      "kind": "event",
+      "item": "world on player enters split_yard",
+      "reason": "area split_yard is not a noted cuboid or ellipsoid"
+    },
+    {
+      "source": "events.dsc:22",
+      "container": "areas",
+      "kind": "command",
+      "item": "narrate",
+      "reason": "inside a world event that is kept"
+    },
+    {
+      "source": "events.dsc:23",
+      "container": "areas",
+      "kind": "event",
+      "item": "world on player enters area",
+      "reason": "an event for every area has no Animus equivalent; name the noted area"
+    },
+    {
+      "source": "events.dsc:24",
+      "container": "areas",
+      "kind": "command",
+      "item": "narrate",
+      "reason": "inside a world event that is kept"
+    },
+    {
+      "source": "events.dsc:79",
+      "container": "blocks",
+      "kind": "event",
+      "item": "world on player clicks entity",
+      "reason": "no Animus server trigger for the event player clicks entity"
+    },
+    {
+      "source": "events.dsc:80",
+      "container": "blocks",
+      "kind": "command",
+      "item": "narrate",
+      "reason": "inside a world event that is kept"
+    },
+    {
+      "source": "events.dsc:88",
+      "container": "combat",
+      "kind": "command",
+      "item": "determine",
+      "reason": "only a top-level determine cancelled after plain guards and rate limits cancels the event in Animus; this one is not reached that way; the routine still ends here"
+    },
+    {
+      "source": "events.dsc:107",
+      "container": "combat",
+      "kind": "event",
+      "item": "world on projectile hits",
+      "reason": "no Animus server trigger for the event projectile hits"
+    },
+    {
+      "source": "events.dsc:108",
+      "container": "combat",
+      "kind": "command",
+      "item": "narrate",
+      "reason": "inside a world event that is kept"
+    }
+  ],
+  "documents": {
+    "behaviors/denizen/assignment/npc_story.json": "cb424340f3794a0e91062e52d96e4dd3a31585e03595572b124f277160bd7335",
+    "behaviors/denizen/task/broadcasts.json": "77c650872e21a4c92354f2cca80208e3489af577ff1fe6fb4859c658eb09faf3",
+    "behaviors/denizen/world-npc/combat.json": "00635bb196904d0cb3543be0cf61e291d930140ddd3a577feba3262abe5a3fd8",
+    "behaviors/denizen/world/areas.json": "e4a8326ae9e56cf9d12757b18eb368c275e65f16fcf6004fcc1200a9fd573f56",
+    "behaviors/denizen/world/blocks.json": "b1d8a473bbe830362213777db76e66583b13f5db80aac0aa8a4008b93400586a",
+    "behaviors/denizen/world/combat.json": "9ac87bdc8767d7a82f1e90966d4642c0516defd3e9cde207ccffafc923e445c2",
+    "behaviors/denizen/world/inventories.json": "58ee559be76adfe74c17094efc3188e84d99aff774ad369cabf9cf9ec0e65690",
+    "behaviors/denizen/world/items.json": "63f1ffde47c9324ad9f80fc9482a18c91143f983a571673125131c41d3353b3c",
+    "state/behavior-state/global/animus/flags/denizen.json": "5330d62ce395f741dee82f9a45483c063457eee2bd1ced593666c44b9190bb85",
+    "state/behavior-state/player/00000000-0000-4000-8000-0000000000b1/animus/flags/denizen.json": "d9d07d5fef04a585e8336db103d8f894f668393377297d2ab7fd26da01e401f4"
+  }
+}

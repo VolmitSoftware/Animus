@@ -61,6 +61,25 @@ class EditorMessageContractTest {
     }
 
     @Test
+    void changeSetReader_moveFixture_readsTheOldId() throws Exception {
+        EditorMessages.ChangeSet set = EditorMessages.changeSet(SharedFixtures.object(SharedFixtures.fixture("editor/messages/change-set.1.json")), 512);
+        EditorMessages.Change move = set.documents().getFirst();
+        assertTrue(move.move());
+        assertEquals("examples/greeter", move.from().orElseThrow());
+        assertEquals("town/market/greeter", move.id());
+    }
+
+    @Test
+    void changeSetReader_moveFromAnIdListedAgain_isRefused() throws IOException {
+        JsonObject body = SharedFixtures.object(SharedFixtures.fixture("editor/messages/change-set.1.json"));
+        JsonObject other = body.getAsJsonArray("documents").get(0).getAsJsonObject().deepCopy();
+        other.remove("from");
+        other.addProperty("id", "examples/greeter");
+        body.getAsJsonArray("documents").add(other);
+        assertThrows(EditorError.class, () -> EditorMessages.changeSet(body, 512));
+    }
+
+    @Test
     void changeSetReader_invalidFixtures_areRefused() throws IOException {
         for (Path file : fixtures("messages/invalid")) {
             if (!definition(file).equals("change-set")) continue;

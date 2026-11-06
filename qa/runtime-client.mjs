@@ -59,9 +59,9 @@ class Client extends NativeClient {
   async inspect(id = state.id) {
     const from = this.events.length;
     await this.command(`animus inspect ${id}`);
-    const document = await this.wait(e => e.event === 'chat' && e.text.startsWith('{') && e.text.includes(`"id":"${id}"`), from);
-    const runtime = await this.wait(e => e.event === 'chat' && e.text.startsWith(`Runtime ${id}:`), from);
-    return { document: JSON.parse(document.text), runtime: runtime.text };
+    const document = await this.wait(e => e.event === 'chat' && e.text.replace(/^\[Animus\]: /, '').startsWith('{') && e.text.includes(`"id":"${id}"`), from);
+    const runtime = await this.wait(e => e.event === 'chat' && e.text.replace(/^\[Animus\]: /, '').startsWith(`Runtime ${id}:`), from);
+    return { document: JSON.parse(document.text.replace(/^\[Animus\]: /, '')), runtime: runtime.text.replace(/^\[Animus\]: /, '') };
   }
   async look(body) {
     const from = this.events.length;
@@ -88,7 +88,7 @@ try {
   await owner.command('animus status', 'NPC runtime ready');
   passed('production runtime and exact native protocol ready', { version, protocol: toolchain.protocol, phase });
   if (phase === 'prepare') {
-    await owner.command(`animus create ${state.id} minecraft:player world 0 61 3 ${state.group} Town Guard`, `Created dormant ${state.id}`);
+    await owner.command(`animus create ${state.id} minecraft:player world 0 61 3 ${state.group} "Town Guard"`, `Created dormant ${state.id}`);
     const before = await owner.inspect();
     state.uuid = before.document.uuid;
     assert.equal(before.document.spawned, false);
@@ -215,7 +215,7 @@ try {
     }
     for (const [suffix, type, world, name] of [['world', 'minecraft:player', 'animus_missing_world', 'Missing World'], ['type', 'minecraft:not_a_type', 'world', 'Missing Type']]) {
       const id = `${state.id}-${suffix}`;
-      await owner.command(`animus create ${id} ${type} ${world} 0 61 3 ${state.group} ${name}`, `Created dormant ${id}`);
+      await owner.command(`animus create ${id} ${type} ${world} 0 61 3 ${state.group} "${name}"`, `Created dormant ${id}`);
       const before = (await owner.inspect(id)).document;
       await owner.command(`animus spawn ${id}`, 'Cannot activate:');
       const after = (await owner.inspect(id)).document;
@@ -225,7 +225,7 @@ try {
     passed('missing world and unsupported type reject before activation commit');
     // Names longer than a player profile name are presentation text, so they activate.
     const longId = `${state.id}-name`;
-    await owner.command(`animus create ${longId} minecraft:player world 0 61 3 ${state.group} Name Longer Than Sixteen`, `Created dormant ${longId}`);
+    await owner.command(`animus create ${longId} minecraft:player world 0 61 3 ${state.group} "Name Longer Than Sixteen"`, `Created dormant ${longId}`);
     const longBefore = (await owner.inspect(longId)).document;
     await owner.command(`animus spawn ${longId}`, `Spawn requested for ${longId}`);
     const longAfter = (await owner.inspect(longId)).document;

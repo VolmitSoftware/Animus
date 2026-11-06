@@ -10,7 +10,15 @@ import java.util.Optional;
  */
 public interface BuildWorld {
     boolean worldLoaded(String world);
+    /** The chunk is loaded and this thread may read and change it. */
     boolean chunkLoaded(String world, int chunkX, int chunkZ);
+    /**
+     * The chunk is loaded but another region owns it (Folia only): an NPC may walk towards a block there, and the block
+     * is checked and placed once the build's turn runs on that region.
+     */
+    default boolean elsewhere(String world, int chunkX, int chunkZ) { return false; }
+    /** Why {@link #chunkLoaded} said no, for a waiting build's reason: "an unloaded chunk" unless the platform knows more. */
+    default String missing(String world, int chunkX, int chunkZ) { return "an unloaded chunk"; }
     /** The block at a position in a loaded chunk inside the world's height; empty otherwise. */
     Optional<String> block(String world, BlockPos at);
     /** The platform's full text for a state, or empty when this server has no such block or property value. */

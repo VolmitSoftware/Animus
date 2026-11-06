@@ -157,8 +157,8 @@ final class RegionViewer {
                 if (body.spawnFinished && !body.moving && body.pose != now.pose()) { move(body, now); sent++; if (!host.current(this)) return sent; }
                 if (body.spawnFinished && !body.equipping && sent < packetBudget && body.equipment != now.equipmentRevision()) { equip(body, now); sent++; if (!host.current(this)) return sent; }
                 if (body.spawnFinished && !body.looking && sent < packetBudget && body.look != now.lookRevision()) { look(body, now); sent++; if (!host.current(this)) return sent; }
-                if (body.spawnFinished && body.bound && sent < packetBudget && body.swings != now.swings()) { swing(body, now); sent++; if (!host.current(this)) return sent; }
                 if (body.spawnFinished && sent < packetBudget && body.dragonPhase != now.dragonPhase() && now.type().equals(DragonBody.TYPE)) { phase(body, now.dragonPhase()); sent++; if (!host.current(this)) return sent; }
+                if (body.spawnFinished && sent < packetBudget && body.swings != now.swings()) { swing(body, now.swings()); sent++; if (!host.current(this)) return sent; }
             }
         }
         if (ready && retirements.isEmpty() && sent < packetBudget) { sent += rosters(packetBudget - sent); if (!host.current(this)) return sent; }
@@ -242,9 +242,9 @@ final class RegionViewer {
             }));
         } catch (RuntimeException failure) { body.looking = false; body.look = now.lookRevision(); host.cosmeticFailed(this, "look", body.actor, failure); }
     }
-    /** Cosmetic: one arm swing for the swings a playback published since the last one sent; missed swings are not replayed. */
-    private void swing(Presented body, RegionActor.Publication now) {
-        body.swings = now.swings();
+    /** Cosmetic: one arm swing for any number the owner published since the last; a failed send is not retried. */
+    private void swing(Presented body, long swings) {
+        body.swings = swings;
         try {
             host.packets.swing(player, body.body).whenComplete((nothing, failure) -> {
                 if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) host.cosmeticFailed(this, "swing", body.actor, failure); });

@@ -1,5 +1,6 @@
 package art.arcane.animus.core.editor;
 
+import art.arcane.animus.core.behavior.catalog.ServerBehaviorList;
 import java.util.Optional;
 
 /** Document kinds the editor API names, with their folder under the data folder and the scope that applies them. */
@@ -18,7 +19,9 @@ public enum DocumentKind {
     TEXT_ANIMATION("text-animation", "gui/text-animations", EditorScope.APPLY_GUI),
     PRESETS("presets", "gui", EditorScope.APPLY_GUI),
     RIG("rig", "rigs", EditorScope.APPLY_RIGS),
-    ANIMATION("animation", "animations", EditorScope.APPLY_RIGS);
+    ANIMATION("animation", "animations", EditorScope.APPLY_RIGS),
+    /** The single {@code server-behaviors.json} at the data folder root; its folder is empty. */
+    SERVER_BEHAVIORS("server-behaviors", "", EditorScope.APPLY_BEHAVIORS);
 
     private final String wireName;
     private final String folder;
@@ -38,9 +41,10 @@ public enum DocumentKind {
 
     /** The kind whose folder holds a data-folder relative path, the deepest folder first; empty for anything else. */
     public static Optional<DocumentKind> forPath(String path) {
+        if (path.equals(ServerBehaviorList.PATH)) return Optional.of(SERVER_BEHAVIORS);
         DocumentKind found = null;
         for (DocumentKind kind : values())
-            if (path.startsWith(kind.folder + "/") && (found == null || kind.folder.length() > found.folder.length())) found = kind;
+            if (!kind.folder.isEmpty() && path.startsWith(kind.folder + "/") && (found == null || kind.folder.length() > found.folder.length())) found = kind;
         return Optional.ofNullable(found);
     }
 

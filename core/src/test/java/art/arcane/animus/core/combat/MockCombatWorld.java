@@ -36,6 +36,16 @@ class MockCombatWorld implements CombatWorld {
     int experience, realScans, npcScans, helperLaunches, stops, teleports, lineChecks;
     boolean blocked, unavailableTerrain, walkInstantly, refuseHelpers, playersAway;
     int playerChecks;
+    /** Where each NPC with a post stands guard; an NPC missing here has none, as a patrolling NPC. */
+    final Map<UUID, WorldPosition> posts = new HashMap<>();
+    final Map<UUID, Integer> poseRestores = new HashMap<>();
+    /** An instant walk ends this far short of its goal across, as a path that stops beside a goal it cannot reach. */
+    double stopShort;
+    boolean refuseSteps;
+    /** A teleport is accepted and applied later, as a Folia teleport into another region is; {@link #flush} applies it. */
+    boolean deferTeleports;
+    final Map<UUID, WorldPosition> deferred = new HashMap<>();
+    int steps;
     MoveStatus moveStatus = MoveStatus.ACCEPTED;
     DamageStatus realStatus = DamageStatus.APPLIED;
     double yaw;
@@ -105,14 +115,35 @@ class MockCombatWorld implements CombatWorld {
         if (moveStatus == MoveStatus.ACCEPTED) {
             moves.add(goal);
             speeds.add(speed);
-            if (walkInstantly) index.upsert(npcs.get(npc).move(goal));
+            if (walkInstantly) index.upsert(npcs.get(npc).move(shortOf(npcs.get(npc).snapshot().position(), goal)));
         }
         return moveStatus;
     }
+    private WorldPosition shortOf(WorldPosition from, WorldPosition goal) {
+        Vec3 delta = goal.point().subtract(from.point());
+        double across = Math.hypot(delta.x(), delta.z());
+        if (stopShort <= 0) return goal;
+        if (across <= stopShort) return from;
+        double kept = (across - stopShort) / across;
+        return new WorldPosition(goal.world(), new Vec3(from.point().x() + delta.x() * kept, goal.point().y(), from.point().z() + delta.z() * kept));
+    }
+    @Override public Optional<WorldPosition> post(UUID npc) { return Optional.ofNullable(posts.get(npc)); }
+    @Override public boolean step(UUID npc, WorldPosition to) {
+        if (refuseSteps) return false;
+        steps++;
+        index.upsert(npcs.get(npc).move(to));
+        return true;
+    }
+    @Override public void restorePose(UUID npc) { poseRestores.merge(npc, 1, Integer::sum); }
     @Override public void stop(UUID npc) { stops++; }
     @Override public void release(UUID npc) { released.add(npc); }
+    void flush() {
+        deferred.forEach((UUID npc, WorldPosition to) -> index.upsert(npcs.get(npc).move(to)));
+        deferred.clear();
+    }
     @Override public boolean teleport(UUID npc, WorldPosition destination) {
         teleports++;
+        if (deferTeleports) { deferred.put(npc, destination); return true; }
         index.upsert(npcs.get(npc).move(destination));
         return true;
     }

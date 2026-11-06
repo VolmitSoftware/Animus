@@ -65,6 +65,38 @@ public record TriggerBinding(String id, Spec spec, Optional<String> routine, Opt
         @Override public TriggerKind kind() { return TriggerKind.PLAYER_WORLD_CHANGE; }
     }
 
+    /**
+     * A world event of a server behavior. {@code filters} holds trigger field to pattern; each pattern must match the
+     * context value {@link TriggerKind#FILTERS} names, case-insensitively with {@code *} wildcards, and a pattern without
+     * a colon matches the part of a namespaced key after it. {@code cancel}, when present, is checked as the event happens:
+     * when it holds, the platform cancels the event.
+     */
+    public record WorldEvent(TriggerKind kind, java.util.Map<String, String> filters, Optional<BehaviorExpression> cancel) implements Spec {
+        public WorldEvent { Objects.requireNonNull(kind); filters = java.util.Map.copyOf(filters); Objects.requireNonNull(cancel); }
+    }
+    public enum Shape { CUBOID, ELLIPSOID }
+    /**
+     * A named area of one world. A cuboid's bounds are block coordinates, both corners included; an ellipsoid is a centre
+     * and three radii.
+     */
+    public record Area(Phase phase, String area, String world, Shape shape, double[] bounds) implements Spec {
+        public Area { Objects.requireNonNull(phase); Objects.requireNonNull(area); Objects.requireNonNull(world); Objects.requireNonNull(shape); bounds = bounds.clone(); }
+        @Override public TriggerKind kind() { return TriggerKind.PLAYER_AREA; }
+        @Override public double[] bounds() { return bounds.clone(); }
+        /** Whether the point lies in the area. */
+        public boolean contains(double x, double y, double z) {
+            if (shape == Shape.CUBOID) return x >= bounds[0] && x < bounds[3] + 1 && y >= bounds[1] && y < bounds[4] + 1 && z >= bounds[2] && z < bounds[5] + 1;
+            double dx = (x - bounds[0]) / bounds[3], dy = (y - bounds[1]) / bounds[4], dz = (z - bounds[2]) / bounds[5];
+            return dx * dx + dy * dy + dz * dz <= 1;
+        }
+        /** The area's identity across reloads: the same name, world and bounds are the same area. */
+        public String key() { return area + "@" + world + "/" + shape + java.util.Arrays.toString(bounds); }
+        @Override public boolean equals(Object other) {
+            return other instanceof Area that && phase == that.phase && area.equals(that.area) && world.equals(that.world) && shape == that.shape && java.util.Arrays.equals(bounds, that.bounds);
+        }
+        @Override public int hashCode() { return Objects.hash(phase, area, world, shape, java.util.Arrays.hashCode(bounds)); }
+    }
+
     /** key is the {@code behavior#trigger} name proximity events use to select one binding. */
     boolean matches(TriggerEvent event, String key) {
         return switch (spec) {
@@ -83,6 +115,8 @@ public record TriggerBinding(String id, Spec spec, Optional<String> routine, Opt
             case PlayerChat ignored -> false;
             case Command ignored -> false;
             case WorldChange ignored -> false;
+            case WorldEvent ignored -> false;
+            case Area ignored -> false;
         };
     }
 }

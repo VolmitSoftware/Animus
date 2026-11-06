@@ -3,7 +3,9 @@
 /// walking order with their waits, guides for order random, links the
 /// runtime may walk, wander areas, and the NPC. Click the grid to add a
 /// point or guide, drag one to move it, pick one to edit its height, wait
-/// and place in the order.
+/// and place in the order. From the keyboard, Tab reaches each point:
+/// arrows move it a quarter block (Shift for a whole block), Delete removes
+/// it, Enter picks it, and "Add point at" adds one by its x, y and z.
 library;
 
 import 'dart:js_interop';
@@ -18,6 +20,7 @@ import '../../logic/gui/gui_json.dart';
 import '../../logic/npc/route_model.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
+import '../inspect/inspect_fields.dart';
 import '../rig/rig_gizmo.dart' show eventNumber;
 
 int _nextGridId = 0;
@@ -64,15 +67,33 @@ class _RouteEditorState extends State<RouteEditor> {
   JSFunction? _move;
   JSFunction? _up;
 
+  /// The "Add point at" form; empty fields fall back to the last point.
+  num? _addX;
+  num? _addY;
+  num? _addZ;
+
   @override
   void dispose() {
     _release();
     super.dispose();
   }
 
-  JsonMap get _route => component.value;
+  /// The last route reported and not yet echoed back, so quick key repeats
+  /// build on each other instead of on the value from before.
+  JsonMap? _sent;
 
-  void _write(JsonMap next) => component.onChanged(next);
+  @override
+  void didUpdateWidget(RouteEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.value, component.value)) _sent = null;
+  }
+
+  JsonMap get _route => _sent ?? component.value;
+
+  void _write(JsonMap next) {
+    _sent = next;
+    component.onChanged(next);
+  }
 
   void _field(String key, Object? value) {
     final JsonMap next = <String, Object?>{..._route};
@@ -142,6 +163,86 @@ class _RouteEditorState extends State<RouteEditor> {
     setState(() => _picked = (guide ? 'guides' : 'points', same.length));
   }
 
+  /// Moves, removes or picks the focused node from the keyboard.
+  void _key(web.Event event, String key, int index) {
+    final web.KeyboardEvent keys = event as web.KeyboardEvent;
+    if (keys.key == 'Enter' || keys.key == ' ') {
+      event.preventDefault();
+      setState(() => _picked = (key, index));
+      return;
+    }
+    if (component.readOnly) return;
+    if (keys.key == 'Delete' || keys.key == 'Backspace') {
+      event.preventDefault();
+      final int left = asList(_route[key]).length - 1;
+      _write(removeRouteNode(_route, key, index));
+      setState(() => _picked = null);
+      if (left > 0) _focusNode(key, index.clamp(0, left - 1));
+      return;
+    }
+    final (double, double)? step = routeNudge(keys.key, shift: keys.shiftKey);
+    if (step == null) return;
+    event.preventDefault();
+    _write(nudgeRouteNode(_route, key, index, step.$1, step.$2));
+    setState(() => _picked = (key, index));
+  }
+
+  String _nodeId(String key, int index) => '$_gridId-$key-$index';
+
+  void _focusNode(String key, int index) {
+    Future<void>.delayed(Duration.zero, () {
+      final web.Element? element = web.document.getElementById(_nodeId(key, index));
+      if (element != null) (element as web.HTMLElement).focus();
+    });
+  }
+
+  /// Where "Add point at" puts a node: the typed axes, else the last point,
+  /// else the NPC.
+  (double, double, double) _addAt(RouteSpec spec) {
+    final RouteNode? last = spec.points.isNotEmpty ? spec.points.last : null;
+    final (double, double, double)? origin = component.origin;
+    final double x = _addX?.toDouble() ?? last?.x ?? origin?.$1.floorToDouble() ?? 0;
+    final double y = _addY?.toDouble() ?? last?.y ?? origin?.$2.floorToDouble() ?? 64;
+    final double z = _addZ?.toDouble() ?? last?.z ?? origin?.$3.floorToDouble() ?? 0;
+    return (x, y, z);
+  }
+
+  Widget _addForm(RouteSpec spec) {
+    final (double x, double y, double z) = _addAt(spec);
+    void add(bool guide) {
+      final int index = guide ? spec.guides.length : spec.points.length;
+      _write(addRouteNode(_route, x, y, z, guide: guide));
+      setState(() {
+        _picked = (guide ? 'guides' : 'points', index);
+        _addX = null;
+        _addY = null;
+        _addZ = null;
+      });
+    }
+
+    final bool walking = (asString(_route['mode']) ?? 'walk') == 'walk';
+    return dom.div(classes: 'animus-route-add', attributes: const <String, String>{'role': 'group', 'aria-label': 'Add point at'}, <Widget>[
+      const dom.strong(<Widget>[Component.text('Add point at')]),
+      dom.div(classes: 'animus-route-coords', <Widget>[
+        for (final (String axis, double shown, void Function(num?) set) in <(String, double, void Function(num?))>[
+          ('x', x, (num? value) => setState(() => _addX = value)),
+          ('y', y, (num? value) => setState(() => _addY = value)),
+          ('z', z, (num? value) => setState(() => _addZ = value)),
+        ])
+          dom.label(<Widget>[
+            dom.span(<Widget>[Component.text(axis)]),
+            GuiNumberInput(value: shown, integer: false, label: 'New point $axis', onChanged: set),
+          ]),
+      ]),
+      dom.div(classes: 'animus-row', <Widget>[
+        Button.secondary(label: 'Add point', size: ButtonSize.small, disabled: spec.points.length >= routeMaxPoints, onPressed: () => add(false)),
+        if (spec.order == 'random') Button.ghost(label: 'Add guide', size: ButtonSize.small, onPressed: () => add(true)),
+        if (walking && y != y.roundToDouble())
+          const dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('Walking points stand on whole blocks; use a whole y.')]),
+      ]),
+    ]);
+  }
+
   RouteSpec get _shownSpec {
     final (String, int, double, double)? drag = _drag;
     return RouteSpec(drag == null ? _route : moveRouteNode(_route, drag.$1, drag.$2, drag.$3, drag.$4));
@@ -161,9 +262,11 @@ class _RouteEditorState extends State<RouteEditor> {
           _toolButton(RouteTool.select, 'Pick and drag'),
           dom.span(classes: 'animus-gui-help', <Widget>[
             Component.text(_tool == RouteTool.select ? 'Drag a point to move it.' : 'Click the grid to add; drag a point to move it.'),
+            const Component.text(' From the keyboard, Tab to a point: arrows move it, Shift moves a whole block, Delete removes it.'),
           ]),
         ]),
       _grid(spec, picked),
+      if (!component.readOnly) _addForm(spec),
       if (problems.isNotEmpty || _problems.isNotEmpty)
         dom.ul(classes: 'animus-route-problems', <Widget>[
           for (final (String field, String message) in problems)
@@ -190,10 +293,11 @@ class _RouteEditorState extends State<RouteEditor> {
     final JsonMap route = _route;
     final JsonMap wander = asMap(route['wander']);
     return dom.div(classes: 'animus-route-settings', <Widget>[
-      GuiRow(
-        label: 'order',
+      InspectRow(
+        label: 'Order',
+        labelFor: '$_gridId-order',
         help: 'sequence walks the points in order; pingpong back and forth; random picks a point and walks over points and guides; wander walks near a centre.',
-        child: GuiSelect(value: asString(route['order']), options: routeOrders, allowNone: true, noneLabel: 'sequence (default)', onChanged: (String? value) {
+        child: GuiSelect(id: '$_gridId-order', value: asString(route['order']), options: routeOrders, allowNone: true, noneLabel: 'sequence (default)', onChanged: (String? value) {
           if (value == null) {
             _write(setRouteOrder(route, 'sequence')..remove('order'));
           } else {
@@ -202,40 +306,42 @@ class _RouteEditorState extends State<RouteEditor> {
           if (value != 'random' && _tool == RouteTool.guide) setState(() => _tool = RouteTool.point);
         }),
       ),
-      GuiRow(
-        label: 'mode',
-        child: GuiSelect(value: asString(route['mode']), options: routeModes, allowNone: true, noneLabel: 'walk (default)', onChanged: (String? value) => _field('mode', value)),
+      InspectRow(
+        label: 'Mode',
+        labelFor: '$_gridId-mode',
+        help: 'Walking points stand on whole blocks; swimming and flying points may sit between them.',
+        child: GuiSelect(id: '$_gridId-mode', value: asString(route['mode']), options: routeModes, allowNone: true, noneLabel: 'walk (default)', onChanged: (String? value) => _field('mode', value)),
       ),
       GuiRow(
-        label: 'speed',
+        label: 'Speed',
         help: 'Blocks per second, 1-5.',
         child: GuiNumberInput(value: asDouble(route['speed']), integer: false, label: 'route speed', onChanged: (num? value) => _field('speed', value)),
       ),
       GuiRow(
-        label: 'waitTicks',
+        label: 'Wait ticks',
         help: 'Wait before the first leg and after each arrival, 0-$routeMaxWait. 20 by default.',
         child: GuiNumberInput(value: asInt(route['waitTicks']), label: 'route waitTicks', onChanged: (num? value) => _field('waitTicks', value?.toInt())),
       ),
       if (spec.order == 'sequence')
         GuiRow(
-          label: 'loop',
+          label: 'Loop',
           help: 'Start again from the first point after the last.',
           child: GuiSwitch(value: route['loop'] == true, label: 'Loop', onChanged: (bool value) => _field('loop', value ? true : null)),
         ),
       if (spec.order == 'random')
         GuiRow(
-          label: 'linkDistance',
+          label: 'Link distance',
           help: 'The longest link between two points or guides, 1-256. 32 by default.',
           child: GuiNumberInput(value: asDouble(route['linkDistance']), integer: false, label: 'route linkDistance', onChanged: (num? value) => _field('linkDistance', value)),
         ),
       if (spec.order == 'wander') ...<Widget>[
         GuiRow(
-          label: 'wander.radius',
+          label: 'Wander radius',
           help: 'Blocks from a centre on x and z, 1-32. 25 by default.',
           child: GuiNumberInput(value: asInt(wander['radius']), label: 'wander radius', onChanged: (num? value) => _field('wander', _wander(wander, 'radius', value))),
         ),
         GuiRow(
-          label: 'wander.height',
+          label: 'Wander height',
           help: 'Blocks up or down, 0-8. 3 by default.',
           child: GuiNumberInput(value: asInt(wander['height']), label: 'wander height', onChanged: (num? value) => _field('wander', _wander(wander, 'height', value))),
         ),
@@ -349,7 +455,7 @@ class _RouteEditorState extends State<RouteEditor> {
             width: _n(radius * 2),
             height: _n(radius * 2),
             classes: 'animus-route-dot',
-            attributes: <String, String>{'data-node': '$key:$index', 'role': 'button', 'aria-label': name, 'transform': 'rotate(45 ${_n(node.x)} ${_n(node.z)})'},
+            attributes: <String, String>{..._nodeAttributes(key, index, name, node), 'transform': 'rotate(45 ${_n(node.x)} ${_n(node.z)})'},
             events: _nodeEvents(key, index, bounds),
           )
         else
@@ -359,7 +465,7 @@ class _RouteEditorState extends State<RouteEditor> {
             cy: _n(node.z),
             r: _n(radius),
             classes: 'animus-route-dot',
-            attributes: <String, String>{'data-node': '$key:$index', 'role': 'button', 'aria-label': name},
+            attributes: _nodeAttributes(key, index, name, node),
             events: _nodeEvents(key, index, bounds),
           ),
         _label(node.x, node.z, number, radius, guide ? 'is-guide' : 'is-point'),
@@ -367,7 +473,17 @@ class _RouteEditorState extends State<RouteEditor> {
     );
   }
 
+  Map<String, String> _nodeAttributes(String key, int index, String name, RouteNode node) => <String, String>{
+        'id': _nodeId(key, index),
+        'data-node': '$key:$index',
+        'role': 'button',
+        'tabindex': '0',
+        'aria-label': '$name at ${_coord(node.x)}, ${_coord(node.y)}, ${_coord(node.z)}',
+        if (!component.readOnly) 'aria-keyshortcuts': 'ArrowLeft ArrowRight ArrowUp ArrowDown Delete',
+      };
+
   Map<String, void Function(web.Event)> _nodeEvents(String key, int index, RouteBounds bounds) => <String, void Function(web.Event)>{
+        'keydown': (web.Event event) => _key(event, key, index),
         'pointerdown': (web.Event event) {
           event.preventDefault();
           event.stopPropagation();
@@ -408,7 +524,7 @@ class _RouteEditorState extends State<RouteEditor> {
           ]),
         if (!guide)
           dom.label(<Widget>[
-            const dom.span(<Widget>[Component.text('waitTicks')]),
+            const dom.span(<Widget>[Component.text('Wait ticks')]),
             GuiNumberInput(value: asInt(node['waitTicks']), label: '$label waitTicks', placeholder: 'route', onChanged: (num? value) => set('waitTicks', value?.toInt())),
           ]),
       ]),
@@ -447,7 +563,11 @@ class _RouteEditorState extends State<RouteEditor> {
 
   Widget _nodeList(RouteSpec spec, (String, int)? picked) {
     if (spec.nodes.isEmpty) {
-      return const dom.p(classes: 'animus-muted', <Widget>[Component.text('No points yet.')]);
+      return dom.p(classes: 'animus-muted', <Widget>[
+        Component.text(component.readOnly
+            ? 'This route has no points yet. Open the route document to add some.'
+            : 'No points yet. Click the grid, or enter x, y and z under Add point at and press Add point.'),
+      ]);
     }
     String wait(RouteNode node) => node.guide ? '-' : (node.waitTicks == null ? 'route (${spec.waitTicks})' : '${node.waitTicks}');
     return dom.ol(classes: 'animus-route-list', attributes: const <String, String>{'aria-label': 'Route points'}, <Widget>[

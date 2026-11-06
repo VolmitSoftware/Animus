@@ -10,10 +10,13 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
+import '../../logic/gui/gui_text.dart';
+import '../../logic/npc/npc_paths.dart';
 import '../../logic/offline/new_documents.dart';
 import '../../mc/rigs/mc_rigs.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
+import '../../services/browser.dart';
 import '../../services/skin_images.dart';
 import '../../state/editor_store.dart';
 import '../../state/workspace_repository.dart';
@@ -36,11 +39,15 @@ const Map<String, String> bodyLabels = <String, String>{
 enum _SkinSource { none, file, url, existing }
 
 class NewDocumentPage extends StatefulWidget {
-  const NewDocumentPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, super.key});
+  const NewDocumentPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, this.folder, super.key});
 
   final EditorStore store;
   final WorkspaceSnapshot workspace;
   final DocumentKind? kind;
+
+  /// The NPC folder the form starts with, such as `town/market`; empty for
+  /// `npcs/` itself, null for the default.
+  final String? folder;
   final void Function(EditorRoute route) onNavigate;
 
   @override
@@ -58,7 +65,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
 
   // NPC.
   String _type = 'minecraft:player';
-  String _group = 'local';
+  late String _group = component.folder ?? 'local';
   String _world = 'world';
   num _x = 0.5, _y = 64, _z = 0.5, _yaw = 0;
   String _behavior = '';
@@ -123,7 +130,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
       _ => kind.wireName,
     });
     final String candidate = switch (kind) {
-      DocumentKind.npc => '${slug(_group, fallback: 'local')}/$base',
+      DocumentKind.npc => npcIdIn(npcFolderSlug(_group), base),
       DocumentKind.route || DocumentKind.pack || DocumentKind.group => base,
       DocumentKind.animation => '${_rig ?? '$_namespace:rig'}/$base',
       _ => '$_namespace:$base',
@@ -141,18 +148,26 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
   }
 
   Future<void> _write(List<DocumentChange> changes, DocumentKind kind, String id, {Map<String, Uint8List?> resources = const <String, Uint8List?>{}}) async {
-    await component.store.commit(documents: changes, resources: resources);
+    await component.store.commit(documents: changes, resources: resources, label: 'create $id');
     final AnimusDocument? made = component.store.document(kind, id);
     if (made == null) {
-      setState(() => _problem = 'The document was not saved. ${component.store.problem ?? ''}');
+      setState(() => _problem = component.store.problem ??
+          'The document was not created: the workspace changed before it could be written. Check the workspace, then press Create again.');
       return;
     }
-    if (!made.valid) {
+    if (component.store.hasUnsavedEdit) {
+      ArcaneSonner.warning('Created ${made.id} on this page, but the browser did not store it. The banner above says why.');
+    } else if (!made.valid) {
       ArcaneSonner.warning('Created ${made.id} with ${made.diagnostics.length} problem(s); its page offers fixes.');
     } else {
-      ArcaneSonner.success(kind == DocumentKind.presets ? 'Created gui/presets.json. Undo removes it.' : 'Created ${_inSentence(kind)} ${made.title}. Undo removes it.');
+      ArcaneSonner.success(kind == DocumentKind.presets
+          ? 'Created gui/presets.json. Undo removes it.'
+          : kind == DocumentKind.serverBehaviors
+              ? 'Created server-behaviors.json. Undo removes it.'
+              : 'Created ${_inSentence(kind)} ${guiPlainText(made.title)}. Undo removes it.');
     }
     component.onNavigate(DocumentRoute(component.workspace.id, kind, id));
+    focusMainHeading();
   }
 
   DocumentChange _change(DocumentKind kind, String id, Object? json) => DocumentChange(kind, id, prettyJson(json), path: newDocumentPath(kind, id));
@@ -180,14 +195,14 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
       final LoadedSkin? loaded = fromUrl ? await SkinImages.fetchUrl(key, _skinUrl) : await SkinImages.pickFile(key);
       if (loaded != null) setState(() => _skin = loaded);
     } on Object catch (failure) {
-      ArcaneSonner.error('Could not load the skin: $failure');
+      ArcaneSonner.error('The skin did not load ($failure). Use a 64x64 skin PNG, or an address that allows loading from other sites.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _create(DocumentKind kind) async {
-    final String? problem = kind == DocumentKind.skin || kind == DocumentKind.presets ? null : _idProblem(kind);
+    final String? problem = kind == DocumentKind.skin || kind == DocumentKind.presets || kind == DocumentKind.serverBehaviors ? null : _idProblem(kind);
     if (problem != null) {
       setState(() => _problem = problem);
       return;
@@ -264,11 +279,24 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
             return;
           }
           await _write(<DocumentChange>[_change(kind, 'presets', newPresets())], kind, 'presets');
+        case DocumentKind.serverBehaviors:
+          const String listId = DocumentKind.serverBehaviorsId;
+          if (component.store.document(kind, listId) != null) {
+            component.onNavigate(DocumentRoute(component.workspace.id, kind, listId));
+            return;
+          }
+          await _write(<DocumentChange>[_change(kind, listId, newServerBehaviors(_serverBehaviorIds))], kind, listId);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  /// Behaviors in this workspace marked `"server": true`.
+  List<String> get _serverBehaviorIds => <String>[
+        for (final AnimusDocument document in _of(DocumentKind.behavior))
+          if (asMap(document.json)['server'] == true) document.id,
+      ];
 
   (double, double, double) _postOf(String? npcId) {
     final JsonMap position = asMap(asMap(npcId == null ? null : component.store.document(DocumentKind.npc, npcId)?.json)['position']);
@@ -301,12 +329,11 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
     } else if (_behavior.isNotEmpty) {
       behaviors.add(_behavior);
     }
-    final List<String> parts = id.split('/');
     final NpcSeed seed = NpcSeed(
-      name: _name.trim().isEmpty ? parts.last : _name.trim(),
+      name: _name.trim().isEmpty ? npcLocalIdOf(id) : _name.trim(),
       type: _type,
-      group: parts.first,
-      id: parts.last,
+      group: npcFolderOf(id),
+      id: npcLocalIdOf(id),
       skin: skin,
       world: _world,
       x: _x.toDouble(),
@@ -408,8 +435,18 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
                 : 'This workspace already has gui/presets.json; Open it to edit.'),
           ]),
         ],
+      DocumentKind.serverBehaviors => <Widget>[
+          dom.p(classes: 'animus-muted', <Widget>[
+            Component.text(component.store.document(kind, DocumentKind.serverBehaviorsId) != null
+                ? 'This workspace already has server-behaviors.json; open it to edit the list.'
+                : _serverBehaviorIds.isEmpty
+                    ? 'Creates server-behaviors.json with an empty list. No behavior here has "server": true yet; turn it on in a behavior\'s Document section, then add it to the list.'
+                    : 'Creates server-behaviors.json listing the ${_serverBehaviorIds.length} server behavior${_serverBehaviorIds.length == 1 ? '' : 's'} in this workspace: ${_serverBehaviorIds.join(', ')}.'),
+          ]),
+        ],
     };
-    final bool exists = kind == DocumentKind.presets && component.store.document(kind, 'presets') != null;
+    final bool exists = (kind == DocumentKind.presets && component.store.document(kind, 'presets') != null) ||
+        (kind == DocumentKind.serverBehaviors && component.store.document(kind, DocumentKind.serverBehaviorsId) != null);
     return dom.section(classes: 'animus-panel animus-new-form', attributes: <String, String>{'aria-label': 'New ${_inSentence(kind)}'}, <Widget>[
       dom.h2(<Widget>[Component.text('New ${_inSentence(kind)}')]),
       dom.p(classes: 'animus-muted', <Widget>[Component.text(kindPurpose(kind))]),
@@ -417,7 +454,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
       if (_problem != null) dom.p(classes: 'animus-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(_problem!)]),
       dom.div(classes: 'animus-row', <Widget>[
         Button.primary(
-          label: exists ? 'Open presets' : 'Create ${_inSentence(kind)}',
+          label: exists ? 'Open ${_inSentence(kind)}' : 'Create ${_inSentence(kind)}',
           disabled: _busy,
           onPressed: () => _create(kind),
         ),
@@ -587,7 +624,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
           allowNone: true,
           noneLabel: 'Not yet',
           options: <String>[for (final AnimusDocument npc in npcs) npc.id],
-          labels: <String, String>{for (final AnimusDocument npc in npcs) npc.id: '${npc.title} (${npc.id})'},
+          labels: <String, String>{for (final AnimusDocument npc in npcs) npc.id: '${guiPlainText(npc.title)} (${npc.id})'},
           onChanged: (String? value) => setState(() => _attachTo = value),
         ),
       ),
@@ -635,6 +672,7 @@ String _singular(DocumentKind kind) => switch (kind) {
       DocumentKind.inventory => 'Chest GUI',
       DocumentKind.textAnimation => 'Text animation',
       DocumentKind.presets => 'Presets',
+      DocumentKind.serverBehaviors => 'Server behaviors list',
       _ => kind.label.endsWith('s') ? kind.label.substring(0, kind.label.length - 1) : kind.label,
     };
 

@@ -43,6 +43,10 @@ NpcScene npcPlaygroundScene(
         sampleRig(parsed, <Layer>[if (clip != null) Layer(clip)], look.yawDeg, tick),
         resources: resources,
         textureId: textureId,
+        // A shown body wears its own equipment; a hidden one leaves it to the sockets.
+        equipment: rig['body'] == 'shown'
+            ? const <String, String>{}
+            : <String, String>{for (final MapEntry<NpcSlot, NpcItem> item in look.equipment.entries) item.key.key: item.value.modelKey},
       );
       if (rig['body'] != 'shown') {
         nodes.clear();

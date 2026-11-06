@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:world/inventories",
+  "server": true,
+  "entry": "on-player-opens-inventory",
+  "routines": {
+    "on-player-opens-inventory": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "expression": "!same(upper(context.inventory_type), 'CHEST')",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "condition",
+          "expression": "!(has_flag('player', 'vault_locked'))",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "return"
+        }
+      ]
+    },
+    "on-player-closes-chest": {
+      "type": "action",
+      "capability": "animus:message",
+      "arguments": {
+        "text": null
+      },
+      "templates": {
+        "/text": "Closed a {{ upper(context.inventory_type) }}."
+      }
+    },
+    "on-player-clicks-in-inventory": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "expression": "(context.slot + 1) > 9",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "Clicked slot {{ (context.slot + 1) }} with {{ upper(context.click) }}."
+          }
+        },
+        {
+          "type": "return"
+        }
+      ]
+    },
+    "on-player-clicks-diamond-in-inventory": {
+      "type": "action",
+      "capability": "animus:message",
+      "arguments": {
+        "text": "No shift moving diamonds."
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "on-player-opens-inventory",
+      "event": "player_inventory_open",
+      "cancel": "!(!same(upper(context.inventory_type), 'CHEST')) && has_flag('player', 'vault_locked')",
+      "routine": "on-player-opens-inventory"
+    },
+    {
+      "id": "on-player-closes-chest",
+      "event": "player_inventory_close",
+      "inventory": "chest",
+      "routine": "on-player-closes-chest"
+    },
+    {
+      "id": "on-player-clicks-in-inventory",
+      "event": "player_inventory_click",
+      "cancel": "!((context.slot + 1) > 9)",
+      "routine": "on-player-clicks-in-inventory"
+    },
+    {
+      "id": "on-player-clicks-diamond-in-inventory",
+      "event": "player_inventory_click",
+      "item": "diamond",
+      "click": "shift_left",
+      "routine": "on-player-clicks-diamond-in-inventory"
+    }
+  ]
+}

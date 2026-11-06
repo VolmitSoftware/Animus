@@ -127,7 +127,7 @@ void main() {
     slow.emit(<String, Object?>{'type': 'closing', 'reason': 'limit'});
     await slow.end('limit');
     await settle();
-    expect(messages, contains('the server closed the stream: limit'));
+    expect(messages, contains(contains('fell too far behind on server events')));
     expect(connection.status.phase, ConnectionPhase.online, reason: 'a limit close is not a pairing problem');
     expect(connection.status.path, ConnectionPath.relay);
     expect(network.streams, hasLength(2));
@@ -154,7 +154,7 @@ void main() {
     network.handler = serverHandler(fingerprint: 'sha256:${'0' * 64}');
     await connection.connect();
     expect(connection.status.phase, ConnectionPhase.refused);
-    expect(connection.status.message, contains('not the paired server'));
+    expect(connection.status.message, contains('different server than the one paired'));
     expect(network.sent.where((( ConnectionPath, ApiRequest) sent) => sent.$2.path != '/v1/hello'), isEmpty);
     expect(waits.pending, isEmpty);
   });

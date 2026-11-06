@@ -97,6 +97,40 @@ class DenizenConverterTest {
         assertEquals("(!(npc.spawned) || (starts_with(lower(player.name), 'st') || ends_with(lower(player.name), 've')))", condition.getAsJsonObject("else").get("expression").getAsString());
     }
 
+    @Test void worldComparisonsResolveBothSidesOnEveryPlatform() throws IOException {
+        JsonObject main = main("""
+                t:
+                  type: task
+                  script:
+                  - if <player.world.name> == world_nether:
+                    - narrate hot
+                  - if <npc.location.world> != <player.world>:
+                    - narrate far
+                  - if <player.world.name.equals[world]>:
+                    - narrate home
+                  - if <player.world> matches world_the_end|skylands:
+                    - narrate end
+                  - if <player.name> == world:
+                    - narrate named
+                """);
+        assertEquals("same_world(player.world, 'world_nether')", step(main, 0).get("expression").getAsString());
+        assertEquals("!same_world(npc.world, player.world)", step(main, 1).get("expression").getAsString());
+        assertEquals("same_world(player.world, 'world')", step(main, 2).get("expression").getAsString());
+        assertEquals("(same_world(player.world, 'world_the_end') || same_world(player.world, 'skylands'))", step(main, 3).get("expression").getAsString());
+        assertEquals("same(player.name, 'world')", step(main, 4).get("expression").getAsString());
+    }
+
+    @Test void inWorldSwitchesResolveTheWorld() throws IOException {
+        JsonObject world = document(convert("""
+                lobby:
+                  type: world
+                  events:
+                    on player chats in:world_nether:
+                    - narrate hot
+                """), "denizen:world/lobby");
+        assertEquals("same_world(player.world, 'world_nether')", world.getAsJsonObject("routines").getAsJsonObject("on-player-chats").get("expression").getAsString());
+    }
+
     @Test void permissionAtomsStayCapabilityConditions() throws IOException {
         JsonObject main = main("""
                 t:
@@ -394,7 +428,7 @@ class DenizenConverterTest {
                     - announce "Five minutes."
                     on player changes world from world to world_nether:
                     - narrate "Hot."
-                    on player breaks block:
+                    on projectile hits:
                     - narrate "No."
                     on player chats:
                     - determine cancelled
@@ -410,7 +444,7 @@ class DenizenConverterTest {
         assertEquals("has_flag('player', 'vip')", joins.get("expression").getAsString());
         assertEquals("animus:has-permission", joins.getAsJsonObject("then").get("capability").getAsString());
         assertEquals("You said {{ context.message }}", world.getAsJsonObject("routines").getAsJsonObject("on-player-chats").getAsJsonObject("templates").get("/text").getAsString());
-        assertEquals("no Animus server trigger for the event player breaks block", reasonAt(output, "a.dsc:12"));
+        assertEquals("no Animus server trigger for the event projectile hits", reasonAt(output, "a.dsc:12"));
         assertEquals("return", world.getAsJsonObject("routines").getAsJsonObject("on-player-chats-2").get("type").getAsString());
         assertTrue(reasonAt(output, "a.dsc:15").startsWith("determine changes the event's outcome"));
     }
@@ -571,7 +605,7 @@ class DenizenConverterTest {
         assertEquals("a.dsc:4", kept.get("source").getAsString());
         assertEquals("tag player.money has no Animus expression", kept.get("reason").getAsString());
         assertEquals("partial", output.report().getAsJsonObject("behaviorStatus").get("denizen:task/t").getAsString());
-        assertEquals(3, output.report().get("converterVersion").getAsInt());
+        assertEquals(4, output.report().get("converterVersion").getAsInt());
     }
 
     @Test void limitsCountLoopBodiesAndMissingElses() {
@@ -638,7 +672,7 @@ class DenizenConverterTest {
                         - narrate "Talking"
                 """, "denizen:world-npc/w");
         JsonObject trigger = behavior.getAsJsonArray("triggers").get(0).getAsJsonObject();
-        assertEquals("context.sneaking", trigger.get("consume").getAsString());
+        assertEquals("context.sneaking && !has_flag('player', 'ratelimit-w-8')", trigger.get("consume").getAsString(), "a rate-limited click is left to shops, as Denizen stops before it cancels");
         JsonObject routine = behavior.getAsJsonObject("routines").getAsJsonObject("on-player-right-clicks-entity");
         assertEquals("animus:actionbar", step(step(routine, 0).getAsJsonObject("then"), 0).get("capability").getAsString(), "a sneak prompt stays on the action bar");
         assertEquals("has_flag('player', 'ratelimit-w-8')", step(routine, 1).get("expression").getAsString());
@@ -688,6 +722,30 @@ class DenizenConverterTest {
                         - stop
                     - narrate "x"
                 """), 0);
-        assertEquals("has_flag('player', ('done_' + text(npc.id)))", condition.get("expression").getAsString());
+        assertEquals("has_flag('player', ('done_' + text(npc.citizens_id)))", condition.get("expression").getAsString());
+    }
+
+    @Test void writtenFlagNamesWithTagsMatchTheirReadsAndImportedNames() throws IOException {
+        JsonObject write = main("t:\n  type: task\n  script:\n  - flag player done_<npc.id>\n");
+        assertTrue(write.getAsJsonObject("arguments").get("name").isJsonNull());
+        assertEquals("('done_' + text(npc.citizens_id))", write.getAsJsonObject("expressions").get("/name").getAsString());
+    }
+
+    @Test void notesReadCuboidsAndEllipsoidsInBothForms() {
+        assertArrayEquals(new double[] {1, 2, 3, 4, 5, 6}, DenizenEvents.note("a", "cu@world,1,2,3,4,5,6").orElseThrow().bounds());
+        assertEquals("world_nether", DenizenEvents.note("a", "cu@1,2,3,world_nether|4,5,6,world_nether").orElseThrow().world());
+        assertFalse(DenizenEvents.note("a", "ellipsoid@0,64,0,world,5,3,5").orElseThrow().cuboid());
+        assertTrue(DenizenEvents.note("a", "<cuboid[world,0,0,0,1,1,1]>").isPresent());
+        assertTrue(DenizenEvents.note("a", "cu@world,0,0,0,1,1,1,2,2,2,3,3,3").isEmpty(), "a cuboid of several boxes is kept");
+    }
+
+    @Test void playerListTargetsFanOutWithinOneHundredPlayers() throws IOException {
+        JsonObject loop = main("t:\n  type: task\n  script:\n  - title \"title:Hi\" targets:<server.online_players.filter[is_op]>\n");
+        assertEquals("foreach", loop.get("type").getAsString());
+        assertEquals("players(server.players)", loop.getAsJsonObject("list").get("expression").getAsString());
+        assertEquals(100, loop.get("maximum").getAsInt());
+        JsonObject guarded = loop.getAsJsonObject("body");
+        assertEquals("get(player_info(t_1), 'op', false)", guarded.get("expression").getAsString());
+        assertEquals("t_1", guarded.getAsJsonObject("then").getAsJsonObject("expressions").get("/player").getAsString());
     }
 }

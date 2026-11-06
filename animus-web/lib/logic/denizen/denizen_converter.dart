@@ -6,6 +6,7 @@
 library;
 
 import 'dart:collection';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -23,7 +24,7 @@ part 'denizen_commands.dart';
 part 'denizen_events.dart';
 part 'denizen_expressions.dart';
 
-const int denizenConverterVersion = 3;
+const int denizenConverterVersion = 4;
 
 /// The author a converted book gets when its Denizen author is blank.
 const String _blankBookAuthor = 'Server';
@@ -62,7 +63,7 @@ class DenizenImportException implements Exception {
 
 /// What a Denizen data folder holds: scripts by path under `scripts/`, the Citizens save it binds to, and the flags.
 class DenizenInput {
-  DenizenInput({Map<String, String>? scripts, this.citizens, this.serverFlags, Map<String, String>? playerFlags})
+  DenizenInput({Map<String, String>? scripts, this.citizens, this.serverFlags, Map<String, String>? playerFlags, this.notables})
       : scripts = SplayTreeMap<String, String>.of(scripts ?? <String, String>{}),
         playerFlags = SplayTreeMap<String, String>.of(playerFlags ?? <String, String>{});
 
@@ -70,6 +71,9 @@ class DenizenInput {
   final String? citizens;
   final String? serverFlags;
   final SplayTreeMap<String, String> playerFlags;
+
+  /// The text of Denizen's notables.yml, whose noted cuboids and ellipsoids area events use.
+  final String? notables;
 }
 
 /// A converted folder: [files] maps each path under `imports/denizen/<id>/` to its text.
@@ -86,6 +90,42 @@ class DenizenPreview {
   int get bindings => report.object('bindings')!.length;
   int get preserved => (report.get('preserved')! as JArray).length;
   int get flagsPreserved => (report.object('flags')!.get('preserved')! as JInt).value.toInt();
+
+  /// The converted behaviors with `"server": true`, in id order.
+  List<String> get serverBehaviorIds => <String>[
+        for (final JElement id in (report.get('serverBehaviors')! as JArray).elements)
+          if (id is JString) id.value,
+      ];
+
+  /// `server-behaviors.json` after the review is accepted: the [existing]
+  /// list (null when the data folder has none) with this import's server
+  /// behaviors appended once each, as the server's `DenizenDropIn` writes
+  /// it. Null when the import made no server behavior and there is no list.
+  /// The staged tree itself never holds the file, so it stays the same as
+  /// the server's.
+  String? serverBehaviorsAfterAccept(String? existing) {
+    final List<String> added = serverBehaviorIds;
+    if (added.isEmpty) return existing;
+    final List<String> ids = <String>[];
+    if (existing != null) {
+      final Object? parsed = jsonDecode(existing);
+      if (parsed is Map<String, Object?> && parsed['behaviors'] is List<Object?>) {
+        for (final Object? id in parsed['behaviors']! as List<Object?>) {
+          if (id is String && !ids.contains(id)) ids.add(id);
+        }
+      }
+    }
+    bool changed = false;
+    for (final String id in added) {
+      if (!ids.contains(id)) {
+        ids.add(id);
+        changed = true;
+      }
+    }
+    if (ids.length > 256) throw const DenizenImportException('server-behaviors.json would list more than 256 behaviors');
+    if (!changed && existing != null) return existing;
+    return '${const JsonEncoder.withIndent('  ').convert(<String, Object?>{'schemaVersion': 1, 'behaviors': ids})}\n';
+  }
   int get flagsImported {
     int total = 0;
     for (final JElement count in report.object('flags')!.object('imported')!.members.values) {
@@ -98,6 +138,7 @@ class DenizenPreview {
   Map<String, Uint8List> bundle() => <String, Uint8List>{
         for (final MapEntry<String, String> script in input.scripts.entries) 'imports/denizen/scripts/${script.key}': javaUtf8(script.value),
         if (input.serverFlags != null) 'imports/denizen/server_flags.dat': javaUtf8(input.serverFlags!),
+        if (input.notables != null) 'imports/denizen/notables.yml': javaUtf8(input.notables!),
         for (final MapEntry<String, String> player in input.playerFlags.entries) 'imports/denizen/player_flags/${player.key}.dat': javaUtf8(player.value),
         for (final MapEntry<String, String> file in files.entries) 'imports/denizen/$id/${file.key}': javaUtf8(file.value),
       };
@@ -209,8 +250,12 @@ class _Scope {
   /// Denizen context keys the trigger passes, and their Animus names.
   final Map<String, String> context;
 
-  /// The `determine cancelled` line an NPC event's `consume` condition was made from; set on that event's scope only.
+  /// The `determine cancelled` line an event's `consume` or `cancel` condition was made from; set on that event's scope
+  /// only.
   DenizenItem? cancel;
+
+  /// Whether this scope is a world event the platform can cancel.
+  bool cancellable = false;
 
   /// The scope of another script run from this one: same document, its own definitions, no loops and no event context.
   _Scope inContainer(DenizenContainer other) => _Scope(doc, calling, false, other, null, -1, SplayTreeMap<String, String>(), const <String>[],
@@ -225,6 +270,17 @@ String? _flagName(String name) {
   if (!_full('[a-z0-9_.]+', lowered)) return null;
   final String mapped = lowered.replaceAll('.', '-');
   return _name.hasMatch(mapped) ? mapped : null;
+}
+
+/// The area a literal `note` command names, if it is one.
+_Note? _noteOf(DenizenCommand command) {
+  if (command.name != 'note' || command.args.length != 2) return null;
+  final DenizenArg area = command.args[0];
+  final DenizenArg name = command.args[1];
+  if (area.prefix.isNotEmpty || name.prefix != 'as') return null;
+  final String lowered = name.value.toLowerCase();
+  if (!_full('[a-z0-9][a-z0-9_-]{0,63}', lowered)) return null;
+  return _note(lowered, area.value);
 }
 
 /// A variable name from a prefix and a Denizen name: lowercase, other characters as `_`, at most 64 characters.
@@ -390,6 +446,9 @@ class _Converter {
   /// Literal values scripts and NPC data give each flag, by `scope:name`; filled on first use.
   SplayTreeMap<String, SplayTreeSet<String>>? _flagValues;
   final SplayTreeMap<String, List<String>> guards = SplayTreeMap<String, List<String>>();
+
+  /// Noted areas by lowercase name: notables.yml first, then literal `note ... as:name` lines of scripts.
+  final SplayTreeMap<String, _Note> notes = SplayTreeMap<String, _Note>();
   late final _Expressions expressions;
   late final _Commands commands;
 
@@ -402,6 +461,7 @@ class _Converter {
     }
     if (input.citizens != null) sources.addString('citizens', sha256Hex(input.citizens!));
     if (input.serverFlags != null) sources.addString('server_flags.dat', sha256Hex(input.serverFlags!));
+    if (input.notables != null) sources.addString('notables.yml', sha256Hex(input.notables!));
     for (final MapEntry<String, String> file in input.playerFlags.entries) {
       sources.addString('player_flags/${file.key}.dat', sha256Hex(file.value));
     }
@@ -427,6 +487,10 @@ class _Converter {
       if (container.type == 'interact') interacts[container.name.toLowerCase()] = interact(container);
     }
     if (input.citizens != null) readNpcs(input.citizens!);
+    if (input.notables != null) notes.addAll(_notables(yaml(input.notables!), issues));
+    for (final DenizenContainer container in containers.values) {
+      collectNotes(container.body);
+    }
 
     final SplayTreeMap<String, DenizenFlagValues> playerValues = SplayTreeMap<String, DenizenFlagValues>();
     for (final MapEntry<String, String> file in input.playerFlags.entries) {
@@ -616,13 +680,17 @@ class _Converter {
 
   // ---- Citizens NPCs ----
 
-  void readNpcs(String text) {
-    final JObject root;
+  /// `CitizensImporter.parseYaml`, whose failures end the import.
+  JObject yaml(String text) {
     try {
-      root = parseCitizensYaml(text);
+      return parseCitizensYaml(text);
     } on CitizensImportException catch (invalid) {
       throw DenizenImportException(invalid.message);
     }
+  }
+
+  void readNpcs(String text) {
+    final JObject root = yaml(text);
     final JElement? npcValue = root.get('npc');
     if (npcValue is! JObject) throw const DenizenImportException(r'$.npc: expected Citizens NPC mapping');
     final SplayTreeMap<int, MapEntry<String, JElement>> ordered = SplayTreeMap<int, MapEntry<String, JElement>>();
@@ -1385,8 +1453,9 @@ class _Converter {
   // ---- Server behaviors ----
 
   /// A world script: one server behavior whose routines are its events, each run by the matching server trigger, and
-  /// one NPC behavior, bound to every NPC, for its NPC click events. A click event whose top level cancels the click
-  /// after plain guards gets a `consume` condition made of those guards.
+  /// one NPC behavior, bound to every NPC, for its NPC click events. A cancellable event whose top level cancels it
+  /// after plain guards and rate limits gets a condition made of those guards: `consume` on an NPC click, `cancel` on a
+  /// server event.
   void world(DenizenContainer container, SplayTreeMap<String, String> documents) {
     final DenizenNode? events = container.body.get('events');
     final _Doc server = _Doc(true);
@@ -1404,7 +1473,7 @@ class _Converter {
           preserveNode(kept, entry.value, 'inside a world event that is kept');
           continue;
         }
-        final _Mapped mapped = _denizenEvent(key);
+        final _Mapped mapped = _denizenEvent(key, notes, _mentions(sequence, '<context.entity.is_npc>'));
         String? reason = mapped.reason;
         final _Doc doc = mapped.npc ? clicks : server;
         final JArray triggers = mapped.npc ? clickTriggers : serverTriggers;
@@ -1423,7 +1492,8 @@ class _Converter {
         }
         record(container, entry.line, 'event', label, entry.key, true, '');
         final _Scope scope = _Scope.of(doc, true, container, null, -1, mapped.context);
-        final _Consume? consume = mapped.npc ? commands.consume(sequence.items, mapped.guards, scope) : null;
+        scope.cancellable = mapped.cancellable;
+        final _Consume? consume = mapped.cancellable ? commands.consume(sequence.items, mapped.guards, scope) : null;
         scope.cancel = consume?.item;
         JObject body = _sequence(commands.block(sequence.items, 0, scope));
         for (int index = mapped.guards.length - 1; index >= 0; index--) {
@@ -1434,7 +1504,7 @@ class _Converter {
         for (final MapEntry<String, JElement> field in mapped.trigger!.entries) {
           trigger.add(field.key, field.value);
         }
-        if (consume != null) trigger.addString('consume', consume.condition);
+        if (consume != null) trigger.addString(mapped.npc ? 'consume' : 'cancel', consume.condition);
         trigger.addString('routine', routine);
         triggers.add(trigger);
       }
@@ -1445,6 +1515,32 @@ class _Converter {
     if (server.routines.isNotEmpty) document(behaviorId('world', container), server, container, serverTriggers, documents);
     if (clicks.routines.isNotEmpty && document(behaviorId('world-npc', container), clicks, container, clickTriggers, documents)) {
       clickBehaviors.add(behaviorId('world-npc', container));
+    }
+  }
+
+  /// Whether a command line, or one inside it, contains [text], ignoring case.
+  static bool _mentions(DenizenSequence sequence, String text) {
+    for (final DenizenItem item in sequence.items) {
+      if (item.text.toLowerCase().contains(text)) return true;
+      final DenizenSequence? children = item.children;
+      if (children != null && _mentions(children, text)) return true;
+    }
+    return false;
+  }
+
+  /// Literal `note <cuboid> as:name` lines name areas as notables.yml does; notables.yml wins on a clash.
+  void collectNotes(DenizenNode node) {
+    if (node is DenizenMapping) {
+      for (final DenizenEntry entry in node.entries) {
+        collectNotes(entry.value);
+      }
+    } else if (node is DenizenSequence) {
+      for (final DenizenItem item in node.items) {
+        final DenizenSequence? children = item.children;
+        if (children != null) collectNotes(children);
+        final _Note? note = _noteOf(denizenCommand(item.text));
+        if (note != null) notes.putIfAbsent(note.name, () => note);
+      }
     }
   }
 

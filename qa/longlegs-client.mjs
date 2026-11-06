@@ -24,7 +24,7 @@ let owner, uuid, live = false;
 class Client extends NativeClient {
   constructor(name) { super(harness, name); }
   async status() {
-    const e = await this.command(`animus navigation ${id} status`, `Navigation ${id}:`);
+    const e = await this.command(`animus navigation status ${id}`, `Navigation ${id}:`);
     const f = fields(e.text);
     return { text: e.text, state: e.text.slice(e.text.indexOf(': ') + 2).split(';')[0], position: vector(e.text, 'position'), arrivals: Number(f.arrivals) };
   }
@@ -90,7 +90,7 @@ try {
   passed('route chosen on generated terrain', { river: { x: rx, z: rz }, water: wet, points, legs: legs.map(Math.round), protocol: toolchain.protocol });
 
   await owner.command(`execute in minecraft:overworld run tp @s ${start.x} ${start.y + 6} ${start.z}`, 'Teleported');
-  await owner.command(`animus create ${id} minecraft:player world ${start.x} ${start.y} ${start.z} longlegs Long Legs`, `Created dormant ${id}`); live = true;
+  await owner.command(`animus create ${id} minecraft:player world ${start.x} ${start.y} ${start.z} longlegs "Long Legs"`, `Created dormant ${id}`); live = true;
   const route = { 'animus:navigation': { enabled: true, mode: 'swim', speed: 5, loop: false, waitTicks: 10, points } };
   const edit = `animus edit ${id} ${JSON.stringify({ modules: route })}`;
   assert(edit.length <= 256, `edit command is ${edit.length} characters`);
