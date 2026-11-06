@@ -25,7 +25,7 @@ import 'trader_builder.dart';
 export 'snake_yaml.dart' show CitizensImportException;
 
 /// Must equal `CitizensImporter.CONVERTER_VERSION`; the shared golden fixtures fail when they drift.
-const int citizensConverterVersion = 11;
+const int citizensConverterVersion = 12;
 
 const String _notice =
     'Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.';
@@ -231,7 +231,7 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
       position.addDouble('pitch', facing.pitch);
     }
     definition.add('position', position);
-    definition.addString('group', citizensGroup(world, position.get('x'), position.get('z')));
+    definition.addString('group', citizensGroup(world));
     for (final MapEntry<String, JElement> field in presentation.fields.entries) {
       definition.add(field.key, field.value);
     }
@@ -384,23 +384,16 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
   return CitizensPreview(id, files, summary, original);
 }
 
-/// `CitizensImporter.group`: the world (after mapping) as a path segment, plus the 512-block region when the
-/// position is a usable coordinate pair.
-String citizensGroup(String world, JElement? x, JElement? z) {
+/// `CitizensImporter.group`: the world (after mapping) as a path segment, or `citizens` without one.
+String citizensGroup(String world) {
   String lowered = javaLower(world)
       .replaceAll(RegExp('[^a-z0-9_-]+', unicode: true), '-')
       .replaceAll(RegExp('-{2,}'), '-')
       .replaceAll(RegExp('^[^a-z0-9]+', unicode: true), '')
       .replaceAll(RegExp(r'[-_]+$'), '');
   if (lowered.length > 48) lowered = lowered.substring(0, 48).replaceAll(RegExp(r'[-_]+$'), '');
-  if (lowered.isEmpty) return 'citizens';
-  if (!_coordinate(x) || !_coordinate(z)) return lowered;
-  final BigInt regionX = javaDoubleToLong((x!.asPrimitive.asDouble / 512).floorToDouble());
-  final BigInt regionZ = javaDoubleToLong((z!.asPrimitive.asDouble / 512).floorToDouble());
-  return '$lowered-r${regionX}_$regionZ';
+  return lowered.isEmpty ? 'citizens' : lowered;
 }
-
-bool _coordinate(JElement? value) => value is JNumber && value.asDouble.isFinite && value.asDouble.abs() <= 30000000;
 
 JObject? _riding(JElement? trait) {
   if (trait is! JObject) return null;

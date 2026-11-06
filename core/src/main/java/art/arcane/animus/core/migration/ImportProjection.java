@@ -55,6 +55,9 @@ final class ImportProjection {
                 data.getAsJsonObject("migration").add("copy",copy);
             }
             remapResolvedReferences(data,byLegacyId,uuids,ids);
+            // An NPC the owner moved to another folder is updated where it now lives, never installed again beside it.
+            NpcDefinition moved=mode==Mode.DUPLICATE?null:currentById.get(ids.get(original.id()));
+            if(moved!=null && moved.uuid().equals(uuids.get(original.uuid())))data.addProperty("group",moved.group());
             NpcDefinition candidate=NpcDefinition.parse(JsonDocuments.write(data));
             NpcDefinition prior=currentByPath.get(candidate.path());
             if(prior!=null) {

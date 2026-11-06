@@ -87,7 +87,7 @@ public final class SchemaMigrations {
             Kind kind = chain.getKey();
             for (String folder : folders(store, kind)) {
                 Path root = store.resolve(folder);
-                for (Path file : JsonDocumentTree.files(root)) {
+                for (Path file : JsonDocumentTree.files(root, kind.equals(NPC) ? NpcPaths.TREE_DEPTH : 8)) {
                     String path = folder + "/" + root.relativize(file).toString().replace('\\', '/');
                     String before = store.read(path);
                     JsonObject document;
