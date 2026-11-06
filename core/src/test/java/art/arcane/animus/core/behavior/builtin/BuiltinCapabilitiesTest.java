@@ -44,7 +44,7 @@ class BuiltinCapabilitiesTest {
         @Override public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
     };
     private static final Set<String> ACTIONS = Set.of("say", "choices", "command", "navigate", "stop-navigation", "play-recording", "resume-patrol", "look", "pose", "set-appearance",
-            "set-equipment", "play-sound", "spawn-particle", "combat-control", "build", "set-flag", "set-quest-state", "advance-quest-state", "open-shop", "open-gui",
+            "set-equipment", "set-attribute", "play-sound", "spawn-particle", "combat-control", "build", "set-flag", "set-quest-state", "advance-quest-state", "open-shop", "open-gui",
             "play-animation", "stop-animation", "message", "title", "actionbar", "teleport", "give-item", "take-item", "give-book");
     private static final Set<String> CONDITIONS = Set.of("has-permission", "npc-state", "player-in-range", "flag-state", "quest-state");
 
@@ -237,6 +237,17 @@ class BuiltinCapabilitiesTest {
         assertEquals(List.of("navigate:FLY:3.0", "stop", "recording:market-walk:once", "resume", "look-point", "pose:rest", "appearance:Guard:false", "equipment:MAIN_HAND:minecraft:iron_sword",
                 "sound:minecraft:entity.villager.yes", "particle:minecraft:flame:8", "combat:TARGET:true",
                 "animation:town:golem/wave:2.0:pingpong:2", "stop-animation:2:10"), platform.calls);
+    }
+
+    @Test void setAttributeSetsOrResetsOneAttributeAndChecksItsRange() throws Exception {
+        start();
+        assertEquals(Outcome.Status.OK, action("set-attribute", "{\"attribute\":\"minecraft:scale\",\"value\":2}").status());
+        assertEquals(Outcome.Status.OK, action("set-attribute", "{\"attribute\":\"movement_speed\",\"reset\":true}").status());
+        assertEquals(List.of("attribute:scale:2.0", "attribute:movement_speed:reset"), platform.calls);
+        assertFalse(builtins.validate(key("set-attribute"), "{\"attribute\":\"bogus\",\"value\":1}").isEmpty());
+        assertFalse(builtins.validate(key("set-attribute"), "{\"attribute\":\"scale\",\"value\":99}").isEmpty());
+        assertFalse(builtins.validate(key("set-attribute"), "{\"attribute\":\"scale\",\"value\":2,\"reset\":true}").isEmpty(), "a value and a reset at once");
+        assertEquals(Outcome.Status.INVALID, action("set-attribute", "{\"attribute\":\"scale\"}").status(), "a value or a reset is required");
     }
 
     @Test void combatControlGuardsAParticipantOrStopsGuarding() throws Exception {

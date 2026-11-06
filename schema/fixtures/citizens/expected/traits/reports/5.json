@@ -2,7 +2,7 @@
   "citizensId": 5,
   "presentationWarnings": [
     "/traits/armorstandtrait/rightArm: angle not readable; kept for review",
-    "/traits/armorstandtrait: marker and gravity are kept for review"
+    "/traits/armorstandtrait: marker is kept for review"
   ],
   "runtimeWarnings": [],
   "fieldPathFormat": "json-pointer",
@@ -19,7 +19,7 @@
     "/traits/armorstandtrait/hasbaseplate": "CONVERTED",
     "/traits/armorstandtrait/visible": "CONVERTED",
     "/traits/armorstandtrait/marker": "UNSUPPORTED_PRESERVED",
-    "/traits/armorstandtrait/gravity": "UNSUPPORTED_PRESERVED",
+    "/traits/armorstandtrait/gravity": "CONVERTED",
     "/traits/armorstandtrait/head/x": "CONVERTED",
     "/traits/armorstandtrait/head/y": "CONVERTED",
     "/traits/armorstandtrait/head/z": "CONVERTED",
@@ -34,7 +34,6 @@
   },
   "reasons": {
     "/traits/armorstandtrait/marker": "trait armorstandtrait has no Animus equivalent; kept in citizens:review",
-    "/traits/armorstandtrait/gravity": "trait armorstandtrait has no Animus equivalent; kept in citizens:review",
     "/traits/armorstandtrait/rightArm/x": "trait armorstandtrait has no Animus equivalent; kept in citizens:review",
     "/traits/armorstandtrait/rightArm/y": "trait armorstandtrait has no Animus equivalent; kept in citizens:review",
     "/traits/armorstandtrait/rightArm/z": "trait armorstandtrait has no Animus equivalent; kept in citizens:review",

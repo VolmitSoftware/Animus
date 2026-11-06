@@ -230,6 +230,11 @@
 - `[npcs] simulationPerTick` bounds idle fall and rig animation steps per tick (per region on Folia).
 - `[npcs] queuePerViewer` bounds the packet operations one player may have waiting; cosmetic updates stop first when it fills.
 - `[npcs] degradedIntervalTicks`: while a simulation, route or behavior budget runs short, cosmetic updates and distant NPC moves slow down; `/animus status` shows `presentation=degraded`.
+- NPC definitions and trait groups take `attributes`: any vanilla attribute id, bare or `minecraft:`, with its vanilla range checked. Viewers get them with the body and on every runtime change on Paper, Spigot, Folia and mod servers.
+- `scale` resizes the body, hitbox, click reach, path clearance, rig bones and text height; movement, gravity, jump, fall, health, armor, knockback, melee and targeting attributes drive Animus's own simulation where the definition sets no field of its own.
+- `/animus npc attribute <npc> <attribute> [value|reset]` with attribute completion, and the behavior action `animus:set-attribute`.
+- The vanilla attribute table is generated from the server jars with `./gradlew :core:generateAttributeTable`.
+- Web editor: an Attributes section for NPCs and groups, with range hints, defaults and sources; the preview shows `scale`.
 
 ### Changed
 
@@ -326,6 +331,8 @@
 - Look-close players, fight and chat witnesses, hologram placement and per-NPC viewer lookups use chunk indexes instead of scanning every player, watcher, hologram or viewer.
 - Mob targeting of NPCs reads the definitions again only after they change.
 - On Folia, chat reaches combat watchers from the speaker's region, so only watchers near the speaker hear it.
+- `gravity: false` stays the hover switch and wins over the `gravity` attribute, which sets how fast a body falls.
+- Citizens converter version 13: the attribute trait converts to `attributes` instead of only `movement.stepHeight`, and an armor stand without gravity converts to `gravity: false`.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.

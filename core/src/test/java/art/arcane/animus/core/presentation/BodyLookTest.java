@@ -102,9 +102,10 @@ class BodyLookTest {
     }
 
     @Test void textSitsAboveTheHeadOrTheNativeNameplate() {
-        assertEquals(0.3, BodyLook.lift(1.8, 1.8, false), 1e-9);
-        assertEquals(0.55, BodyLook.lift(1.8, 1.8, true), 1e-9);
-        assertEquals(0.9, BodyLook.lift(1.6, 1.0, false), 1e-9);
+        assertEquals(0.3, BodyLook.lift(1.8, 1.8, false, 1), 1e-9);
+        assertEquals(0.55, BodyLook.lift(1.8, 1.8, true, 1), 1e-9);
+        assertEquals(0.9, BodyLook.lift(1.6, 1.0, false, 1), 1e-9);
+        assertEquals(2 * 0.6 + 0.3, BodyLook.lift(1.6, 1.0, false, 2), 1e-9, "a scaled body lifts its text with its own height above the passenger point");
     }
 
     @Test void defaultStyleKeepsOneDisplayAndStyledHologramsStackRowsTheCitizensWay() {

@@ -8,7 +8,7 @@
   "type": "minecraft:zombie",
   "spawned": false,
   "migration": {
-    "importId": "422e5c989fcb1593adb1b901b20abf74f3d8a2644d1153d3524dc7b9d67adff0",
+    "importId": "2c8cd34baa4f124b286ffc2e48dc2006fe68fce9f549ddeb80e72b98fa0cca17",
     "citizensId": 26,
     "originalSpawned": null,
     "references": []

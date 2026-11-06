@@ -66,6 +66,13 @@ public record DisplayTransform(float tx, float ty, float tz, float lx, float ly,
     }
 
     /** The same transform moved by an offset, such as the vehicle's passenger point. */
+    /** This transform after a uniform scale about the origin: the translation and the scale grow, the rotations stay. */
+    public DisplayTransform scaled(double factor) {
+        if (factor == 1) return this;
+        float f = (float) factor;
+        return new DisplayTransform(tx * f, ty * f, tz * f, lx, ly, lz, lw, sx * f, sy * f, sz * f, rx, ry, rz, rw);
+    }
+
     public DisplayTransform offset(double dx, double dy, double dz) {
         return new DisplayTransform((float) (tx + dx), (float) (ty + dy), (float) (tz + dz), lx, ly, lz, lw, sx, sy, sz, rx, ry, rz, rw);
     }

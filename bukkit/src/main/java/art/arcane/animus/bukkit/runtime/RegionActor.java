@@ -38,6 +38,7 @@ import art.arcane.animus.core.navigation.NavigationPlan;
 import art.arcane.animus.bukkit.navigation.VirtualNpcWaypointEvent;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.core.npc.EquipmentSlot;
+import art.arcane.animus.core.npc.NpcAttributes;
 import art.arcane.animus.core.control.LookClose;
 import art.arcane.animus.core.control.RideSettings;
 import art.arcane.animus.core.mount.MountDeclaration;
@@ -65,6 +66,9 @@ import java.util.EnumMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalDouble;
+import com.google.gson.JsonObject;
+import art.arcane.animus.core.runtime.RuntimeAttributes;
 import java.util.List;
 import java.util.ArrayList;
 import art.arcane.animus.core.rig.AnimationDocument;
@@ -97,7 +101,8 @@ final class RegionActor implements RegionOwner.Body {
                        long appearance, float yaw, float pitch, boolean onGround, long pose,
                        Map<EquipmentSlot, ItemStack> equipment, long equipmentRevision, int ids,
                        String navigation, long arrivals, boolean ride, boolean mount, long revision, NpcRig.Snapshot<ItemStack> rig, int dragonPhase,
-                       List<UUID> passengers, Player rider, CombatView combat, BodyLook look, long lookRevision, long swings) {}
+                       List<UUID> passengers, Player rider, CombatView combat, BodyLook look, long lookRevision, long swings,
+                       NpcAttributes attributes, long attributeRevision) {}
     /** What other combat engines and status read of this NPC's combat; null when it has none. */
     record CombatView(CombatSettings settings, CombatLoadout loadout, UUID guarded, String status, int helpers) {}
     /** A passenger whose vehicle another region owns steps onto its seat at most this often. */
@@ -142,6 +147,9 @@ final class RegionActor implements RegionOwner.Body {
     private MovementSettings movement = MovementSettings.DEFAULT;
     private DoorPassage doors;
     private boolean falls = true, routeSpeedDeclared = true;
+    /** The definition's attributes with runtime changes on top; viewers send them again when the revision moves. */
+    private NpcAttributes attributes = NpcAttributes.NONE;
+    private long attributeRevision;
     private long nextRandomLook;
     private long nextLook;
     float yaw, pitch;
@@ -209,6 +217,7 @@ final class RegionActor implements RegionOwner.Body {
         ride = RideSettings.parse(spec.definition().json()).orElse(null);
         mount = MountDeclaration.parse(spec.definition().json()).isPresent();
         lookClose = LookClose.parse(spec.definition().json()).orElse(null);
+        attributes = spec.appearance().traits().attributes(); attributeRevision++;
         movement = MovementSettings.parse(spec.definition().json());
         falls = MovementSettings.falls(spec.type(), spec.definition().json());
         routeSpeedDeclared = MovementSettings.routeDeclaresSpeed(spec.definition().json());
@@ -241,7 +250,7 @@ final class RegionActor implements RegionOwner.Body {
                 else if (!host.packets.bonesAvailable()) rigProblem = "display bones are unavailable on this server build";
                 else {
                     List<String> problems = new ArrayList<>();
-                    rig = NpcRig.bind(rigId, catalog, host.geometry(spec.type()).seat(), DefinitionItems::stack, Optional.of(new ItemStack(org.bukkit.Material.AIR)), problems).orElse(null);
+                    rig = NpcRig.bind(rigId, catalog, host.geometry(spec.type()).seat(), PersistedNpcService.scale(spec), DefinitionItems::stack, Optional.of(new ItemStack(org.bukkit.Material.AIR)), problems).orElse(null);
                     if (rig == null) rigProblem = String.join("; ", problems.subList(0, Math.min(3, problems.size())));
                 }
                 if (had || rig != null) appearance++;
@@ -798,6 +807,25 @@ final class RegionActor implements RegionOwner.Body {
         if (!host.packets.equipmentAvailable()) throw new IllegalStateException("Equipment packets are unavailable on this server version");
         equipment.put(slot, item.clone());
         equipmentRevision++;
+        publish(true);
+    }
+    /** A runtime attribute change; see {@link RuntimeAttributes}. A new scale resizes the hitbox and presents the body and its rig again. */
+    void setAttribute(String attribute, OptionalDouble next) {
+        NpcAttributes updated = RuntimeAttributes.change(spec.appearance().traits().attributes(), attributes, attribute, next);
+        if (updated.equals(attributes)) return;
+        double scale = attributes.scale();
+        attributes = updated;
+        attributeRevision++;
+        JsonObject definition = RuntimeAttributes.definition(spec.definition().json(), updated);
+        movement = MovementSettings.parse(definition);
+        falls = MovementSettings.falls(spec.type(), definition);
+        if (updated.scale() != scale) {
+            RegionNpcRuntime.Geometry geometry = host.geometry(spec.type());
+            state.resize(geometry.width() * updated.scale(), geometry.height() * updated.scale());
+            host.index.upsert(state.snapshot());
+            rig = null; rigGeneration = -1;
+            appearance++;
+        }
         publish(true);
     }
     WorldPosition position() { return state.snapshot().position(); }
@@ -1507,11 +1535,12 @@ final class RegionActor implements RegionOwner.Body {
                 && previous.pose() == pose && previous.equipmentRevision() == equipmentRevision && previous.arrivals() == arrivals
                 && Objects.equals(previous.navigation(), navigation()) && previous.rig() == rigSnapshot() && previous.dragonPhase() == dragonPhase
                 && previous.passengers().equals(passengers()) && previous.rider() == rider() && Objects.equals(previous.combat(), combatView())
-                && previous.lookRevision() == lookRevision && previous.swings() == swings) return;
+                && previous.lookRevision() == lookRevision && previous.swings() == swings && previous.attributeRevision() == attributeRevision) return;
         Map<EquipmentSlot, ItemStack> items = new EnumMap<>(EquipmentSlot.class);
         (rig == null ? equipment : rig.bodyEquipment(equipment)).forEach((slot, item) -> items.put(slot, item.clone()));
         publication = new Publication(presented, snapshot, spec, spec.type(), displayName, displaySkin, appearance, yaw, pitch, onGround, pose,
-                Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision, rigSnapshot(), dragonPhase, passengers(), rider(), combatView(), look, lookRevision, swings);
+                Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision, rigSnapshot(), dragonPhase, passengers(), rider(), combatView(), look, lookRevision, swings,
+                attributes, attributeRevision);
     }
     private Player rider() { return riding.rider(); }
     private NpcRig.Snapshot<ItemStack> rigSnapshot() {
