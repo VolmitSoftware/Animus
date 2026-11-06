@@ -170,6 +170,10 @@ DataFolderResult openDataFolder(Map<String, Uint8List> files, SharedSchemas sche
     for (final AnimusDocument document in documents)
       if (document.kind == DocumentKind.rig) document.id: document.json,
   };
+  final Map<String, Object?> animations = <String, Object?>{
+    for (final AnimusDocument document in documents)
+      if (document.kind == DocumentKind.animation) document.id: document.json,
+  };
   return DataFolderResult(<AnimusDocument>[
     for (final AnimusDocument document in documents)
       if (document.kind == DocumentKind.animation)
@@ -177,6 +181,8 @@ DataFolderResult openDataFolder(Map<String, Uint8List> files, SharedSchemas sche
           ...document.diagnostics,
           ...validateAnimationStructure(document.json, rigs[_string(document.json, 'rig')]),
         ])
+      else if (document.kind == DocumentKind.rig)
+        document.copyWith(diagnostics: <Diagnostic>[...document.diagnostics, ...validateRigAnimations(document.json, animations)])
       else
         document,
   ], ignored, prefix, resources);
