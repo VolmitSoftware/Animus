@@ -16,6 +16,7 @@ import '../services/server/server_connection.dart';
 import '../services/server/server_profiles.dart';
 import '../services/server/transport.dart';
 import 'editor_store.dart';
+import 'catalog_entry.dart';
 import 'live_session.dart';
 import 'workspace_repository.dart';
 

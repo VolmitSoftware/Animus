@@ -10,6 +10,7 @@ import 'package:animus_editor/model/server_binding.dart';
 import 'package:animus_editor/services/server/server_connection.dart';
 import 'package:animus_editor/services/server/transport.dart';
 import 'package:animus_editor/state/editor_store.dart';
+import 'package:animus_editor/state/catalog_entry.dart';
 import 'package:animus_editor/state/live_session.dart';
 import 'package:animus_editor/state/workspace_repository.dart';
 import 'package:crypto/crypto.dart';
@@ -360,6 +361,37 @@ void main() {
     expect(network.sent.where(((ConnectionPath, ApiRequest) sent) => sent.$2.path == '/v1/catalog').length, greaterThan(catalogLoads));
     expect((store.document(DocumentKind.npc, 'town/baker')!.json! as Map<String, Object?>)['name'], 'Night Baker');
     expect(session.stateOf(DocumentKind.npc, 'town/baker'), DraftState.clean);
+  });
+
+  test('should show a resync after a reconnect and say plainly what it found', () async {
+    await session.openDocuments(session.catalog);
+    await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Captain');
+    // Changed on the server while this editor was cut off: one clean copy, one draft.
+    server.put(DocumentKind.npc, 'town/guard', <String, Object?>{'schemaVersion': 1, 'id': 'guard', 'group': 'town', 'name': 'Sergeant', 'spawned': true});
+    server.put(DocumentKind.npc, 'town/baker', <String, Object?>{'schemaVersion': 1, 'id': 'baker', 'group': 'town', 'name': 'Night Baker'});
+    final List<String?> busy = <String?>[];
+    session.addListener(() => busy.add(session.busy));
+    final FakeSubscription stream = network.lastStream;
+    stream.emit(<String, Object?>{'type': 'closing', 'reason': 'limit'});
+    await stream.end('limit');
+    await settle();
+    expect(busy, contains('Resyncing'), reason: 'the live bar shows the resync while it runs');
+    expect(session.busy, isNull);
+    expect(session.stale, <String>{'npc:town/guard'});
+    final List<String> messages = <String>[for (final LiveNotice notice in session.log) notice.message];
+    expect(messages.last, 'Resynced with the server: 1 document refreshed. 1 draft also changed on the server; merge it before applying.');
+    expect(messages.where((String message) => message.startsWith('Refreshed')), isEmpty, reason: 'one line for the whole resync');
+  });
+
+  test('should say a resync found nothing changed', () async {
+    final FakeSubscription stream = network.lastStream;
+    await stream.end('limit');
+    await settle();
+    expect(session.log.last.message, 'Resynced with the server; nothing changed while disconnected.');
+  });
+
+  test('should not call the first connect a resync', () async {
+    expect(session.log.map((LiveNotice notice) => notice.message), isNot(contains(startsWith('Resynced'))));
   });
 
   test('should report a change set that never reached the server after a reconnect', () async {

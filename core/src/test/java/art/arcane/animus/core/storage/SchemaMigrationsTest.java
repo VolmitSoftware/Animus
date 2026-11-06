@@ -121,6 +121,42 @@ class SchemaMigrationsTest {
         assertSame(text, SchemaMigrations.standard().migrate(SchemaMigrations.NPC, text));
     }
 
+    @Test void standard_coversEveryVersionedDocumentKind() {
+        SchemaMigrations standard = SchemaMigrations.standard();
+        for (SchemaMigrations.Kind kind : List.of(SchemaMigrations.NPC, SchemaMigrations.BEHAVIOR, SchemaMigrations.SHOP, SchemaMigrations.ROUTE,
+                SchemaMigrations.RECORDING, SchemaMigrations.GROUP, SchemaMigrations.INVENTORY, SchemaMigrations.TEXT_ANIMATION, SchemaMigrations.RIG,
+                SchemaMigrations.ANIMATION, SchemaMigrations.SERVER_BEHAVIORS, SchemaMigrations.PACK))
+            assertEquals(1, standard.current(kind), kind.name());
+        assertEquals(3, standard.current(SchemaMigrations.HOLOGRAM), "holograms keep Gloss's version 3");
+    }
+
+    @Test void apply_everyKindFolderAndFile_isScannedFromItsFirstVersion() throws Exception {
+        SchemaMigrations.Builder builder = SchemaMigrations.builder();
+        for (SchemaMigrations.Kind kind : List.of(SchemaMigrations.ROUTE, SchemaMigrations.RECORDING, SchemaMigrations.GROUP, SchemaMigrations.INVENTORY,
+                SchemaMigrations.TEXT_ANIMATION, SchemaMigrations.RIG, SchemaMigrations.ANIMATION, SchemaMigrations.SERVER_BEHAVIORS, SchemaMigrations.PACK))
+            builder.identity(kind).step(kind, RENAME_NAME);
+        SchemaMigrations migrations = builder.identity(SchemaMigrations.HOLOGRAM, 3).step(SchemaMigrations.HOLOGRAM, RENAME_NAME).build();
+        assertEquals(4, migrations.current(SchemaMigrations.HOLOGRAM));
+        List<String> paths = List.of("routes/patrol.json", "recordings/walk.json", "groups/town.json", "gui/inventories/main.json",
+                "gui/text-animations/glow.json", "rigs/demo/bot.json", "animations/demo/wave.json", "server-behaviors.json", "packs/demo/pack.json");
+        try (DocumentStore store = new DocumentStore(root)) {
+            List<DocumentStore.Change> changes = new java.util.ArrayList<>();
+            for (String path : paths) changes.add(new DocumentStore.Change(path, "missing", document(1, ",\"name\":\"n\"")));
+            changes.add(new DocumentStore.Change("gui/holograms/sign.json", "missing", document(3, ",\"name\":\"n\"")));
+            changes.add(new DocumentStore.Change("gui/holograms/old.json", "missing", document(2, ",\"name\":\"n\"")));
+            store.commit(changes);
+            SchemaMigrations.Report report = migrations.apply(store);
+            List<String> expected = new java.util.ArrayList<>(paths);
+            expected.add("gui/holograms/sign.json");
+            assertEquals(new java.util.HashSet<>(expected), new java.util.HashSet<>(report.migrated()));
+            assertEquals(expected.size(), report.migrated().size());
+            assertEquals(2, JsonDocuments.object(store.read("routes/patrol.json")).get("schemaVersion").getAsInt());
+            assertEquals(4, JsonDocuments.object(store.read("gui/holograms/sign.json")).get("schemaVersion").getAsInt());
+            assertEquals(document(2, ",\"name\":\"n\""), store.read("gui/holograms/old.json"), "a version below the chain is left for the parser");
+            assertEquals(List.of(), report.problems());
+        }
+    }
+
     @Test void builder_requiresIdentityFirst() {
         assertThrows(IllegalStateException.class, () -> SchemaMigrations.builder().step(SchemaMigrations.NPC, RENAME_NAME));
     }

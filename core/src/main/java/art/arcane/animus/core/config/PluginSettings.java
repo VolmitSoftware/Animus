@@ -103,7 +103,8 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
         try {
             JsonObject files = table(data.getAsJsonObject(), "files");
             fileSettings = new FileWorkSettings(integer(files, "maximumOperations", FileWorkSettings.DEFAULT.maximumOperations()),
-                    integer(files, "deliveryBudgetMillis", FileWorkSettings.DEFAULT.deliveryBudgetMillis()));
+                    integer(files, "deliveryBudgetMillis", FileWorkSettings.DEFAULT.deliveryBudgetMillis()),
+                    integer(files, "backupsKept", FileWorkSettings.DEFAULT.backupsKept()), integer(files, "backupDays", FileWorkSettings.DEFAULT.backupDays()));
         } catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": files: " + e.getMessage(), e); }
         ModuleSettings moduleSettings;
         try {

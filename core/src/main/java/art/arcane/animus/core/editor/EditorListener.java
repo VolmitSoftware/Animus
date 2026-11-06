@@ -29,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayDeque;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -319,15 +320,22 @@ public final class EditorListener implements AutoCloseable {
             write(output, EditorReplies.error(new EditorError(EditorError.Code.INVALID_REQUEST, "Only GET /animus/v1/events upgrades to a WebSocket (version 13).")), false);
             return;
         }
-        WebSocketSink sink = new WebSocketSink(socket, output);
         String accept;
         try { accept = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-1").digest((key + WEBSOCKET_GUID).getBytes(StandardCharsets.US_ASCII))); }
         catch (NoSuchAlgorithmException missing) { throw new IOException(missing); }
-        synchronized (sink) {
-            output.write(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " + accept + "\r\n\r\n")
-                    .getBytes(StandardCharsets.ISO_8859_1));
-            output.flush();
+        output.write(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " + accept + "\r\n\r\n")
+                .getBytes(StandardCharsets.ISO_8859_1));
+        output.flush();
+        WebSocketSink sink = new WebSocketSink(socket, output);
+        try { stream(socket, input, sink, head, target, address); }
+        finally {
+            sink.close(1000, "closed");
+            sink.awaitWritten();
         }
+    }
+
+    /** Authenticates the stream, then serves it until either side closes. */
+    private void stream(Socket socket, InputStream input, WebSocketSink sink, Head head, String target, String address) throws IOException {
         // A browser cannot set headers on a WebSocket, so its first frame carries the token (event-auth), within 10 seconds.
         socket.setSoTimeout(10_000);
         String token;
@@ -416,19 +424,130 @@ public final class EditorListener implements AutoCloseable {
         }
     }
 
-    /** Server-to-browser frames, unmasked, serialized per connection. */
+    /**
+     * Server-to-browser frames, unmasked. Callers only queue them; one writer thread per connection does the socket writes,
+     * so a browser that stops reading blocks nobody else. Past {@link #OUTBOUND_BYTES} waiting, the backlog is dropped and
+     * the stream closes with reason {@code limit}, which the editor answers by reconnecting and reloading what changed.
+     */
     private static final class WebSocketSink implements EditorEventSink {
+        static final int OUTBOUND_BYTES = 1024 * 1024;
+        private static final long CLOSE_GRACE_MILLIS = 2000;
         private final Socket socket;
         private final OutputStream output;
+        private final ArrayDeque<byte[]> queue = new ArrayDeque<>();
+        private final Thread writer;
+        private int queued;
+        /** No frame but the close is accepted any more. */
         volatile boolean closed;
+        /** The close frame is queued; the writer ends after it. */
+        private boolean finished;
 
         WebSocketSink(Socket socket, OutputStream output) {
             this.socket = socket;
             this.output = output;
+            writer = Thread.ofVirtual().name("Animus-editor-events").start(this::write);
         }
 
-        synchronized void frame(int opcode, byte[] payload) throws IOException {
-            if (closed && opcode != 0x8) throw new SocketException("closed");
+        void frame(int opcode, byte[] payload) throws IOException {
+            byte[] encoded = encode(opcode, payload);
+            synchronized (this) {
+                if (closed) throw new SocketException("closed");
+                if (queued + encoded.length > OUTBOUND_BYTES) {
+                    overflow();
+                    throw new SocketException("limit");
+                }
+                enqueue(encoded);
+            }
+        }
+
+        @Override public boolean send(JsonObject event) {
+            byte[] payload = GSON.toJson(event).getBytes(StandardCharsets.UTF_8);
+            if ("closing".equals(event.get("type").getAsString())) {
+                // The reason goes straight after what was already on the wire: the browser reloads anyway.
+                synchronized (this) {
+                    if (closed) return false;
+                    dropBacklog();
+                    enqueue(encode(0x1, payload));
+                }
+                return true;
+            }
+            try { frame(0x1, payload); return true; }
+            catch (IOException gone) { return false; }
+        }
+
+        @Override public void close() { close(1000, "closing"); }
+
+        void close(int code, String reason) {
+            byte[] text = reason.getBytes(StandardCharsets.UTF_8);
+            byte[] payload = new byte[2 + Math.min(text.length, 120)];
+            payload[0] = (byte) (code >>> 8);
+            payload[1] = (byte) code;
+            System.arraycopy(text, 0, payload, 2, payload.length - 2);
+            synchronized (this) {
+                if (finished) return;
+                closed = true;
+                finished = true;
+                enqueue(encode(0x8, payload));
+            }
+            // A browser that reads nothing would hold the writer forever; the socket closes after a grace period regardless.
+            Thread.ofVirtual().start(() -> {
+                try { writer.join(CLOSE_GRACE_MILLIS); }
+                catch (InterruptedException stopping) { Thread.currentThread().interrupt(); }
+                closeSocket();
+            });
+        }
+
+        /** Waits briefly for queued frames, the close last, to reach the socket. */
+        void awaitWritten() {
+            try { writer.join(CLOSE_GRACE_MILLIS); }
+            catch (InterruptedException stopping) { Thread.currentThread().interrupt(); }
+        }
+
+        private void overflow() {
+            dropBacklog();
+            JsonObject closing = new JsonObject();
+            closing.addProperty("type", "closing");
+            closing.addProperty("reason", "limit");
+            enqueue(encode(0x1, GSON.toJson(closing).getBytes(StandardCharsets.UTF_8)));
+            Thread.ofVirtual().start(() -> close(1000, "limit"));
+            closed = true;
+        }
+
+        private void dropBacklog() {
+            queue.clear();
+            queued = 0;
+        }
+
+        private void enqueue(byte[] encoded) {
+            queue.addLast(encoded);
+            queued += encoded.length;
+            notifyAll();
+        }
+
+        private void write() {
+            try {
+                while (true) {
+                    byte[] next;
+                    synchronized (this) {
+                        while (queue.isEmpty() && !finished) wait();
+                        next = queue.pollFirst();
+                        if (next == null) return;
+                        queued -= next.length;
+                    }
+                    output.write(next);
+                    output.flush();
+                }
+            } catch (IOException | InterruptedException gone) {
+                synchronized (this) { closed = true; finished = true; dropBacklog(); }
+            } finally { closeSocket(); }
+        }
+
+        private void closeSocket() {
+            try { socket.close(); }
+            catch (IOException ignored) { /* Closing twice is harmless. */ }
+        }
+
+        private static byte[] encode(int opcode, byte[] payload) {
             ByteArrayOutputStream frame = new ByteArrayOutputStream(payload.length + 10);
             frame.write(0x80 | opcode);
             if (payload.length < 126) frame.write(payload.length);
@@ -437,30 +556,8 @@ public final class EditorListener implements AutoCloseable {
                 frame.write(127);
                 for (int shift = 56; shift >= 0; shift -= 8) frame.write((int) (((long) payload.length >>> shift) & 0xFF));
             }
-            frame.write(payload);
-            output.write(frame.toByteArray());
-            output.flush();
-        }
-
-        @Override public boolean send(JsonObject event) {
-            try { frame(0x1, GSON.toJson(event).getBytes(StandardCharsets.UTF_8)); return true; }
-            catch (IOException gone) { closed = true; return false; }
-        }
-
-        @Override public void close() { close(1000, "closing"); }
-
-        synchronized void close(int code, String reason) {
-            if (closed) return;
-            closed = true;
-            byte[] text = reason.getBytes(StandardCharsets.UTF_8);
-            byte[] payload = new byte[2 + Math.min(text.length, 120)];
-            payload[0] = (byte) (code >>> 8);
-            payload[1] = (byte) code;
-            System.arraycopy(text, 0, payload, 2, payload.length - 2);
-            try { frame(0x8, payload); }
-            catch (IOException gone) { /* Already closed by the browser. */ }
-            try { socket.close(); }
-            catch (IOException ignored) { /* Closing twice is harmless. */ }
+            frame.writeBytes(payload);
+            return frame.toByteArray();
         }
     }
 }
