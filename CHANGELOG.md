@@ -127,6 +127,15 @@
 - Web editor: pack manifests have a typed editor for their fields and Java modules.
 - Web editor: skin documents show their face, hash, arm model, wearers and PNG loading in one place.
 - Web editor: NPC browser rows show the skin's face once its PNG is loaded.
+- Editor: Redo (Ctrl+Shift+Z or Ctrl+Y) beside Undo, kept across reloads; both notices say what they reverted.
+- Editor: a command palette (Ctrl+K) to open documents, switch workspaces, export, undo, redo and change the theme.
+- Editor: keyboard shortcuts for undo, redo and the document search (Ctrl+F or /), and arrow keys in the document list and view tabs.
+- Editor: a documents drawer and a More menu on phones.
+- Editor: a skip link to the document.
+- Editor: a banner when the browser keeps no workspaces between visits, and a request to keep this site's storage.
+- Editor: tabs of one browser follow each other's saves and deletes, and each open workspace is locked to one tab.
+- Editor: closing the tab asks first while an edit is not stored or Code text is not applied.
+- Editor: the Animus mark in the top bar, the boot splash and the home page, with a message when the editor does not load.
 
 ### Changed
 
@@ -202,6 +211,14 @@
 - Web editor: bulk delete and server despawn ask first, and Escape keeps the NPCs.
 - Web editor: Spawn and Despawn on server appear only for a token with the spawn scope.
 - Web editor: the NPC browser and route grid use grey chrome, with pink kept for selection and actions.
+- Editor icons are the Animus mark (triangle, stripe and diamond) instead of the temporary letter tile.
+- The editor home page leads with Start a workspace and lists the three ways to start as rows.
+- The editor top bar groups Undo and Redo, the Open, Import and Export menus, and the app controls.
+- Editor buttons, inputs and tabs use Geist; ids, paths and code stay in Geist Mono.
+- The selected view tab is a raised grey with a pink underline, and disabled buttons are grey.
+- The editor theme follows the system until it is chosen.
+- The converter button reads Convert a Citizens, Shopkeepers, dtlTraders or Denizen save.
+- Legacy colour codes show as plain text in the sidebar, the document heading and the New page.
 
 ### Fixed
 
@@ -248,6 +265,11 @@
 - The stage says when the model pack is loading, missing or failed to download, and offers Retry.
 - A skin or texture that fails to load is drawn plain white with a note instead of hiding the body.
 - The stage notes items it cannot draw, elytra, heads and skulls, and items in the body slot of players and armor stands.
+- A save the browser refuses keeps the edit on screen and says why, with Save again and Export zip.
+- Another tab's save reloads this tab's copy with a plain message instead of a generation number.
+- Escape cancels only the confirmation that has focus.
+- Long document titles and paths no longer widen the page on phones.
+- Error and empty states name the cause and offer a way back, and "1 documents need repair" reads correctly.
 
 ### Notes
 
