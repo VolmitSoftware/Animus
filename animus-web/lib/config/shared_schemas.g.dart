@@ -856,12 +856,20 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Plays an animation of the NPC's rig on a layer (0-3). Higher layers blend over lower ones. Fires animation_finished when a once or hold clip reaches its end."
         },
         {
+          "const": "animus:play-recording",
+          "description": "Replaces the NPC's route with a recording it walks to and plays once, in a loop (the default) or back and forth. With wait, a once playback completes when it ends."
+        },
+        {
           "const": "animus:play-sound",
           "description": "Plays a sound at the NPC, or with at: player at the player, for the triggering player or nearby players. Server behaviors play at the player."
         },
         {
           "const": "animus:pose",
           "description": "Turns the NPC to one of the named poses in its definition's poses."
+        },
+        {
+          "const": "animus:resume-patrol",
+          "description": "Restarts the route or recording the NPC's definition declares; a stopped recording continues where it stopped. Reports resumed or nothing-to-resume."
         },
         {
           "const": "animus:say",
@@ -2837,6 +2845,91 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "if": {
             "properties": {
               "capability": {
+                "const": "animus:play-recording"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "recording": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "playback": {
+                      "enum": [
+                        "once",
+                        "loop",
+                        "pingpong"
+                      ]
+                    },
+                    "wait": {
+                      "type": "boolean"
+                    },
+                    "timeoutTicks": {
+                      "type": "integer",
+                      "minimum": 20,
+                      "maximum": 12000
+                    }
+                  },
+                  "required": [
+                    "recording"
+                  ],
+                  "description": "Replaces the NPC's route with a recording it walks to and plays once, in a loop (the default) or back and forth. With wait, a once playback completes when it ends."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
                 "const": "animus:play-sound"
               }
             },
@@ -3002,6 +3095,64 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "required": [
                 "arguments"
               ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:resume-patrol"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {},
+                  "description": "Restarts the route or recording the NPC's definition declares; a stopped recording continues where it stopped. Reports resumed or nothing-to-resume."
+                }
+              }
             }
           }
         },
@@ -6534,6 +6685,41 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     },
     {
+      "id": "animus:play-recording",
+      "kind": "action",
+      "description": "Replaces the NPC's route with a recording it walks to and plays once, in a loop (the default) or back and forth. With wait, a once playback completes when it ends.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "recording": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "playback": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "once",
+            "loop",
+            "pingpong"
+          ]
+        },
+        "wait": {
+          "type": "boolean",
+          "required": false
+        },
+        "timeoutTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 20,
+          "maximum": 12000
+        }
+      }
+    },
+    {
       "id": "animus:play-sound",
       "kind": "action",
       "description": "Plays a sound at the NPC, or with at: player at the player, for the triggering player or nearby players. Server behaviors play at the player.",
@@ -6679,6 +6865,15 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "atMost"
         ]
       ]
+    },
+    {
+      "id": "animus:resume-patrol",
+      "kind": "action",
+      "description": "Restarts the route or recording the NPC's definition declares; a stopped recording continues where it stopped. Reports resumed or nothing-to-resume.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {}
     },
     {
       "id": "animus:say",
@@ -8286,6 +8481,20 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
             },
+            "recording": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+              "maxLength": 64,
+              "description": "A recording under recordings/ to play instead of a route."
+            },
+            "playback": {
+              "enum": [
+                "once",
+                "loop",
+                "pingpong"
+              ],
+              "description": "Recording only: once, loop (the default) or pingpong."
+            },
             "mode": {
               "enum": [
                 "walk",
@@ -8474,41 +8683,128 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         "required": [
                           "wander"
                         ]
+                      },
+                      {
+                        "required": [
+                          "recording"
+                        ]
                       }
                     ]
                   }
                 },
                 "else": {
-                  "allOf": [
-                    {
-                      "if": {
-                        "properties": {
-                          "order": {
-                            "const": "wander"
+                  "if": {
+                    "required": [
+                      "recording"
+                    ]
+                  },
+                  "then": {
+                    "not": {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "points"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "mode"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "speed"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "order"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "loop"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "waitTicks"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "guides"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "linkDistance"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "wander"
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "else": {
+                    "allOf": [
+                      {
+                        "if": {
+                          "properties": {
+                            "order": {
+                              "const": "wander"
+                            }
+                          },
+                          "required": [
+                            "order"
+                          ]
+                        },
+                        "then": {
+                          "properties": {
+                            "points": {
+                              "maxItems": 64
+                            }
                           }
                         },
-                        "required": [
-                          "order"
-                        ]
-                      },
-                      "then": {
-                        "properties": {
-                          "points": {
-                            "maxItems": 64
-                          }
-                        }
-                      },
-                      "else": {
-                        "required": [
-                          "points"
-                        ],
-                        "properties": {
-                          "points": {
-                            "minItems": 1
+                        "else": {
+                          "required": [
+                            "points"
+                          ],
+                          "properties": {
+                            "points": {
+                              "minItems": 1
+                            }
                           }
                         }
                       }
-                    }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "enabled": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              },
+              "then": {
+                "if": {
+                  "required": [
+                    "playback"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "recording"
                   ]
                 }
               }

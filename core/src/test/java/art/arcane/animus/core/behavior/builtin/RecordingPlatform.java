@@ -3,6 +3,7 @@ package art.arcane.animus.core.behavior.builtin;
 import art.arcane.animus.api.NpcHandle;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.navigation.MovementProfile;
+import art.arcane.animus.core.recording.Playback;
 import art.arcane.animus.core.virtual.Vec3;
 import java.util.List;
 import java.util.Optional;
@@ -25,6 +26,7 @@ final class RecordingPlatform implements BehaviorPlatform {
     volatile NpcStatus status = new NpcStatus(true, 20);
     volatile boolean inRange = true;
     volatile boolean permission = true;
+    volatile boolean resumable = true;
     volatile int delivered = 1;
     volatile RuntimeException failure;
     volatile List<ChoiceOption> presentedOptions = List.of();
@@ -112,6 +114,8 @@ final class RecordingPlatform implements BehaviorPlatform {
     }
     @Override public String navigationStatus(NpcHandle npc) { return "suspended somewhere"; }
     @Override public boolean stopNavigation(NpcHandle npc) { record("stop"); return true; }
+    @Override public void playRecording(NpcHandle npc, String recording, Playback playback) { record("recording:" + recording + ":" + playback.key()); }
+    @Override public boolean resumePatrol(NpcHandle npc) { record("resume"); return resumable; }
     @Override public void look(NpcHandle npc, Vec3 target) { record("look-point"); }
     @Override public void lookAtPlayer(NpcHandle npc, UUID player) { record("look-player"); }
     @Override public void pose(NpcHandle npc, String pose) { record("pose:" + pose); }

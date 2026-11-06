@@ -119,6 +119,12 @@
 - Performance recording documents (`recordings/<id>.json`): frames, swing, equipment and door events, a byte-exact serialized form, hotload and editor apply, and `schema/recording-v1.schema.json`.
 - Recording core for playback: frame simplification within 0.02 blocks and 2 degrees, and a once, loop or pingpong cursor with interpolated poses, capped event windows and catch-up skips.
 - `[recordings]` settings in `config.toml` for sampling, length, file size, sessions, ghosts and previews, all applied live.
+- Recording playback: `animus:navigation` plays a recording (`"recording"`, `"playback": "once|loop|pingpong"`) as a third source beside `route` and inline points.
+- Playback walks a planned leg to the first frame, plays one recorded tick per route turn with live terrain checks, and catches up 40 ticks ahead over a refused step, up to five skips before the `movement.stuck` rules.
+- Playback swings, changes equipment and opens doors behind protection as recorded, and shows sneaking, swimming, sprinting and gliding as body metadata.
+- A stopped playback keeps its cursor and `resumePatrol` continues from it; a changed recording file hotloads and restarts; a paused cursor waits for unloaded terrain or sleeps with no player near.
+- Folia playback runs on the region budget and carries its cursor, mode and direction through region handoffs.
+- `animus:play-recording` and `animus:resume-patrol` behavior actions; `inspect` and status report the recording, mode, cursor and state.
 
 ### Changed
 

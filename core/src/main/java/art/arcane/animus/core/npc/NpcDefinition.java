@@ -102,6 +102,8 @@ public final class NpcDefinition {
         else {
             try { WaypointSettings.parse(object); }
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
+            try { art.arcane.animus.core.recording.RecordingSource.parse(object); }
+            catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
             try { CombatSettings.parse(object); }
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
             try { MountDeclaration.parse(object); }

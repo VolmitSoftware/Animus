@@ -34,7 +34,8 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
             if (radius < 1 || radius > MAXIMUM_RADIUS || height < 0 || height > MAXIMUM_HEIGHT) throw new IllegalArgumentException("Wander settings exceed native execution bounds");
         }
     }
-    private static final List<String> ROUTE_FIELDS = List.of("points", "mode", "speed", "order", "loop", "waitTicks", "guides", "linkDistance", "wander");
+    /** Inline route settings; a reusable route or a recording refuses each of them. */
+    public static final List<String> ROUTE_FIELDS = List.of("points", "mode", "speed", "order", "loop", "waitTicks", "guides", "linkDistance", "wander");
 
     public WaypointSettings {
         Objects.requireNonNull(mode); Objects.requireNonNull(order); Objects.requireNonNull(points); Objects.requireNonNull(guides);
@@ -70,6 +71,7 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
             if (!bool(data, "enabled", false)) return Optional.empty();
             if (document.has("migration") && !bool(data, "reviewAccepted", false))
                 throw new IllegalArgumentException("reviewAccepted must be true for imported definitions");
+            if (data.has("recording")) return Optional.empty();
             if (data.has("route")) {
                 JsonElement reference = data.get("route");
                 if (!reference.isJsonPrimitive() || !reference.getAsJsonPrimitive().isString()
@@ -89,7 +91,7 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
         parse(document);
         if (!document.has("modules") || !document.getAsJsonObject("modules").has("animus:navigation")) return null;
         JsonObject data = document.getAsJsonObject("modules").getAsJsonObject("animus:navigation");
-        return bool(data, "enabled", false) && data.has("route") ? data.get("route").getAsString() : null;
+        return bool(data, "enabled", false) && data.has("route") && !data.has("recording") ? data.get("route").getAsString() : null;
     }
     public static WaypointSettings document(String text) throws java.io.IOException {
         if (text == null) throw new java.io.IOException("Reusable route is missing");

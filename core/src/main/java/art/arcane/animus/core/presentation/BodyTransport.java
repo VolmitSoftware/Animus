@@ -73,6 +73,11 @@ public interface BodyTransport<P, I> extends AutoCloseable {
     CompletionStage<Void> dragonPhase(P viewer, Body dragon, int phase);
     /** Swings the body's main arm once, as a player placing or breaking a block does. */
     default CompletionStage<Void> swing(P viewer, Body body) { return java.util.concurrent.CompletableFuture.completedFuture(null); }
+    /**
+     * Updates the pose and motion flags of a visible body from {@code look} without respawning it, as a recording
+     * playback does when the recorder sneaks, swims, sprints or glides. A transport without metadata updates ignores it.
+     */
+    default CompletionStage<Void> look(P viewer, Body body, BodyLook look) { return java.util.concurrent.CompletableFuture.completedFuture(null); }
     /** An empty stack clears its slot. */
     CompletionStage<Void> equipment(P viewer, Body body, Map<EquipmentSlot, I> items);
     /** Authoritative: bypasses the ordinary operation limit. */
