@@ -103,7 +103,9 @@ class ShellTopbar extends StatelessWidget {
         ],
       ),
       if (workspace != null && !compact) dom.span(classes: 'animus-topbar-workspace', <Widget>[Component.text(workspace.name)]),
-      if (session != null) ConnectionPill(status: session!.connection.status, hasToken: session!.connection.token != null),
+      // Phones show the connection in the live bar just below, so the short
+      // top bar keeps room for Documents and More.
+      if (session != null && !compact) ConnectionPill(status: session!.connection.status, hasToken: session!.connection.token != null),
       if (compact) ..._compactControls(workspace) else ..._wideControls(workspace),
     ]);
   }

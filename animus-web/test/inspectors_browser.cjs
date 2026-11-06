@@ -10,13 +10,14 @@
 // jumps, a JSON syntax error placed by line), with no console errors and no
 // sideways scrolling.
 //
-//   python3 -m http.server <port> --bind 127.0.0.1 --directory build/jaspr
+//   python3 tool/serve_site.py --port <port>
 //   PLAYWRIGHT_MODULE=/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright \
 //     ANIMUS_WEB_URL=http://127.0.0.1:<port> ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/inspectors_browser.cjs
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {openFromSidebar} = require('./support/shell.cjs');
 
 const exportFolder = path.resolve(__dirname, '../../schema/fixtures/export');
 const shots = process.env.ANIMUS_SCREENSHOTS;
@@ -28,7 +29,7 @@ async function shot(page, name) {
 }
 
 async function open(page, sidebarText) {
-  await page.locator('.animus-sidebar').getByText(sidebarText, {exact: true}).first().click();
+  await openFromSidebar(page, sidebarText);
   await page.locator('.animus-document-header').waitFor();
 }
 
@@ -88,11 +89,11 @@ async function run(browser, viewport, tag, theme) {
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto(process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })());
-  await page.getByRole('heading', {name: 'Open an Animus data folder'}).waitFor();
+  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Open folder'}).first().click();
   await (await chooser).setFiles(exportFolder);
-  await page.getByRole('heading', {name: '1 documents need repair'}).waitFor();
+  await page.getByRole('heading', {name: '1 document needs repair'}).waitFor();
 
   // NPC inspector: help from the schema, a name edit, a workspace behavior added.
   await open(page, 'Greeter');
@@ -103,6 +104,9 @@ async function run(browser, viewport, tag, theme) {
   const name = inspector.getByLabel('name', {exact: true});
   await name.fill('Greeter Edited');
   await page.waitForTimeout(300);
+  // Behaviors sit in the inspector's Behaviour part, closed until opened.
+  const behaviour = inspector.locator('details[data-section="behaviour"]');
+  if (!(await behaviour.evaluate((element) => element.open))) await behaviour.locator('summary').first().click();
   await selectWith(inspector, 'Add a workspace behavior').selectOption('shop:keeper');
   await page.waitForTimeout(300);
   await shot(page, `${tag}-npc-inspector`);

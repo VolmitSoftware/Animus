@@ -165,6 +165,8 @@ class LiveSession {
   void start() {
     _subscriptions.add(connection.statuses.listen(_status));
     _subscriptions.add(connection.events.listen((Map<String, Object?> event) => unawaited(_event(event))));
+    // A tab that opens while another holds the session has waited from the start.
+    _waited = owner.waiting;
     _subscriptions.add(owner.changes.listen(_ownership));
     if (connection.status.online && owned) unawaited(_online());
   }

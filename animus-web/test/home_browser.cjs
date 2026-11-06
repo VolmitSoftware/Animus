@@ -4,7 +4,7 @@
 // missing workspace or document, then ../schema/fixtures/export opened as a
 // data folder with its listing, diagnostics and view tabs (arrow keys).
 //
-//   python3 -m http.server <port> --bind 127.0.0.1 --directory build/jaspr
+//   python3 tool/serve_site.py --port <port>
 //   ANIMUS_WEB_URL=http://127.0.0.1:<port> PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node test/home_browser.cjs
 const assert = require('node:assert/strict');
 const path = require('node:path');

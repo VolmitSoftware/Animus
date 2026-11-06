@@ -10,7 +10,7 @@
 // ../schema/fixtures/documents/behavior/server-welcome.json) and a
 // server-behaviors.json with an empty list.
 //
-//   python3 -m http.server <web port> --bind 127.0.0.1 --directory build/jaspr
+//   python3 tool/serve_site.py --port <web port>
 //   dart run tool/fake_server.dart --port=<fake port> --origin=http://127.0.0.1:<web port> --data=<that folder>
 //   PLAYWRIGHT_MODULE=/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright \
 //     ANIMUS_WEB_URL=http://127.0.0.1:<web port> ANIMUS_FAKE_URL=http://127.0.0.1:<fake port> node test/server_behaviors_live_browser.cjs
@@ -18,6 +18,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {openFromSidebar} = require('./support/shell.cjs');
 
 const site = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })()).replace(/\/$/, '');
 const fake = (process.env.ANIMUS_FAKE_URL || (() => { throw new Error('Set ANIMUS_FAKE_URL to your own fake server, never :9797'); })()).replace(/\/$/, '');
@@ -58,17 +59,18 @@ async function run(browser, viewport, label, theme) {
   page.on('pageerror', error => errors.push(String(error)));
 
   await page.goto(`${site}/#/pair/${code}`);
-  await page.getByRole('heading', {name: /Pair with/}).waitFor();
-  await page.getByRole('button', {name: 'Pair'}).click();
+  // The pairing page leads with the server's name and its fingerprint.
+  await page.locator('[data-testid="pair-fingerprint"]', {hasText: 'sha256:'}).waitFor();
+  await page.getByRole('button', {name: 'Pair', exact: true}).click();
   await page.waitForFunction(() => location.hash.startsWith('#/server/'));
   await page.locator('.animus-live .animus-pill[data-phase="online"]').waitFor({timeout: 20000});
 
   await page.getByText(/documents on the server/).waitFor();
-  await page.getByRole('checkbox', {name: 'server-behaviors server-behaviors'}).check();
-  await page.getByRole('checkbox', {name: 'behavior town:welcome'}).check();
+  await page.getByRole('checkbox', {name: 'server-behaviors', exact: true}).check();
+  await page.getByRole('checkbox', {name: 'town:welcome', exact: true}).check();
   await page.getByRole('button', {name: 'Open 2'}).click();
   await notice(page, 'Opened 2 documents');
-  await page.locator('.animus-sidebar').getByText('server-behaviors', {exact: true}).first().click();
+  await openFromSidebar(page, 'server-behaviors');
   await page.getByRole('tab', {name: 'Visual'}).click();
   const list = page.locator('.animus-server-behaviors');
   await list.getByText('The list is empty, so no server behavior runs. Add one below.').waitFor();

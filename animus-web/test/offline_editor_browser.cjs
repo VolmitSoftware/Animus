@@ -10,7 +10,7 @@
 // and notices, another tab following an edit, and the banner when the browser
 // keeps no IndexedDB.
 //
-//   python3 -m http.server 8098 --bind 127.0.0.1 --directory build/jaspr
+//   python3 tool/serve_site.py --port 8098
 //   dart run tool/fake_server.dart --data=test/fixtures/npc_browser
 //   PLAYWRIGHT_MODULE=/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright \
 //     ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/offline_editor_browser.cjs

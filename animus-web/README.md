@@ -35,7 +35,7 @@ dart analyze
 dart test
 dart run jaspr_cli:jaspr serve       # development server on :8080
 dart run jaspr_cli:jaspr build       # static site in build/jaspr
-python3 -m http.server 8098 --bind 127.0.0.1 --directory build/jaspr
+python3 tool/serve_site.py --port 8098
 ```
 
 CI clones arcane_jaspr into `.deps/arcane_jaspr` at a pinned ref instead of the symlink.
@@ -44,8 +44,10 @@ The 3D preview draws with textures and models from the Minecraft client, which a
 
 The browser checks run against a built site you serve yourself. Every script refuses to start without `ANIMUS_WEB_URL` (the served site), and the ones that talk to a server without `ANIMUS_FAKE_URL` (your own fake server); never point them at a shared port. `ANIMUS_SCREENSHOTS` is optional and should point outside the repository. `test/support/shell.cjs` opens the phone drawer and the More menu for a check, so one script reads the same at both widths.
 
+Serve the site with `tool/serve_site.py` rather than `python3 -m http.server`: the standard server queues only 5 connections, and under the load of several checks it resets some of the parallel stylesheet requests a page makes. `serve_site.py` answers on threads with a queue of 128 (`--port`, `--bind`, `--directory`, default `build/jaspr`). Each check's header comment names the fake server data it expects; restart the fake server with that `--data` between checks.
+
 ```sh
-python3 -m http.server 8111 --bind 127.0.0.1 --directory build/jaspr &
+python3 tool/serve_site.py --port 8111 &
 dart run tool/fake_server.dart --port=9911 --origin=http://127.0.0.1:8111 --data=test/fixtures/npc_browser &
 export PLAYWRIGHT_MODULE=/path/to/node_modules/playwright
 export ANIMUS_WEB_URL=http://127.0.0.1:8111 ANIMUS_FAKE_URL=http://127.0.0.1:9911 ANIMUS_SCREENSHOTS=/tmp/animus-shots
@@ -58,6 +60,10 @@ node test/inspectors_browser.cjs
 node test/npc_browser_browser.cjs
 node test/offline_editor_browser.cjs
 node test/live_editing_browser.cjs   # fake server started with the default --data
+node test/import_browser.cjs         # default --data
+node test/citizens_converter_browser.cjs
+node test/server_behaviors_live_browser.cjs   # --data as its header describes
+node test/skin_render_browser.cjs    # --data from its --write-fixture run
 ```
 
 `home_browser.cjs` checks the home page (one primary action, the three ways to start, the empty list), the skip link, renaming a workspace with Enter and Escape (focus goes back to Rename), deleting with Escape and Restore, the routes to a missing workspace or document (each names the cause and links back), then opens `../schema/fixtures/export` as a data folder: the listing, arrow keys in the document list, the document title as the page heading, the view tablist with arrow keys, a broken Code draft named in the header, and Split and Preview.

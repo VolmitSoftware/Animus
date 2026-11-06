@@ -21,12 +21,13 @@ class ConnectionPill extends StatelessWidget {
       ConnectionPhase.needsPairing || ConnectionPhase.refused => 'is-error',
       ConnectionPhase.offline => hasToken ? 'is-idle' : 'is-error',
     };
+    final String label = phaseLabel(status, hasToken: hasToken);
     return dom.span(
       classes: 'animus-pill $tone',
-      attributes: <String, String>{'role': 'status', 'data-phase': status.phase.name},
+      attributes: <String, String>{'role': 'status', 'data-phase': status.phase.name, 'title': label},
       <Widget>[
         const dom.span(classes: 'animus-pill-dot', attributes: <String, String>{'aria-hidden': 'true'}, <Widget>[]),
-        Component.text(phaseLabel(status, hasToken: hasToken)),
+        dom.span(classes: 'animus-pill-text', <Widget>[Component.text(label)]),
       ],
     );
   }

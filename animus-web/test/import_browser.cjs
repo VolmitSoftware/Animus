@@ -11,7 +11,7 @@
 // scrolling.
 //
 //   dart run tool/fake_server.dart &
-//   python3 -m http.server 8098 --bind 127.0.0.1 --directory build/jaspr
+//   python3 tool/serve_site.py --port 8098
 //   PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/shots node test/import_browser.cjs
 //
 // ANIMUS_WEB_URL and ANIMUS_FAKE_URL point it elsewhere.

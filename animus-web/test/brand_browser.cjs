@@ -7,7 +7,7 @@
 // ANIMUS_SCREENSHOTS (optional, outside the repository) receives home,
 // document and focus shots per theme and width.
 //
-//   python3 -m http.server <port> --bind 127.0.0.1 --directory build/jaspr
+//   python3 tool/serve_site.py --port <port>
 //   ANIMUS_WEB_URL=http://127.0.0.1:<port> PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node test/brand_browser.cjs
 const assert = require('node:assert/strict');
 const fs = require('node:fs');

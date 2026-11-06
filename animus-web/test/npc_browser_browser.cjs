@@ -13,7 +13,7 @@
 // asks first) and shows that a token without the spawn scope cannot. No
 // console errors and no sideways scrolling anywhere.
 //
-//   python3 -m http.server <WEB_PORT> --bind 127.0.0.1 --directory build/jaspr &
+//   python3 tool/serve_site.py --port <WEB_PORT> &
 //   dart run tool/fake_server.dart --port=<FAKE_PORT> --origin=http://127.0.0.1:<WEB_PORT> --data=test/fixtures/npc_browser &
 //   PLAYWRIGHT_MODULE=/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright \
 //     ANIMUS_WEB_URL=http://127.0.0.1:<WEB_PORT> ANIMUS_FAKE_URL=http://127.0.0.1:<FAKE_PORT> \
@@ -22,6 +22,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {sidebar, topbarAction} = require('./support/shell.cjs');
 
 const folder = path.resolve(__dirname, 'fixtures/npc_browser');
 const site = process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })();
@@ -118,14 +119,14 @@ async function local(browser, viewport, tag, theme) {
   const {context, page, errors} = await open(browser, viewport, theme);
   const phone = viewport.width < 600;
   await page.goto(`${site}/`);
-  await page.getByRole('heading', {name: 'Open an Animus data folder'}).waitFor();
+  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Open folder'}).first().click();
   await (await chooser).setFiles(folder);
   await page.getByRole('heading', {name: 'Every document passes the shared schemas'}).waitFor();
 
   // Browser: list, search, folder and tag filters.
-  await page.locator('.animus-tree-browse').click();
+  await (await sidebar(page)).locator('.animus-tree-browse').click();
   const browserPanel = page.getByRole('region', {name: 'NPC browser'});
   await browserPanel.waitFor();
   const all = ['harbor/dockhand', 'harbor/ferryman', 'town/baker', 'town/guard-north', 'town/guard-south', 'wild/golem-keeper'];
@@ -193,10 +194,10 @@ async function local(browser, viewport, tag, theme) {
   await bulk.getByRole('button', {name: 'Move to folder'}).click();
   await waitRows(page, ['harbor/dockhand', 'harbor/ferryman', 'town/baker', 'watch/guard-north', 'watch/guard-south', 'wild/golem-keeper']);
   await shot(page, `${tag}-04-bulk`);
-  await page.getByRole('button', {name: 'Undo'}).click();
+  await topbarAction(page, 'Undo');
   await waitRows(page, all);
   assert.deepEqual(await tagsOf(page, 'town/guard-south'), ['guard', 'night-watch'], 'undoing the move keeps the tags');
-  await page.getByRole('button', {name: 'Undo'}).click();
+  await topbarAction(page, 'Undo');
   await page.waitForFunction(() => !document.querySelector('.animus-npc-tag[data-tag="night-watch"]'));
   assert.deepEqual(await tagsOf(page, 'town/guard-north'), ['guard', 'patrol']);
 
@@ -210,7 +211,7 @@ async function local(browser, viewport, tag, theme) {
   await bulk.getByRole('button', {name: 'Disable', exact: true}).click();
   await page.waitForFunction(() => !document.querySelector('.animus-npc-row [data-feature="combat"]'));
   await shot(page, `${tag}-05-bulk-module`);
-  await page.getByRole('button', {name: 'Undo'}).click();
+  await topbarAction(page, 'Undo');
   await page.locator('.animus-npc-row[data-npc="town/guard-north"] [data-feature="combat"]').waitFor();
 
   // Bulk delete asks first; Escape keeps the NPCs.
@@ -433,7 +434,7 @@ async function pairWith(page, scopes) {
   for (const id of ['harbor/dockhand', 'harbor/ferryman']) await page.getByRole('checkbox', {name: id, exact: true}).check();
   await page.getByRole('button', {name: 'Open 2'}).click();
   await page.waitForFunction(() => decodeURIComponent(location.hash).includes('/npc/'));
-  await page.locator('.animus-tree-browse').click();
+  await (await sidebar(page)).locator('.animus-tree-browse').click();
   await waitRows(page, ['harbor/dockhand', 'harbor/ferryman']);
   await select(page, 'harbor/dockhand');
   await select(page, 'harbor/ferryman');

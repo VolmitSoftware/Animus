@@ -274,6 +274,9 @@ class _SyncPageState extends State<SyncPage> {
               ),
             ],
           ),
+        // After a push the new compare has nothing left to send, so the result
+        // shows above that line rather than inside the push form.
+        if (_pushResult != null) dom.p(classes: 'animus-ok', attributes: const <String, String>{'role': 'status'}, <Widget>[Component.text(_pushResult!)]),
         if (plan != null && plan.where(SyncState.added).isEmpty && plan.where(SyncState.conflict).isEmpty)
           dom.p(
             classes: 'animus-muted',
@@ -382,7 +385,6 @@ class _SyncPageState extends State<SyncPage> {
               },
               onCancel: () => setState(() => _confirmReplace = false),
             ),
-          if (_pushResult != null) dom.p(classes: 'animus-ok', attributes: const <String, String>{'role': 'status'}, <Widget>[Component.text(_pushResult!)]),
         ],
       ],
     );

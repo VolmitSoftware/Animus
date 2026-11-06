@@ -10,13 +10,14 @@
 // scrolls the page, both themes, no horizontal overflow at 390 px and no
 // console errors. Needs the asset pack in the build.
 //
-//   python3 -m http.server <port> --bind 127.0.0.1 --directory build/jaspr
+//   python3 tool/serve_site.py --port <port>
 //   PLAYWRIGHT_MODULE=/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright \
 //     ANIMUS_WEB_URL=http://127.0.0.1:<port> ANIMUS_SCREENSHOTS=<folder> node test/rig_editor_browser.cjs
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {closeDrawer, sidebar, topbarAction} = require('./support/shell.cjs');
 
 const folder = path.resolve(__dirname, 'fixtures/rig_editor');
 const bbmodel = path.resolve(__dirname, 'fixtures/bbmodel/robot.bbmodel');
@@ -89,17 +90,18 @@ function watch(page, errors, allowed = []) {
 
 async function openFolder(page) {
   await page.goto(site);
-  await page.getByRole('heading', {name: 'Open an Animus data folder'}).waitFor();
+  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Open folder'}).first().click();
   await (await chooser).setFiles(folder);
-  await page.locator('.animus-sidebar').getByText('town:golem', {exact: true}).waitFor();
+  await (await sidebar(page)).getByText('town:golem', {exact: true}).waitFor();
+  await closeDrawer(page);
   return {base: page.url().split('#')[0], workspace: page.url().split('#')[1].split('?')[0]};
 }
 
 async function theme(page, dark) {
   const isDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
-  if (isDark !== dark) await page.getByRole('button', {name: dark ? 'Use dark theme' : 'Use light theme'}).click();
+  if (isDark !== dark) await topbarAction(page, dark ? 'Use dark theme' : 'Use light theme');
   await page.waitForFunction(want => document.documentElement.classList.contains(want ? 'dark' : 'light'), dark);
 }
 
@@ -172,7 +174,7 @@ async function run(browser, viewport, label, dark) {
   await page.waitForFunction(() => document.querySelector('[aria-label="Pivot Y"]').value !== '1.1');
   assert.ok(Number(await pivotY.inputValue()) > 1.1, 'pivot rose');
   step(label, 'gizmo: drag Y handle -> torso pivot rises');
-  await page.getByRole('button', {name: 'Undo'}).click();
+  await topbarAction(page, 'Undo');
   await page.waitForFunction(() => document.querySelector('[aria-label="Pivot Y"]').value === '1.1');
   step(label, 'Undo -> pivot back to 1.1');
 
@@ -181,7 +183,7 @@ async function run(browser, viewport, label, dark) {
   await page.keyboard.press('ArrowUp');
   await page.waitForFunction(() => document.querySelector('[aria-label="Pivot Y"]').value === '1.1625');
   step(label, 'gizmo: focused Y handle + ArrowUp -> pivot 1.1625');
-  await page.getByRole('button', {name: 'Undo'}).click();
+  await topbarAction(page, 'Undo');
   await page.waitForFunction(() => document.querySelector('[aria-label="Pivot Y"]').value === '1.1');
 
   // Rename a bone through the tree.
@@ -307,7 +309,7 @@ async function run(browser, viewport, label, dark) {
 
   // Import a Blockbench model: a new rig drawn with its own texture.
   const importer = page.waitForEvent('filechooser');
-  await page.getByRole('button', {name: 'Import .bbmodel'}).first().click();
+  await topbarAction(page, 'Import a Blockbench model', {menu: 'import'});
   await (await importer).setFiles(bbmodel);
   await page.locator('.animus-rig-editor[data-rig="town:robot"]').waitFor();
   await drawn(page);
@@ -316,7 +318,7 @@ async function run(browser, viewport, label, dark) {
   step(label, 'Import .bbmodel -> town:robot drawn with its own texture');
 
   const exported = page.waitForEvent('download');
-  await page.getByRole('button', {name: 'Export zip'}).click();
+  await topbarAction(page, 'Export the data folder zip', {menu: 'export'});
   const zip = fs.readFileSync(await (await exported).path());
   for (const entry of ['rigs/town/robot.json', 'animations/town/robot/walk.json', 'pack/assets/animus/textures/item/robot/robot.png']) {
     assert.ok(zip.includes(entry), `export holds ${entry}`);
