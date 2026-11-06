@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "revision": 3,
+  "id": "town:counter",
+  "entry": "main",
+  "variables": {
+    "count": {"type": "integer", "initial": 0},
+    "names": {"type": "list", "initial": ["Alex", "Sam"]},
+    "prices": {"type": "map", "initial": {"bread": 2, "apple": 1}},
+    "item": {"type": "any", "initial": ""},
+    "label": {"type": "string", "initial": ""},
+    "pass": {"type": "integer", "initial": 0},
+    "total": {"type": "decimal", "initial": 0.0},
+    "visits": {"type": "integer", "initial": 0, "scope": "player", "lifetime": "persistent"}
+  },
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {"type": "set", "variable": "visits", "value": {"expression": "visits + 1"}},
+        {
+          "type": "while",
+          "expression": "count < 3",
+          "maximum": 8,
+          "body": {"type": "set", "variable": "count", "value": {"expression": "count + 1"}}
+        },
+        {
+          "type": "foreach",
+          "list": {"variable": "names"},
+          "as": "item",
+          "index": "pass",
+          "body": {
+            "type": "sequence",
+            "steps": [
+              {"type": "condition", "expression": "pass > 0", "then": {"type": "continue"}},
+              {
+                "type": "action",
+                "capability": "animus:say",
+                "arguments": {"text": null},
+                "templates": {"/text": "Hello {{ item }}, visit {{ visits }}."}
+              }
+            ]
+          }
+        },
+        {"type": "repeat", "count": {"expression": "len(names)"}, "index": "pass", "body": {"type": "wait", "ticks": 20}},
+        {"type": "call", "routine": "sum", "arguments": {"label": "prices"}, "result": "total"},
+        {"type": "set", "variable": "label", "value": {"template": "{{ count }} rounds"}}
+      ]
+    },
+    "sum": {
+      "type": "sequence",
+      "steps": [
+        {"type": "condition", "expression": "has(prices, 'bread')", "then": {"type": "return", "value": {"expression": "sum(values(prices))"}}},
+        {"type": "return", "value": 0}
+      ]
+    }
+  },
+  "triggers": [{"id": "click", "event": "interaction"}]
+}
