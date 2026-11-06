@@ -1,9 +1,7 @@
-package art.arcane.animus.bukkit.recording;
+package art.arcane.animus.core.recording;
 
 import art.arcane.animus.core.CatalogChange;
 import art.arcane.animus.core.CatalogReloads;
-import art.arcane.animus.core.recording.RecordingDocument;
-import art.arcane.animus.core.recording.RecordingDocuments;
 import art.arcane.animus.core.editor.DocumentKind;
 import art.arcane.animus.core.storage.DocumentStore;
 import java.io.IOException;

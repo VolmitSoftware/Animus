@@ -1,15 +1,10 @@
-package art.arcane.animus.bukkit.recording;
+package art.arcane.animus.core.recording;
 
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.npc.NpcPose;
 import art.arcane.animus.core.presentation.BodyPose;
 import art.arcane.animus.core.presentation.BodyTransport;
-import art.arcane.animus.core.recording.Playback;
-import art.arcane.animus.core.recording.RecordingDocument;
-import art.arcane.animus.core.recording.RecordingEvent;
-import art.arcane.animus.core.recording.RecordingPlayback;
-import art.arcane.animus.core.recording.RecordingPose;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.Objects;
