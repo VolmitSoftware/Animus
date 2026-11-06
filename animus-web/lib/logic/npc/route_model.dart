@@ -224,3 +224,24 @@ JsonMap setRouteOrder(JsonMap route, String order) {
 
 /// Snaps a grid position to a whole block.
 double snapBlock(double value) => value.roundToDouble();
+
+/// The route with node [index] of [key] moved by [dx] and [dz] blocks.
+JsonMap nudgeRouteNode(JsonMap route, String key, int index, double dx, double dz) {
+  final List<Object?> list = asList(route[key]);
+  if (index < 0 || index >= list.length) return route;
+  final JsonMap node = asMap(list[index]);
+  return moveRouteNode(route, key, index, (asDouble(node['x']) ?? 0) + dx, (asDouble(node['z']) ?? 0) + dz);
+}
+
+/// The x and z step an arrow key moves a focused point: a quarter block, or
+/// a whole block with Shift. North (negative z) is up. Null for other keys.
+(double, double)? routeNudge(String key, {required bool shift}) {
+  final double step = shift ? 1 : 0.25;
+  return switch (key) {
+    'ArrowLeft' => (-step, 0.0),
+    'ArrowRight' => (step, 0.0),
+    'ArrowUp' => (0.0, -step),
+    'ArrowDown' => (0.0, step),
+    _ => null,
+  };
+}
