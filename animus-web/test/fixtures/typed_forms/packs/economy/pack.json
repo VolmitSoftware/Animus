@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "economy",
+  "name": "Economy",
+  "modules": {
+    "bank": {
+      "required": false,
+      "configuration": {
+        "currency": "gold",
+        "startingBalance": 10
+      }
+    }
+  }
+}

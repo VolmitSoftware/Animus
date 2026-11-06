@@ -659,7 +659,7 @@
     {
       "id": "animus:play-recording",
       "kind": "action",
-      "description": "Replaces the NPC's route with a recording it walks to and plays once, in a loop (the default) or back and forth. With wait, a once playback completes when it ends.",
+      "description": "Replaces the NPC's route with a recording it walks to and plays once, in a loop or back and forth; without playback, the recording's own playback, else loop. With wait, a once playback completes when it ends.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",

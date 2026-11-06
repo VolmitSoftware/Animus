@@ -548,3 +548,98 @@
     width: 100%;
   }
 }
+
+/* Typed values and key/value editors: values no schema describes, edited by
+   kind. A row is key, value, remove; a nested list or object drops under its
+   key, indented, so depth reads without boxes inside boxes. */
+
+.animus-kv,
+.animus-typed-list,
+.animus-inspect-array {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.animus-typed-list > button,
+.animus-inspect-array > button {
+  justify-self: start;
+}
+
+.animus-kv-row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 10rem) minmax(0, 1fr) auto;
+  gap: 0.375rem;
+  align-items: start;
+  min-width: 0;
+}
+
+.animus-kv-key,
+.animus-kv-value {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.animus-typed-value {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, 8rem) minmax(0, 1fr);
+  gap: 0.375rem;
+  align-items: start;
+  min-width: 0;
+}
+
+.animus-typed-value.is-nested {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.animus-typed-value.is-nested > .animus-typed-kind {
+  max-width: 10rem;
+}
+
+.animus-typed-value.is-nested > .animus-kv,
+.animus-typed-value.is-nested > .animus-typed-list,
+.animus-inspect-array-item {
+  padding-left: 0.75rem;
+}
+
+.animus-typed-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.375rem;
+  align-items: start;
+  min-width: 0;
+}
+
+.animus-typed-actions,
+.animus-inspect-array-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.animus-inspect-array-item {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.animus-typed-empty {
+  padding-top: 0.375rem;
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 760px) {
+  .animus-kv-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .animus-kv-row > .animus-kv-value {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .animus-typed-value {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

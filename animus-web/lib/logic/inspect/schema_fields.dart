@@ -328,8 +328,7 @@ class SchemaView {
   FieldSpec field(String key, Object? raw, {bool required = false}) {
     final Map<String, Object?> node = resolve(raw);
     final (List<FieldOption> options, bool open) = choices(node);
-    final Object? type = node['type'];
-    final String? typeName = type is String ? type : (type is List<Object?> && type.length == 1 ? type.first as String? : null);
+    final String? typeName = _typeName(node);
     final FieldKind kind = options.isNotEmpty
         ? FieldKind.choice
         : switch (typeName) {
@@ -339,7 +338,7 @@ class SchemaView {
             'boolean' => FieldKind.boolean,
             'object' => FieldKind.object,
             'array' => FieldKind.array,
-            _ => node.containsKey('properties') ? FieldKind.object : FieldKind.any,
+            _ => _hasProperties(node) ? FieldKind.object : FieldKind.any,
           };
     final Object? exclusiveMinimum = node['exclusiveMinimum'];
     final Object? exclusiveMaximum = node['exclusiveMaximum'];
@@ -360,6 +359,23 @@ class SchemaView {
       schema: node,
     );
   }
+
+  /// The single type [node] names, or one an `allOf` member names (items
+  /// merged from conditional branches carry their type there).
+  String? _typeName(Map<String, Object?> node, [int depth = 0]) {
+    final Object? type = node['type'];
+    if (type is String) return type;
+    if (type is List<Object?>) return type.length == 1 ? type.first as String? : null;
+    if (depth >= _depthLimit) return null;
+    for (final Object? member in asList(node['allOf'])) {
+      final String? inner = _typeName(resolve(member), depth + 1);
+      if (inner != null) return inner;
+    }
+    return null;
+  }
+
+  bool _hasProperties(Map<String, Object?> node, [int depth = 0]) =>
+      node.containsKey('properties') || (depth < _depthLimit && asList(node['allOf']).any((Object? member) => _hasProperties(resolve(member), depth + 1)));
 
   String? _description(Map<String, Object?> node) {
     final Object? description = node['description'];

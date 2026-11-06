@@ -245,6 +245,18 @@ const List<String> nestedActionFields = <String>['then', 'else', 'default', 'ste
   return (out, dropped);
 }
 
+/// [action] with field [name] set to [value]; null or empty text removes it.
+/// Other keys keep their places.
+Map<String, Object?> withActionField(Map<String, Object?> action, String name, Object? value) {
+  final Map<String, Object?> next = <String, Object?>{...action};
+  if (value == null || (value is String && value.isEmpty)) {
+    next.remove(name);
+  } else {
+    next[name] = value;
+  }
+  return next;
+}
+
 /// A minimal valid action of [type], for the add menu.
 Map<String, Object?> newAction(String type) => switch (type) {
       'command' => <String, Object?>{'type': type, 'command': 'say hello'},

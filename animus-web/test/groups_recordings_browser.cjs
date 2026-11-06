@@ -4,8 +4,10 @@
 // and undoing it in one step, unassigning by tag and by selection; an NPC's
 // Groups list and Effective part (each value with its source, a link to the
 // group that set it); the group editor (description, members, values parts);
-// the recording view (facts, path, scrub, play, events, read-only Code) and
-// the recordings list; an NPC playing a recording with its playback mode;
+// the recording view (facts, path, scrub, play, events), its details form
+// (description, tags, playback, speed), trimming the start and end on the
+// scrub, Code Apply refusing a draft that breaks a recording rule and
+// applying a valid one, renaming it, and the recordings list; an NPC playing a recording with its playback mode;
 // and the route editor's ranged waits, seed, start offset, jitter, weights
 // and junctions. No console errors and no sideways scrolling anywhere.
 //
@@ -208,15 +210,73 @@ async function run(browser, viewport, theme, tag) {
   assert.equal(await page.locator('#animus-recording-play').getAttribute('aria-pressed'), 'false');
   await shot(page, `${tag}-05-recording`);
   await noSidewaysScroll(page, `${tag} recording`);
-  await page.getByRole('tab', {name: 'Code'}).click();
-  await page.locator('[data-recording="code-note"]').waitFor();
-  assert.equal(await page.getByRole('button', {name: 'Apply to draft'}).count(), 0);
   assert.equal(await page.getByRole('button', {name: 'Duplicate'}).count(), 0);
-  assert.equal(await page.getByRole('button', {name: 'Rename'}).count(), 1);
+
+  // Details.
+  const details = page.locator('[data-recording="details"]');
+  await details.waitFor();
+  await page.locator('#animus-recording-description').fill('Stall walk');
+  await page.locator('#animus-recording-tag').fill('market');
+  await page.locator('#animus-recording-add-tag').click();
+  await details.locator('[data-tag="market"]').waitFor();
+  assert.equal(await page.locator('#animus-recording-tag').inputValue(), '');
+  await chooseAndWait(page.locator('#animus-recording-playback'), 'once');
+  await page.locator('#animus-recording-speed').fill('5');
+  await details.getByText('Use 0.25 to 4.').waitFor();
+  await page.locator('#animus-recording-speed').fill('2');
+  await page.locator('#animus-recording-speed').blur();
+  await settle(page);
+  let json = await codeOf(page);
+  assert.equal(json.description, 'Stall walk');
+  assert.deepEqual(json.tags, ['market']);
+  assert.equal(json.playback, 'once');
+  assert.equal(json.speed, 2);
+  await noSidewaysScroll(page, `${tag} recording details`);
+
+  // Trim to ticks 20..60 from the scrub, keyboard first: focus the scrub,
+  // step it, then press the buttons with Enter.
+  await page.locator('#animus-recording-scrub').fill('19');
+  await page.locator('#animus-recording-trim-start').focus();
+  await page.keyboard.press('Enter');
+  await page.locator('#animus-recording-scrub').fill('62');
+  await page.locator('#animus-recording-trim-end').click();
+  await page.locator('[data-recording="trim-range"]').getByText('Keep tick 20 to 60: 40 ticks, 3 of 5 frames').waitFor();
+  assert.equal(await page.locator('.animus-recording-line.is-kept').count(), 1);
+  await shot(page, `${tag}-05b-recording-trim`);
+  await noSidewaysScroll(page, `${tag} recording trim`);
+  await page.locator('#animus-recording-trim-apply').click();
+  await page.locator('[data-recording="facts"]').getByText('40 ticks', {exact: false}).waitFor();
+  json = await codeOf(page);
+  assert.equal(json.durationTicks, 40);
+  assert.deepEqual(json.frames.map((frame) => frame[0]), [0, 20, 40]);
+  assert.deepEqual(json.origin, {x: 102, y: 64, z: -20.25, yaw: 92.5, pitch: -3});
+  assert.equal(json.events[0].slot, 'main_hand', 'the sword worn at the new start is kept');
+
+  // Code: a draft that breaks a rule is refused with the reason; a valid one applies.
+  await page.getByRole('tab', {name: 'Code'}).click();
+  const code = page.locator('.animus-code textarea');
+  await code.fill(JSON.stringify({...json, frames: json.frames.map((frame, index) => index === 1 ? [0, ...frame.slice(1)] : frame)}, null, 2));
+  await page.locator('[data-recording="code-refusal"]').getByText("$.frames[1][0]: expected a tick above the previous frame's 0", {exact: false}).waitFor();
+  assert.equal(await page.getByRole('button', {name: 'Apply to draft'}).isDisabled(), true);
+  await shot(page, `${tag}-05c-recording-code`);
+  await noSidewaysScroll(page, `${tag} recording code`);
+  await code.fill(JSON.stringify({...json, description: 'Coded'}, null, 2));
+  assert.equal(await page.locator('[data-recording="code-refusal"]').count(), 0);
+  await page.getByRole('button', {name: 'Apply to draft'}).click();
+  await settle(page);
+  await page.getByRole('tab', {name: 'Visual'}).click();
+  assert.equal(await page.locator('#animus-recording-description').inputValue(), 'Coded');
+
+  // Rename from the id field carries the NPC that plays it.
+  await page.locator('#animus-recording-id').fill('market-walk');
+  await page.locator('#animus-recording-rename').click();
+  await page.waitForFunction(() => location.hash.endsWith('/recording/market-walk'));
+  await openDocument(page, workspace, 'npc', 'town/stall-keeper');
+  assert.equal((await codeOf(page)).modules['animus:navigation'].recording, 'market-walk');
 
   // The recordings list.
   await page.evaluate((hash) => { location.hash = hash; }, `#/workspace/${workspace}/recordings`);
-  await page.locator('[data-recording="list"] tr[data-recording-id="market-loop"]').waitFor();
+  await page.locator('[data-recording="list"] tr[data-recording-id="market-walk"]').waitFor();
   await shot(page, `${tag}-06-recordings`);
   await noSidewaysScroll(page, `${tag} recordings list`);
 

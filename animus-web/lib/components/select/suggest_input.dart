@@ -27,6 +27,7 @@ class SuggestInput extends StatefulWidget {
     this.placeholder,
     this.onSubmit,
     this.references,
+    this.id,
     super.key,
   });
 
@@ -42,12 +43,15 @@ class SuggestInput extends StatefulWidget {
   /// The document kind the text names, which adds the footer rows.
   final DocumentKind? references;
 
+  /// The text field's element id, for a row label's `for`.
+  final String? id;
+
   @override
   State<SuggestInput> createState() => _SuggestInputState();
 }
 
 class _SuggestInputState extends State<SuggestInput> {
-  final String _baseId = 'animus-suggest-${_nextSuggestId++}';
+  late final String _baseId = component.id ?? 'animus-suggest-${_nextSuggestId++}';
   SelectState _state = const SelectState();
   PopupPlacement _placement = const PopupPlacement(sheet: false);
   void Function()? _stopWatching;
@@ -75,6 +79,22 @@ class _SuggestInputState extends State<SuggestInput> {
 
   /// Suggestions for the text typed since focus; all of them before that.
   SelectRows get _rows => SelectRows(filterOptions(_options, _typed ?? ''), _actions.length);
+
+  /// Typed text matched nothing yet; a parent that narrows its suggestions
+  /// to the text answers after the keystroke, so the list opens then.
+  bool _awaiting = false;
+
+  @override
+  void didUpdateWidget(SuggestInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_awaiting || identical(oldWidget.suggestions, component.suggestions)) return;
+    _awaiting = false;
+    if ((_typed ?? '').isNotEmpty && _rows.length > 0 && !_state.open) {
+      Future<void>.microtask(() {
+        if (mounted && !_state.open) _show(const SelectState(open: true));
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -177,12 +197,14 @@ class _SuggestInputState extends State<SuggestInput> {
             final String text = (event.target! as web.HTMLInputElement).value;
             _typed = text;
             component.onChanged(text);
+            _awaiting = text.isNotEmpty && _rows.length == 0;
             if (!_listed) return;
             _show(text.isNotEmpty && _rows.length > 0 ? const SelectState(open: true) : const SelectState());
           },
           'keydown': _key,
           'blur': (web.Event _) {
             if (!mounted) return;
+            _awaiting = false;
             if (_state.open) _show(const SelectState());
             setState(() => _typed = null);
           },

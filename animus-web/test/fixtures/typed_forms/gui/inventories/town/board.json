@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "revision": 3,
+  "title": "&8Town board &7({{ server.online }} online)",
+  "resolution": "9x4",
+  "mask": [
+    "#########",
+    "#LLLLLLL#",
+    "#LLLLLLL#",
+    "##P#T#N##"
+  ],
+  "keys": {
+    "#": {
+      "type": "decoration",
+      "icon": {
+        "type": "item",
+        "item": "minecraft:gray_stained_glass_pane",
+        "name": " "
+      }
+    },
+    "P": {
+      "type": "button",
+      "icon": {
+        "type": "item",
+        "item": "minecraft:arrow",
+        "name": "&ePrevious",
+        "lore": [
+          "&7Page {{ page }} of {{ pages }}"
+        ]
+      },
+      "actions": [
+        {
+          "type": "navigate",
+          "mode": "page",
+          "target": "prev"
+        },
+        {
+          "type": "inventory",
+          "id": "town:board",
+          "args": {
+            "page": "2"
+          }
+        }
+      ]
+    },
+    "N": {
+      "type": "button",
+      "icon": {
+        "type": "item",
+        "item": "minecraft:arrow",
+        "name": "&eNext"
+      },
+      "actions": [
+        {
+          "type": "navigate",
+          "mode": "page",
+          "target": "next"
+        }
+      ]
+    },
+    "T": {
+      "type": "toggle",
+      "condition": "viewer.sneaking",
+      "expectedValue": true,
+      "trueIcon": {
+        "type": "item",
+        "item": "minecraft:lime_dye",
+        "name": "&aSneaking"
+      },
+      "falseIcon": {
+        "type": "item",
+        "item": "minecraft:gray_dye",
+        "name": "&7Standing"
+      },
+      "trueActions": [
+        {
+          "type": "message",
+          "message": "&aYou are sneaking."
+        }
+      ],
+      "falseActions": [
+        {
+          "type": "call",
+          "action": "greet"
+        }
+      ]
+    }
+  },
+  "slots": {
+    "0": {
+      "type": "button",
+      "icon": {
+        "type": "playerHead",
+        "player": "{{ viewer.name }}",
+        "name": "&b{{ viewer.name }}"
+      },
+      "actions": [
+        {
+          "type": "animus:open-shop",
+          "shop": "town:market"
+        }
+      ]
+    }
+  },
+  "list": {
+    "area": "L",
+    "var": "entry",
+    "source": "['bread', 'cake', 'cookie', 'apple']",
+    "template": {
+      "type": "button",
+      "icon": {
+        "type": "item",
+        "item": "minecraft:paper",
+        "name": "&f{{ upper(entry) }}"
+      },
+      "actions": [
+        {
+          "type": "setSession",
+          "var": "picked",
+          "value": "entry"
+        }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "night",
+      "priority": 10,
+      "when": "time.hour >= 20",
+      "presentation": {
+        "title": "&1Town board at night"
+      }
+    }
+  ],
+  "actions": {
+    "greet": [
+      {
+        "type": "sound",
+        "sound": "minecraft:ui.button.click"
+      },
+      {
+        "type": "message",
+        "message": "&7Hello, {{ viewer.name }}."
+      }
+    ]
+  },
+  "closeOnTeleport": true
+}

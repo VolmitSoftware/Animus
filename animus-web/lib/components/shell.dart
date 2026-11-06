@@ -9,16 +9,17 @@ import 'package:web/web.dart' as web;
 
 import '../logic/data_folder.dart';
 import '../logic/gui/gloss_bundle.dart';
-import '../logic/gui/gui_catalog.dart';
 import '../logic/gui/gui_json.dart';
 import '../logic/gui/gui_text.dart';
 import '../logic/inspect/server_behaviors.dart';
 import '../logic/offline/new_documents.dart';
+import '../logic/npc/skin_edits.dart';
 import '../logic/recording/rename_references.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import '../model/server_binding.dart';
 import '../services/browser.dart';
+import '../state/catalog_entry.dart';
 import '../state/editor_store.dart';
 import '../state/live_session.dart';
 import '../state/server_hub.dart';
@@ -45,10 +46,6 @@ import 'server/pair_page.dart';
 import 'server/server_overview.dart';
 import 'shell_sidebar.dart';
 import 'shell_topbar.dart';
-
-/// Kinds whose Visual view edits the parsed JSON (GUI editors, the
-/// schema-driven NPC and behavior inspectors and the route editor).
-const Set<DocumentKind> jsonEditedKinds = <DocumentKind>{...guiKinds, DocumentKind.npc, DocumentKind.group, DocumentKind.behavior, DocumentKind.route, DocumentKind.pack, DocumentKind.serverBehaviors};
 
 /// The id of every screen's `<main>`, the target of the skip link.
 const String mainId = 'animus-main';
@@ -520,12 +517,10 @@ class _EditorShellState extends State<EditorShell> {
             view: selected.view,
             onView: (ViewMode view) => component.onNavigate(selected.withView(view)),
             onSource: (String source) => component.store.editSource(document.kind, document.id, source),
-            onJson: jsonEditedKinds.contains(document.kind)
-                ? (JsonUpdate update, {String? coalesce}) => component.store.commit(
-                      documents: <DocumentChange>[DocumentChange.update(document.kind, document.id, update)],
-                      coalesce: coalesce == null ? null : '${document.kind.wireName}:${document.id}:$coalesce',
-                    )
-                : null,
+            onJson: (JsonUpdate update, {String? coalesce}) => component.store.commit(
+                  documents: <DocumentChange>[DocumentChange.update(document.kind, document.id, update)],
+                  coalesce: coalesce == null ? null : '${document.kind.wireName}:${document.id}:$coalesce',
+                ),
             onRename: _movable(document.kind) ? (String id) => _relocate(workspace, document, id, copy: false) : null,
             onDuplicate: _movable(document.kind) && document.kind != DocumentKind.recording ? (String id) => _relocate(workspace, document, id, copy: true) : null,
             onDelete: () async {
@@ -544,6 +539,14 @@ class _EditorShellState extends State<EditorShell> {
             onCommit: (List<DocumentChange> changes, String label) => component.store.commit(documents: changes, label: label),
             onServerPreview: session == null ? null : () => session.startPreview(),
             newConversationHref: NewDocumentRoute.conversation(workspace.id).format(),
+            serverBehaviors: <String>[
+              for (final CatalogEntry entry in session?.catalog ?? const <CatalogEntry>[])
+                if (entry.kind == DocumentKind.behavior) entry.id,
+            ],
+            skinEditing: SkinEditing(
+              resources: workspace.resources,
+              commit: (SkinChange change) => component.store.commit(documents: change.documents, resources: change.resources, label: change.label),
+            ),
           )
         else if (selected != null)
           dom.section(classes: 'animus-panel is-error', <Widget>[

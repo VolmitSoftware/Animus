@@ -8,6 +8,7 @@ import 'dart:convert';
 import '../../config/shared_schemas.g.dart';
 import '../../model/document_kind.dart';
 import '../gui/gui_json.dart';
+import '../shared_schemas.dart';
 import 'completion_catalog.dart';
 import 'schema_fields.dart';
 
@@ -71,12 +72,19 @@ class InspectSchemas {
   /// Whether these came from a connected server.
   final bool live;
 
-  /// The schema for [kind], or null when the inspectors have none.
+  /// The schema for [kind]: the inspectors' own, else the shared schema the
+  /// endpoints table names, or null for a kind with none (skins).
   SchemaView? forKind(DocumentKind kind) => switch (kind) {
         DocumentKind.npc => npc,
         DocumentKind.behavior => behavior,
         DocumentKind.pack => pack,
         DocumentKind.serverBehaviors => serverBehaviors,
-        _ => null,
+        _ => _shared.putIfAbsent(kind, () {
+            final String? name = SharedSchemas.embedded.schemaFor(kind);
+            final String? source = name == null ? null : sharedSchemaSources[name];
+            return source == null ? null : SchemaView(asMap(jsonDecode(source)));
+          }),
       };
+
+  static final Map<DocumentKind, SchemaView?> _shared = <DocumentKind, SchemaView?>{};
 }

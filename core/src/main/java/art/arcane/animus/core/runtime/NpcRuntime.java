@@ -100,8 +100,9 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     /**
      * Replaces the current route with a recording the NPC plays from its first frame after walking there. Its read and
      * any read failure are reported in navigation status; {@link #awaitRoute} completes when a {@code once} playback ends.
+     * An empty playback plays the recording's own, or loop.
      */
-    void playRecording(String id, String recording, art.arcane.animus.core.recording.Playback playback);
+    void playRecording(String id, String recording, Optional<art.arcane.animus.core.recording.Playback> playback);
     /**
      * Restarts the definition's own route or recording when nothing else moves the NPC. A recording stopped by combat, a
      * manual route or {@link #stopNavigation} continues from where it stopped. False when the NPC declares nothing to resume.

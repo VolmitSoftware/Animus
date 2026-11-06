@@ -8,12 +8,11 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
-import '../../logic/inspect/schema_fields.dart';
 import '../../logic/npc/npc_appearance.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
 import '../inspect/inspect_fields.dart';
-import '../select/suggest_input.dart';
+import '../mc/item_picker.dart';
 
 class NpcInventoryEditor extends StatelessWidget {
   const NpcInventoryEditor({required this.value, required this.onChanged, this.diagnostics = const <Diagnostic>[], super.key});
@@ -95,11 +94,11 @@ class NpcInventoryEditor extends StatelessWidget {
       attributes: <String, String>{'data-slot': '$slot'},
       <Widget>[
         dom.code(classes: 'animus-npc-inventory-number', <Widget>[Component.text('$slot')]),
-        SuggestInput(
+        ItemPicker(
           value: asString(item['id']) ?? '',
           label: 'Slot $slot item',
           placeholder: 'minecraft:bread',
-          suggestions: const <FieldOption>[FieldOption('minecraft:arrow'), FieldOption('minecraft:bread'), FieldOption('minecraft:emerald')],
+          preferred: const <String>['minecraft:arrow', 'minecraft:bread', 'minecraft:emerald'],
           onChanged: (String text) => field('id', text.trim()),
         ),
         GuiNumberInput(

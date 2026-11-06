@@ -1,9 +1,14 @@
-/// Picks the definition's `skin` from the workspace's `skins/` documents,
-/// or by hash, and loads a PNG for a skin from a file or a CORS-enabled URL
-/// so the stage can wear it (kept for the page session, per skin hash). The
-/// placeholder grid picks which built-in skin the preview wears while the NPC
-/// has no skin texture here; that choice is never written to the definition.
+/// The definition's `skin` (an NPC's, or a group's `values.skin`): picked
+/// from the workspace's `skins/` documents with their faces, or by hash; a
+/// new skin document from a PNG file or address; the arm model; and removing
+/// it. Skin documents are content-addressed, so a model change or a new PNG
+/// writes a new document and repoints this NPC or group in one undo step
+/// (`lib/logic/npc/skin_edits.dart`). The placeholder grid picks which
+/// built-in skin the preview wears while the NPC has no skin texture here;
+/// that choice is never written.
 library;
+
+import 'dart:typed_data';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
@@ -11,25 +16,56 @@ import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
 import '../../logic/npc/placeholder_skins.dart';
+import '../../logic/npc/skin_edits.dart';
 import '../../mc/npc/npc_skin.dart';
 import '../../model/animus_document.dart';
+import '../../model/document_kind.dart';
 import '../../services/skin_images.dart';
 import '../gui/gui_fields.dart';
+import '../select/skin_faces.dart';
 
 final RegExp _hash = RegExp(r'^[a-f0-9]{64}$');
 
+/// A skin's short name in lists: its first 12 hex characters and model.
+String skinLabel(AnimusDocument skin) {
+  final NpcSkinInfo? info = NpcSkinInfo.fromDocument(skin.json);
+  final String model = info == null ? 'unreadable' : '${info.slim ? 'slim' : 'classic'}${info.signed ? ', signed' : ''}';
+  return '${skin.id.substring(0, 12)}, $model';
+}
+
 class SkinPicker extends StatefulWidget {
-  const SkinPicker({required this.npcId, required this.value, required this.onChanged, required this.skins, this.diagnostics = const <Diagnostic>[], this.onLoaded, super.key});
+  const SkinPicker({
+    required this.npcId,
+    required this.target,
+    required this.value,
+    required this.onChanged,
+    required this.workspaceDocuments,
+    this.resources = const <String, Uint8List>{},
+    this.onCommit,
+    this.diagnostics = const <Diagnostic>[],
+    this.onLoaded,
+    super.key,
+  });
 
   /// The NPC document id, which keys its placeholder.
   final String npcId;
+
+  /// The NPC or group whose skin this edits.
+  final SkinTarget target;
 
   /// The definition's `skin` hash.
   final String? value;
   final void Function(String? value) onChanged;
 
-  /// The workspace's skin documents.
-  final List<AnimusDocument> skins;
+  /// Every workspace document: the skins to offer and who else wears them.
+  final List<AnimusDocument> workspaceDocuments;
+
+  /// Workspace resources, for the PNGs local skins keep.
+  final Map<String, Uint8List> resources;
+
+  /// Writes a multi-document skin edit; null hides the model switch and new
+  /// skins from a PNG.
+  final SkinCommit? onCommit;
   final List<Diagnostic> diagnostics;
 
   /// Called after a PNG was loaded or a placeholder picked, so the stage
@@ -43,45 +79,104 @@ class SkinPicker extends StatefulWidget {
 class _SkinPickerState extends State<SkinPicker> {
   String _url = '';
   bool _loading = false;
+  String? _failure;
 
-  Future<void> _load(String key, Future<LoadedSkin?> Function(String key) load) async {
-    setState(() => _loading = true);
+  List<AnimusDocument> get _skins => <AnimusDocument>[
+        for (final AnimusDocument document in component.workspaceDocuments)
+          if (document.kind == DocumentKind.skin) document,
+      ];
+
+  /// Loads a PNG, makes its skin document and points the target at it.
+  Future<void> _create(Future<LoadedSkin?> Function(String key) load, {String? url}) async {
+    final SkinCommit? commit = component.onCommit;
+    if (commit == null) return;
+    setState(() {
+      _loading = true;
+      _failure = null;
+    });
     try {
-      final LoadedSkin? skin = await load(key);
-      if (skin != null) ArcaneSonner.success('Skin loaded from ${skin.source}.');
+      final LoadedSkin? skin = await load('new:${DateTime.now().microsecondsSinceEpoch}');
+      if (skin == null) return;
+      final AnimusDocument? current = _current;
+      final bool slim = current != null && (NpcSkinInfo.fromDocument(current.json)?.slim ?? false);
+      final SkinChange change = skinFromPng(documents: component.workspaceDocuments, png: SkinImages.pngBytes(skin), slim: slim, url: url, target: component.target);
+      SkinImages.alias(change.skin!, skin);
+      await commit(change);
+      if (mounted) setState(() => _url = '');
       component.onLoaded?.call();
     } on Object catch (failure) {
-      ArcaneSonner.error('Could not load the skin: $failure');
+      if (mounted) setState(() => _failure = 'Skin did not load ($failure). Use a 64x64 PNG or a cross-origin address.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
+  AnimusDocument? get _current {
+    final String? value = component.value;
+    for (final AnimusDocument skin in _skins) {
+      if (skin.id == value) return skin;
+    }
+    return null;
+  }
+
+  Future<void> _model(bool slim) async {
+    final SkinCommit? commit = component.onCommit;
+    final String? value = component.value;
+    if (commit == null || value == null) return;
+    final SkinChange? change = setSkinModel(
+      documents: component.workspaceDocuments,
+      resources: component.resources,
+      hash: value,
+      slim: slim,
+      only: component.target,
+    );
+    if (change == null) return;
+    await commit(change);
+    component.onLoaded?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     final String? value = component.value;
-    final bool known = value == null || component.skins.any((AnimusDocument skin) => skin.id == value);
+    final List<AnimusDocument> skins = _skins;
+    final bool known = value == null || skins.any((AnimusDocument skin) => skin.id == value);
+    final AnimusDocument? current = _current;
+    const String pickId = 'animus-skin-pick';
     return dom.div(classes: 'animus-skin-picker', attributes: const <String, String>{'role': 'group', 'aria-label': 'Skin'}, <Widget>[
-      dom.div(classes: 'animus-skin-grid', attributes: const <String, String>{'role': 'radiogroup', 'aria-label': 'Workspace skins'}, <Widget>[
-        _card(null, 'Default', 'Steve or Alex', null, 'Default skin, Steve or Alex'),
-        for (int index = 0; index < component.skins.length; index++)
-          _card(
-            component.skins[index].id,
-            component.skins[index].id.substring(0, 12),
-            _model(component.skins[index]),
-            SkinImages.forKey(component.skins[index].id),
-            'Skin ${index + 1} of ${component.skins.length}, ${_model(component.skins[index])}, ${component.skins[index].id.substring(0, 8)}',
-          ),
-        if (!known) _card(value, value.substring(0, value.length.clamp(0, 12)), 'not in this workspace', SkinImages.forKey(value), 'Skin ${value.substring(0, value.length.clamp(0, 8))}, not in this workspace'),
-      ]),
-      _placeholders(),
       GuiRow(
-        label: 'Skin hash',
-        help: 'SHA-256 of a skin under skins/.',
+        label: 'Skin',
+        forId: pickId,
+        tip: 'A skin document under skins/. Its id is the hash of its text, so editing it makes a new one.',
         problems: <Diagnostic>[
           ...component.diagnostics.where((Diagnostic diagnostic) => diagnostic.path == r'$.skin'),
           if (value != null && !_hash.hasMatch(value)) const Diagnostic(DiagnosticSeverity.error, r'$.skin', 'expected 64 lowercase hex characters'),
+          if (value != null && _hash.hasMatch(value) && !known) const Diagnostic(DiagnosticSeverity.warning, r'$.skin', 'not in this workspace; may be on the server'),
         ],
+        child: dom.div(classes: 'animus-gui-line', <Widget>[
+          GuiSelect(
+            id: pickId,
+            references: DocumentKind.skin,
+            value: value,
+            options: <String>[for (final AnimusDocument skin in skins) skin.id, if (!known) value],
+            labels: <String, String>{
+              for (final AnimusDocument skin in skins) skin.id: skinLabel(skin),
+              if (!known) value: '${value.substring(0, value.length.clamp(0, 12))}, not in this workspace',
+            },
+            skinFaces: workspaceSkinFaces(skins, component.resources, onFetched: () {
+              if (mounted) setState(() {});
+            }),
+            allowNone: true,
+            noneLabel: 'No skin (Steve or Alex)',
+            onChanged: component.onChanged,
+          ),
+          if (value != null) Button.ghost(label: 'Remove skin', size: ButtonSize.small, onPressed: () => component.onChanged(null)),
+        ]),
+      ),
+      if (current != null) _modelRow(current),
+      if (component.onCommit != null) _newSkin(),
+      GuiRow(
+        label: 'Skin hash',
+        tip: 'SHA-256 of a skin under skins/.',
         child: GuiTextInput(
           value: value ?? '',
           label: 'Skin hash',
@@ -89,21 +184,49 @@ class _SkinPickerState extends State<SkinPicker> {
           onChanged: (String text) => component.onChanged(text.trim().isEmpty ? null : text.trim()),
         ),
       ),
-      if (value != null)
-        dom.div(classes: 'animus-row animus-skin-load', <Widget>[
-          Button.secondary(label: 'Load skin PNG', size: ButtonSize.small, disabled: _loading, onPressed: () => _load(value, SkinImages.pickFile)),
-          dom.div(classes: 'animus-npc-skin-url', <Widget>[
-            GuiTextInput(value: _url, label: 'Skin PNG URL', placeholder: 'https://.../skin.png', onChanged: (String text) => setState(() => _url = text)),
-            Button.ghost(
-              label: 'Load URL',
-              size: ButtonSize.small,
-              disabled: _loading || _url.trim().isEmpty,
-              onPressed: () => _load(value, (String key) => SkinImages.fetchUrl(key, _url)),
-            ),
-          ]),
-        ]),
+      _placeholders(),
     ]);
   }
+
+  Widget _modelRow(AnimusDocument skin) {
+    final NpcSkinInfo? info = NpcSkinInfo.fromDocument(skin.json);
+    final String? block = skinEditBlock(skin.json);
+    final bool slim = info?.slim ?? false;
+    if (block != null || component.onCommit == null) {
+      return GuiRow(
+        label: 'Arms',
+        tip: block,
+        child: dom.span(<Widget>[Component.text(info == null ? 'Unreadable' : (slim ? 'Slim (Alex)' : 'Classic (Steve)'))]),
+      );
+    }
+    final int others = skinWearers(component.workspaceDocuments, skin.id).where((AnimusDocument d) => !component.target.matches(d)).length;
+    return GuiRow(
+      label: 'Arms',
+      tip: others == 0 ? 'Writes a new skin document.' : 'Writes a new skin document for this one; $others other${others == 1 ? '' : 's'} keep the current one.',
+      child: GuiSwitch(value: slim, label: 'Slim arms (Alex)', onChanged: _model),
+    );
+  }
+
+  Widget _newSkin() => GuiRow(
+        label: 'New skin',
+        tip: 'Makes a skin document from a 64x64 PNG and wears it. The PNG is kept with the workspace. Servers need a signed texture to show it.',
+        child: dom.div(classes: 'animus-skin-new', <Widget>[
+          dom.div(classes: 'animus-row', <Widget>[
+            Button.secondary(label: 'From PNG file', size: ButtonSize.small, disabled: _loading, onPressed: () => _create(SkinImages.pickFile)),
+          ]),
+          dom.div(classes: 'animus-gui-line animus-npc-skin-url', <Widget>[
+            GuiTextInput(value: _url, label: 'Skin PNG address', placeholder: 'https://textures.minecraft.net/texture/...', onChanged: (String text) => setState(() => _url = text)),
+            Button.ghost(
+              label: 'From address',
+              size: ButtonSize.small,
+              disabled: _loading || _url.trim().isEmpty,
+              onPressed: () => _create((String key) => SkinImages.fetchUrl(key, _url), url: _url.trim()),
+            ),
+          ]),
+          if (_loading) const dom.p(classes: 'animus-muted', attributes: <String, String>{'role': 'status'}, <Widget>[Component.text('Loading the PNG...')]),
+          if (_failure != null) dom.p(classes: 'animus-gui-problem is-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(_failure!)]),
+        ]),
+      );
 
   Widget _placeholders() {
     final PlaceholderLook worn = SkinImages.placeholderLook(component.npcId);
@@ -142,34 +265,5 @@ class _SkinPickerState extends State<SkinPicker> {
           ),
       ]),
     ]);
-  }
-
-  String _model(AnimusDocument skin) {
-    final NpcSkinInfo? info = NpcSkinInfo.fromDocument(skin.json);
-    if (info == null) return 'unreadable';
-    return '${info.slim ? 'slim' : 'classic'}${info.signed ? ', signed' : ''}';
-  }
-
-  Widget _card(String? hash, String title, String detail, LoadedSkin? loaded, String name) {
-    final bool selected = hash == component.value;
-    return dom.button(
-      classes: 'animus-skin-card${selected ? ' is-selected' : ''}',
-      attributes: <String, String>{'type': 'button', 'role': 'radio', 'aria-checked': '$selected', 'aria-label': name, 'data-skin': hash ?? 'default'},
-      events: <String, void Function(web.Event)>{'click': (web.Event _) => component.onChanged(hash)},
-      <Widget>[
-        if (loaded != null)
-          dom.span(
-            classes: 'animus-skin-face',
-            styles: dom.Styles(raw: <String, String>{'background-image': 'url("${loaded.dataUrl}")'}),
-            const <Widget>[],
-          )
-        else
-          dom.span(classes: 'animus-skin-face is-blank', <Widget>[Component.text(hash == null ? 'S' : '?')]),
-        dom.span(classes: 'animus-skin-card-text', <Widget>[
-          dom.code(<Widget>[Component.text(title)]),
-          dom.span(classes: 'animus-muted', <Widget>[Component.text(loaded != null ? 'PNG loaded' : detail)]),
-        ]),
-      ],
-    );
   }
 }

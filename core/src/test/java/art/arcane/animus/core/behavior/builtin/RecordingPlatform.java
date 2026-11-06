@@ -114,7 +114,7 @@ final class RecordingPlatform implements BehaviorPlatform {
     }
     @Override public String navigationStatus(NpcHandle npc) { return "suspended somewhere"; }
     @Override public boolean stopNavigation(NpcHandle npc) { record("stop"); return true; }
-    @Override public void playRecording(NpcHandle npc, String recording, Playback playback) { record("recording:" + recording + ":" + playback.key()); }
+    @Override public void playRecording(NpcHandle npc, String recording, Optional<Playback> playback) { record("recording:" + recording + ":" + playback.map(Playback::key).orElse("own")); }
     @Override public boolean resumePatrol(NpcHandle npc) { record("resume"); return resumable; }
     @Override public void look(NpcHandle npc, Vec3 target) { record("look-point"); }
     @Override public void lookAtPlayer(NpcHandle npc, UUID player) { record("look-player"); }

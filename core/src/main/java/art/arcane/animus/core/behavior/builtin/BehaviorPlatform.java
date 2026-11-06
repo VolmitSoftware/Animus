@@ -113,9 +113,9 @@ public interface BehaviorPlatform {
     boolean stopNavigation(NpcHandle npc);
     /**
      * Replaces the NPC's route with a recording it walks to and plays. {@link #routeFinished} called right after completes
-     * when a {@code once} playback ends; a looping playback never finishes.
+     * when a {@code once} playback ends; a looping playback never finishes. An empty playback plays the recording's own.
      */
-    void playRecording(NpcHandle npc, String recording, Playback playback);
+    void playRecording(NpcHandle npc, String recording, Optional<Playback> playback);
     /** Restarts the definition's own route or recording. False when the definition declares nothing to resume. */
     boolean resumePatrol(NpcHandle npc);
     void look(NpcHandle npc, Vec3 target);

@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "harbor:ferryman",
+  "entry": "main",
+  "notes": "Kept for the harbor team",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:look",
+          "arguments": {
+            "target": "player"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Ahoy there."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:choices",
+          "arguments": {
+            "id": "ferry",
+            "prompt": "Need a crossing?",
+            "options": [
+              {
+                "id": "yes",
+                "text": "Yes, please"
+              },
+              {
+                "id": "no",
+                "text": "No, thanks"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "cross": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Climb aboard. We leave at dusk."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:choices",
+          "arguments": {
+            "id": "fare",
+            "prompt": "Pay now or later?",
+            "options": [
+              {
+                "id": "now",
+                "text": "Now"
+              },
+              {
+                "id": "later",
+                "text": "Later"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "decline": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Suit yourself."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "example:wave",
+          "arguments": {
+            "style": "big"
+          }
+        }
+      ]
+    },
+    "paid": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Much obliged."
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "cooldownTicks": 40,
+      "legacy": 3
+    },
+    {
+      "id": "yes",
+      "event": "dialogue_choice",
+      "dialogue": "ferry",
+      "choice": "yes",
+      "routine": "cross"
+    },
+    {
+      "id": "no",
+      "event": "dialogue_choice",
+      "dialogue": "ferry",
+      "choice": "no",
+      "routine": "decline"
+    },
+    {
+      "id": "pay",
+      "event": "dialogue_choice",
+      "dialogue": "fare",
+      "choice": "now",
+      "routine": "paid"
+    }
+  ]
+}

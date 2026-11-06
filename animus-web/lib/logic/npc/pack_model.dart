@@ -4,6 +4,7 @@
 library;
 
 import '../gui/gui_json.dart';
+import '../inspect/schema_fields.dart';
 
 /// Module names as the pack schema accepts them.
 final RegExp packModuleName = RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$');
@@ -47,4 +48,20 @@ JsonMap renamePackModule(JsonMap pack, String from, String to) {
     ...pack,
     'modules': <String, Object?>{for (final MapEntry<String, Object?> entry in modules.entries) (entry.key == from ? to : entry.key): entry.value},
   };
+}
+
+/// The `configuration` field of module [name]: the module's own schema when
+/// the pack schema has one (a live server's can), else a plain object.
+FieldSpec packModuleConfiguration(SchemaView schema, JsonMap pack, String name) =>
+    schema.field('configuration', schema.at(<JsonStep>['modules', name, 'configuration'], pack) ?? const <String, Object?>{'type': 'object'});
+
+/// [pack] with module [name]'s `configuration` set; an empty or null one is removed.
+JsonMap putPackModuleConfiguration(JsonMap pack, String name, JsonMap? configuration) {
+  final JsonMap module = <String, Object?>{...asMap(asMap(pack['modules'])[name])};
+  if (configuration == null || configuration.isEmpty) {
+    module.remove('configuration');
+  } else {
+    module['configuration'] = configuration;
+  }
+  return putPackModule(pack, name, module);
 }
