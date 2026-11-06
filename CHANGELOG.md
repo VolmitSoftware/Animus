@@ -112,6 +112,13 @@
 - Server-wide behaviors with join, quit, chat, command, start, timer, death, respawn, world-change and module triggers, plus Animus-managed commands.
 - Message, title, actionbar, teleport, give-item, take-item and give-book actions, and a player override on player actions.
 - Flags hold any value and can expire; durable state stores lists, maps and expiry.
+- The NPC schema declares pose, equipment, hologram, nameplate, armor stand, owner, inventory, body traits, named facings, movement and the combat, shop, GUI and hire modules with the server's bounds.
+- Reusable routes have a generated schema, `route.schema.json`, served with the other editor schemas.
+- Web editor: typed NPC inspector parts for pose, owner, rig, armor stand, hologram lines with a preview, nameplate, inventory and mount.
+- Web editor: route points can be moved, removed and added from the keyboard.
+- Web editor: pack manifests have a typed editor for their fields and Java modules.
+- Web editor: skin documents show their face, hash, arm model, wearers and PNG loading in one place.
+- Web editor: NPC browser rows show the skin's face once its PNG is loaded.
 
 ### Changed
 
@@ -175,11 +182,21 @@
 - The editor theme uses a pink accent on near-black or light-grey surfaces, with redrawn icons.
 - User documentation moved to the central docs wiki; developer notes live in `dev/`.
 - The Denizen converter (version 2) converts definitions, conditions, loops, flags, procedures, world, command, data, book and inventory scripts, and the common tags.
+- Web editor: the NPC inspector reads top down in parts with one-line summaries, and opens only identity on phones.
+- Web editor: field labels in the NPC inspector and route editor read as words instead of raw keys.
+- Web editor: the NPC browser's folder tree is one tab stop with arrow keys, Home, End and Enter.
+- Web editor: bulk delete and server despawn ask first, and Escape keeps the NPCs.
+- Web editor: Spawn and Despawn on server appear only for a token with the spawn scope.
+- Web editor: the NPC browser and route grid use grey chrome, with pink kept for selection and actions.
 
 ### Fixed
 
 - A builder standing inside its target block walks aside instead of teleporting.
 - A valid NPC edit is no longer refused because another NPC file is invalid.
+- Web editor: new routes are written with order sequence, which the server accepts.
+- Web editor: server-wide behaviors are no longer offered to NPCs.
+- Web editor: NPC browser rows, tree items and route list items have 44 px tap targets on phones.
+- Web editor: empty and no-match states in the NPC browser and route editor say how to continue.
 - Imported Citizens routes with no saved `avoidwater` swim across water as Citizens does.
 - Citizens hologram lines import in the right order.
 - Combat, builds and container shops refuse when WorldGuard is installed but disabled, at startup or later.
