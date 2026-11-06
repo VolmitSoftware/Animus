@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "converterVersion": 2,
-  "importId": "897bcd3f394c933348224efb5353d99b27a00dea7a86f12b5c4a0059e04008f9",
+  "importId": "198529895cf185fdb8ec5a0333c5066dc43c81f4e7e7df19d5d5280cddcdf82f",
   "notice": "Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.",
   "sources": {
     "scripts/broken.dsc": "ed429b9bba7215abe689fb88c25d060937970fdf6b4c75311ad50e5ae0200fd9",
     "scripts/extra/again.dsc": "290261c090c3747fdf9603f8538efa040226d80e00ab0e2e71d8ce5795c00b04",
-    "scripts/town.dsc": "979a8222b2d9ef172575dd9df486ba76b5172ded09ba8204e9dbcf39826478f0",
+    "scripts/town.dsc": "9890e05e1a89d9e30196fc8e3ff087f8a8b09fb9c80664735f35021ae185921b",
     "citizens": "762dbc7f07f692c642c767c79e50befe34a821301ea1a028a315c5d956891043",
     "server_flags.dat": "ed4e388c5f8df0d477b0a1d6ae44cc221e78c72c33b4a9c2693084f1743ed6b4",
     "player_flags/00000000-0000-4000-8000-0000000000a1.dat": "4f38b526b39da412d11984681d07e086360c91741b3af54f576f6ff1429014f9",

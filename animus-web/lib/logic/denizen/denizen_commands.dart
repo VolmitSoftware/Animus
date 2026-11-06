@@ -1255,7 +1255,8 @@ class _Commands {
     final _Action action = _Action();
     bool any = false;
     final SplayTreeMap<int, int> times = SplayTreeMap<int, int>();
-    for (final DenizenArg arg in command.args) {
+    for (final DenizenArg written in command.args) {
+      final DenizenArg arg = _quotedPrefix(written, const <String>['title', 'subtitle', 'fade_in', 'stay', 'fade_out', 'targets']);
       switch (arg.prefix) {
         case 'title':
         case 'subtitle':
@@ -1285,6 +1286,14 @@ class _Commands {
       action.put(names[time.key], JInt.of(time.value));
     }
     return _Converted.of(<JObject>[_reorder(action, <String>['title', 'subtitle', 'fadeIn', 'stay', 'fadeOut']).node('animus:title')]);
+  }
+
+  /// Denizen reads a prefix inside quotes too: `"title:Town gate"` is the title argument.
+  static DenizenArg _quotedPrefix(DenizenArg arg, List<String> names) {
+    if (!arg.quoted || arg.prefix.isNotEmpty) return arg;
+    final int colon = arg.value.indexOf(':');
+    if (colon <= 0 || !names.contains(arg.value.substring(0, colon).toLowerCase())) return arg;
+    return DenizenArg(arg.value.substring(0, colon).toLowerCase(), arg.value.substring(colon + 1), true);
   }
 
   _Converted teleport(DenizenCommand command, _Scope scope) {

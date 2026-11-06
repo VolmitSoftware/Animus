@@ -135,7 +135,7 @@ lantern_world:
         - flag server ticks:++
         on player chats message:*gate*:
         - narrate "The gate opens at dawn." targets:<player>
-        - title title:<&e>Gatehouse subtitle:<context.message> stay:3s
+        - title "title:<&e>Gatehouse" subtitle:<context.message> stay:3s
         on player joins in:world_nether:
         - actionbar "Mind the heat"
         - playsound <player> sound:block_fire_ambient
