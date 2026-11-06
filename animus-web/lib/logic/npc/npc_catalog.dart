@@ -273,3 +273,16 @@ List<String> npcValues(Iterable<NpcEntry> entries, String Function(NpcEntry entr
   final Set<String> values = <String>{for (final NpcEntry entry in entries) read(entry)}..remove('');
   return values.toList()..sort();
 }
+
+/// Behavior ids an NPC can run: every workspace behavior except server-wide
+/// ones (`"server": true`), which have no NPC and use server events only.
+List<String> npcBehaviorIds(Iterable<AnimusDocument> documents) => <String>[
+      for (final AnimusDocument document in documents)
+        if (document.kind == DocumentKind.behavior && asMap(document.json)['server'] != true) document.id,
+    ];
+
+/// The NPCs whose `skin` is [hash].
+List<NpcEntry> npcsWearing(Iterable<NpcEntry> entries, String hash) => <NpcEntry>[
+      for (final NpcEntry entry in entries)
+        if (entry.json['skin'] == hash) entry,
+    ];
