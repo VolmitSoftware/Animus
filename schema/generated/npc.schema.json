@@ -150,6 +150,20 @@
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
             },
+            "recording": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+              "maxLength": 64,
+              "description": "A recording under recordings/ to play instead of a route."
+            },
+            "playback": {
+              "enum": [
+                "once",
+                "loop",
+                "pingpong"
+              ],
+              "description": "Recording only: once, loop (the default) or pingpong."
+            },
             "mode": {
               "enum": [
                 "walk",
@@ -338,41 +352,128 @@
                         "required": [
                           "wander"
                         ]
+                      },
+                      {
+                        "required": [
+                          "recording"
+                        ]
                       }
                     ]
                   }
                 },
                 "else": {
-                  "allOf": [
-                    {
-                      "if": {
-                        "properties": {
-                          "order": {
-                            "const": "wander"
+                  "if": {
+                    "required": [
+                      "recording"
+                    ]
+                  },
+                  "then": {
+                    "not": {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "points"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "mode"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "speed"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "order"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "loop"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "waitTicks"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "guides"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "linkDistance"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "wander"
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "else": {
+                    "allOf": [
+                      {
+                        "if": {
+                          "properties": {
+                            "order": {
+                              "const": "wander"
+                            }
+                          },
+                          "required": [
+                            "order"
+                          ]
+                        },
+                        "then": {
+                          "properties": {
+                            "points": {
+                              "maxItems": 64
+                            }
                           }
                         },
-                        "required": [
-                          "order"
-                        ]
-                      },
-                      "then": {
-                        "properties": {
-                          "points": {
-                            "maxItems": 64
-                          }
-                        }
-                      },
-                      "else": {
-                        "required": [
-                          "points"
-                        ],
-                        "properties": {
-                          "points": {
-                            "minItems": 1
+                        "else": {
+                          "required": [
+                            "points"
+                          ],
+                          "properties": {
+                            "points": {
+                              "minItems": 1
+                            }
                           }
                         }
                       }
-                    }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "enabled": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              },
+              "then": {
+                "if": {
+                  "required": [
+                    "playback"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "recording"
                   ]
                 }
               }

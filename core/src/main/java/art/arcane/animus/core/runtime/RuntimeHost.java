@@ -73,6 +73,8 @@ public interface RuntimeHost<P, I> extends TerrainReader {
     /** A server item stack for a definition item, or null after adding a field error. */
     I item(NpcItem item, String path, List<String> errors);
     I copy(I item);
+    /** The stack an equipment packet sends to clear a slot, or empty where the platform has none. */
+    default Optional<I> emptyItem() { return Optional.empty(); }
 
     /** False vetoes an interaction the runtime already validated, as a cancelled platform event. */
     boolean interactionAllowed(P player, UUID npc, Interaction action, double distance);

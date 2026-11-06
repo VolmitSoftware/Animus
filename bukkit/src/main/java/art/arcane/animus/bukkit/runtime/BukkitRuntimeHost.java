@@ -135,6 +135,7 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
 
     @Override public ItemStack item(NpcItem item, String path, List<String> errors) { return DefinitionItems.stack(item, path, errors); }
     @Override public ItemStack copy(ItemStack item) { return item.clone(); }
+    @Override public Optional<ItemStack> emptyItem() { return Optional.of(new ItemStack(org.bukkit.Material.AIR)); }
 
     @Override public boolean interactionAllowed(Player player, UUID npc, Interaction action, double distance) {
         VirtualNpcInteractionEvent event = new VirtualNpcInteractionEvent(player, npc,

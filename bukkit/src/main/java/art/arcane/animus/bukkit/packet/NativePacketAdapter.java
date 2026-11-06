@@ -357,6 +357,26 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         return result;
     }
 
+    /** One metadata packet with the body's shared flags and pose from {@code look}; nothing without presentation support. */
+    @Override public CompletionStage<Void> look(Player viewer, BodyTransport.Body presented, BodyLook look) {
+        Body body = checkBody(presented);
+        Objects.requireNonNull(look);
+        if (nativeApi.presentation == null) return CompletableFuture.completedFuture(null);
+        Session session = sessions.get(viewer.getUniqueId());
+        if (session == null || session.viewer != viewer || !current(session)) return unwatched("Viewer is not watched");
+        Presentation presentation = session.visible.get(body.entityId);
+        if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
+        Object packet;
+        try { packet = nativeApi.metadataPacket.newInstance(body.entityId, nativeApi.presentation.lookValues(look)); }
+        catch (ReflectiveOperationException | RuntimeException failure) { return failed("Body look update failed: " + failure.getClass().getSimpleName()); }
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        submit(session, result, false, () -> {
+            if (session.visible.get(body.entityId) != presentation) throw new CancellationException("Body was despawned");
+            write(session, body, PacketKind.METADATA, List.of(packet)).whenComplete((nothing, failure) -> complete(result, failure));
+        });
+        return result;
+    }
+
     @Override public boolean equipmentAvailable() { return nativeApi.equipment != null; }
 
     /** Viewer-local items on a visible body. An empty stack clears its slot. Call on the viewer's owner: stacks convert here. */

@@ -315,6 +315,7 @@ public final class NativeProtocolClient {
             event("blocks", "cells", cells);
         }
         else if (packet instanceof ClientboundRotateHeadPacket p) event("head", "id", reflectedId(p), "yaw", p.getYHeadRot());
+        else if (packet instanceof ClientboundAnimatePacket p) event("animate", "id", p.getId(), "action", p.getAction());
         else if (packet instanceof ClientboundMoveEntityPacket p && p.hasRotation()) event("rotation", "id", reflectedId(p), "yaw", p.getYRot(), "pitch", p.getXRot());
         else if (packet instanceof ClientboundSetEntityDataPacket p) {
             List<Map<String, Object>> fields = new ArrayList<>();

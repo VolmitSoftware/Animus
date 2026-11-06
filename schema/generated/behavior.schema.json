@@ -146,12 +146,20 @@
           "description": "Plays an animation of the NPC's rig on a layer (0-3). Higher layers blend over lower ones. Fires animation_finished when a once or hold clip reaches its end."
         },
         {
+          "const": "animus:play-recording",
+          "description": "Replaces the NPC's route with a recording it walks to and plays once, in a loop (the default) or back and forth. With wait, a once playback completes when it ends."
+        },
+        {
           "const": "animus:play-sound",
           "description": "Plays a sound at the NPC, or with at: player at the player, for the triggering player or nearby players. Server behaviors play at the player."
         },
         {
           "const": "animus:pose",
           "description": "Turns the NPC to one of the named poses in its definition's poses."
+        },
+        {
+          "const": "animus:resume-patrol",
+          "description": "Restarts the route or recording the NPC's definition declares; a stopped recording continues where it stopped. Reports resumed or nothing-to-resume."
         },
         {
           "const": "animus:say",
@@ -2127,6 +2135,91 @@
           "if": {
             "properties": {
               "capability": {
+                "const": "animus:play-recording"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "recording": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "playback": {
+                      "enum": [
+                        "once",
+                        "loop",
+                        "pingpong"
+                      ]
+                    },
+                    "wait": {
+                      "type": "boolean"
+                    },
+                    "timeoutTicks": {
+                      "type": "integer",
+                      "minimum": 20,
+                      "maximum": 12000
+                    }
+                  },
+                  "required": [
+                    "recording"
+                  ],
+                  "description": "Replaces the NPC's route with a recording it walks to and plays once, in a loop (the default) or back and forth. With wait, a once playback completes when it ends."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
                 "const": "animus:play-sound"
               }
             },
@@ -2292,6 +2385,64 @@
               "required": [
                 "arguments"
               ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:resume-patrol"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {},
+                  "description": "Restarts the route or recording the NPC's definition declares; a stopped recording continues where it stopped. Reports resumed or nothing-to-resume."
+                }
+              }
             }
           }
         },

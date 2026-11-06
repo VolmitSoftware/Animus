@@ -5,6 +5,7 @@ import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.runtime.NpcPresentation;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.runtime.PreviewBodies;
+import art.arcane.animus.core.presentation.BodyLook;
 import art.arcane.animus.core.presentation.BodyPose;
 import art.arcane.animus.core.presentation.BodyTransport;
 import art.arcane.animus.core.rig.DisplayTransform;
@@ -155,6 +156,8 @@ final class RegionViewer {
                 if (now.appearance() != body.appearance || rigReplaced(body, now)) { retire(body); continue; }
                 if (body.spawnFinished && !body.moving && body.pose != now.pose()) { move(body, now); sent++; if (!host.current(this)) return sent; }
                 if (body.spawnFinished && !body.equipping && sent < packetBudget && body.equipment != now.equipmentRevision()) { equip(body, now); sent++; if (!host.current(this)) return sent; }
+                if (body.spawnFinished && !body.looking && sent < packetBudget && body.look != now.lookRevision()) { look(body, now); sent++; if (!host.current(this)) return sent; }
+                if (body.spawnFinished && body.bound && sent < packetBudget && body.swings != now.swings()) { swing(body, now); sent++; if (!host.current(this)) return sent; }
                 if (body.spawnFinished && sent < packetBudget && body.dragonPhase != now.dragonPhase() && now.type().equals(DragonBody.TYPE)) { phase(body, now.dragonPhase()); sent++; if (!host.current(this)) return sent; }
             }
         }
@@ -226,6 +229,27 @@ final class RegionViewer {
                 if (failure != null && host.current(this) && !body.retired) host.cosmeticFailed(this, "equipment", body.actor, failure);
             }));
         } catch (RuntimeException failure) { body.equipping = false; body.equipment = now.equipmentRevision(); host.cosmeticFailed(this, "equipment", body.actor, failure); }
+    }
+    /** Cosmetic, like equipment: a recording playback's pose and motion flags, sent as metadata. */
+    private void look(Presented body, RegionActor.Publication now) {
+        BodyLook shown = now.look();
+        if (shown == null || !host.packets.presentationAvailable()) { body.look = now.lookRevision(); return; }
+        body.looking = true;
+        try {
+            host.packets.look(player, body.body, shown).whenComplete((nothing, failure) -> enqueue(() -> {
+                body.looking = false; body.look = now.lookRevision();
+                if (failure != null && host.current(this) && !body.retired) host.cosmeticFailed(this, "look", body.actor, failure);
+            }));
+        } catch (RuntimeException failure) { body.looking = false; body.look = now.lookRevision(); host.cosmeticFailed(this, "look", body.actor, failure); }
+    }
+    /** Cosmetic: one arm swing for the swings a playback published since the last one sent; missed swings are not replayed. */
+    private void swing(Presented body, RegionActor.Publication now) {
+        body.swings = now.swings();
+        try {
+            host.packets.swing(player, body.body).whenComplete((nothing, failure) -> {
+                if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) host.cosmeticFailed(this, "swing", body.actor, failure); });
+            });
+        } catch (RuntimeException failure) { host.cosmeticFailed(this, "swing", body.actor, failure); }
     }
     /** Cosmetic: the dragon's wing phase from its owner's publication. A failed send is tried again on a later update. */
     private void phase(Presented body, int phase) {
@@ -460,8 +484,8 @@ final class RegionViewer {
 
     private static final class Presented {
         final RegionActor actor; final NativePacketAdapter.Body body; final long appearance; final int ids;
-        boolean bound, retired, spawnFinished, despawnFinished, moving, equipping, bonesShown, rigFailed;
-        long pose, equipment, rigIdentity;
+        boolean bound, retired, spawnFinished, despawnFinished, moving, equipping, looking, bonesShown, rigFailed;
+        long pose, equipment, rigIdentity, look, swings;
         int dragonPhase = DragonBody.PHASE_HOVERING;
         /** The passenger roster last sent for this vehicle; null when unknown, so the next update sends it again. */
         List<Integer> sentRoster;
@@ -469,6 +493,9 @@ final class RegionViewer {
         Presented(RegionActor actor, NativePacketAdapter.Body body, RegionActor.Publication now) {
             this.actor = actor; this.body = body; appearance = now.appearance(); ids = body.entityIds().length; pose = now.pose();
             equipment = now.equipment().isEmpty() ? now.equipmentRevision() : -1;
+            // A body spawns with its definition's look; a playback look published before the spawn is sent after it.
+            look = now.look() == null ? now.lookRevision() : -1;
+            swings = now.swings();
         }
     }
 }

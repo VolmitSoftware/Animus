@@ -72,6 +72,7 @@ class ServerCapabilitiesTest {
 
     @Test void npcCapabilitiesRefuseServerRunsAsNoNpc() throws Exception {
         Map<String, String> npcOnly = Map.of("say", "{\"text\":\"Hi\"}", "look", "{\"target\":\"player\"}", "stop-navigation", "{}",
+                "play-recording", "{\"recording\":\"market-walk\"}", "resume-patrol", "{}",
                 "set-appearance", "{\"name\":\"Bob\"}", "play-animation", "{\"animation\":\"town:golem/wave\"}", "choices", "{\"id\":\"c\",\"prompt\":\"p\",\"options\":[{\"id\":\"a\",\"text\":\"A\"}]}");
         for (Map.Entry<String, String> entry : npcOnly.entrySet()) {
             Outcome<String> outcome = server(entry.getKey(), entry.getValue());
