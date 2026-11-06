@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:world/archery",
+  "server": true,
+  "entry": "on-player-shoots-bow",
+  "routines": {
+    "on-player-shoots-bow": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "expression": "context.force >= 1",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "Draw the {{ replace(context.bow, 'minecraft:', '') }} fully."
+          }
+        },
+        {
+          "type": "return"
+        }
+      ]
+    },
+    "on-pillager-shoots-item": {
+      "type": "action",
+      "capability": "animus:message",
+      "arguments": {
+        "text": null
+      },
+      "templates": {
+        "/text": "A {{ replace(context.shooter, 'minecraft:', '') }} fired a {{ replace(context.projectile, 'minecraft:', '') }} from its {{ replace(context.hand, '_', '') }}."
+      }
+    },
+    "on-snowball-launched": {
+      "type": "action",
+      "capability": "animus:message",
+      "arguments": {
+        "text": null
+      },
+      "templates": {
+        "/text": "Thrown by {{ replace(context.shooter, 'minecraft:', '') }}."
+      }
+    },
+    "on-ender_pearl-launched": {
+      "type": "condition",
+      "expression": "same_world(context.world, 'world_nether')",
+      "then": {
+        "type": "return"
+      }
+    },
+    "on-projectile-hits": {
+      "type": "action",
+      "capability": "animus:message",
+      "arguments": {
+        "text": null
+      },
+      "templates": {
+        "/text": "Something landed at {{ context.x }}."
+      }
+    },
+    "on-arrow-hits-block": {
+      "type": "action",
+      "capability": "animus:message",
+      "arguments": {
+        "text": null
+      },
+      "templates": {
+        "/text": "Struck {{ replace(context.block, 'minecraft:', '') }} at {{ context.y }}."
+      }
+    },
+    "on-projectile-hits-2": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "expression": "!(has_flag('player', 'pacifist'))",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "return"
+        }
+      ]
+    },
+    "on-trident-collides-with-zombie": {
+      "type": "action",
+      "capability": "animus:set-flag",
+      "arguments": {
+        "name": "trident_hits",
+        "scope": "player",
+        "value": null
+      },
+      "expressions": {
+        "/value": "(num(flag('player', 'trident_hits', 0)) + 1)"
+      }
+    },
+    "on-player-shoots-target": {
+      "type": "action",
+      "capability": "animus:message",
+      "arguments": {
+        "text": null
+      },
+      "templates": {
+        "/text": "Bullseye, {{ context.projectile_uuid }}."
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "on-player-shoots-bow",
+      "event": "entity_shoot_bow",
+      "shooter": "player",
+      "bow": "bow",
+      "cancel": "!(context.force >= 1)",
+      "routine": "on-player-shoots-bow"
+    },
+    {
+      "id": "on-pillager-shoots-item",
+      "event": "entity_shoot_bow",
+      "shooter": "pillager",
+      "bow": "crossbow",
+      "routine": "on-pillager-shoots-item"
+    },
+    {
+      "id": "on-snowball-launched",
+      "event": "projectile_launch",
+      "projectile": "snowball",
+      "routine": "on-snowball-launched"
+    },
+    {
+      "id": "on-ender_pearl-launched",
+      "event": "projectile_launch",
+      "projectile": "ender_pearl",
+      "cancel": "same_world(context.world, 'world_nether')",
+      "routine": "on-ender_pearl-launched"
+    },
+    {
+      "id": "on-projectile-hits",
+      "event": "projectile_hit",
+      "routine": "on-projectile-hits"
+    },
+    {
+      "id": "on-arrow-hits-block",
+      "event": "projectile_hit",
+      "projectile": "arrow",
+      "block": "*:*",
+      "routine": "on-arrow-hits-block"
+    },
+    {
+      "id": "on-projectile-hits-2",
+      "event": "projectile_hit",
+      "entity": "creeper",
+      "shooter": "player",
+      "cancel": "has_flag('player', 'pacifist')",
+      "routine": "on-projectile-hits-2"
+    },
+    {
+      "id": "on-trident-collides-with-zombie",
+      "event": "projectile_hit",
+      "projectile": "trident",
+      "entity": "zombie",
+      "routine": "on-trident-collides-with-zombie"
+    },
+    {
+      "id": "on-player-shoots-target",
+      "event": "projectile_hit",
+      "shooter": "player",
+      "block": "target",
+      "routine": "on-player-shoots-target"
+    }
+  ]
+}

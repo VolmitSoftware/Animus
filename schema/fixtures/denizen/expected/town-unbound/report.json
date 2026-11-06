@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 4,
-  "importId": "179e64ece383a67d816e80f73d092ca38e87cd593b6cf9813875e88c6185bac4",
+  "converterVersion": 5,
+  "importId": "23021c7d6d25f7edb7837c95e821d031a2ac6be81ae2720ea5f9eefdcd1a46f1",
   "notice": "Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.",
   "sources": {
     "scripts/broken.dsc": "ed429b9bba7215abe689fb88c25d060937970fdf6b4c75311ad50e5ae0200fd9",

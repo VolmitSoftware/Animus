@@ -470,7 +470,7 @@ final class DenizenExpressions {
         return Result.fail("tag util." + attribute + " has no Animus expression");
     }
 
-    private static final Map<String, String> CONTEXT_KINDS = Map.of("args", "l", "first", "b", "damage", "n");
+    private static final Map<String, String> CONTEXT_KINDS = Map.of("args", "l", "first", "b", "damage", "n", "force", "n");
 
     private Result<Step> context(List<Part> parts, Scope scope, Pending pending) {
         if (parts.size() < 2 || parts.get(1).parameter().isPresent()) return Result.fail("tag context has no Animus expression");
@@ -496,24 +496,24 @@ final class DenizenExpressions {
                 return switch (attribute.get()) {
                     case "x", "y", "z", "block_x", "block_y", "block_z" -> fact("context." + attribute.get().substring(attribute.get().length() - 1), 'n', 3);
                     case "world" -> fact("context.world", 's', attributeName(parts, 3).filter("name"::equals).isPresent() ? 4 : 3);
-                    // Every event that passes a location is a block event, which passes the block too.
+                    // Every event that passes a location is a block or projectile hit event, which passes the block too.
                     case "material" -> fact("replace(context.block, 'minecraft:', '')", 's', attributeName(parts, 3).filter("name"::equals).isPresent() ? 4 : 3);
                     default -> Result.fail("tag attribute " + attribute.get() + " of context.location has no Animus expression");
                 };
             }
-            case "item", "block", "damager" -> {
+            case "item", "block", "damager", "bow" -> {
                 if (attribute.filter((String name) -> name.equals("material") || name.equals("name") || name.equals("entity_type")).isPresent())
                     return fact("replace(context." + mapped + ", 'minecraft:', '')", 's', attribute.get().equals("material") && attributeName(parts, 3).filter("name"::equals).isPresent() ? 4 : 3);
                 return fact("context." + mapped, 's', 2);
             }
-            case "entity" -> {
-                if (attribute.isEmpty()) return fact("context.entity", 's', 2);
+            case "entity", "projectile", "shooter" -> {
+                if (attribute.isEmpty()) return fact("context." + mapped, 's', 2);
                 return switch (attribute.get()) {
                     case "is_npc" -> fact("false", 'b', 3);
-                    case "is_player" -> fact("same(context.entity, 'minecraft:player')", 'b', 3);
-                    case "uuid" -> fact("context.entity_uuid", 's', 3);
-                    case "entity_type", "name" -> fact("replace(context.entity, 'minecraft:', '')", 's', 3);
-                    default -> Result.fail("tag attribute " + attribute.get() + " of context.entity has no Animus expression");
+                    case "is_player" -> fact("same(context." + mapped + ", 'minecraft:player')", 'b', 3);
+                    case "uuid" -> fact("context." + mapped + "_uuid", 's', 3);
+                    case "entity_type", "name" -> fact("replace(context." + mapped + ", 'minecraft:', '')", 's', 3);
+                    default -> Result.fail("tag attribute " + attribute.get() + " of context." + key + " has no Animus expression");
                 };
             }
             case "slot" -> { return fact("(context.slot + 1)", 'n', 2); }

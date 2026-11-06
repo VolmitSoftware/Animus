@@ -514,6 +514,9 @@ public final class BehaviorSchemaGenerator {
             case "block" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."), "string", false);
             case "cause" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "A damage type such as fall, lava or player_attack. Omit for every cause."), "string", false);
             case "damager", "entity" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."), "string", false);
+            case "projectile" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball. Omit for every projectile."), "string", false);
+            case "shooter" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "The shooter's entity type such as minecraft:player or skeleton. Omit for every shooter, none included."), "string", false);
+            case "bow" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "The weapon's item key such as minecraft:crossbow, or a name without namespace such as bow. Omit for every bow and crossbow."), "string", false);
             case "cancel" -> new Field(described(expressionText(), "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."), "expression", false);
             default -> throw new IllegalStateException("No schema for trigger field " + name);
         };

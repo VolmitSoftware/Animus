@@ -101,7 +101,7 @@ const Map<String, String> _colors = <String, String>{
   'white': 'f', 'magic': 'k', 'bold': 'l', 'strikethrough': 'm', 'underline': 'n',
   'italic': 'o', 'reset': 'r',
 };
-const Map<String, String> _contextKinds = <String, String>{'args': 'l', 'first': 'b', 'damage': 'n'};
+const Map<String, String> _contextKinds = <String, String>{'args': 'l', 'first': 'b', 'damage': 'n', 'force': 'n'};
 const List<String> _operators = <String>['==', '!=', '<', '<=', '>', '>=', 'contains', 'in', 'matches'];
 
 // ---- Literals ----
@@ -708,25 +708,28 @@ class _Expressions {
         return switch (attribute) {
           'x' || 'y' || 'z' || 'block_x' || 'block_y' || 'block_z' => _fact('context.${attribute.substring(attribute.length - 1)}', 'n', 3),
           'world' => _fact('context.world', 's', _attributeName(parts, 3) == 'name' ? 4 : 3),
-          // Every event that passes a location is a block event, which passes the block too.
+          // Every event that passes a location is a block or projectile hit event, which passes the block too.
           'material' => _fact("replace(context.block, 'minecraft:', '')", 's', _attributeName(parts, 3) == 'name' ? 4 : 3),
           _ => _Result<_Step>.fail('tag attribute $attribute of context.location has no Animus expression'),
         };
       case 'item':
       case 'block':
       case 'damager':
+      case 'bow':
         if (attribute == 'material' || attribute == 'name' || attribute == 'entity_type') {
           return _fact("replace(context.$mapped, 'minecraft:', '')", 's', attribute == 'material' && _attributeName(parts, 3) == 'name' ? 4 : 3);
         }
         return _fact('context.$mapped', 's', 2);
       case 'entity':
-        if (attribute == null) return _fact('context.entity', 's', 2);
+      case 'projectile':
+      case 'shooter':
+        if (attribute == null) return _fact('context.$mapped', 's', 2);
         return switch (attribute) {
           'is_npc' => _fact('false', 'b', 3),
-          'is_player' => _fact("same(context.entity, 'minecraft:player')", 'b', 3),
-          'uuid' => _fact('context.entity_uuid', 's', 3),
-          'entity_type' || 'name' => _fact("replace(context.entity, 'minecraft:', '')", 's', 3),
-          _ => _Result<_Step>.fail('tag attribute $attribute of context.entity has no Animus expression'),
+          'is_player' => _fact("same(context.$mapped, 'minecraft:player')", 'b', 3),
+          'uuid' => _fact('context.${mapped}_uuid', 's', 3),
+          'entity_type' || 'name' => _fact("replace(context.$mapped, 'minecraft:', '')", 's', 3),
+          _ => _Result<_Step>.fail('tag attribute $attribute of context.$key has no Animus expression'),
         };
       case 'slot':
         return _fact('(context.slot + 1)', 'n', 2);
