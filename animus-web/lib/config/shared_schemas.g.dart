@@ -747,8 +747,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "variables": {
       "type": "object",
-      "description": "Typed variables, at most 32.",
-      "maxProperties": 32,
+      "description": "Typed variables, at most 128.",
+      "maxProperties": 128,
       "propertyNames": {
         "$ref": "#/$defs/identifier"
       },
@@ -913,12 +913,15 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "boolean",
             "integer",
             "decimal",
-            "string"
+            "string",
+            "list",
+            "map",
+            "any"
           ],
-          "description": "The value type. There is no coercion."
+          "description": "The value type. any accepts every value; expressions and templates are converted to the declared type when written."
         },
         "initial": {
-          "description": "The value until something writes it, of the declared type."
+          "description": "The value until something writes it, of the declared type: a JSON array for list, an object for map, any JSON but null for any."
         },
         "scope": {
           "enum": [
@@ -1021,6 +1024,67 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         {
           "if": {
             "properties": {
+              "type": {
+                "const": "list"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "initial": {
+                "type": "array",
+                "maxItems": 256
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "map"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "initial": {
+                "type": "object",
+                "maxProperties": 256
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "any"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "initial": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
               "scope": {
                 "const": "execution"
               }
@@ -1063,6 +1127,65 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         }
       }
     },
+    "operand": {
+      "description": "A declared variable, an expression, or a template with {{ expression }} holes.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "variable"
+          ],
+          "properties": {
+            "variable": {
+              "type": "string",
+              "pattern": "\\S"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "expression"
+          ],
+          "properties": {
+            "expression": {
+              "type": "string",
+              "pattern": "\\S",
+              "maxLength": 4096
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "template"
+          ],
+          "properties": {
+            "template": {
+              "type": "string",
+              "pattern": "\\S",
+              "maxLength": 4096
+            }
+          }
+        }
+      ]
+    },
+    "value": {
+      "description": "A literal JSON value, or an operand. An object whose only key is variable, expression or template is an operand.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/operand"
+        },
+        {
+          "not": {
+            "type": "null"
+          }
+        }
+      ]
+    },
     "node": {
       "type": "object",
       "description": "One step of a routine.",
@@ -1077,8 +1200,13 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "condition",
             "wait",
             "repeat",
+            "foreach",
+            "while",
+            "break",
+            "continue",
             "parallel",
             "call",
+            "return",
             "set"
           ]
         }
@@ -1163,6 +1291,66 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "if": {
             "properties": {
               "type": {
+                "const": "foreach"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/node-foreach"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "while"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/node-while"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "break"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/node-break"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "continue"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/node-continue"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
                 "const": "parallel"
               }
             },
@@ -1187,6 +1375,21 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "$ref": "#/$defs/node-call"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "return"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/node-return"
           }
         },
         {
@@ -1254,6 +1457,34 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "bindings": {
           "$ref": "#/$defs/bindings"
+        },
+        "expressions": {
+          "type": "object",
+          "description": "Fills null placeholders in arguments with expression results, keyed by JSON Pointer.",
+          "maxProperties": 32,
+          "propertyNames": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "\\S",
+            "maxLength": 4096
+          }
+        },
+        "templates": {
+          "type": "object",
+          "description": "Fills null placeholders in arguments with template text, keyed by JSON Pointer.",
+          "maxProperties": 32,
+          "propertyNames": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "\\S",
+            "maxLength": 4096
+          }
         }
       },
       "required": [
@@ -1274,14 +1505,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -1338,14 +1593,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -1450,14 +1729,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -1551,14 +1854,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -1606,14 +1933,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -1658,14 +2009,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -1728,14 +2103,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -1820,14 +2219,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -1874,14 +2297,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -1920,14 +2367,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -1984,14 +2455,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -2097,14 +2592,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -2154,14 +2673,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -2222,14 +2765,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -2279,14 +2846,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -2336,14 +2927,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -2412,14 +3027,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -2479,14 +3118,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -2524,14 +3187,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -2549,7 +3236,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "node-condition": {
       "type": "object",
-      "description": "Tests a capability, then runs then or else.",
+      "description": "Tests a capability or an expression, then runs then or else.",
       "additionalProperties": false,
       "properties": {
         "type": {
@@ -2573,6 +3260,40 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "bindings": {
           "$ref": "#/$defs/bindings"
         },
+        "expressions": {
+          "type": "object",
+          "description": "Fills null placeholders in arguments with expression results, keyed by JSON Pointer.",
+          "maxProperties": 32,
+          "propertyNames": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "\\S",
+            "maxLength": 4096
+          }
+        },
+        "templates": {
+          "type": "object",
+          "description": "Fills null placeholders in arguments with template text, keyed by JSON Pointer.",
+          "maxProperties": 32,
+          "propertyNames": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "\\S",
+            "maxLength": 4096
+          }
+        },
+        "expression": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "Tested instead of a capability; must be true or false."
+        },
         "then": {
           "$ref": "#/$defs/node",
           "description": "Runs when the condition is true."
@@ -2584,10 +3305,57 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       },
       "required": [
         "type",
-        "capability",
         "then"
       ],
       "allOf": [
+        {
+          "oneOf": [
+            {
+              "not": {
+                "required": [
+                  "expression"
+                ]
+              },
+              "required": [
+                "capability"
+              ]
+            },
+            {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "capability"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "arguments"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "bindings"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "expressions"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "templates"
+                    ]
+                  }
+                ]
+              },
+              "required": [
+                "expression"
+              ]
+            }
+          ]
+        },
         {
           "if": {
             "properties": {
@@ -2601,14 +3369,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -2658,14 +3450,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -2704,14 +3520,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -2772,14 +3612,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -2821,14 +3685,38 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "if": {
-              "required": [
-                "bindings"
-              ],
-              "properties": {
-                "bindings": {
-                  "minProperties": 1
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
                 }
-              }
+              ]
             },
             "else": {
               "properties": {
@@ -2918,17 +3806,34 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "node-repeat": {
       "type": "object",
-      "description": "Runs its body a fixed number of times.",
+      "description": "Runs its body a fixed or computed number of times.",
       "additionalProperties": false,
       "properties": {
         "type": {
           "const": "repeat"
         },
         "count": {
+          "description": "How many times the body runs: 0 to 128, or an operand computed when the loop starts.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 128
+            },
+            {
+              "$ref": "#/$defs/operand"
+            }
+          ]
+        },
+        "maximum": {
           "type": "integer",
-          "minimum": 0,
-          "maximum": 128,
-          "description": "How many times the body runs."
+          "minimum": 1,
+          "maximum": 1024,
+          "description": "The most passes before the run fails; 128 by default."
+        },
+        "index": {
+          "$ref": "#/$defs/identifier",
+          "description": "An execution variable that receives the 0-based pass number."
         },
         "body": {
           "$ref": "#/$defs/node",
@@ -2939,6 +3844,105 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "type",
         "count",
         "body"
+      ]
+    },
+    "node-foreach": {
+      "type": "object",
+      "description": "Runs its body once for each item of a list or map.",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "foreach"
+        },
+        "list": {
+          "$ref": "#/$defs/operand",
+          "description": "An operand that evaluates to a list or map."
+        },
+        "as": {
+          "$ref": "#/$defs/identifier",
+          "description": "An execution variable that receives each item."
+        },
+        "index": {
+          "$ref": "#/$defs/identifier",
+          "description": "An execution variable that receives the 0-based pass number."
+        },
+        "key": {
+          "$ref": "#/$defs/identifier",
+          "description": "An execution variable that receives each map key."
+        },
+        "maximum": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024,
+          "description": "The most passes before the run fails; 128 by default."
+        },
+        "body": {
+          "$ref": "#/$defs/node",
+          "description": "The repeated step."
+        }
+      },
+      "required": [
+        "type",
+        "list",
+        "as",
+        "body"
+      ]
+    },
+    "node-while": {
+      "type": "object",
+      "description": "Runs its body while an expression is true.",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "while"
+        },
+        "expression": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "Checked before every pass; must be true or false."
+        },
+        "maximum": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024,
+          "description": "The most passes before the run fails; 128 by default."
+        },
+        "body": {
+          "$ref": "#/$defs/node",
+          "description": "The repeated step."
+        }
+      },
+      "required": [
+        "type",
+        "expression",
+        "body"
+      ]
+    },
+    "node-break": {
+      "type": "object",
+      "description": "Leaves the innermost loop.",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "break"
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "node-continue": {
+      "type": "object",
+      "description": "Starts the next pass of the innermost loop.",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "continue"
+        }
+      },
+      "required": [
+        "type"
       ]
     },
     "node-parallel": {
@@ -2975,11 +3979,43 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "routine": {
           "$ref": "#/$defs/identifier",
           "description": "A routine of this document."
+        },
+        "arguments": {
+          "type": "object",
+          "description": "Declared variables assigned before the routine runs, each from a literal or operand.",
+          "maxProperties": 128,
+          "propertyNames": {
+            "$ref": "#/$defs/identifier"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/value"
+          }
+        },
+        "result": {
+          "$ref": "#/$defs/identifier",
+          "description": "A declared variable that receives the routine's return value."
         }
       },
       "required": [
         "type",
         "routine"
+      ]
+    },
+    "node-return": {
+      "type": "object",
+      "description": "Ends the current routine, optionally with a value.",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "return"
+        },
+        "value": {
+          "$ref": "#/$defs/value",
+          "description": "The value the routine returns to its call's result."
+        }
+      },
+      "required": [
+        "type"
       ]
     },
     "node-set": {
@@ -2996,29 +4032,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "A declared variable."
         },
         "value": {
-          "description": "A literal of the variable's type, or {\"variable\": \"name\"} of the same type.",
-          "anyOf": [
-            {
-              "type": [
-                "boolean",
-                "number",
-                "string"
-              ]
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "variable"
-              ],
-              "properties": {
-                "variable": {
-                  "type": "string",
-                  "pattern": "\\S"
-                }
-              }
-            }
-          ]
+          "$ref": "#/$defs/value",
+          "description": "A literal of the variable's type, or an operand converted to it."
         }
       },
       "required": [
@@ -5046,15 +6061,25 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "bindings": {
             "type": "bindings",
             "required": false
+          },
+          "expressions": {
+            "type": "expressions",
+            "required": false,
+            "description": "Fills null placeholders in arguments with expression results, keyed by JSON Pointer."
+          },
+          "templates": {
+            "type": "templates",
+            "required": false,
+            "description": "Fills null placeholders in arguments with template text, keyed by JSON Pointer."
           }
         }
       },
       "condition": {
-        "description": "Tests a capability, then runs then or else.",
+        "description": "Tests a capability or an expression, then runs then or else.",
         "fields": {
           "capability": {
             "type": "capability",
-            "required": true,
+            "required": false,
             "description": "A condition capability, namespace:name."
           },
           "arguments": {
@@ -5065,6 +6090,23 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "bindings": {
             "type": "bindings",
             "required": false
+          },
+          "expressions": {
+            "type": "expressions",
+            "required": false,
+            "description": "Fills null placeholders in arguments with expression results, keyed by JSON Pointer."
+          },
+          "templates": {
+            "type": "templates",
+            "required": false,
+            "description": "Fills null placeholders in arguments with template text, keyed by JSON Pointer."
+          },
+          "expression": {
+            "type": "expression",
+            "required": false,
+            "maxLength": 4096,
+            "pattern": "\\S",
+            "description": "Tested instead of a capability; must be true or false."
           },
           "then": {
             "type": "node",
@@ -5091,14 +6133,24 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         }
       },
       "repeat": {
-        "description": "Runs its body a fixed number of times.",
+        "description": "Runs its body a fixed or computed number of times.",
         "fields": {
           "count": {
             "type": "integer",
             "required": true,
-            "minimum": 0,
-            "maximum": 128,
-            "description": "How many times the body runs."
+            "description": "How many times the body runs: 0 to 128, or an operand computed when the loop starts."
+          },
+          "maximum": {
+            "type": "integer",
+            "required": false,
+            "minimum": 1,
+            "maximum": 1024,
+            "description": "The most passes before the run fails; 128 by default."
+          },
+          "index": {
+            "type": "variable",
+            "required": false,
+            "description": "An execution variable that receives the 0-based pass number."
           },
           "body": {
             "type": "node",
@@ -5106,6 +6158,75 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "description": "The repeated step."
           }
         }
+      },
+      "foreach": {
+        "description": "Runs its body once for each item of a list or map.",
+        "fields": {
+          "list": {
+            "type": "value",
+            "required": true,
+            "description": "An operand that evaluates to a list or map."
+          },
+          "as": {
+            "type": "variable",
+            "required": true,
+            "description": "An execution variable that receives each item."
+          },
+          "index": {
+            "type": "variable",
+            "required": false,
+            "description": "An execution variable that receives the 0-based pass number."
+          },
+          "key": {
+            "type": "variable",
+            "required": false,
+            "description": "An execution variable that receives each map key."
+          },
+          "maximum": {
+            "type": "integer",
+            "required": false,
+            "minimum": 1,
+            "maximum": 1024,
+            "description": "The most passes before the run fails; 128 by default."
+          },
+          "body": {
+            "type": "node",
+            "required": true,
+            "description": "The repeated step."
+          }
+        }
+      },
+      "while": {
+        "description": "Runs its body while an expression is true.",
+        "fields": {
+          "expression": {
+            "type": "expression",
+            "required": true,
+            "maxLength": 4096,
+            "pattern": "\\S",
+            "description": "Checked before every pass; must be true or false."
+          },
+          "maximum": {
+            "type": "integer",
+            "required": false,
+            "minimum": 1,
+            "maximum": 1024,
+            "description": "The most passes before the run fails; 128 by default."
+          },
+          "body": {
+            "type": "node",
+            "required": true,
+            "description": "The repeated step."
+          }
+        }
+      },
+      "break": {
+        "description": "Leaves the innermost loop.",
+        "fields": {}
+      },
+      "continue": {
+        "description": "Starts the next pass of the innermost loop.",
+        "fields": {}
       },
       "parallel": {
         "description": "Runs independent branches, then joins them.",
@@ -5124,6 +6245,26 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "type": "routine",
             "required": true,
             "description": "A routine of this document."
+          },
+          "arguments": {
+            "type": "arguments",
+            "required": false,
+            "description": "Declared variables assigned before the routine runs, each from a literal or operand."
+          },
+          "result": {
+            "type": "variable",
+            "required": false,
+            "description": "A declared variable that receives the routine's return value."
+          }
+        }
+      },
+      "return": {
+        "description": "Ends the current routine, optionally with a value.",
+        "fields": {
+          "value": {
+            "type": "value",
+            "required": false,
+            "description": "The value the routine returns to its call's result."
           }
         }
       },
@@ -5139,7 +6280,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "value": {
             "type": "value",
             "required": true,
-            "description": "A literal of the variable's type, or {\"variable\": \"name\"} of the same type."
+            "description": "A literal of the variable's type, or an operand converted to it."
           }
         }
       }
@@ -5148,7 +6289,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "boolean",
       "integer",
       "decimal",
-      "string"
+      "string",
+      "list",
+      "map",
+      "any"
     ],
     "variableScopes": [
       "execution",
