@@ -1622,10 +1622,13 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                 || body.value.state.snapshot().revision() != validated.npc().revision()
                 || !DefinitionSpec.spawned(runtime.npcs().snapshot().get(body.value.spec.definition().id()))) return;
         accepted++;
-        if (triggers != null) triggers.interaction(body.body.uuid(), host.id(viewer.player),
-                action == RuntimeHost.Interaction.ATTACK ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT, false);
+        boolean consumed = triggers != null && triggers.interaction(body.body.uuid(), host.id(viewer.player),
+                action == RuntimeHost.Interaction.ATTACK ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT,
+                input.secondaryAction(), TriggerEvent.Interaction.hand(input.hand()), false);
         InteractionObserver observed = observer;
         if (observed != null) observed.accepted(body.body.uuid(), host.id(viewer.player), action == RuntimeHost.Interaction.ATTACK, validated.distance(), false);
+        // A behavior that consumes the click owns it: modules, riding and selection never see it.
+        if (consumed) return;
         InteractionListener<P> listener = interactions;
         if (listener != null && listener.interacted(viewer.player, body.body.uuid(), action == RuntimeHost.Interaction.ATTACK, input.secondaryAction())) return;
         // A sneaking interaction keeps its administrative meaning, so a rideable NPC can still be selected.
@@ -1634,9 +1637,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             if (refusal != null) host.tell(viewer.player, "Cannot ride " + body.value.spec.name() + ": " + refusal);
             return;
         }
-        if (host.permitted(viewer.player, "animus.admin")) {
-            select(host.id(viewer.player), body.value.spec.definition().id());
-            host.tell(viewer.player, "Selected " + body.value.spec.definition().id() + " via " + action);
+        // Click selection tells an administrator once; clicking the selected NPC again, as play does, stays quiet.
+        String id = body.value.spec.definition().id();
+        if (host.permitted(viewer.player, "animus.admin") && !selection(host.id(viewer.player)).filter(id::equals).isPresent()) {
+            select(host.id(viewer.player), id);
+            host.tell(viewer.player, "Selected " + id + " via " + action);
         }
     }
 

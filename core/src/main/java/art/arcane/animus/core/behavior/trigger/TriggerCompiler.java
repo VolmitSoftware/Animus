@@ -1,6 +1,7 @@
 package art.arcane.animus.core.behavior.trigger;
 
 import art.arcane.animus.api.Capabilities;
+import art.arcane.animus.core.behavior.BehaviorExpression;
 import art.arcane.animus.core.behavior.schema.Suggestions;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -85,7 +86,7 @@ public final class TriggerCompiler {
         return switch (kind) {
             case INTERACTION -> new TriggerBinding.Interaction(object.has("action")
                     ? named(TriggerBinding.InteractionFilter.class, text(object, "action", path), path + ".action", "interact, attack or any")
-                    : TriggerBinding.InteractionFilter.INTERACT);
+                    : TriggerBinding.InteractionFilter.INTERACT, object.has("consume") ? Optional.of(consume(object, path)) : Optional.empty());
             case PROXIMITY -> {
                 if (!object.has("phase")) throw new Invalid(path + ".phase", "expected enter or leave");
                 TriggerBinding.Phase phase = named(TriggerBinding.Phase.class, text(object, "phase", path), path + ".phase", "enter or leave");
@@ -109,6 +110,13 @@ public final class TriggerCompiler {
                 yield new TriggerBinding.AnimationFinished(Optional.of(animation));
             }
         };
+    }
+
+    /** A click-time condition: it reads flags, facts and the click's context, and no variables, since no run exists yet. */
+    private static BehaviorExpression consume(JsonObject object, String path) {
+        String source = text(object, "consume", path);
+        try { return BehaviorExpression.compile(source, Set.of(), path + ".consume"); }
+        catch (BehaviorExpression.Invalid invalid) { throw new Invalid(path + ".consume", invalid.getMessage()); }
     }
 
     private static TriggerBinding.Command command(JsonObject object, String path) {

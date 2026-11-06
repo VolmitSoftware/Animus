@@ -39,3 +39,17 @@ npc:
       location: {world: world, x: -6.5, y: 64.0, z: 2.5, yaw: 180.0, pitch: 0.0}
       assignment:
         assignment: missing_assignment
+  3:
+    name: Crier
+    uuid: 00000000-0000-4000-8000-000000000004
+    traits:
+      type: PLAYER
+      spawned: true
+      location: {world: world, x: 2.5, y: 64.0, z: -8.5, yaw: 0.0, pitch: 0.0}
+      assignment:
+        assignment_list:
+        - crier_assignment
+      triggers:
+        enabled:
+          CLICK: false
+          PROXIMITY: false
