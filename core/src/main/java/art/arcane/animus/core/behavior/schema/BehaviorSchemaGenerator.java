@@ -441,7 +441,7 @@ public final class BehaviorSchemaGenerator {
             case "cooldownTicks" -> new Field(described(range("integer", 0, TriggerCompiler.MAX_COOLDOWN_TICKS), "Overrides the configured cooldown, per trigger on each NPC."), "integer", false);
             case "action" -> new Field(described(choices(lower(TriggerBinding.InteractionFilter.values())), "Which hit fires it; interact by default."), "string", false);
             case "consume" -> new Field(described(expressionText(), "An expression checked when the click arrives, over flags, facts, context.sneaking and context.hand. When it holds, the click belongs to this behavior: shops, hiring, GUIs, riding and selection do not see it. Omit to leave the click to them."), "expression", false);
-            case "phase" -> new Field(described(choices(lower(TriggerBinding.Phase.values())), "Entering or leaving the radius."), "string", true);
+            case "phase" -> new Field(described(choices(lower(TriggerBinding.Phase.values())), "Entering or leaving the radius or area."), "string", true);
             case "radius" -> {
                 JsonObject radius = type("number");
                 radius.addProperty("exclusiveMinimum", 0);
@@ -469,6 +469,17 @@ public final class BehaviorSchemaGenerator {
             case "usage" -> new Field(described(bounded(TriggerCompiler.MAX_COMMAND_TEXT), "Usage text shown in the server's command help."), "string", false);
             case "from" -> new Field(described(bounded(TriggerCompiler.MAX_WORLD_NAME), "Fires only when leaving this world. Omit for any world."), "string", false);
             case "to" -> new Field(described(bounded(TriggerCompiler.MAX_WORLD_NAME), "Fires only when entering this world. Omit for any world."), "string", false);
+            case "area" -> new Field(described(reference("identifier"), "The area's name, read by runs as context.area. Triggers that name the same area in the same world share it."), "identifier", true);
+            case "world" -> new Field(described(bounded(TriggerCompiler.MAX_WORLD_NAME), "The world the area is in."), "string", true);
+            case "cuboid" -> new Field(described(coordinates(), "Two opposite corner blocks, x1, y1, z1, x2, y2, z2, both included. Give this or ellipsoid."), "array", false);
+            case "ellipsoid" -> new Field(described(coordinates(), "A centre x, y, z and three radii in blocks. Give this or cuboid."), "array", false);
+            case "inventory" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "An inventory type such as chest, player or furnace; * matches any text. Omit for every inventory."), "string", false);
+            case "click" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "The click: left or right on a block; left, right, shift_left, shift_right, middle, number_key, double_click, drop and so on in an inventory. Omit for every click."), "string", false);
+            case "item" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "An item key such as minecraft:bread, or a name without namespace such as *_sword. Omit for every item."), "string", false);
+            case "block" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."), "string", false);
+            case "cause" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "A damage type such as fall, lava or player_attack. Omit for every cause."), "string", false);
+            case "damager", "entity" -> new Field(described(pattern("^" + TriggerCompiler.FILTER + "$"), "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."), "string", false);
+            case "cancel" -> new Field(described(expressionText(), "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."), "expression", false);
             default -> throw new IllegalStateException("No schema for trigger field " + name);
         };
     }
@@ -884,6 +895,14 @@ public final class BehaviorSchemaGenerator {
         JsonObject schema = type(type);
         schema.addProperty("minimum", minimum);
         schema.addProperty("maximum", maximum);
+        return schema;
+    }
+    /** Six numbers within the world border. */
+    private static JsonObject coordinates() {
+        JsonObject schema = type("array");
+        schema.addProperty("minItems", 6);
+        schema.addProperty("maxItems", 6);
+        schema.add("items", range("number", -TriggerCompiler.MAX_COORDINATE, TriggerCompiler.MAX_COORDINATE));
         return schema;
     }
     private static JsonObject list(JsonObject items, int minimum, int maximum, String description) {

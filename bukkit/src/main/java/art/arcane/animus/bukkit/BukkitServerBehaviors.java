@@ -8,6 +8,7 @@ import art.arcane.animus.core.behavior.trigger.ServerTriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerKind;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -18,7 +19,27 @@ import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Server;
+import org.bukkit.block.Block;
+import org.bukkit.damage.DamageSource;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerItemConsumeEvent;
+import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.InventoryView;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.HandlerList;
@@ -35,7 +56,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 /**
  * The platform half of server behaviors: player events published as immutable {@link ServerEvent}s, Animus-managed commands
  * kept in step with the enabled command triggers, and the player and server fact snapshots behavior expressions read.
- * Listeners only publish. Snapshots are refreshed every {@link SnapshotFacts#REFRESH_TICKS} ticks on each player's owner and
+ * Listeners publish; cancellable world events are cancelled inline when a trigger's cancel condition holds. Snapshots are refreshed every {@link SnapshotFacts#REFRESH_TICKS} ticks on each player's owner and
  * the global owner; nothing scans the world.
  */
 final class BukkitServerBehaviors implements Listener, AutoCloseable {
@@ -126,16 +147,20 @@ final class BukkitServerBehaviors implements Listener, AutoCloseable {
         Location at = player.getLocation();
         ItemStack hand = player.getInventory().getItemInMainHand();
         boolean empty = hand == null || hand.getType() == Material.AIR;
+        String world = at.getWorld() == null ? "" : at.getWorld().getName();
         facts.player(player.getUniqueId(), SnapshotFacts.player(player.getName(), player.getUniqueId(), player.getHealth(), player.getMaxHealth(),
-                player.getFoodLevel(), player.getLevel(), at.getWorld() == null ? "" : at.getWorld().getName(), at.getX(), at.getY(), at.getZ(),
+                player.getFoodLevel(), player.getLevel(), world, at.getX(), at.getY(), at.getZ(),
                 player.getGameMode().name(), player.isOp(), player.isSneaking(), player.isFlying(),
                 empty ? "minecraft:air" : hand.getType().getKey().toString(), empty ? 0 : hand.getAmount()));
+        if (servers != null && !closed) servers.position(player.getUniqueId(), world, at.getX(), at.getY(), at.getZ());
     }
 
     /** Global owner. The tick counts from when Animus enabled. */
     private void serverSnapshot() {
         serverTicks += SnapshotFacts.REFRESH_TICKS;
-        facts.server(SnapshotFacts.server(server.getOnlinePlayers().size(), server.getMaxPlayers(), serverTicks, System.currentTimeMillis()));
+        List<UUID> online = new ArrayList<>();
+        for (Player player : server.getOnlinePlayers()) online.add(player.getUniqueId());
+        facts.server(SnapshotFacts.server(online.size(), server.getMaxPlayers(), serverTicks, System.currentTimeMillis(), online));
     }
 
     @EventHandler(priority = EventPriority.MONITOR) public void join(PlayerJoinEvent event) {
@@ -150,6 +175,7 @@ final class BukkitServerBehaviors implements Listener, AutoCloseable {
         AutoCloseable refresher = refreshers.remove(id);
         if (refresher != null) quietly(refresher);
         facts.forget(id);
+        if (servers != null && !closed) servers.departed(id);
         publish(TriggerKind.PLAYER_QUIT, () -> ServerEvent.quit(id));
     }
 
@@ -177,6 +203,122 @@ final class BukkitServerBehaviors implements Listener, AutoCloseable {
         UUID id = event.getPlayer().getUniqueId();
         String from = event.getFrom().getName(), to = event.getPlayer().getWorld().getName();
         publish(TriggerKind.PLAYER_WORLD_CHANGE, () -> ServerEvent.worldChange(id, from, to));
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true) public void inventoryOpen(InventoryOpenEvent event) {
+        ServerTriggerDispatcher dispatcher = listening(TriggerKind.PLAYER_INVENTORY_OPEN);
+        if (dispatcher == null || !(event.getPlayer() instanceof Player player)) return;
+        if (dispatcher.decide(ServerEvent.inventory(TriggerKind.PLAYER_INVENTORY_OPEN, player.getUniqueId(), inventoryType(event.getView())))) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR) public void inventoryClose(InventoryCloseEvent event) {
+        ServerTriggerDispatcher dispatcher = listening(TriggerKind.PLAYER_INVENTORY_CLOSE);
+        if (dispatcher == null || !(event.getPlayer() instanceof Player player)) return;
+        dispatcher.publish(ServerEvent.inventory(TriggerKind.PLAYER_INVENTORY_CLOSE, player.getUniqueId(), inventoryType(event.getView())));
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true) public void inventoryClick(InventoryClickEvent event) {
+        ServerTriggerDispatcher dispatcher = listening(TriggerKind.PLAYER_INVENTORY_CLICK);
+        if (dispatcher == null || !(event.getWhoClicked() instanceof Player player)) return;
+        int slot = event.getRawSlot();
+        if (dispatcher.decide(ServerEvent.inventoryClick(player.getUniqueId(), inventoryType(event.getView()), event.getClick().name().toLowerCase(Locale.ROOT),
+                slot < 0 ? -1 : slot, itemKey(event.getCurrentItem())))) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true) public void itemDrop(PlayerDropItemEvent event) {
+        ServerTriggerDispatcher dispatcher = listening(TriggerKind.PLAYER_ITEM_DROP);
+        if (dispatcher == null) return;
+        ItemStack stack = event.getItemDrop().getItemStack();
+        if (dispatcher.decide(ServerEvent.item(TriggerKind.PLAYER_ITEM_DROP, event.getPlayer().getUniqueId(), itemKey(stack), stack.getAmount()))) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true) public void itemPickup(EntityPickupItemEvent event) {
+        ServerTriggerDispatcher dispatcher = listening(TriggerKind.PLAYER_ITEM_PICKUP);
+        if (dispatcher == null || !(event.getEntity() instanceof Player player)) return;
+        ItemStack stack = event.getItem().getItemStack();
+        if (dispatcher.decide(ServerEvent.item(TriggerKind.PLAYER_ITEM_PICKUP, player.getUniqueId(), itemKey(stack), stack.getAmount()))) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true) public void itemConsume(PlayerItemConsumeEvent event) {
+        ServerTriggerDispatcher dispatcher = listening(TriggerKind.PLAYER_ITEM_CONSUME);
+        if (dispatcher == null) return;
+        if (dispatcher.decide(ServerEvent.item(TriggerKind.PLAYER_ITEM_CONSUME, event.getPlayer().getUniqueId(), itemKey(event.getItem()), 1))) event.setCancelled(true);
+    }
+
+    /** A right click fires once per hand, as Denizen's clicks do. */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true) public void blockClick(PlayerInteractEvent event) {
+        Action action = event.getAction();
+        if (action != Action.LEFT_CLICK_BLOCK && action != Action.RIGHT_CLICK_BLOCK) return;
+        ServerTriggerDispatcher dispatcher = listening(TriggerKind.PLAYER_BLOCK_CLICK);
+        Block block = event.getClickedBlock();
+        if (dispatcher == null || block == null) return;
+        String hand = event.getHand() == EquipmentSlot.OFF_HAND ? "off_hand" : "main_hand";
+        if (dispatcher.decide(ServerEvent.blockClick(event.getPlayer().getUniqueId(), action == Action.LEFT_CLICK_BLOCK ? "left" : "right", hand,
+                block.getType().getKey().toString(), block.getWorld().getName(), block.getX(), block.getY(), block.getZ()))) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true) public void blockPlace(BlockPlaceEvent event) {
+        ServerTriggerDispatcher dispatcher = listening(TriggerKind.PLAYER_BLOCK_PLACE);
+        if (dispatcher == null) return;
+        if (dispatcher.decide(block(TriggerKind.PLAYER_BLOCK_PLACE, event.getPlayer(), event.getBlockPlaced()))) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true) public void blockBreak(BlockBreakEvent event) {
+        ServerTriggerDispatcher dispatcher = listening(TriggerKind.PLAYER_BLOCK_BREAK);
+        if (dispatcher == null) return;
+        if (dispatcher.decide(block(TriggerKind.PLAYER_BLOCK_BREAK, event.getPlayer(), event.getBlock()))) event.setCancelled(true);
+    }
+
+    /**
+     * A player taking damage, and a player's direct hit on another living entity; a hit between players publishes both.
+     * Projectile and other indirect hits count only as damage taken, with the shooter as damager.
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true) public void damage(EntityDamageEvent event) {
+        Entity victim = event.getEntity();
+        ServerTriggerDispatcher damaged = victim instanceof Player ? listening(TriggerKind.PLAYER_DAMAGED) : null;
+        Player attacker = event instanceof EntityDamageByEntityEvent byEntity && byEntity.getDamager() instanceof Player hitter
+                && victim instanceof LivingEntity && victim != hitter ? hitter : null;
+        ServerTriggerDispatcher hits = attacker == null ? null : listening(TriggerKind.PLAYER_DAMAGE_ENTITY);
+        if (damaged == null && hits == null) return;
+        DamageSource source = event.getDamageSource();
+        String cause = source.getDamageType().getKey().getKey();
+        double amount = event.getFinalDamage();
+        boolean cancel = false;
+        if (damaged != null) {
+            Entity by = source.getCausingEntity() != null ? source.getCausingEntity() : source.getDirectEntity();
+            cancel = damaged.decide(ServerEvent.damaged(victim.getUniqueId(), cause, amount, by == null ? "" : typeKey(by)));
+        }
+        if (hits != null) cancel |= hits.decide(ServerEvent.damageEntity(attacker.getUniqueId(), typeKey(victim), victim.getUniqueId(), cause, amount));
+        if (cancel) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR) public void kill(EntityDeathEvent event) {
+        LivingEntity victim = event.getEntity();
+        Player killer = victim.getKiller();
+        ServerTriggerDispatcher dispatcher = killer == null ? null : listening(TriggerKind.PLAYER_KILL);
+        if (dispatcher != null) dispatcher.publish(ServerEvent.kill(killer.getUniqueId(), typeKey(victim), victim.getUniqueId()));
+    }
+
+    /** The dispatcher when an enabled trigger listens for this kind, else null, so hot handlers return before allocating. */
+    private ServerTriggerDispatcher listening(TriggerKind kind) {
+        ServerTriggerDispatcher dispatcher = servers;
+        return dispatcher != null && !closed && dispatcher.listens(kind) ? dispatcher : null;
+    }
+
+    private static ServerEvent block(TriggerKind kind, Player player, Block block) {
+        return ServerEvent.block(kind, player.getUniqueId(), block.getType().getKey().toString(), block.getWorld().getName(), block.getX(), block.getY(), block.getZ());
+    }
+
+    private static String inventoryType(InventoryView view) { return view.getTopInventory().getType().name().toLowerCase(Locale.ROOT); }
+
+    /** The item's namespaced key; minecraft:air for none. */
+    static String itemKey(ItemStack stack) {
+        return stack == null || stack.getType() == Material.AIR ? "minecraft:air" : stack.getType().getKey().toString();
+    }
+
+    private static String typeKey(Entity entity) {
+        EntityType type = entity.getType();
+        return type == EntityType.UNKNOWN ? "" : type.getKey().toString();
     }
 
     /** Builds the event only when an enabled trigger listens for its kind. */

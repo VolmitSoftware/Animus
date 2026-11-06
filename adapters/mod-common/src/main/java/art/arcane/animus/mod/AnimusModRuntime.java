@@ -386,4 +386,6 @@ public final class AnimusModRuntime {
     }
     boolean helperHit(Projectile projectile, HitResult hit) { Running active = running; return active != null && active.combat.helperHit(projectile, hit); }
     boolean suppressesDrops(LivingEntity entity) { Running active = running; return active != null && active.combat.suppressesDrops(entity); }
+    /** Server behaviors of the running server, or null. */
+    ModServerBehaviors serverBehaviors() { Running active = running; return active == null ? null : active.serverBehaviors; }
 }

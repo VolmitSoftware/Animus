@@ -61,8 +61,8 @@ public final class DenizenImporter {
     }
 
     /**
-     * Reads a Denizen data folder: every {@code .dsc} and {@code .yml} under {@code scripts/}, {@code server_flags.dat}
-     * and {@code player_flags/*.dat}. Symbolic links are skipped; files must be UTF-8.
+     * Reads a Denizen data folder: every {@code .dsc} and {@code .yml} under {@code scripts/}, {@code server_flags.dat},
+     * {@code player_flags/*.dat} and {@code notables.yml}. Symbolic links are skipped; files must be UTF-8.
      */
     static DenizenConverter.Input read(Path folder, Optional<Path> citizens) throws IOException {
         TreeMap<String, String> scripts = new TreeMap<>();
@@ -92,8 +92,10 @@ public final class DenizenImporter {
                 }
             }
         }
+        Path notes = folder.resolve("notables.yml");
+        Optional<String> notables = Files.isRegularFile(notes, LinkOption.NOFOLLOW_LINKS) ? Optional.of(text(notes, total)) : Optional.empty();
         Optional<String> save = citizens.isPresent() ? Optional.of(text(citizens.get(), new long[] {0})) : Optional.empty();
-        return new DenizenConverter.Input(scripts, save, serverFlags, players);
+        return new DenizenConverter.Input(scripts, save, serverFlags, players, notables);
     }
 
     private static String text(Path path, long[] total) throws IOException {

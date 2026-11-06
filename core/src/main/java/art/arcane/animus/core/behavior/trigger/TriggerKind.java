@@ -26,7 +26,20 @@ public enum TriggerKind {
     SERVER_START("server_start", false, Reach.SERVER, "The server behavior is first enabled after the server starts."),
     PLAYER_DEATH("player_death", true, Reach.SERVER, "A player dies."),
     PLAYER_RESPAWN("player_respawn", true, Reach.SERVER, "A player respawns."),
-    PLAYER_WORLD_CHANGE("player_world_change", true, Reach.SERVER, "A player moves to another world, optionally only from or to named worlds.", "from", "to");
+    PLAYER_WORLD_CHANGE("player_world_change", true, Reach.SERVER, "A player moves to another world, optionally only from or to named worlds.", "from", "to"),
+    PLAYER_AREA("player_area", true, Reach.SERVER, "A player enters or leaves a cuboid or ellipsoid area, checked every half second and on join and quit. Runs read context.area, context.world and context.cause (join, move or quit).", "phase", "area", "world", "cuboid", "ellipsoid"),
+    PLAYER_INVENTORY_OPEN("player_inventory_open", true, Reach.SERVER, "A player opens an inventory. Runs read context.inventory_type. cancel keeps it closed.", "inventory", "cancel"),
+    PLAYER_INVENTORY_CLOSE("player_inventory_close", true, Reach.SERVER, "A player closes an inventory. Runs read context.inventory_type.", "inventory"),
+    PLAYER_INVENTORY_CLICK("player_inventory_click", true, Reach.SERVER, "A player clicks a slot of an open inventory. Runs read context.inventory_type, context.click, context.slot and context.item. cancel undoes the click.", "inventory", "click", "item", "cancel"),
+    PLAYER_ITEM_DROP("player_item_drop", true, Reach.SERVER, "A player drops an item. Runs read context.item and context.amount. cancel keeps it in the inventory.", "item", "cancel"),
+    PLAYER_ITEM_PICKUP("player_item_pickup", true, Reach.SERVER, "A player picks up an item. Runs read context.item and context.amount. cancel leaves it on the ground.", "item", "cancel"),
+    PLAYER_ITEM_CONSUME("player_item_consume", true, Reach.SERVER, "A player finishes eating or drinking an item. Runs read context.item. cancel keeps the item.", "item", "cancel"),
+    PLAYER_BLOCK_CLICK("player_block_click", true, Reach.SERVER, "A player left or right clicks a block. Runs read context.block, context.click (left or right), context.hand, context.location, context.world, context.x, context.y and context.z. cancel stops the click.", "block", "click", "cancel"),
+    PLAYER_BLOCK_PLACE("player_block_place", true, Reach.SERVER, "A player places a block. Runs read context.block and its location. cancel stops the placement.", "block", "cancel"),
+    PLAYER_BLOCK_BREAK("player_block_break", true, Reach.SERVER, "A player breaks a block. Runs read context.block and its location. cancel keeps the block.", "block", "cancel"),
+    PLAYER_DAMAGED("player_damaged", true, Reach.SERVER, "A player takes damage. Runs read context.cause, context.damage and context.damager (an entity type, empty for none). cancel prevents the damage.", "cause", "damager", "cancel"),
+    PLAYER_DAMAGE_ENTITY("player_damage_entity", true, Reach.SERVER, "A player hits a living entity that is not an NPC. Runs read context.entity, context.entity_uuid, context.cause and context.damage. cancel prevents the damage.", "entity", "cancel"),
+    PLAYER_KILL("player_kill", true, Reach.SERVER, "A player kills a living entity. Runs read context.entity and context.entity_uuid.", "entity");
 
     /** Which documents may use an event: NPC behaviors, server behaviors ({@code "server": true}) or both. */
     public enum Reach { NPC, SERVER, BOTH }
@@ -62,6 +75,11 @@ public enum TriggerKind {
         for (TriggerKind kind : values()) if (kind.jsonName.equals(name)) return Optional.of(kind);
         return Optional.empty();
     }
+    /** Trigger fields that filter on one context key of the event, with the context key each compares. */
+    public static final java.util.Map<String, String> FILTERS = java.util.Map.of("inventory", "inventory_type", "click", "click", "item", "item",
+            "block", "block", "cause", "cause", "damager", "damager", "entity", "entity");
+    /** Whether a trigger of this event may name a {@code cancel} condition: the platform event can be cancelled. */
+    public boolean cancellable() { return fields.contains("cancel"); }
     public static List<String> names() {
         List<String> names = new ArrayList<>();
         for (TriggerKind kind : values()) names.add(kind.jsonName);
