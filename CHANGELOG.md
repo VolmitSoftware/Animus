@@ -112,6 +112,10 @@
 - Server-wide behaviors with join, quit, chat, command, start, timer, death, respawn, world-change and module triggers, plus Animus-managed commands.
 - Message, title, actionbar, teleport, give-item, take-item and give-book actions, and a player override on player actions.
 - Flags hold any value and can expire; durable state stores lists, maps and expiry.
+- A short route leg whose goal can't be reached ends beside it when close enough.
+- Denizen `sentinel` commands and `trait state sentinel` convert to combat control.
+- `/animus import citizens accept commands` adds the command namespaces converted behaviors need to config.toml.
+- `[editor] port = 0` binds any free port.
 
 ### Changed
 
@@ -175,6 +179,8 @@
 - The editor theme uses a pink accent on near-black or light-grey surfaces, with redrawn icons.
 - User documentation moved to the central docs wiki; developer notes live in `dev/`.
 - The Denizen converter (version 2) converts definitions, conditions, loops, flags, procedures, world, command, data, book and inventory scripts, and the common tags.
+- Import preview and review name the command namespaces converted behaviors need.
+- Skins on non-player NPCs are explained as never shown by Citizens.
 
 ### Fixed
 
@@ -211,6 +217,10 @@
 - Death-trigger routines can speak, play sounds and show particles for the NPC that died.
 - The editor theme toggle switches themes without a reload.
 - Assignments whose only content was `on assignment` now give their NPCs a behavior.
+- Imported Citizens waypoints that name the ground block are walked on top of it instead of failing.
+- Stuck NPCs teleport onto the waypoint's surface instead of inside the block.
+- Waypoint sets with no points are no longer counted as kept but not run.
+- The editor pairing test no longer races for a port.
 
 ### Notes
 
