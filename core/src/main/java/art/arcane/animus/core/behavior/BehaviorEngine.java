@@ -349,6 +349,10 @@ public final class BehaviorEngine implements AutoCloseable {
         }
         @Override public long quest(String scope,String name){return (Long)state.read(subject(BehaviorFlags.QUESTS,scope),name,BehaviorFlags.declaration(scope),UNSET_STAGE,Type.INTEGER).value();}
         @Override public RandomGenerator random(){return random;}
+        @Override public Optional<Value> playerFlag(UUID player,String name){
+            Value value=state.read(BehaviorFlags.subject(BehaviorFlags.FLAGS,fiber.execution.program.id(),fiber.execution.context.npc().uuid(),Optional.of(player)),name,BehaviorFlags.declaration("player"),UNSET,Type.ANY);
+            return value==UNSET?Optional.empty():Optional.of(value);
+        }
         private BehaviorState.Subject subject(String kind,String scope){
             if(BehaviorFlags.declaration(scope).scope().requiresPlayer()&&fiber.execution.context.player().isEmpty())throw new BehaviorExpression.Failed("behavior-expression-failed","$","a "+scope+" flag needs a player, and this run has none");
             return BehaviorFlags.subject(kind,fiber.execution.program.id(),fiber.execution.context.npc().uuid(),fiber.execution.context.player());

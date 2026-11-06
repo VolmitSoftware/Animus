@@ -58,9 +58,13 @@ public final class ServerTriggerDispatcher {
         public String behavior() { return behavior; }
         public TriggerBinding trigger() { return trigger; }
     }
-    private record Index(Map<TriggerKind, List<Binding>> byKind, List<Binding> ordered, Set<String> behaviors, List<Diagnostic> diagnostics) {
-        static final Index EMPTY = new Index(Map.of(), List.of(), Set.of(), List.of());
+    /** {@code areas} holds each named area once per world, in declaration order, within {@code maximumAreas}. */
+    private record Index(Map<TriggerKind, List<Binding>> byKind, List<Binding> ordered, Set<String> behaviors, List<Diagnostic> diagnostics,
+                         Map<String, List<TriggerBinding.Area>> areas) {
+        static final Index EMPTY = new Index(Map.of(), List.of(), Set.of(), List.of(), Map.of());
     }
+    /** Thread-safe state and facts a cancel condition reads as its event happens. */
+    private record Consumption(art.arcane.animus.core.behavior.BehaviorState state, art.arcane.animus.core.behavior.BehaviorFacts facts) {}
     private record Pending(Binding binding, Optional<UUID> player, Map<String, Object> event, long admitted) {}
     private record Timer(long due, Binding binding, int interval) {}
 
@@ -76,6 +80,9 @@ public final class ServerTriggerDispatcher {
     private volatile boolean behaviorsEnabled = true;
     private volatile Index index = Index.EMPTY;
     private volatile Commands commands = Commands.EMPTY;
+    private volatile Consumption consumption;
+    /** The areas each tracked player stands in, by area name and world. Each player's entry is written on that player's owner. */
+    private final Map<UUID, Set<String>> inside = new java.util.concurrent.ConcurrentHashMap<>();
     private volatile Diagnostic lastStartFailure;
     private volatile long tick;
     private volatile int queuedCount, activeCount, timerCount;
@@ -113,7 +120,8 @@ public final class ServerTriggerDispatcher {
             drops.get(DropReason.UNAVAILABLE).increment();
             return Outcome.rejected(Outcome.Status.UNAVAILABLE, "server-trigger-unavailable", reason);
         }
-        if (!index.byKind().containsKey(event.kind())) return Outcome.ok(false);
+        List<Binding> bound = index.byKind().get(event.kind());
+        if (bound == null || filtered(event.kind()) && !wanted(event, bound)) return Outcome.ok(false);
         synchronized (lock) {
             if (inbox.size() >= settings.eventQueue()) {
                 drops.get(DropReason.EVENT_QUEUE).increment();
@@ -126,6 +134,94 @@ public final class ServerTriggerDispatcher {
     }
     /** Whether any enabled trigger listens for this event kind. Lets platforms skip building events nobody wants. */
     public boolean listens(TriggerKind kind) { return available() && index.byKind().containsKey(kind); }
+
+    /** World events can be frequent, so they are matched against the triggers' filters before they take a queue slot. */
+    private static final Set<TriggerKind> FILTERED = filteredKinds();
+    private static Set<TriggerKind> filteredKinds() {
+        EnumSet<TriggerKind> kinds = EnumSet.of(TriggerKind.PLAYER_AREA);
+        for (TriggerKind kind : TriggerKind.values()) for (String field : kind.fields()) if (TriggerKind.FILTERS.containsKey(field)) kinds.add(kind);
+        return Collections.unmodifiableSet(kinds);
+    }
+    private static boolean filtered(TriggerKind kind) { return FILTERED.contains(kind); }
+    private static boolean wanted(ServerEvent event, List<Binding> bound) {
+        for (Binding binding : bound) if (event.matches(binding.trigger.spec())) return true;
+        return false;
+    }
+
+    /** Connects what cancel conditions read. {@code state} must allow reads from any thread. Until then no event is cancelled. */
+    public void consumption(art.arcane.animus.core.behavior.BehaviorState state, art.arcane.animus.core.behavior.BehaviorFacts facts) {
+        consumption = new Consumption(Objects.requireNonNull(state), Objects.requireNonNull(facts));
+    }
+
+    /**
+     * Publishes a cancellable event and answers whether a trigger cancels it. Called on the thread that owns the event,
+     * before the platform acts on it: the event is cancelled when a matching trigger of an enabled server behavior has a
+     * {@code cancel} condition that holds now. A failing condition does not cancel. The matching runs start either way.
+     */
+    public boolean decide(ServerEvent event) {
+        publish(event);
+        Consumption reads = consumption;
+        if (reads == null || reason() != null || !event.kind().cancellable()) return false;
+        List<Binding> bound = index.byKind().get(event.kind());
+        if (bound == null) return false;
+        for (Binding binding : bound) {
+            if (!(binding.trigger.spec() instanceof TriggerBinding.WorldEvent world) || world.cancel().isEmpty() || !event.matches(world)) continue;
+            try { if (Boolean.TRUE.equals(world.cancel().get().evaluate(new EventEnvironment(binding.behavior, event, reads)))) return true; }
+            catch (art.arcane.animus.core.behavior.BehaviorExpression.Failed | art.arcane.animus.core.behavior.BehaviorState.Rejected failed) { /* a failing condition does not cancel */ }
+        }
+        return false;
+    }
+    /** What a cancel condition reads: no variables, the event's context, and this behavior namespace's flags and quests. */
+    private record EventEnvironment(String behavior, ServerEvent event, Consumption reads) implements art.arcane.animus.core.behavior.BehaviorExpression.Environment {
+        private static final BehaviorProgram.Value UNSET = new BehaviorProgram.Value(BehaviorProgram.Type.STRING, "unset"), UNSET_STAGE = new BehaviorProgram.Value(BehaviorProgram.Type.INTEGER, 0L);
+        @Override public BehaviorProgram.Value variable(String name) { return null; }
+        @Override public art.arcane.animus.core.behavior.BehaviorFacts facts() { return reads.facts(); }
+        @Override public Optional<UUID> player() { return event.player(); }
+        @Override public UUID npc() { return art.arcane.animus.core.behavior.ServerNpc.HANDLE.uuid(); }
+        @Override public Map<String, Object> context() { return event.context(); }
+        @Override public Optional<BehaviorProgram.Value> flag(String scope, String name) { return read(scope, name, event.player()); }
+        @Override public Optional<BehaviorProgram.Value> playerFlag(UUID player, String name) { return read("player", name, Optional.of(player)); }
+        private Optional<BehaviorProgram.Value> read(String scope, String name, Optional<UUID> player) {
+            BehaviorProgram.Value value = reads.state().read(subject(art.arcane.animus.core.behavior.BehaviorFlags.FLAGS, player), name, art.arcane.animus.core.behavior.BehaviorFlags.declaration(scope), UNSET, BehaviorProgram.Type.ANY);
+            return value == UNSET ? Optional.empty() : Optional.of(value);
+        }
+        @Override public long quest(String scope, String name) {
+            return (Long) reads.state().read(subject(art.arcane.animus.core.behavior.BehaviorFlags.QUESTS, event.player()), name, art.arcane.animus.core.behavior.BehaviorFlags.declaration(scope), UNSET_STAGE, BehaviorProgram.Type.INTEGER).value();
+        }
+        @Override public java.util.random.RandomGenerator random() { return java.util.concurrent.ThreadLocalRandom.current(); }
+        private art.arcane.animus.core.behavior.BehaviorState.Subject subject(String kind, Optional<UUID> player) {
+            return art.arcane.animus.core.behavior.BehaviorFlags.subject(kind, behavior, art.arcane.animus.core.behavior.ServerNpc.HANDLE.uuid(), player);
+        }
+    }
+
+    /**
+     * A tracked player's position, on that player's owner after each fact refresh. Publishes entering and leaving the
+     * listed areas; the first position after {@link #departed} or startup counts as a join. Costs one bounds check per
+     * area of the player's world, and nothing while no area trigger is enabled.
+     */
+    public void position(UUID player, String world, double x, double y, double z) {
+        Objects.requireNonNull(player); Objects.requireNonNull(world);
+        Index view = index;
+        if (view.areas().isEmpty() || !available()) { inside.remove(player); return; }
+        Set<String> before = inside.get(player);
+        if (before == null && inside.size() >= TRACKED_PLAYERS * 4) return;
+        Set<String> now = new HashSet<>();
+        for (TriggerBinding.Area area : view.areas().getOrDefault(world, List.of())) if (area.contains(x, y, z)) now.add(area.area() + "@" + world);
+        String cause = before == null ? "join" : "move";
+        Set<String> previous = before == null ? Set.of() : before;
+        for (String left : previous) if (!now.contains(left)) publishArea(player, TriggerBinding.Phase.LEAVE, left, cause);
+        for (String entered : now) if (!previous.contains(entered)) publishArea(player, TriggerBinding.Phase.ENTER, entered, cause);
+        inside.put(player, Set.copyOf(now));
+    }
+    /** The player quit: every area they stood in publishes leaving with cause quit. */
+    public void departed(UUID player) {
+        Set<String> before = inside.remove(Objects.requireNonNull(player));
+        if (before != null && available()) for (String left : before) publishArea(player, TriggerBinding.Phase.LEAVE, left, "quit");
+    }
+    private void publishArea(UUID player, TriggerBinding.Phase phase, String key, String cause) {
+        int at = key.lastIndexOf('@');
+        publish(ServerEvent.area(player, phase, key.substring(0, at), key.substring(at + 1), cause));
+    }
     /** The commands platforms register now. */
     public Commands commands() { return commands; }
 
@@ -180,6 +276,7 @@ public final class ServerTriggerDispatcher {
         Map<String, Stats> retained = new HashMap<>();
         List<Command> registered = new ArrayList<>();
         Set<String> labels = new HashSet<>();
+        Map<String, TriggerBinding.Area> areas = new LinkedHashMap<>();
         for (String id : list.ids()) {
             String field = "server-behaviors.json behavior=" + id;
             BehaviorCatalog.Resolution resolution = behaviors.byId().get(id);
@@ -194,6 +291,7 @@ public final class ServerTriggerDispatcher {
                     problems.add("server-timer-budget", triggerField, "Interval is below behaviors.server.minimumTimerTicks"); continue;
                 }
                 if (trigger.spec() instanceof TriggerBinding.Command command && !command(id, trigger, command, registered, labels, problems, triggerField)) continue;
+                if (trigger.spec() instanceof TriggerBinding.Area area && !area(area, areas, problems, triggerField)) continue;
                 String key = id + "#" + trigger.id();
                 Stats stat = stats.getOrDefault(key, new Stats());
                 retained.put(key, stat);
@@ -205,7 +303,10 @@ public final class ServerTriggerDispatcher {
         stats.clear(); stats.putAll(retained);
         Map<TriggerKind, List<Binding>> frozen = new EnumMap<>(TriggerKind.class);
         byKind.forEach((kind, bound) -> frozen.put(kind, List.copyOf(bound)));
-        index = new Index(Collections.unmodifiableMap(frozen), List.copyOf(ordered), Set.copyOf(listed), problems.list());
+        Map<String, List<TriggerBinding.Area>> byWorld = new HashMap<>();
+        for (TriggerBinding.Area area : areas.values()) byWorld.computeIfAbsent(area.world(), ignored -> new ArrayList<>()).add(area);
+        byWorld.replaceAll((world, shapes) -> List.copyOf(shapes));
+        index = new Index(Collections.unmodifiableMap(frozen), List.copyOf(ordered), Set.copyOf(listed), problems.list(), Map.copyOf(byWorld));
         if (!registered.equals(commands.commands())) commands = new Commands(commands.generation() + 1, registered);
         rebuildTimers();
     }
@@ -217,6 +318,22 @@ public final class ServerTriggerDispatcher {
         if (registered.size() >= settings.maximumCommands()) { problems.add("server-command-capacity", field, "behaviors.server.maximumCommands reached; /" + command.name() + " is not registered"); return false; }
         labels.addAll(names);
         registered.add(new Command(behavior, trigger.id(), command.name(), command.aliases(), command.permission(), command.description(), command.usage()));
+        return true;
+    }
+    /**
+     * An area is tracked once per name and world, so its enter and leave triggers share it. Another shape under a used name
+     * and every area past the maximum stay untracked.
+     */
+    private boolean area(TriggerBinding.Area area, Map<String, TriggerBinding.Area> areas, Problems problems, String field) {
+        String key = area.area() + "@" + area.world();
+        TriggerBinding.Area known = areas.get(key);
+        if (known != null) {
+            if (known.shape() == area.shape() && Arrays.equals(known.bounds(), area.bounds())) return true;
+            problems.add("server-area-conflict", field, "Area " + area.area() + " in " + area.world() + " is already tracked with other bounds; this trigger is not bound");
+            return false;
+        }
+        if (areas.size() >= settings.maximumAreas()) { problems.add("server-area-capacity", field, "behaviors.server.maximumAreas reached; area " + area.area() + " is not tracked"); return false; }
+        areas.put(key, area);
         return true;
     }
     private void rebuildTimers() {

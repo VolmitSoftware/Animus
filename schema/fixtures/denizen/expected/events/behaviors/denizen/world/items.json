@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:world/items",
+  "server": true,
+  "entry": "on-player-drops-item",
+  "routines": {
+    "on-player-drops-item": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "expression": "!(has_flag('player', 'no_drop'))",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "You cannot drop {{ replace(context.item, 'minecraft:', '') }}."
+          }
+        },
+        {
+          "type": "return"
+        }
+      ]
+    },
+    "on-player-picks-up-dragon_breath": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "expression": "has_flag('player', 'ratelimit-items-56')",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "ratelimit-items-56",
+            "scope": "player",
+            "expireSeconds": 10
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:title",
+          "arguments": {
+            "title": "Too hot"
+          }
+        }
+      ]
+    },
+    "on-player-consumes-bread": {
+      "type": "action",
+      "capability": "animus:set-flag",
+      "arguments": {
+        "name": "meals",
+        "scope": "player",
+        "value": null
+      },
+      "expressions": {
+        "/value": "(num(flag('player', 'meals', 0)) + 1)"
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "on-player-drops-item",
+      "event": "player_item_drop",
+      "cancel": "has_flag('player', 'no_drop')",
+      "routine": "on-player-drops-item"
+    },
+    {
+      "id": "on-player-picks-up-dragon_breath",
+      "event": "player_item_pickup",
+      "item": "dragon_breath",
+      "cancel": "!has_flag('player', 'ratelimit-items-56')",
+      "routine": "on-player-picks-up-dragon_breath"
+    },
+    {
+      "id": "on-player-consumes-bread",
+      "event": "player_item_consume",
+      "item": "bread",
+      "routine": "on-player-consumes-bread"
+    }
+  ]
+}

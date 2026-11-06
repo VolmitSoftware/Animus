@@ -42,7 +42,7 @@ import java.util.UUID;
  * accepts them.
  */
 final class DenizenConverter {
-    static final int CONVERTER_VERSION = 3;
+    static final int CONVERTER_VERSION = 4;
     /** The author a converted book gets when its Denizen author is blank. */
     static final String BLANK_BOOK_AUTHOR = "Server";
     static final String NAMESPACE = "denizen";
@@ -52,7 +52,12 @@ final class DenizenConverter {
     private static final String NAME = "[a-z0-9][a-z0-9_-]{0,63}";
     private static final String UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
-    record Input(TreeMap<String, String> scripts, Optional<String> citizens, Optional<String> serverFlags, TreeMap<String, String> playerFlags) {}
+    /** {@code notables} is the text of Denizen's notables.yml, whose noted cuboids and ellipsoids area events use. */
+    record Input(TreeMap<String, String> scripts, Optional<String> citizens, Optional<String> serverFlags, TreeMap<String, String> playerFlags, Optional<String> notables) {
+        Input(TreeMap<String, String> scripts, Optional<String> citizens, Optional<String> serverFlags, TreeMap<String, String> playerFlags) {
+            this(scripts, citizens, serverFlags, playerFlags, Optional.empty());
+        }
+    }
 
     /** The staged files by path relative to the import directory, and the report also written as {@code report.json}. */
     record Output(String id, TreeMap<String, String> files, JsonObject report) {}
@@ -96,8 +101,10 @@ final class DenizenConverter {
         final Map<String, String> saves;
         /** Denizen context keys the trigger passes, and their Animus names. */
         final Map<String, String> context;
-        /** The {@code determine cancelled} line an NPC event's {@code consume} condition was made from; set on that event's scope only. */
+        /** The {@code determine cancelled} line an event's {@code consume} or {@code cancel} condition was made from; set on that event's scope only. */
         Item cancel;
+        /** Whether this scope is a world event the platform can cancel. */
+        boolean cancellable;
 
         Scope(Doc doc, Set<String> calling, boolean record, Container container, Optional<Interact> interact, int step, Map<String, String> definitions, List<String> loops, Map<String, String> saves, Map<String, String> context) {
             this.doc = doc; this.calling = calling; this.record = record; this.server = doc.server; this.container = container; this.interact = interact; this.step = step;
@@ -130,6 +137,8 @@ final class DenizenConverter {
     /** Literal values scripts and NPC data give each flag, by {@code scope:name}; filled on first use. */
     private TreeMap<String, TreeSet<String>> flagValues;
     private final TreeMap<String, List<String>> guards = new TreeMap<>();
+    /** Noted areas by lowercase name: notables.yml first, then literal {@code note ... as:name} lines of scripts. */
+    final TreeMap<String, DenizenEvents.Note> notes = new TreeMap<>();
     private final DenizenExpressions expressions = new DenizenExpressions(this);
     private final DenizenCommands commands = new DenizenCommands(this, expressions);
 
@@ -146,6 +155,7 @@ final class DenizenConverter {
         for (Map.Entry<String, String> file : input.scripts().entrySet()) sources.addProperty("scripts/" + file.getKey(), JsonDocuments.hash(file.getValue()));
         input.citizens().ifPresent((String text) -> sources.addProperty("citizens", JsonDocuments.hash(text)));
         input.serverFlags().ifPresent((String text) -> sources.addProperty("server_flags.dat", JsonDocuments.hash(text)));
+        input.notables().ifPresent((String text) -> sources.addProperty("notables.yml", JsonDocuments.hash(text)));
         for (Map.Entry<String, String> file : input.playerFlags().entrySet()) sources.addProperty("player_flags/" + file.getKey() + ".dat", JsonDocuments.hash(file.getValue()));
         String id = JsonDocuments.hash("animus-denizen-v" + CONVERTER_VERSION + "\n" + sources);
 
@@ -165,6 +175,8 @@ final class DenizenConverter {
         for (Container container : containers.values()) slug(container.name());
         for (Container container : containers.values()) if (container.type().equals("interact")) interacts.put(container.name().toLowerCase(Locale.ROOT), interact(container));
         if (input.citizens().isPresent()) readNpcs(input.citizens().get());
+        if (input.notables().isPresent()) notes.putAll(DenizenEvents.notables(CitizensImporter.parseYaml(input.notables().get()), issues));
+        for (Container container : containers.values()) collectNotes(container.body());
 
         TreeMap<String, DenizenFlags.Values> playerValues = new TreeMap<>();
         for (Map.Entry<String, String> file : input.playerFlags().entrySet()) playerValues.put(file.getKey(), DenizenFlags.file(file.getValue()));
@@ -1029,8 +1041,9 @@ final class DenizenConverter {
 
     /**
      * A world script: one server behavior whose routines are its events, each run by the matching server trigger, and
-     * one NPC behavior, bound to every NPC, for its NPC click events. A click event whose top level cancels the click
-     * after plain guards gets a {@code consume} condition made of those guards.
+     * one NPC behavior, bound to every NPC, for its NPC click events. A cancellable event whose top level cancels it
+     * after plain guards and rate limits gets a condition made of those guards: {@code consume} on an NPC click,
+     * {@code cancel} on a server event.
      */
     private void world(Container container, TreeMap<String, String> documents) {
         Optional<Node> events = container.body().get("events");
@@ -1046,7 +1059,7 @@ final class DenizenConverter {
                     preserveNode(kept, entry.value(), "inside a world event that is kept");
                     continue;
                 }
-                DenizenEvents.Mapped mapped = DenizenEvents.event(key);
+                DenizenEvents.Mapped mapped = DenizenEvents.event(key, notes, mentions(sequence, "<context.entity.is_npc>"));
                 String reason = mapped.reason();
                 Doc doc = mapped.npc() ? clicks : server;
                 JsonArray triggers = mapped.npc() ? clickTriggers : serverTriggers;
@@ -1063,7 +1076,8 @@ final class DenizenConverter {
                 }
                 record(container, entry.line(), "event", label, entry.key(), true, "");
                 Scope scope = Scope.of(doc, true, container, Optional.empty(), -1, mapped.context());
-                Optional<DenizenCommands.Consume> consume = mapped.npc() ? commands.consume(sequence.items(), mapped.guards(), scope) : Optional.empty();
+                scope.cancellable = mapped.cancellable();
+                Optional<DenizenCommands.Consume> consume = mapped.cancellable() ? commands.consume(sequence.items(), mapped.guards(), scope) : Optional.empty();
                 consume.ifPresent((DenizenCommands.Consume found) -> scope.cancel = found.item());
                 JsonObject body = sequence(commands.block(sequence.items(), 0, scope));
                 for (int index = mapped.guards().size() - 1; index >= 0; index--) body = DenizenExpressions.build(mapped.guards().get(index), body, Optional.empty());
@@ -1071,7 +1085,7 @@ final class DenizenConverter {
                 JsonObject trigger = new JsonObject();
                 trigger.addProperty("id", routine);
                 for (Map.Entry<String, JsonElement> field : mapped.trigger().entrySet()) trigger.add(field.getKey(), field.getValue());
-                consume.ifPresent((DenizenCommands.Consume found) -> trigger.addProperty("consume", found.condition()));
+                consume.ifPresent((DenizenCommands.Consume found) -> trigger.addProperty(mapped.npc() ? "consume" : "cancel", found.condition()));
                 trigger.addProperty("routine", routine);
                 triggers.add(trigger);
             }
@@ -1079,6 +1093,34 @@ final class DenizenConverter {
         otherKeys(container, List.of("type", "events", "debug", "enabled"), "world");
         if (!server.routines.isEmpty()) document(behaviorId("world", container), server, container, serverTriggers, documents);
         if (!clicks.routines.isEmpty() && document(behaviorId("world-npc", container), clicks, container, clickTriggers, documents)) clickBehaviors.add(behaviorId("world-npc", container));
+    }
+
+    /** Whether a command line, or one inside it, contains {@code text}, ignoring case. */
+    private static boolean mentions(Sequence sequence, String text) {
+        for (Item item : sequence.items()) {
+            if (item.text().toLowerCase(Locale.ROOT).contains(text)) return true;
+            if (item.children().isPresent() && mentions(item.children().get(), text)) return true;
+        }
+        return false;
+    }
+
+    /** Literal {@code note <cuboid> as:name} lines name areas as notables.yml does; notables.yml wins on a clash. */
+    private void collectNotes(Node node) {
+        if (node instanceof Mapping mapping) for (Entry entry : mapping.entries()) collectNotes(entry.value());
+        else if (node instanceof Sequence sequence) for (Item item : sequence.items()) {
+            item.children().ifPresent(this::collectNotes);
+            noteOf(DenizenArgs.command(item.text())).ifPresent((DenizenEvents.Note note) -> notes.putIfAbsent(note.name(), note));
+        }
+    }
+
+    /** The area a literal {@code note} command names, if it is one. */
+    static Optional<DenizenEvents.Note> noteOf(DenizenArgs.Command command) {
+        if (!command.name().equals("note") || command.args().size() != 2) return Optional.empty();
+        Arg area = command.args().get(0), name = command.args().get(1);
+        if (!area.prefix().isEmpty() || !name.prefix().equals("as")) return Optional.empty();
+        String lowered = name.value().toLowerCase(Locale.ROOT);
+        if (!lowered.matches("[a-z0-9][a-z0-9_-]{0,63}")) return Optional.empty();
+        return DenizenEvents.note(lowered, area.value());
     }
 
     /** The flag name a {@code ratelimit} line keeps its per-player window in. */

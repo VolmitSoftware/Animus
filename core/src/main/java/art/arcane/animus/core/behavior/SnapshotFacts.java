@@ -63,11 +63,15 @@ public final class SnapshotFacts implements BehaviorFacts {
         return facts;
     }
 
-    /** NPC facts: name, id, uuid, spawned, health, world, x, y, z, location. */
-    public static Map<String, Object> npc(String name, String id, UUID uuid, boolean spawned, double health, String world, double x, double y, double z) {
+    /**
+     * NPC facts: name, id, citizens_id, uuid, spawned, health, world, x, y, z, location. {@code citizensId} is the numeric
+     * Citizens id of an NPC migrated from Citizens, and the Animus id of any other NPC.
+     */
+    public static Map<String, Object> npc(String name, String id, String citizensId, UUID uuid, boolean spawned, double health, String world, double x, double y, double z) {
         Map<String, Object> facts = new LinkedHashMap<>();
         facts.put("name", name);
         facts.put("id", id);
+        facts.put("citizens_id", citizensId);
         facts.put("uuid", uuid.toString());
         facts.put("spawned", spawned);
         facts.put("health", health);
@@ -79,8 +83,14 @@ public final class SnapshotFacts implements BehaviorFacts {
         return facts;
     }
 
-    public static Map<String, Object> server(long onlinePlayers, long maxPlayers, long tick, long timeMillis) {
-        return Map.of("online_players", onlinePlayers, "max_players", maxPlayers, "tick", tick, "time_millis", timeMillis);
+    /** The most player UUIDs the {@code players} fact lists. */
+    public static final int MAXIMUM_LISTED_PLAYERS = 1024;
+
+    /** Server facts; {@code players} lists the online players' UUIDs, at most {@link #MAXIMUM_LISTED_PLAYERS}. */
+    public static Map<String, Object> server(long onlinePlayers, long maxPlayers, long tick, long timeMillis, java.util.Collection<UUID> players) {
+        java.util.List<String> listed = new java.util.ArrayList<>(Math.min(players.size(), MAXIMUM_LISTED_PLAYERS));
+        for (UUID player : players) { if (listed.size() >= MAXIMUM_LISTED_PLAYERS) break; listed.add(player.toString()); }
+        return Map.of("online_players", onlinePlayers, "players", java.util.List.copyOf(listed), "max_players", maxPlayers, "tick", tick, "time_millis", timeMillis);
     }
 
     /**
@@ -109,13 +119,14 @@ public final class SnapshotFacts implements BehaviorFacts {
                 Map<String, Object> facts = new LinkedHashMap<>();
                 facts.put("name", definition.name());
                 facts.put("id", definition.id());
+                facts.put("citizens_id", definition.citizensId().orElse(definition.id()));
                 facts.put("uuid", npc.toString());
                 facts.put("spawned", false);
                 facts.put("health", 0.0);
                 return Optional.of(facts);
             }
             art.arcane.animus.core.virtual.VirtualNpcState.Snapshot snapshot = state.get();
-            return Optional.of(npc(definition.name(), definition.id(), npc, snapshot.active(), snapshot.health(), snapshot.position().world(),
+            return Optional.of(npc(definition.name(), definition.id(), definition.citizensId().orElse(definition.id()), npc, snapshot.active(), snapshot.health(), snapshot.position().world(),
                     snapshot.position().point().x(), snapshot.position().point().y(), snapshot.position().point().z()));
         };
     }

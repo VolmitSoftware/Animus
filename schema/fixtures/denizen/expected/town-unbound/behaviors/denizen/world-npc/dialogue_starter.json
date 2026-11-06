@@ -49,7 +49,7 @@
         },
         {
           "type": "condition",
-          "expression": "has_flag('player', ('story_done_' + text(npc.id)))",
+          "expression": "has_flag('player', ('story_done_' + text(npc.citizens_id)))",
           "then": {
             "type": "return"
           }
@@ -109,7 +109,7 @@
       "id": "on-player-right-clicks-entity",
       "event": "interaction",
       "action": "interact",
-      "consume": "!(same(replace(context.hand, '_', ''), 'offhand')) && context.sneaking && has_flag('npc', 'dialogue_script') && !(has_flag('player', ('story_done_' + text(npc.id))))",
+      "consume": "!(same(replace(context.hand, '_', ''), 'offhand')) && context.sneaking && has_flag('npc', 'dialogue_script') && !(has_flag('player', ('story_done_' + text(npc.citizens_id)))) && !has_flag('player', 'ratelimit-dialogue_starter-20')",
       "routine": "on-player-right-clicks-entity"
     }
   ]

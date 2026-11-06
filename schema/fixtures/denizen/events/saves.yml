@@ -1,0 +1,11 @@
+# Synthetic Citizens save for the Denizen events fixture. Not taken from any server.
+npc:
+  7:
+    name: Teller
+    uuid: 00000000-0000-4000-8000-000000000007
+    traits:
+      type: VILLAGER
+      spawned: true
+      location: {world: world, x: 1.5, y: 64.0, z: 1.5, yaw: 0.0, pitch: 0.0}
+      assignment:
+        assignment: npc_story
