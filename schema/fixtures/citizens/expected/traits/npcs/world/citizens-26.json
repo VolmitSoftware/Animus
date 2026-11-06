@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "41afabca-c7d7-3fbb-98c3-cc41f70c72a5",
+  "id": "citizens-26",
+  "group": "world",
+  "name": "No UUID",
+  "type": "minecraft:zombie",
+  "spawned": false,
+  "migration": {
+    "importId": "422e5c989fcb1593adb1b901b20abf74f3d8a2644d1153d3524dc7b9d67adff0",
+    "citizensId": 26,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 26,
+    "y": 64,
+    "z": 26,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "equipment": {
+    "main_hand": {
+      "id": "minecraft:golden_sword",
+      "count": 1
+    }
+  },
+  "modules": {
+    "citizens:review": {
+      "type": "ZOMBIE",
+      "location": {
+        "world": "world",
+        "x": 26,
+        "y": 64,
+        "z": 26
+      },
+      "equipment": {
+        "hand": {
+          "type": "minecraft:Golden_Sword"
+        }
+      }
+    }
+  }
+}

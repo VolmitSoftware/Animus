@@ -5169,7 +5169,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "trigger-interaction": {
       "type": "object",
-      "description": "A viewer's validated hit on the NPC.",
+      "description": "A viewer's validated hit on the NPC. Runs read context.sneaking and context.hand (main_hand or off_hand).",
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -5196,6 +5196,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "any"
           ],
           "description": "Which hit fires it; interact by default."
+        },
+        "consume": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked when the click arrives, over flags, facts, context.sneaking and context.hand. When it holds, the click belongs to this behavior: shops, hiring, GUIs, riding and selection do not see it. Omit to leave the click to them."
         }
       },
       "required": [
@@ -7121,7 +7127,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   ],
   "triggers": {
     "interaction": {
-      "description": "A viewer's validated hit on the NPC.",
+      "description": "A viewer's validated hit on the NPC. Runs read context.sneaking and context.hand (main_hand or off_hand).",
       "carriesPlayer": true,
       "reach": "npc",
       "fields": {
@@ -7156,6 +7162,13 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "any"
           ],
           "description": "Which hit fires it; interact by default."
+        },
+        "consume": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked when the click arrives, over flags, facts, context.sneaking and context.hand. When it holds, the click belongs to this behavior: shops, hiring, GUIs, riding and selection do not see it. Omit to leave the click to them."
         }
       }
     },
@@ -8138,7 +8151,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Animus NPC definition",
-  "description": "npcs/<group>/<id>.json. Unknown fields and modules are kept as written.",
+  "description": "npcs/<folders>/<id>.json, in npcs/ itself or up to 8 folders deep. Unknown fields and modules are kept as written.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -8173,8 +8186,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "group": {
       "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
-      "description": "Matches the directory name."
+      "pattern": "^(?:[a-z0-9][a-z0-9_-]{0,63}(?:/[a-z0-9][a-z0-9_-]{0,63}){0,7})?$",
+      "description": "The folder under npcs/, empty for npcs/ itself. Animus sets it from where the file is."
     },
     "name": {
       "type": "string",
@@ -8324,10 +8337,45 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "description": "Order sequence only: start again from the first point."
             },
             "waitTicks": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 12000
+                },
+                {
+                  "type": "array",
+                  "description": "[min, max] in ticks, min not above max.",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 12000
+                  }
+                }
+              ],
+              "description": "Wait before the first leg and after each arrival: ticks, or [min, max] drawn per arrival."
+            },
+            "seed": {
+              "enum": [
+                "npc",
+                "random"
+              ],
+              "description": "npc (default): choices stable per NPC and route, across restarts. random: mixed with the clock."
+            },
+            "startOffset": {
+              "enum": [
+                "first",
+                "random"
+              ],
+              "description": "random: start at a random point after a random 0..waitTicks wait. first by default."
+            },
+            "jitter": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 12000,
-              "description": "Wait before the first leg and after each arrival."
+              "maximum": 8,
+              "description": "Leg goals move by a random whole-block x/z offset within this radius."
             },
             "points": {
               "type": "array",
@@ -8358,10 +8406,62 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     "maximum": 29999984
                   },
                   "waitTicks": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 12000
+                      },
+                      {
+                        "type": "array",
+                        "description": "[min, max] in ticks, min not above max.",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 12000
+                        }
+                      }
+                    ],
+                    "description": "Wait after arriving here, instead of the route's."
+                  },
+                  "jitter": {
                     "type": "integer",
                     "minimum": 0,
-                    "maximum": 12000,
-                    "description": "Wait after arriving here, instead of the route's."
+                    "maximum": 8,
+                    "description": "Jitter radius of this point, instead of the route's."
+                  },
+                  "weight": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "description": "Order random only: how often this point is chosen."
+                  },
+                  "next": {
+                    "type": "array",
+                    "description": "Order sequence only: after this point, the next point is drawn from these by weight.",
+                    "minItems": 1,
+                    "maxItems": 8,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "to"
+                      ],
+                      "properties": {
+                        "to": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 255
+                        },
+                        "weight": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1000
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -8486,6 +8586,21 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         "required": [
                           "wander"
                         ]
+                      },
+                      {
+                        "required": [
+                          "seed"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "startOffset"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "jitter"
+                        ]
                       }
                     ]
                   }
@@ -8588,6 +8703,91 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 "required": [
                   "order"
                 ]
+              }
+            },
+            {
+              "if": {
+                "not": {
+                  "properties": {
+                    "order": {
+                      "const": "random"
+                    }
+                  },
+                  "required": [
+                    "order"
+                  ]
+                }
+              },
+              "then": {
+                "properties": {
+                  "points": {
+                    "items": {
+                      "not": {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "weight"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "order"
+                ],
+                "not": {
+                  "properties": {
+                    "order": {
+                      "const": "sequence"
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "points": {
+                    "items": {
+                      "not": {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "next"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "order": {
+                    "const": "wander"
+                  }
+                },
+                "required": [
+                  "order"
+                ]
+              },
+              "then": {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "jitter"
+                      ]
+                    }
+                  ]
+                }
               }
             }
           ]

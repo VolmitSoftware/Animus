@@ -112,10 +112,15 @@
 - Server-wide behaviors with join, quit, chat, command, start, timer, death, respawn, world-change and module triggers, plus Animus-managed commands.
 - Message, title, actionbar, teleport, give-item, take-item and give-book actions, and a player override on player actions.
 - Flags hold any value and can expire; durable state stores lists, maps and expiry.
+- Routes share well between NPCs: `seed`, `startOffset: random`, `waitTicks` ranges, `jitter`, point `weight` for random order and `next` junctions for sequence order, with field-named validation.
 - A short route leg whose goal can't be reached ends beside it when close enough.
 - Denizen `sentinel` commands and `trait state sentinel` convert to combat control.
 - `/animus import citizens accept commands` adds the command namespaces converted behaviors need to config.toml.
 - `[editor] port = 0` binds any free port.
+- NPC files can sit directly in `npcs/` or in up to 8 nested folders; the folder becomes the group.
+- Interaction triggers take a `consume` condition; a matched click skips shops, hiring, GUIs, riding and selection.
+- Click runs read `context.sneaking` and `context.hand`.
+- Denizen right clicks on NPCs convert, with sneak, hand and NPC checks, `ratelimit`, built flag names and `run <npc.flag[...]>`.
 - Performance recording documents (`recordings/<id>.json`): frames, swing, equipment and door events, a byte-exact serialized form, hotload and editor apply, and `schema/recording-v1.schema.json`.
 - Recording core for playback: frame simplification within 0.02 blocks and 2 degrees, and a once, loop or pingpong cursor with interpolated poses, capped event windows and catch-up skips.
 - `[recordings]` settings in `config.toml` for sampling, length, file size, sessions, ghosts and previews, all applied live.
@@ -129,6 +134,7 @@
 
 ### Changed
 
+- Random choices on routes (`random` and `wander` orders, and the new route randomness) are seeded from the NPC UUID and route by default, so each NPC repeats its own choices after a restart. Set `"seed": "random"` for the old clock-seeded behavior.
 - Manual runs stay limited to one per NPC; trigger-started executions are counted separately and use scoped variables, resolving player and relationship variables from the triggering player.
 - `/animus behaviors inspect` answers with current waits, conditions and recent steps, and `/animus behaviors trace` lists every active run with its origin. Startup logs every behavior catalog diagnostic.
 - Behavior validation rejects invalid literal capability arguments and reports unavailable capabilities separately.
@@ -191,6 +197,9 @@
 - The Denizen converter (version 2) converts definitions, conditions, loops, flags, procedures, world, command, data, book and inventory scripts, and the common tags.
 - Import preview and review name the command namespaces converted behaviors need.
 - Skins on non-player NPCs are explained as never shown by Citizens.
+- Citizens imports go in `npcs/<world>/` without region folders (converter v12).
+- Re-importing updates a moved NPC in place rather than installing it again.
+- Denizen converter v3; world click events become `denizen:world-npc/*` behaviors bound to every NPC.
 
 ### Fixed
 
@@ -231,6 +240,13 @@
 - Stuck NPCs teleport onto the waypoint's surface instead of inside the block.
 - Waypoint sets with no points are no longer counted as kept but not run.
 - The editor pairing test no longer races for a port.
+- One import apply no longer erases Shopkeepers shops from NPCs that also get Denizen behaviors.
+- Import edits made from an outdated NPC copy are refused instead of overwriting newer changes.
+- Titles, subtitles and action bars of only spaces no longer invalidate converted behaviors.
+- Converted books with a blank title or author fall back to the script name or Server.
+- Clicking an already selected NPC no longer repeats "Selected ... via INTERACT".
+- Hotload notices wait until edited behaviors, shops, GUIs, holograms and menus are live.
+- Hotload no longer reports numerically equal values, such as `0.0` and `0`, as changed.
 
 ### Notes
 

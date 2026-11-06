@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:world-npc/dialogue_starter",
+  "entry": "on-player-right-clicks-entity",
+  "routines": {
+    "on-player-right-clicks-entity": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "expression": "!(true)",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "condition",
+          "expression": "same(replace(context.hand, '_', ''), 'offhand')",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "condition",
+          "expression": "!(context.sneaking)",
+          "then": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "action",
+                "capability": "animus:actionbar",
+                "arguments": {
+                  "text": "&eSneak and right click &7to hear the news"
+                }
+              },
+              {
+                "type": "return"
+              }
+            ]
+          }
+        },
+        {
+          "type": "condition",
+          "expression": "!(has_flag('npc', 'dialogue_script'))",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "condition",
+          "expression": "has_flag('player', ('story_done_' + text(npc.id)))",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "condition",
+          "expression": "has_flag('player', 'ratelimit-dialogue_starter-20')",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "ratelimit-dialogue_starter-20",
+            "scope": "player",
+            "expireSeconds": 1
+          }
+        },
+        {
+          "type": "condition",
+          "expression": "same(lower(text(flag('npc', 'dialogue_script', ''))), 'crier_story')",
+          "then": {
+            "type": "call",
+            "routine": "task-crier_story"
+          }
+        }
+      ]
+    },
+    "task-crier_story": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "Extra, extra! The gate opens at dawn, {{ player.name }}."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "crier_heard",
+            "scope": "player"
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "on-player-right-clicks-entity",
+      "event": "interaction",
+      "action": "interact",
+      "consume": "!(same(replace(context.hand, '_', ''), 'offhand')) && context.sneaking && has_flag('npc', 'dialogue_script') && !(has_flag('player', ('story_done_' + text(npc.id))))",
+      "routine": "on-player-right-clicks-entity"
+    }
+  ]
+}

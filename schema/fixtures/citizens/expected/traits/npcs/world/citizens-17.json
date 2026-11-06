@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000017",
+  "id": "citizens-17",
+  "group": "world",
+  "name": "Old Smith 3000",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "422e5c989fcb1593adb1b901b20abf74f3d8a2644d1153d3524dc7b9d67adff0",
+    "citizensId": 17,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 17,
+    "y": 64,
+    "z": 17,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "animus:shop": {
+      "shop": "dtltraders:converted-oldsmith",
+      "openOn": "right",
+      "reviewAccepted": false,
+      "imported": {
+        "source": "dtlTraders",
+        "shopName": "converted-oldsmith"
+      }
+    },
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "world",
+        "x": 17,
+        "y": 64,
+        "z": 17
+      },
+      "trader": {
+        "type": "server",
+        "stock": {
+          "sell": {
+            "0": {
+              "item": "iron_ingot a:3",
+              "price": 5.0
+            }
+          }
+        }
+      }
+    }
+  }
+}

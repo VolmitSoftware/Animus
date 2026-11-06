@@ -1,0 +1,310 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000500",
+  "id": "citizens-0",
+  "group": "town",
+  "name": "Gate Warden",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "de14bc7b40fae6f816c27297122ab341732aa8b44952290cb2446a2cbff248ca",
+    "citizensId": 0,
+    "originalSpawned": null,
+    "references": [],
+    "skin": {
+      "skinUuid": "0a1b2c3d-0000-4000-8000-0000000005aa",
+      "skinName": "wardenskin"
+    }
+  },
+  "position": {
+    "world": "town",
+    "x": 10.5,
+    "y": 64.0,
+    "z": 20.5,
+    "yaw": 90.0,
+    "pitch": 0.0
+  },
+  "equipment": {
+    "main_hand": {
+      "id": "minecraft:netherite_sword",
+      "count": 1,
+      "components": "[lore=[{\"text\":\"Issued to the watch\"}],enchantments={\"minecraft:sharpness\":2},unbreakable={},custom_model_data={floats:[7001f]},item_model=\"townpack:guard_sword\"]"
+    },
+    "off_hand": {
+      "id": "minecraft:shield",
+      "count": 1,
+      "components": "[custom_name={\"text\":\"Town Shield\",\"italic\":false,\"color\":\"gold\"},base_color=\"blue\",banner_patterns=[{pattern:\"minecraft:cross\",color:\"white\"},{pattern:\"minecraft:border\",color:\"yellow\"}]]"
+    }
+  },
+  "inventory": {
+    "size": 9,
+    "slots": {
+      "0": {
+        "id": "minecraft:netherite_sword",
+        "count": 1,
+        "components": "[lore=[{\"text\":\"Issued to the watch\"}],enchantments={\"minecraft:sharpness\":2},unbreakable={},custom_model_data={floats:[7001f]},item_model=\"townpack:guard_sword\"]"
+      },
+      "2": {
+        "id": "minecraft:filled_map",
+        "count": 1,
+        "components": "[map_id=3]",
+        "imported": {
+          "type": "filled_map",
+          "amount": 1,
+          "meta": "rO0ABXNyABpvcmcuYnVra2l0LnV0aWwuaW8uV3JhcHBlcvJQR+zxEm8FAgABTAADbWFwdAAPTGphdmEvdXRpbC9NYXA7eHBzcgA1Y29tLmdvb2dsZS5jb21tb24uY29sbGVjdC5JbW11dGFibGVNYXAkU2VyaWFsaXplZEZvcm0AAAAAAAAAAAIAAkwABGtleXN0ABJMamF2YS9sYW5nL09iamVjdDtMAAZ2YWx1ZXNxAH4ABHhwdXIAE1tMamF2YS5sYW5nLk9iamVjdDuQzlifEHMpbAIAAHhwAAAABXQAAj09dAAJbWV0YS10eXBldAAGbWFwLWlkdAAIaW50ZXJuYWx0AAlJdGVtRmxhZ3N1cQB+AAYAAAAFdAAISXRlbU1ldGF0AApVTlNQRUNJRklDc3IAEWphdmEubGFuZy5JbnRlZ2VyEuKgpPeBhzgCAAFJAAV2YWx1ZXhyABBqYXZhLmxhbmcuTnVtYmVyhqyVHQuU4IsCAAB4cAAAAAN0AAxINHNJQUFBQUFBQUFzcgA2Y29tLmdvb2dsZS5jb21tb24uY29sbGVjdC5JbW11dGFibGVMaXN0JFNlcmlhbGl6ZWRGb3JtAAAAAAAAAAACAAFbAAhlbGVtZW50c3QAE1tMamF2YS9sYW5nL09iamVjdDt4cHVxAH4ABgAAAAF0AA1ISURFX0VOQ0hBTlRT"
+        }
+      }
+    }
+  },
+  "hologram": {
+    "lines": [
+      {
+        "text": "&6Warden",
+        "marginTop": 0.25
+      },
+      "&7Keeper of the gate"
+    ],
+    "shadowed": true
+  },
+  "pose": "sneaking",
+  "glowing": true,
+  "usingItem": true,
+  "listed": true,
+  "movement": {
+    "speed": 1.29,
+    "avoidWater": false,
+    "maximumFall": 1,
+    "pathRange": 60.0,
+    "arrivalMargin": 0.5,
+    "stuck": {
+      "afterTicks": 120,
+      "teleport": true
+    },
+    "openDoors": true,
+    "stepHeight": 1.0
+  },
+  "teamColor": "dark_red",
+  "tags": [
+    "gate-guard"
+  ],
+  "modules": {
+    "animus:navigation": {
+      "enabled": false,
+      "reviewAccepted": false,
+      "mode": "walk",
+      "speed": 1.29,
+      "order": "random",
+      "waitTicks": 0,
+      "points": [
+        {
+          "x": 12.5,
+          "y": 64,
+          "z": 20.5,
+          "waitTicks": 40
+        },
+        {
+          "x": 20.5,
+          "y": 64,
+          "z": 20.5
+        }
+      ],
+      "guides": [
+        {
+          "x": 16.5,
+          "y": 64,
+          "z": 20.5
+        }
+      ],
+      "linkDistance": 60.0
+    },
+    "animus:look-close": {
+      "enabled": true,
+      "range": 6.5,
+      "lineOfSight": false,
+      "whileNavigating": false,
+      "npcs": true,
+      "randomLook": {
+        "enabled": false,
+        "delayTicks": 140,
+        "yaw": [
+          0.0,
+          360.0
+        ],
+        "pitch": [
+          -8.0,
+          8.0
+        ]
+      }
+    },
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "town",
+        "worldid": "0a1b2c3d-0000-4000-8000-0000000005ff",
+        "x": 10.5,
+        "y": 64.0,
+        "z": 20.5,
+        "yaw": 90.0,
+        "pitch": 0.0,
+        "bodyYaw": 88.5
+      },
+      "equipment": {
+        "hand": {
+          "type": "netherite_sword",
+          "amount": 1,
+          "meta": "rO0ABXNyABpvcmcuYnVra2l0LnV0aWwuaW8uV3JhcHBlcvJQR+zxEm8FAgABTAADbWFwdAAPTGphdmEvdXRpbC9NYXA7eHBzcgA1Y29tLmdvb2dsZS5jb21tb24uY29sbGVjdC5JbW11dGFibGVNYXAkU2VyaWFsaXplZEZvcm0AAAAAAAAAAAIAAkwABGtleXN0ABJMamF2YS9sYW5nL09iamVjdDtMAAZ2YWx1ZXNxAH4ABHhwdXIAE1tMamF2YS5sYW5nLk9iamVjdDuQzlifEHMpbAIAAHhwAAAAB3QAAj09dAAJbWV0YS10eXBldAALVW5icmVha2FibGV0AAhlbmNoYW50c3QAEWN1c3RvbS1tb2RlbC1kYXRhdAAKaXRlbS1tb2RlbHQABGxvcmV1cQB+AAYAAAAHdAAISXRlbU1ldGF0AApVTlNQRUNJRklDc3IAEWphdmEubGFuZy5Cb29sZWFuzSBygNWc+u4CAAFaAAV2YWx1ZXhwAXNxAH4AA3VxAH4ABgAAAAF0ABNtaW5lY3JhZnQ6c2hhcnBuZXNzdXEAfgAGAAAAAXNyABFqYXZhLmxhbmcuSW50ZWdlchLioKT3gYc4AgABSQAFdmFsdWV4cgAQamF2YS5sYW5nLk51bWJlcoaslR0LlOCLAgAAeHAAAAACc3EAfgAYAAAbWXQAFHRvd25wYWNrOmd1YXJkX3N3b3Jkc3IANmNvbS5nb29nbGUuY29tbW9uLmNvbGxlY3QuSW1tdXRhYmxlTGlzdCRTZXJpYWxpemVkRm9ybQAAAAAAAAAAAgABWwAIZWxlbWVudHN0ABNbTGphdmEvbGFuZy9PYmplY3Q7eHB1cQB+AAYAAAABdAAeeyJ0ZXh0IjoiSXNzdWVkIHRvIHRoZSB3YXRjaCJ9"
+        },
+        "off_hand": {
+          "type": "shield",
+          "amount": 1,
+          "meta": "rO0ABXNyABpvcmcuYnVra2l0LnV0aWwuaW8uV3JhcHBlcvJQR+zxEm8FAgABTAADbWFwdAAPTGphdmEvdXRpbC9NYXA7eHBzcgA1Y29tLmdvb2dsZS5jb21tb24uY29sbGVjdC5JbW11dGFibGVNYXAkU2VyaWFsaXplZEZvcm0AAAAAAAAAAAIAAkwABGtleXN0ABJMamF2YS9sYW5nL09iamVjdDtMAAZ2YWx1ZXNxAH4ABHhwdXIAE1tMamF2YS5sYW5nLk9iamVjdDuQzlifEHMpbAIAAHhwAAAABXQAAj09dAAJbWV0YS10eXBldAAMZGlzcGxheS1uYW1ldAAKYmFzZS1jb2xvcnQACHBhdHRlcm5zdXEAfgAGAAAABXQACEl0ZW1NZXRhdAAGU0hJRUxEdAA0eyJ0ZXh0IjoiVG93biBTaGllbGQiLCJpdGFsaWMiOmZhbHNlLCJjb2xvciI6ImdvbGQifXQABEJMVUVzcgA2Y29tLmdvb2dsZS5jb21tb24uY29sbGVjdC5JbW11dGFibGVMaXN0JFNlcmlhbGl6ZWRGb3JtAAAAAAAAAAACAAFbAAhlbGVtZW50c3QAE1tMamF2YS9sYW5nL09iamVjdDt4cHVxAH4ABgAAAAJzcQB+AABzcQB+AAN1cQB+AAYAAAADcQB+AAh0AAVjb2xvcnQAB3BhdHRlcm51cQB+AAYAAAADdAAHUGF0dGVybnQABVdISVRFdAAPbWluZWNyYWZ0OmNyb3Nzc3EAfgAAc3EAfgADdXEAfgAGAAAAA3EAfgAIcQB+ABlxAH4AGnVxAH4ABgAAAANxAH4AHHQABllFTExPV3QAEG1pbmVjcmFmdDpib3JkZXI=",
+          "editable_components": {
+            "display_name": "Town Shield",
+            "edited": false
+          }
+        }
+      },
+      "inventory": [
+        {
+          "type": "netherite_sword",
+          "amount": 1,
+          "meta": "rO0ABXNyABpvcmcuYnVra2l0LnV0aWwuaW8uV3JhcHBlcvJQR+zxEm8FAgABTAADbWFwdAAPTGphdmEvdXRpbC9NYXA7eHBzcgA1Y29tLmdvb2dsZS5jb21tb24uY29sbGVjdC5JbW11dGFibGVNYXAkU2VyaWFsaXplZEZvcm0AAAAAAAAAAAIAAkwABGtleXN0ABJMamF2YS9sYW5nL09iamVjdDtMAAZ2YWx1ZXNxAH4ABHhwdXIAE1tMamF2YS5sYW5nLk9iamVjdDuQzlifEHMpbAIAAHhwAAAAB3QAAj09dAAJbWV0YS10eXBldAALVW5icmVha2FibGV0AAhlbmNoYW50c3QAEWN1c3RvbS1tb2RlbC1kYXRhdAAKaXRlbS1tb2RlbHQABGxvcmV1cQB+AAYAAAAHdAAISXRlbU1ldGF0AApVTlNQRUNJRklDc3IAEWphdmEubGFuZy5Cb29sZWFuzSBygNWc+u4CAAFaAAV2YWx1ZXhwAXNxAH4AA3VxAH4ABgAAAAF0ABNtaW5lY3JhZnQ6c2hhcnBuZXNzdXEAfgAGAAAAAXNyABFqYXZhLmxhbmcuSW50ZWdlchLioKT3gYc4AgABSQAFdmFsdWV4cgAQamF2YS5sYW5nLk51bWJlcoaslR0LlOCLAgAAeHAAAAACc3EAfgAYAAAbWXQAFHRvd25wYWNrOmd1YXJkX3N3b3Jkc3IANmNvbS5nb29nbGUuY29tbW9uLmNvbGxlY3QuSW1tdXRhYmxlTGlzdCRTZXJpYWxpemVkRm9ybQAAAAAAAAAAAgABWwAIZWxlbWVudHN0ABNbTGphdmEvbGFuZy9PYmplY3Q7eHB1cQB+AAYAAAABdAAeeyJ0ZXh0IjoiSXNzdWVkIHRvIHRoZSB3YXRjaCJ9"
+        },
+        null,
+        {
+          "type": "filled_map",
+          "amount": 1,
+          "meta": "rO0ABXNyABpvcmcuYnVra2l0LnV0aWwuaW8uV3JhcHBlcvJQR+zxEm8FAgABTAADbWFwdAAPTGphdmEvdXRpbC9NYXA7eHBzcgA1Y29tLmdvb2dsZS5jb21tb24uY29sbGVjdC5JbW11dGFibGVNYXAkU2VyaWFsaXplZEZvcm0AAAAAAAAAAAIAAkwABGtleXN0ABJMamF2YS9sYW5nL09iamVjdDtMAAZ2YWx1ZXNxAH4ABHhwdXIAE1tMamF2YS5sYW5nLk9iamVjdDuQzlifEHMpbAIAAHhwAAAABXQAAj09dAAJbWV0YS10eXBldAAGbWFwLWlkdAAIaW50ZXJuYWx0AAlJdGVtRmxhZ3N1cQB+AAYAAAAFdAAISXRlbU1ldGF0AApVTlNQRUNJRklDc3IAEWphdmEubGFuZy5JbnRlZ2VyEuKgpPeBhzgCAAFJAAV2YWx1ZXhyABBqYXZhLmxhbmcuTnVtYmVyhqyVHQuU4IsCAAB4cAAAAAN0AAxINHNJQUFBQUFBQUFzcgA2Y29tLmdvb2dsZS5jb21tb24uY29sbGVjdC5JbW11dGFibGVMaXN0JFNlcmlhbGl6ZWRGb3JtAAAAAAAAAAACAAFbAAhlbGVtZW50c3QAE1tMamF2YS9sYW5nL09iamVjdDt4cHVxAH4ABgAAAAF0AA1ISURFX0VOQ0hBTlRT"
+        }
+      ],
+      "hologramtrait": {
+        "lineHeight": -1.0,
+        "lines": [
+          {
+            "text": "&7Keeper of the gate",
+            "margin": {
+              "top": 0.0,
+              "bottom": 0.0
+            },
+            "renderer": {
+              "billboard": "CENTER",
+              "seeThrough": false,
+              "shadowed": true,
+              "interpolationDelay": 0,
+              "interpolationDuration": 0
+            }
+          },
+          {
+            "text": "&6Warden",
+            "margin": {
+              "top": 0.25,
+              "bottom": 0.0
+            },
+            "renderer": {
+              "billboard": "CENTER",
+              "seeThrough": false,
+              "shadowed": true,
+              "interpolationDelay": 0,
+              "interpolationDuration": 0
+            }
+          }
+        ]
+      },
+      "lookclose": {
+        "enabled": true,
+        "range": 6.5,
+        "realisticlooking": false,
+        "randomlookdelay": 140,
+        "randomYawRange": [
+          0.0,
+          360.0
+        ],
+        "randomPitchRange": [
+          -8.0,
+          8.0
+        ],
+        "targetnpcs": true,
+        "headonly": false
+      },
+      "scoreboardtrait": {
+        "color": "DARK_RED",
+        "tags": [
+          "CITIZENS_NPC",
+          "Gate Guard"
+        ]
+      },
+      "attributetrait": {
+        "attributes": {
+          "minecraft:step_height": 1.0
+        }
+      },
+      "rotationtrait": {
+        "globalParameters": {
+          "immediate": true
+        }
+      },
+      "sneaking": {
+        "sneaking": true
+      },
+      "waypoints": {
+        "provider": "guided",
+        "guided": {
+          "destinations": [
+            {
+              "location": {
+                "world": "town",
+                "worldid": "0a1b2c3d-0000-4000-8000-0000000005ff",
+                "x": 12.0,
+                "y": 64.0,
+                "z": 20.0,
+                "yaw": 45.0,
+                "pitch": 10.0
+              },
+              "triggers": [
+                {
+                  "type": "delay",
+                  "delay": 40
+                }
+              ]
+            },
+            {
+              "location": {
+                "world": "town",
+                "x": 20.0,
+                "y": 64.0,
+                "z": 20.0,
+                "yaw": 0.0,
+                "pitch": 0.0
+              }
+            }
+          ],
+          "guides": [
+            {
+              "location": {
+                "world": "town",
+                "x": 16.0,
+                "y": 64.0,
+                "z": 20.0,
+                "yaw": 3.0,
+                "pitch": 2.0
+              },
+              "triggers": [
+                {
+                  "type": "delay",
+                  "delay": 20
+                }
+              ]
+            }
+          ]
+        },
+        "wander": {
+          "delay": -1,
+          "pathfind": true,
+          "xrange": 25,
+          "yrange": 3
+        }
+      }
+    }
+  }
+}

@@ -57,6 +57,8 @@ public final class BehaviorCommands implements AutoCloseable {
     private final AtomicBoolean schemaPending=new AtomicBoolean(),reloadAgain=new AtomicBoolean();
     /** Behavior ids a committed change deleted on purpose; the next reload forgets their retained programs and checkpoints. */
     private final Set<String> removedSources=ConcurrentHashMap.newKeySet();
+    /** Completions of {@link #reload} calls; the next catalog reload to start takes them and completes them when it ends. */
+    private final Queue<CompletableFuture<Void>> reloadWaiters=new ConcurrentLinkedQueue<>();
     private final BehaviorRuntime coordinator;
     private final TriggerDispatcher triggers;
     private final ServerTriggerDispatcher servers;
@@ -86,6 +88,7 @@ public final class BehaviorCommands implements AutoCloseable {
         servers.behaviorsEnabled(settings.enabled());
         extensions.connectTriggers(new ModuleTriggers(triggers,servers));
         coordinator=new BehaviorRuntime(runtimeLimits(settings),settings.engine(),repository::snapshot,this::catalogSnapshot,extensions.behaviorInvoker(),triggers,servers,behaviorState);
+        triggers.consumption(behaviorState,coordinator.facts());
     }
     private static BehaviorRuntime.Limits runtimeLimits(BehaviorSettings settings){
         return new BehaviorRuntime.Limits(settings.maximumOperations(),settings.operationsPerTick(),settings.tickMillis(),settings.deliveryBudgetMillis());
@@ -286,12 +289,24 @@ public final class BehaviorCommands implements AutoCloseable {
     /**
      * The reload after a committed change. {@code removed} names behaviors whose sources the change deleted on purpose: their
      * retained programs and last-valid checkpoints go too, so nothing reports them missing. Pending catalog work runs it again after.
+     * The reload runs as its own task on the file lane, so a caller on the lane must chain on the result and never wait for it there.
+     *
+     * @return completes once a catalog reload that started after this call has ended, published or refused; at once when none is admitted
      */
-    public void reload(CommandActor sender,Set<String> removed){
+    public CompletableFuture<Void> reload(CommandActor sender,Set<String> removed){
         removedSources.addAll(removed);
-        if(!catalogAdmission(sender,"reload"))return;
+        if(!catalogAdmission(sender,"reload"))return CompletableFuture.completedFuture(null);
+        CompletableFuture<Void> done=new CompletableFuture<>();reloadWaiters.add(done);
         submitCatalog(sender,false,false,Optional.empty(),true);
+        if(closed.get())releaseWaiters(drainWaiters());
+        return done;
     }
+    private List<CompletableFuture<Void>> drainWaiters(){
+        List<CompletableFuture<Void>> drained=new ArrayList<>();
+        for(CompletableFuture<Void> waiter;(waiter=reloadWaiters.poll())!=null;)drained.add(waiter);
+        return drained;
+    }
+    private static void releaseWaiters(List<CompletableFuture<Void>> waiters){for(CompletableFuture<Void> waiter:waiters)waiter.complete(null);}
     private void submitCatalog(CommandActor sender,boolean validate,boolean initial,Optional<String> only){submitCatalog(sender,validate,initial,only,false);}
     private void submitCatalog(CommandActor sender,boolean validate,boolean initial,Optional<String> only,boolean follow){
         BehaviorCatalog current=catalog;CatalogTask task=new CatalogTask(sender,validate,initial,current==null?0:current.snapshot().generation(),only);
@@ -299,12 +314,12 @@ public final class BehaviorCommands implements AutoCloseable {
             if(follow){reloadAgain.set(true);return;}
             if(sender!=null)reply(sender,List.of("Behaviors "+(validate?"validate":"reload")+": BUSY | catalog-work=pending"));return;
         }
-        if(closed.get()){fileTask.compareAndSet(task,null);return;}
+        if(closed.get()){fileTask.compareAndSet(task,null);releaseWaiters(drainWaiters());return;}
         try{files.execute(task);}
-        catch(RejectedExecutionException rejected){fileTask.compareAndSet(task,null);task.failed("file-queue-unavailable");}
+        catch(RejectedExecutionException rejected){fileTask.compareAndSet(task,null);task.failed("file-queue-unavailable");releaseWaiters(drainWaiters());}
     }
     private void fileEvent(Runnable task,MutationLane.EngineTaskEvent event,Throwable error){
-        if(task instanceof CatalogTask owned&&fileTask.compareAndSet(owned,null))owned.failed(event==MutationLane.EngineTaskEvent.CANCELLED?"file-task-cancelled":"file-task-failed");
+        if(task instanceof CatalogTask owned&&fileTask.compareAndSet(owned,null)){owned.failed(event==MutationLane.EngineTaskEvent.CANCELLED?"file-task-cancelled":"file-task-failed");releaseWaiters(drainWaiters());}
         if(task instanceof SchemaTask owned&&schemaPending.compareAndSet(true,false))owned.failed(event==MutationLane.EngineTaskEvent.CANCELLED?"file-task-cancelled":"file-task-failed");
     }
     /** Removal tokens for accepted programs of {@code ids} whose source file is gone. */
@@ -342,6 +357,7 @@ public final class BehaviorCommands implements AutoCloseable {
         final CommandActor sender;final boolean validate,initial;final long generation;final Optional<String> only;
         CatalogTask(CommandActor sender,boolean validate,boolean initial,long generation,Optional<String> only){this.sender=sender;this.validate=validate;this.initial=initial;this.generation=generation;this.only=only;}
         public void run(){
+            List<CompletableFuture<Void>> served=validate?List.of():drainWaiters();
             try{
                 if(closed.get())return;
                 BehaviorCatalog current=catalog;
@@ -366,7 +382,10 @@ public final class BehaviorCommands implements AutoCloseable {
                 // Startup reports every line: a malformed source kept on its last-valid program must name its exact errors.
                 if(initial)messages.forEach(report);else reply(sender,messages);
             }catch(IOException | RuntimeException | LinkageError | AssertionError error){failed("catalog-operation: "+error.getClass().getSimpleName());}
-            finally{fileTask.compareAndSet(this,null);if(reloadAgain.compareAndSet(true,false)&&!closed.get())submitCatalog(null,false,false,Optional.empty(),true);}
+            finally{
+                fileTask.compareAndSet(this,null);releaseWaiters(served);
+                if(reloadAgain.compareAndSet(true,false)&&!closed.get())submitCatalog(null,false,false,Optional.empty(),true);
+            }
         }
         void failed(String reason){
             if(closed.get())return;failure=reason;failedState();
@@ -540,5 +559,6 @@ public final class BehaviorCommands implements AutoCloseable {
         AutoCloseable listening=subscription;
         if(listening!=null){try{listening.close();}catch(Exception ignored){/* The runtime's listener list is in memory; removal cannot fail. */}}
         BehaviorRuntime runtime=coordinator;if(runtime!=null)runtime.close();
+        releaseWaiters(drainWaiters());
     }
 }

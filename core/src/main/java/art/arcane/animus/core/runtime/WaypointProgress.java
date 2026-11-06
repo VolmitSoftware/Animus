@@ -11,14 +11,18 @@ import java.util.random.RandomGenerator;
  */
 public final class WaypointProgress {
     public static final int RANDOM_RETRY = 100, WANDER_RETRY = 20;
+    /** The route identity of module routes, which have no reusable route id. */
+    public static final String INLINE = "inline";
     /**
-     * One leg: walk to goal after waitTicks, then report arrival. A pause leg has no goal; once its wait ends the runtime
-     * asks {@link #resume} for a fresh leg.
+     * One leg: walk to goal after waitTicks, then report arrival. Goal is the route node's point, or that point moved by
+     * the route's jitter. A pause leg has no goal; once its wait ends the runtime asks {@link #resume} for a fresh leg.
      */
-    public record Leg(Vec3 goal, int arrival, int waitTicks) {
+    public record Leg(Vec3 goal, Vec3 point, int arrival, int waitTicks) {
         public Leg { if (waitTicks < 0) throw new IllegalArgumentException("Negative wait"); }
-        public static Leg pause(int waitTicks) { return new Leg(null, -1, waitTicks); }
+        public static Leg pause(int waitTicks) { return new Leg(null, null, -1, waitTicks); }
         public boolean pause() { return goal == null; }
+        /** The goal lies off the point, so a goal that cannot be planned falls back to the point once. */
+        public boolean jittered() { return goal != null && !goal.equals(point); }
     }
 
     private WaypointSettings settings;
@@ -33,9 +37,14 @@ public final class WaypointProgress {
     public WaypointProgress(WaypointSettings settings, Vec3 home, RandomGenerator random) {
         this.settings = Objects.requireNonNull(settings); this.home = Objects.requireNonNull(home); this.random = Objects.requireNonNull(random);
     }
-    /** A generator of its own for each NPC. */
-    public static WaypointProgress of(WaypointSettings settings, Vec3 home, UUID npc) {
-        return new WaypointProgress(settings, home, new SplittableRandom(npc.getMostSignificantBits() ^ Long.rotateLeft(npc.getLeastSignificantBits(), 17) ^ System.nanoTime()));
+    /**
+     * A generator of its own for each NPC. Seed npc derives it from the NPC and the route identity (a reusable route id,
+     * or {@link #INLINE}), so the NPC makes the same choices after a restart; seed random mixes in the clock.
+     */
+    public static WaypointProgress of(WaypointSettings settings, Vec3 home, UUID npc, String route) {
+        long seed = npc.getMostSignificantBits() ^ Long.rotateLeft(npc.getLeastSignificantBits(), 17) ^ (route.hashCode() * 0x9E3779B97F4A7C15L);
+        if (settings.seed() == WaypointSettings.Seed.RANDOM) seed ^= System.nanoTime();
+        return new WaypointProgress(settings, home, new SplittableRandom(seed));
     }
     public WaypointSettings settings() { return settings; }
     public boolean complete() { return complete; }
@@ -52,10 +61,12 @@ public final class WaypointProgress {
     public Optional<Leg> start(Vec3 position) {
         if (complete) return Optional.empty();
         reset();
+        boolean offset = settings.startOffset() == WaypointSettings.StartOffset.RANDOM;
+        int wait = offset ? random.nextInt(settings.waitTicks().max() + 1) : draw(settings.waitTicks());
         return issue(switch (settings.order()) {
-            case SEQUENCE, PINGPONG -> point(0, settings.waitTicks());
-            case RANDOM -> choose(position, settings.waitTicks());
-            case WANDER -> wander(settings.waitTicks());
+            case SEQUENCE, PINGPONG -> point(offset ? (next = random.nextInt(settings.points().size())) : 0, wait);
+            case RANDOM -> choose(position, wait);
+            case WANDER -> wander(wait);
         });
     }
     /** The leg after the current one arrived; empty when the route is complete. */
@@ -63,16 +74,17 @@ public final class WaypointProgress {
         if (complete || leg == null || leg != current || leg.pause()) throw new IllegalStateException("Waypoint arrival is no longer current");
         WaypointSettings.Order order = settings.order();
         if (order == WaypointSettings.Order.SEQUENCE) {
-            int wait = settings.waitAfter(next);
-            next++;
-            if (next == settings.points().size()) {
+            int wait = draw(settings.waitAfter(next));
+            List<WaypointSettings.Junction> junction = settings.points().get(next).next();
+            if (!junction.isEmpty()) next = junction(junction);
+            else if (++next == settings.points().size()) {
                 if (!settings.loop()) return finish();
                 next = 0;
             }
             return issue(point(next, wait));
         }
         if (order == WaypointSettings.Order.PINGPONG) {
-            int size = settings.points().size(), wait = settings.waitAfter(next);
+            int size = settings.points().size(), wait = draw(settings.waitAfter(next));
             if (size == 1) return finish();
             if (next + step < 0 || next + step >= size) step = -step;
             next += step;
@@ -81,10 +93,14 @@ public final class WaypointProgress {
         if (order == WaypointSettings.Order.RANDOM) {
             node = path.removeFirst();
             if (!path.isEmpty()) return issue(hop(1));
-            return issue(choose(position, node < settings.points().size() ? settings.waitAfter(node) : settings.waitTicks()));
+            return issue(choose(position, draw(node < settings.points().size() ? settings.waitAfter(node) : settings.waitTicks())));
         }
-        int wait = settings.points().isEmpty() ? settings.waitTicks() : settings.waitAfter(wanderCentre);
-        return issue(wander(wait));
+        return issue(wander(draw(settings.points().isEmpty() ? settings.waitTicks() : settings.waitAfter(wanderCentre))));
+    }
+    /** The current jittered leg again, aimed at its exact point and without a wait; empty for any other leg. */
+    public Optional<Leg> exact(Leg leg) {
+        if (complete || leg == null || leg != current || !leg.jittered()) return Optional.empty();
+        return issue(new Leg(leg.point(), leg.point(), leg.arrival(), 0));
     }
     /** After a failed leg: a pause leg for retrying orders, otherwise empty and the route halts. */
     public Optional<Leg> failed(Leg leg) {
@@ -99,11 +115,27 @@ public final class WaypointProgress {
         return issue(settings.order() == WaypointSettings.Order.WANDER ? wander(1) : choose(position, 1));
     }
     public int retryDelay() {
-        return Math.max(settings.waitTicks(), settings.order() == WaypointSettings.Order.WANDER ? WANDER_RETRY : RANDOM_RETRY);
+        return Math.max(settings.waitTicks().max(), settings.order() == WaypointSettings.Order.WANDER ? WANDER_RETRY : RANDOM_RETRY);
     }
     private Optional<Leg> issue(Leg leg) { current = leg; return Optional.of(leg); }
     private Optional<Leg> finish() { complete = true; current = null; return Optional.empty(); }
-    private Leg point(int index, int wait) { return new Leg(settings.points().get(index).position(), index, wait); }
+    private Leg point(int index, int wait) { Vec3 at = settings.points().get(index).position(); return new Leg(jitter(at, settings.jitterAt(index)), at, index, wait); }
+    /** A fixed wait draws nothing, so routes without ranges keep the choices they made before ranges existed. */
+    private int draw(WaypointSettings.Wait wait) { return wait.min() == wait.max() ? wait.min() : random.nextInt(wait.min(), wait.max() + 1); }
+    /** A whole-block x and z offset within the radius; the height stays the point's. */
+    private Vec3 jitter(Vec3 at, int radius) {
+        if (radius == 0) return at;
+        int dx, dz;
+        do { dx = random.nextInt(-radius, radius + 1); dz = random.nextInt(-radius, radius + 1); } while (dx * dx + dz * dz > radius * radius);
+        return new Vec3(at.x() + dx, at.y(), at.z() + dz);
+    }
+    private int junction(List<WaypointSettings.Junction> junctions) {
+        int total = 0;
+        for (WaypointSettings.Junction junction : junctions) total += junction.weight();
+        int pick = random.nextInt(total);
+        for (WaypointSettings.Junction junction : junctions) if ((pick -= junction.weight()) < 0) return junction.to();
+        throw new IllegalStateException("Junction weights are positive");
+    }
 
     // ---- Guided random destinations ----
 
@@ -111,19 +143,28 @@ public final class WaypointProgress {
         int points = settings.points().size();
         return index < points ? settings.points().get(index).position() : settings.guides().get(index - points);
     }
-    private Leg hop(int wait) { int target = path.peekFirst(); return new Leg(nodePosition(target), target, wait); }
+    private Leg hop(int wait) {
+        int target = path.peekFirst();
+        return target < settings.points().size() ? point(target, wait) : new Leg(nodePosition(target), nodePosition(target), target, wait);
+    }
     private Leg choose(Vec3 position, int wait) {
         path.clear();
         int points = settings.points().size();
-        int destination;
-        if (points == 1) destination = 0;
-        else if (node >= 0 && node < points) { destination = random.nextInt(points - 1); if (destination >= node) destination++; }
-        else destination = random.nextInt(points);
+        int destination = points == 1 ? 0 : weighted(node >= 0 && node < points ? node : -1);
         if (destination == node) return Leg.pause(retryDelay());
         List<Integer> found = route(position, destination);
         if (found.isEmpty()) return Leg.pause(retryDelay());
         path.addAll(found);
         return hop(wait);
+    }
+    /** A point by weight, never the excluded one. With every weight 1 this draws exactly as a uniform choice did. */
+    private int weighted(int excluded) {
+        List<WaypointSettings.Waypoint> points = settings.points();
+        int total = 0;
+        for (int i = 0; i < points.size(); i++) if (i != excluded) total += points.get(i).weight();
+        int pick = random.nextInt(total);
+        for (int i = 0; i < points.size(); i++) if (i != excluded && (pick -= points.get(i).weight()) < 0) return i;
+        throw new IllegalStateException("Point weights are positive");
     }
     private boolean linked(Vec3 from, Vec3 to) { return from.distance(to) <= settings.linkDistance(); }
     private int[][] links() {
@@ -218,6 +259,7 @@ public final class WaypointProgress {
         int x = (int) Math.floor(centre.x()) + random.nextInt(-area.radius(), area.radius() + 1);
         int z = (int) Math.floor(centre.z()) + random.nextInt(-area.radius(), area.radius() + 1);
         int y = (int) Math.floor(centre.y()) + random.nextInt(-area.height(), area.height() + 1);
-        return new Leg(new Vec3(x + .5, y, z + .5), wanderCentre, wait);
+        Vec3 goal = new Vec3(x + .5, y, z + .5);
+        return new Leg(goal, goal, wanderCentre, wait);
     }
 }

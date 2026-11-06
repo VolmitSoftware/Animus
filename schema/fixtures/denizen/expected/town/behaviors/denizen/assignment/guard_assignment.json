@@ -244,6 +244,15 @@
         },
         {
           "type": "action",
+          "capability": "animus:title",
+          "arguments": {
+            "title": " ",
+            "subtitle": "Mind the gate",
+            "stay": 20
+          }
+        },
+        {
+          "type": "action",
           "capability": "animus:actionbar",
           "arguments": {
             "text": "&eVisit logged"
