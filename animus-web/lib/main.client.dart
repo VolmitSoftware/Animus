@@ -23,6 +23,7 @@ Future<void> main() async {
     profiles: ServerProfileStore(local: BrowserKeyValueStore.local(), session: BrowserKeyValueStore.session()),
     open: openBrowserTransport,
     schemas: SharedSchemas.embedded,
+    onForget: (String serverId) => store.deleteWorkspace(ServerHub.workspaceIdOf(serverId)),
   );
   onBrowserWake(hub.probeDirect);
   runApp(AnimusApp(store: store, hub: hub));

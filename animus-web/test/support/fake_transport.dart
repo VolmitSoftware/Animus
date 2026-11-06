@@ -20,10 +20,10 @@ class FakeTransport implements ServerTransport {
   @override
   Future<ApiResponse> send(ApiRequest request) async {
     network.sent.add((path, request));
-    if (closed || network.down.contains(path)) throw TransportFailure(path, 'down');
+    if (closed || network.down.contains(path)) throw TransportFailure(path, 'unreachable');
     final Future<void> Function(ConnectionPath path, ApiRequest request)? gate = network.gate;
     if (gate != null) await gate(path, request);
-    if (closed || network.down.contains(path)) throw TransportFailure(path, 'down');
+    if (closed || network.down.contains(path)) throw TransportFailure(path, 'unreachable');
     final ApiResponse response = (network.pathHandlers[path] ?? network.handler)(request);
     if (network.dropAfter != null && network.dropAfter!(request)) {
       // The server handled it, then the path died before the answer arrived.
@@ -39,7 +39,7 @@ class FakeTransport implements ServerTransport {
 
   @override
   Future<EventSubscription> subscribe(String token) async {
-    if (closed || network.down.contains(path)) throw TransportFailure(path, 'down');
+    if (closed || network.down.contains(path)) throw TransportFailure(path, 'unreachable');
     if (network.refuseStream != null) throw StreamRefused(401, network.refuseStream!);
     final FakeSubscription subscription = FakeSubscription();
     subscriptions.add(subscription);

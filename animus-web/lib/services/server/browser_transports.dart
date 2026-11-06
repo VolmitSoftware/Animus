@@ -8,6 +8,7 @@ import 'dart:js_interop';
 
 import 'package:web/web.dart' as web;
 
+import 'error_copy.dart';
 import 'transport.dart';
 
 /// Opens [path] at [url] in this browser.
@@ -88,7 +89,7 @@ class DirectTransport implements ServerTransport {
     } on TransportFailure {
       rethrow;
     } on Object catch (failure) {
-      throw TransportFailure(ConnectionPath.direct, _closed ? 'closed' : 'unreachable ($failure)');
+      throw TransportFailure(ConnectionPath.direct, _closed ? 'closed' : (abort.signal.aborted ? 'timeout' : 'unreachable'), '$failure');
     } finally {
       timer.cancel();
       _inFlight.remove(abort);
@@ -139,9 +140,9 @@ class _DirectSubscription implements EventSubscription {
     _socket.addEventListener('close', ((web.CloseEvent event) {
       if (event.code >= 4000) _reason ??= event.reason.isEmpty ? 'closed ${event.code}' : event.reason;
       if (!_opened.isCompleted) {
-        _opened.completeError(const TransportFailure(ConnectionPath.direct, 'the event stream did not open'));
+        _opened.completeError(const TransportFailure(ConnectionPath.direct, 'unreachable', 'the event stream did not open'));
       }
-      _finish(event.code >= 4000 || _cancelled ? null : const TransportFailure(ConnectionPath.direct, 'the event stream dropped'));
+      _finish(event.code >= 4000 || _cancelled ? null : TransportFailure(ConnectionPath.direct, 'stream-closed', 'close ${event.code}'));
     }).toJS);
   }
 
@@ -199,7 +200,7 @@ class RelayTransport implements ServerTransport {
     try {
       _socket = web.WebSocket(_url);
     } on Object catch (failure) {
-      throw TransportFailure(ConnectionPath.relay, 'cannot open $_url ($failure)');
+      throw TransportFailure(ConnectionPath.relay, 'relay-unreachable', '$_url: $failure');
     }
     _socket.addEventListener('open', ((web.Event _) {
       _socket.send(jsonEncode(<String, Object?>{'type': 'subscribe', 'protocol': 1, 'fingerprint': fingerprint}).toJS);
@@ -214,8 +215,8 @@ class RelayTransport implements ServerTransport {
         // Relay frames are JSON.
       }
     }).toJS);
-    _socket.addEventListener('close', ((web.CloseEvent event) => _fail('the relay connection closed (${event.code})')).toJS);
-    final Timer timer = Timer(requestTimeout, () => _fail('the relay did not answer the subscription'));
+    _socket.addEventListener('close', ((web.CloseEvent event) => _fail(_subscribed.isCompleted ? 'dropped' : 'relay-unreachable', 'close ${event.code}')).toJS);
+    final Timer timer = Timer(requestTimeout, () => _fail('relay-unreachable', 'no subscribed frame'));
     return _subscribed.future.whenComplete(timer.cancel);
   }
 
@@ -227,11 +228,11 @@ class RelayTransport implements ServerTransport {
         if (_online) {
           _subscribed.complete();
         } else {
-          _fail('the relay has no connection from this server');
+          _fail('server-offline');
         }
       case 'status':
         _online = frame['online'] == true;
-        if (!_online) _fail('the server left the relay');
+        if (!_online) _fail('server-left');
       case 'response':
         final int id = (frame['id']! as num).toInt();
         final Completer<ApiResponse>? waiting = _pending.remove(id);
@@ -248,16 +249,16 @@ class RelayTransport implements ServerTransport {
       case 'close':
         final int id = (frame['id']! as num).toInt();
         _streams.remove(id)?.finish(null);
-        _pending.remove(id)?.completeError(const TransportFailure(ConnectionPath.relay, 'the relay closed the request'));
+        _pending.remove(id)?.completeError(const TransportFailure(ConnectionPath.relay, 'dropped', 'the relay closed the request'));
       case 'error':
-        _fail('relay error ${frame['code']}: ${frame['message']}');
+        _fail(relayErrorCopy.containsKey(frame['code']) ? '${frame['code']}' : 'dropped', '${frame['code']}: ${frame['message']}');
     }
   }
 
-  void _fail(String message) {
+  void _fail(String code, [String? detail]) {
     if (_closed) return;
     _closed = true;
-    final TransportFailure failure = TransportFailure(ConnectionPath.relay, message);
+    final TransportFailure failure = TransportFailure(ConnectionPath.relay, code, detail);
     if (!_subscribed.isCompleted) _subscribed.completeError(failure);
     for (final Completer<ApiResponse> waiting in _pending.values) {
       waiting.completeError(failure);
@@ -291,7 +292,7 @@ class RelayTransport implements ServerTransport {
     _pending[id] = completer;
     final Timer timer = Timer(requestTimeout, () {
       if (_pending.remove(id) != null) {
-        completer.completeError(const TransportFailure(ConnectionPath.relay, 'the request timed out'));
+        completer.completeError(const TransportFailure(ConnectionPath.relay, 'timeout'));
       }
     });
     return completer.future.whenComplete(timer.cancel);
@@ -309,7 +310,7 @@ class RelayTransport implements ServerTransport {
     _pending[id] = answer;
     final ApiResponse response = await answer.future.timeout(requestTimeout, onTimeout: () {
       _pending.remove(id);
-      throw const TransportFailure(ConnectionPath.relay, 'the event stream did not open');
+      throw const TransportFailure(ConnectionPath.relay, 'timeout', 'the event stream did not open');
     });
     if (!response.ok) {
       _streams.remove(id);

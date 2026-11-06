@@ -8,6 +8,7 @@ library;
 import 'dart:typed_data';
 
 import '../../logic/shared_schemas.dart';
+import 'error_copy.dart';
 import 'transport.dart';
 
 /// What a file is to the server (`file=` of `POST /v1/imports`).
@@ -117,10 +118,15 @@ class ImportReview {
 
 /// The server refused a step; [message] is its explanation.
 class ImportRefused implements Exception {
-  const ImportRefused(this.code, this.message);
+  const ImportRefused(this.code, this.message, {this.detail});
 
   final String code;
+
+  /// What happened and what to do next.
   final String message;
+
+  /// The server's own words, when it gave any.
+  final String? detail;
 
   @override
   String toString() => message;
@@ -138,8 +144,11 @@ final int relayUploadBytes = (_limit('relayFrameBytes') - 16384) ~/ 4 * 3;
 /// Why [upload] cannot go over [path], or null when it can.
 String? uploadProblem(ImportUpload upload, ConnectionPath? path) {
   final int size = upload.bytes.length;
-  if (size == 0) return '${upload.label} is empty.';
-  if (size > importBodyBytes) return '${upload.label} is ${formatSize(size)}; imports are limited to ${formatSize(importBodyBytes)}.';
+  if (size == 0) return '${upload.label} is empty. Choose the file again from the plugin\'s data folder.';
+  if (size > importBodyBytes) {
+    return '${upload.label} is ${formatSize(size)}; uploads are limited to ${formatSize(importBodyBytes)}. '
+        'Copy it into the server\'s imports folder and run /animus import citizens there instead.';
+  }
   if (path == ConnectionPath.relay && size > relayUploadBytes) {
     return '${upload.label} is ${formatSize(size)}, more than the ${formatSize(relayUploadBytes)} a relay frame carries. '
         'Connect over the direct path (the server\'s listener) to upload it.';
@@ -167,7 +176,7 @@ class ServerImports {
   Future<ImportReview> _review(ApiRequest request) async {
     final ApiResponse response = await send(request);
     final Object? body = response.body;
-    if (!response.ok || body is! Map<String, Object?>) throw ImportRefused(response.errorCode ?? 'internal', response.errorMessage);
+    if (!response.ok || body is! Map<String, Object?>) throw ImportRefused(response.errorCode ?? codeForStatus(response.status), response.problem.text, detail: response.serverMessage);
     return ImportReview.fromJson(body);
   }
 
@@ -187,10 +196,10 @@ class ServerImports {
         if (worlds.isNotEmpty) 'worlds': worlds,
       }));
 
-  Future<ImportReview> apply(String importId) => _review(ApiRequest('POST', '/v1/imports/$importId/apply'));
+  Future<ImportReview> apply(String importId) => _review(ApiRequest('POST', '/v1/imports/${Uri.encodeComponent(importId)}/apply'));
 
   Future<ImportReview> accept(String importId, List<String> categories) =>
-      _review(ApiRequest('POST', '/v1/imports/$importId/accept', body: <String, Object?>{'categories': categories}));
+      _review(ApiRequest('POST', '/v1/imports/${Uri.encodeComponent(importId)}/accept', body: <String, Object?>{'categories': categories}));
 
-  Future<ImportReview> rollback(String importId) => _review(ApiRequest('POST', '/v1/imports/$importId/rollback'));
+  Future<ImportReview> rollback(String importId) => _review(ApiRequest('POST', '/v1/imports/${Uri.encodeComponent(importId)}/rollback'));
 }
