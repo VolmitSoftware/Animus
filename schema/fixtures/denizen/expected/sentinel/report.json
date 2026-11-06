@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "converterVersion": 2,
+  "importId": "f9d8bc156802b7fecd8b67dc8a4399284572ee108f963537a882290a56c835c9",
+  "notice": "Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.",
+  "sources": {
+    "scripts/guard.dsc": "2aeddb30391c8fa3c1e8c06a17e2f0a557e58128157d6533c51bbb3382e9364f"
+  },
+  "behaviors": 1,
+  "containers": {
+    "task": {
+      "total": 1,
+      "converted": 0,
+      "partial": 1,
+      "preserved": 0
+    }
+  },
+  "commands": {
+    "execute": {
+      "converted": 6,
+      "preserved": 3
+    },
+    "trait": {
+      "converted": 2,
+      "preserved": 1
+    }
+  },
+  "events": {},
+  "tags": {
+    "npc.id": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "player.name": {
+      "mapped": 3,
+      "unmapped": 1
+    }
+  },
+  "flags": {
+    "imported": {
+      "global": 0,
+      "npc": 0,
+      "player": 0,
+      "relationship": 0
+    },
+    "preserved": 0
+  },
+  "bindings": {},
+  "npcUuids": {},
+  "behaviorStatus": {
+    "denizen:task/guard_orders": "partial"
+  },
+  "commandBehaviors": [
+    "denizen:task/guard_orders"
+  ],
+  "serverBehaviors": [],
+  "guis": [],
+  "sounds": {},
+  "issues": [],
+  "preserved": [
+    {
+      "source": "guard.dsc:11",
+      "container": "guard_orders",
+      "kind": "command",
+      "item": "execute",
+      "reason": "sentinel addtarget monsters: target types are animus:combat settings; set them in the NPC's animus:combat targets"
+    },
+    {
+      "source": "guard.dsc:12",
+      "container": "guard_orders",
+      "kind": "command",
+      "item": "execute",
+      "reason": "sentinel names another NPC with --id; animus:combat acts on the behavior's own NPC"
+    },
+    {
+      "source": "guard.dsc:13",
+      "container": "guard_orders",
+      "kind": "command",
+      "item": "execute",
+      "reason": "sentinel range has no combat action; set it in the NPC's animus:combat settings"
+    },
+    {
+      "source": "guard.dsc:14",
+      "container": "guard_orders",
+      "kind": "command",
+      "item": "trait",
+      "reason": "trait toggles Sentinel without saying on or off; use state:true or state:false"
+    }
+  ],
+  "documents": {
+    "behaviors/denizen/task/guard_orders.json": "492b0c9f789e7d69ede0c98bb502e2c42be4100ba1a06f24b020f28bca39b367"
+  }
+}
