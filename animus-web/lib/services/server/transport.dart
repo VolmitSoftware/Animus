@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'error_copy.dart';
+
 /// How the browser reaches a server: the plugin's own listener, or the relay
 /// the plugin connects out to.
 enum ConnectionPath {
@@ -58,13 +60,19 @@ class ApiResponse {
     return null;
   }
 
-  String get errorMessage {
+  /// What went wrong and what to do next, from the error code (or the
+  /// status when the body has none).
+  ErrorCopy get problem => serverCopy(errorCode, status: status);
+
+  /// The `error-response` message: the server's own words, shown under the
+  /// plain-words [problem] where they add detail.
+  String? get serverMessage {
     final Object? value = body;
     if (value is Map<String, Object?> && value['error'] is Map<String, Object?>) {
       final Object? message = (value['error']! as Map<String, Object?>)['message'];
-      if (message is String) return message;
+      if (message is String && message.isNotEmpty) return message;
     }
-    return 'HTTP $status';
+    return null;
   }
 }
 
@@ -72,13 +80,23 @@ class ApiResponse {
 /// socket, a server the relay reports offline, or a timeout. Distinct from an
 /// HTTP error answer, which arrives as an [ApiResponse].
 class TransportFailure implements Exception {
-  const TransportFailure(this.path, this.message);
+  const TransportFailure(this.path, this.code, [this.detail]);
 
   final ConnectionPath path;
-  final String message;
+
+  /// A key of [transportErrorCopy] or [relayErrorCopy].
+  final String code;
+
+  /// What the browser reported, for the console only.
+  final String? detail;
+
+  ErrorCopy get copy => transportCopy(code);
+
+  /// The plain-words cause and next action.
+  String get message => copy.text;
 
   @override
-  String toString() => '${path.label}: $message';
+  String toString() => '${path.label}: $code${detail == null ? '' : ' ($detail)'}';
 }
 
 /// The server refused to open the event stream (a relay error answer).

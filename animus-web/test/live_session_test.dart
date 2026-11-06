@@ -345,7 +345,7 @@ void main() {
     await stream.end('limit');
     await settle();
     final List<String> messages = <String>[for (final LiveNotice notice in session.log) notice.message];
-    expect(messages, contains(allOf(contains('fell too far behind'), contains('limit'))));
+    expect(messages.where((String message) => message.contains('fell too far behind')), hasLength(1), reason: 'one notice per close');
     expect(connection.status.online, isTrue);
     expect(network.streams.length, greaterThan(1), reason: 'a new event stream is open');
     expect(network.sent.where(((ConnectionPath, ApiRequest) sent) => sent.$2.path == '/v1/catalog').length, greaterThan(catalogLoads));

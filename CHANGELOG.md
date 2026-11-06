@@ -136,6 +136,10 @@
 - Editor: tabs of one browser follow each other's saves and deletes, and each open workspace is locked to one tab.
 - Editor: closing the tab asks first while an edit is not stored or Code text is not applied.
 - Editor: the Animus mark in the top bar, the boot splash and the home page, with a message when the editor does not load.
+- The web editor converts a Denizen folder in the browser and downloads its staged bundle.
+- The editor's live bar says when the pairing is about to expire and offers Pair again when the server ends it.
+- The editor's Sync page can ask the server what became of a push whose answer was lost.
+- The fake server gains test controls for token expiry, forced errors, lost apply answers, relay errors, limit closes and an offline player.
 
 ### Changed
 
@@ -219,6 +223,12 @@
 - The editor theme follows the system until it is chosen.
 - The converter button reads Convert a Citizens, Shopkeepers, dtlTraders or Denizen save.
 - Legacy colour codes show as plain text in the sidebar, the document heading and the New page.
+- Every server error in the editor says what happened and what to do next, in plain words.
+- The pairing page leads with the server's name and fingerprint, and Remember this browser is a switch.
+- Undo last apply, Take server version, Accept the deletion, replacing server copies on push, and import Apply, Accept all and Roll back ask first.
+- The server catalog in the editor is grouped by kind and shows each document's revision in words.
+- The converter screen names all four sources, leads the Citizens review with its warnings and lists skipped dtlTraders files.
+- Live editing for a server runs in one browser tab at a time; another tab waits and takes over.
 
 ### Fixed
 
@@ -270,6 +280,17 @@
 - Escape cancels only the confirmation that has focus.
 - Long document titles and paths no longer widen the page on phones.
 - Error and empty states name the cause and offer a way back, and "1 documents need repair" reads correctly.
+- Two editor tabs on one server no longer lose each other's live edits.
+- The editor never sends a change set it could not record, so a lost answer can always be recovered.
+- Pairing tries the relay when the direct path refuses or errors.
+- A connection attempt that fails in an unexpected way retries instead of stopping silently.
+- Ending a preview that the server did not end now says so; leaving the workspace ends its preview.
+- A change set whose status check fails no longer waits forever; Check again and Stop waiting are offered.
+- An undo that conflicts no longer offers your draft as the side to keep.
+- A spawn cut short by a lost connection is not reported as done.
+- A failed catalog load no longer shows Loading forever.
+- Forgetting a server removes its live workspace, and tabs no longer overwrite each other's saved servers.
+- An apply the browser resent after a dropped connection is recovered instead of reported as refused.
 
 ### Notes
 
