@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.runtime.NpcPresentation;
@@ -442,12 +443,12 @@ final class RegionViewer {
         // A sneaking interaction keeps its administrative meaning, so a rideable NPC can still be selected.
         if (actor.publication.ride() && action == VirtualNpcInteractionEvent.Action.INTERACT && !input.secondaryAction() && "MAIN_HAND".equals(input.hand())) {
             String refusal = actor.requestRide(player);
-            if (refusal != null) player.sendMessage(RichText.colorize("&cCannot ride &r" + actor.spec.name() + "&c: " + refusal));
+            if (refusal != null) player.sendMessage(RichText.colorize(Palette.error("Cannot ride " + actor.spec.name() + ": " + refusal)));
             else attach(body, actor);
             return;
         }
         // Click selection tells an administrator once; clicking the selected NPC again, as play does, stays quiet.
-        if (player.hasPermission("animus.admin") && !actor.id.equals(host.selections.put(id, actor.id))) player.sendMessage("Selected " + actor.id + " via " + action);
+        if (player.hasPermission("animus.admin") && !actor.id.equals(host.selections.put(id, actor.id))) player.sendMessage(Palette.reply("Selected " + actor.id));
     }
 
     /** Player owner only: this viewer presents the NPC now. */

@@ -14,7 +14,7 @@ final class BehaviorTree {
     static void with(CommandServices services, Consumer<BehaviorCommands> work) {
         CommandActor actor = AnimusDirector.actor();
         BehaviorCommands behaviors = services.behaviors().get();
-        if (behaviors == null) actor.tell(Palette.error("Behaviors are not initialized."));
+        if (behaviors == null) actor.tell(Palette.error("Behaviors unavailable; see the startup log"));
         else work.accept(behaviors);
     }
 

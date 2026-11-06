@@ -7,6 +7,7 @@ import art.arcane.animus.core.command.RecordingControl;
 import art.arcane.animus.core.config.PluginSettings;
 import art.arcane.animus.core.config.RecordingSettings;
 import art.arcane.animus.core.presentation.BodySkin;
+import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.virtual.Vec3;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -68,64 +69,64 @@ public final class RecordingSessions<P, I> implements RecordingControl, AutoClos
 
     // Commands, each on the player's owner.
 
-    @Override public void start(CommandActor actor, String id) { player(actor, "start").ifPresent((P player) -> start(player, actor, id)); }
-    @Override public void stop(CommandActor actor) { player(actor, "stop").ifPresent((P player) -> stop(player, actor)); }
-    @Override public void cancel(CommandActor actor) { player(actor, "cancel").ifPresent((P player) -> cancel(player, actor)); }
+    @Override public void start(CommandActor actor, String id) { player(actor).ifPresent((P player) -> start(player, actor, id)); }
+    @Override public void stop(CommandActor actor) { player(actor).ifPresent((P player) -> stop(player, actor)); }
+    @Override public void cancel(CommandActor actor) { player(actor).ifPresent((P player) -> cancel(player, actor)); }
     @Override public List<String> status(CommandActor actor) { return status(actor.player().flatMap(host::player)); }
     @Override public void ghost(CommandActor actor, Optional<Boolean> on) {
-        player(actor, "show the ghost of").ifPresent((P player) -> ghost(player, actor, on.orElseGet(() -> !ghostWanted(player))));
+        player(actor).ifPresent((P player) -> ghost(player, actor, on.orElseGet(() -> !ghostWanted(player))));
     }
-    @Override public void preview(CommandActor actor, String id) { player(actor, "preview").ifPresent((P player) -> preview(player, actor, id)); }
-    @Override public void stopPreview(CommandActor actor) { player(actor, "stop the preview of").ifPresent((P player) -> stopPreview(player, actor)); }
+    @Override public void preview(CommandActor actor, String id) { player(actor).ifPresent((P player) -> preview(player, actor, id)); }
+    @Override public void stopPreview(CommandActor actor) { player(actor).ifPresent((P player) -> stopPreview(player, actor)); }
 
     /** The online player behind {@code actor}; empty after telling the console it cannot. */
-    private Optional<P> player(CommandActor actor, String verb) {
+    private Optional<P> player(CommandActor actor) {
         Optional<P> player = actor.player().flatMap(host::player);
-        if (player.isEmpty()) actor.tell("Only a player can " + verb + " a recording.");
+        if (player.isEmpty()) actor.tell(Palette.error("Players only"));
         return player;
     }
 
     void start(P player, CommandActor actor, String id) {
-        if (!id.matches(RecordingDocument.ID)) { actor.tell("Recording ids are 1 to 64 lowercase letters, digits, _ or -."); return; }
+        if (!id.matches(RecordingDocument.ID)) { actor.tell(Palette.error("Recording ids are 1 to 64 of a-z, 0-9, _ and -")); return; }
         RecordingSettings current = settings;
-        if (sessions.get(host.id(player)).isPresent()) { actor.tell("You are already recording; /animus record stop or cancel first."); return; }
+        if (sessions.get(host.id(player)).isPresent()) { actor.tell(Palette.error("Already recording; /animus record stop or cancel first")); return; }
         RecordingSession<P, I> session;
         try { session = new RecordingSession<>(host, player, actor, id, current); }
-        catch (IllegalArgumentException invalid) { actor.tell("Cannot record here: " + invalid.getMessage()); return; }
+        catch (IllegalArgumentException invalid) { actor.tell(Palette.error("Cannot record here: " + invalid.getMessage())); return; }
         Optional<String> refused = sessions.admit(host.id(player), session, current.enabled() && !closed, current.maximumSessions());
         if (refused.isPresent()) { actor.tell(refused.get()); return; }
         session.task = host.everyTick(player, () -> tick(session), () -> end(session, RecordingCapture.End.QUIT));
         String ghost = !ghostWanted(player) ? "off" : host.ghostsUnavailable().map((String reason) -> "unavailable, " + reason).orElse("every " + current.ghostIntervalTicks() + " ticks");
-        actor.tell("Recording " + id + ": sampling every " + current.sampleTicks() + " ticks, at most " + current.maximumTicks() + " ticks; ghost " + ghost + ". /animus record stop saves it.");
+        actor.tell(Palette.success("Recording " + id + ": every " + current.sampleTicks() + " ticks, up to " + current.maximumTicks() + ", ghost " + ghost + "; /animus record stop saves"));
     }
 
     void stop(P player, CommandActor actor) {
         Optional<RecordingSession<P, I>> found = sessions.get(host.id(player));
-        if (found.isEmpty()) { actor.tell("You are not recording."); return; }
+        if (found.isEmpty()) { actor.tell(Palette.error("Not recording")); return; }
         RecordingSession<P, I> session = found.get();
-        if (session.state == RecordingSession.State.SAVING) { actor.tell("Recording " + session.capture.id() + " is already saving."); return; }
+        if (session.state == RecordingSession.State.SAVING) { actor.tell(Palette.error("Recording " + session.capture.id() + " is already saving")); return; }
         end(session, RecordingCapture.End.STOPPED);
     }
 
     void cancel(P player, CommandActor actor) {
         Optional<RecordingSession<P, I>> found = sessions.get(host.id(player));
-        if (found.isEmpty()) { actor.tell("You are not recording."); return; }
+        if (found.isEmpty()) { actor.tell(Palette.error("Not recording")); return; }
         RecordingSession<P, I> session = found.get();
-        if (session.state == RecordingSession.State.SAVING) { actor.tell("Recording " + session.capture.id() + " is saving and can no longer be cancelled."); return; }
+        if (session.state == RecordingSession.State.SAVING) { actor.tell(Palette.error("Recording " + session.capture.id() + " is saving; too late to cancel")); return; }
         retire(session);
-        actor.tell("Recording " + session.capture.id() + " discarded.");
+        actor.tell(Palette.success("Discarded recording " + session.capture.id()));
     }
 
     void ghost(P player, CommandActor actor, boolean on) {
         ghostChoice.put(host.id(player), on);
         if (!on) {
             sessions.get(host.id(player)).ifPresent(this::closeGhost);
-            actor.tell("Recording ghost off.");
+            actor.tell(Palette.success("Recording ghost off"));
             return;
         }
         RecordingSettings current = settings;
-        if (!current.ghostEnabled()) actor.tell("Recording ghost on for you, but [recordings] ghostEnabled is false in config.toml.");
-        else actor.tell("Recording ghost on" + host.ghostsUnavailable().map((String reason) -> ", but ghosts are unavailable: " + reason).orElse("") + ".");
+        if (!current.ghostEnabled()) actor.tell("Recording ghost on for you; config.toml [recordings] ghostEnabled is false, so none shows");
+        else actor.tell(Palette.success("Recording ghost on" + host.ghostsUnavailable().map((String reason) -> "; unavailable here: " + reason).orElse("")));
     }
 
     List<String> status(Optional<P> player) {
@@ -142,11 +143,11 @@ public final class RecordingSessions<P, I> implements RecordingControl, AutoClos
     }
 
     void preview(P player, CommandActor actor, String id) {
-        if (!id.matches(RecordingDocument.ID)) { actor.tell("Recording ids are 1 to 64 lowercase letters, digits, _ or -."); return; }
+        if (!id.matches(RecordingDocument.ID)) { actor.tell(Palette.error("Recording ids are 1 to 64 of a-z, 0-9, _ and -")); return; }
         RecordingSettings current = settings;
-        if (!current.enabled()) { actor.tell("Recordings are disabled; set [recordings] enabled = true in config.toml."); return; }
+        if (!current.enabled()) { actor.tell(Palette.error("Recordings are off; set [recordings] enabled = true in config.toml")); return; }
         Optional<String> unavailable = host.ghostsUnavailable();
-        if (unavailable.isPresent()) { actor.tell("Previews are unavailable: " + unavailable.get()); return; }
+        if (unavailable.isPresent()) { actor.tell(Palette.error("Previews unavailable: " + unavailable.get())); return; }
         int maximumBytes = current.maximumFileBytes();
         try {
             files.execute(() -> {
@@ -157,16 +158,16 @@ public final class RecordingSessions<P, I> implements RecordingControl, AutoClos
                 RecordingDocument read = document;
                 String refused = problem;
                 host.later(player, () -> {
-                    if (refused != null) actor.tell("Cannot preview " + id + ": " + refused);
+                    if (refused != null) actor.tell(Palette.error("Cannot preview " + id + ": " + refused));
                     else beginPreview(player, actor, read);
                 }, () -> {});
             });
-        } catch (RejectedExecutionException busy) { actor.tell("The file queue is full; try the preview again shortly."); }
+        } catch (RejectedExecutionException busy) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
     void stopPreview(P player, CommandActor actor) {
         Optional<Preview<P, I>> found = previews.get(host.id(player));
-        if (found.isEmpty()) { actor.tell("No preview is playing."); return; }
+        if (found.isEmpty()) { actor.tell(Palette.error("No preview playing")); return; }
         endPreview(found.get(), "stopped");
     }
 
@@ -211,7 +212,7 @@ public final class RecordingSessions<P, I> implements RecordingControl, AutoClos
     private void tick(RecordingSession<P, I> session) {
         if (session.state != RecordingSession.State.RECORDING) {
             if (session.state == RecordingSession.State.HELD && !host.online(session.player)) {
-                host.warn("Recording " + session.capture.id() + " was too large to save and its recorder left; it is discarded.");
+                host.warn("Recording " + session.capture.id() + " discarded: too large to save and its recorder left");
                 retire(session);
             }
             return;
@@ -239,7 +240,7 @@ public final class RecordingSessions<P, I> implements RecordingControl, AutoClos
         String why = reason == RecordingCapture.End.STOPPED ? "" : " (" + reason.reason() + ")";
         if (take.isEmpty()) {
             retire(session);
-            report(session, "Recording " + session.capture.id() + " discarded: under " + RecordingCapture.MINIMUM_TICKS + " ticks" + why + ".");
+            report(session, "Recording " + session.capture.id() + " discarded: under " + RecordingCapture.MINIMUM_TICKS + " ticks" + why);
             return;
         }
         session.state = RecordingSession.State.SAVING;
@@ -255,7 +256,7 @@ public final class RecordingSessions<P, I> implements RecordingControl, AutoClos
                 Runnable finish = () -> saved(session, saved, problem, why);
                 host.later(session.player, finish, finish);
             });
-        } catch (RejectedExecutionException busy) { saved(session, null, "the file queue is full; run /animus record stop again", why); }
+        } catch (RejectedExecutionException busy) { saved(session, null, "file queue full", why); }
     }
 
     private void saved(RecordingSession<P, I> session, RecordingWriter.Outcome outcome, String problem, String why) {
@@ -263,7 +264,7 @@ public final class RecordingSessions<P, I> implements RecordingControl, AutoClos
         if (outcome instanceof RecordingWriter.Saved saved) {
             retire(session);
             report(session, "Recording " + id + " saved" + why + ": " + session.capture.durationTicks() + " ticks, " + saved.frames() + " frames, "
-                    + saved.events() + " events, " + saved.bytes() + " bytes, revision " + saved.revision() + ". Rollback: /animus rollback " + saved.transaction());
+                    + saved.events() + " events, " + saved.bytes() + " bytes; tx " + saved.transaction());
             idsRefreshed = 0;
             return;
         }
@@ -276,8 +277,8 @@ public final class RecordingSessions<P, I> implements RecordingControl, AutoClos
         session.state = RecordingSession.State.HELD;
         if (outcome instanceof RecordingWriter.TooLarge large)
             report(session, "Recording " + id + " is " + large.bytes() + " bytes, above [recordings] maximumFileBytes " + large.maximum()
-                    + "; it is held. Raise the limit and /animus record stop again, or /animus record cancel.");
-        else report(session, "Recording " + id + " was not saved: " + problem + ". It is held; /animus record stop retries, cancel discards.");
+                    + "; held until you raise the limit and stop again, or cancel");
+        else report(session, "Recording " + id + " not saved: " + problem + "; held, /animus record stop retries, cancel discards");
     }
 
     private void report(RecordingSession<P, I> session, String message) {
@@ -306,10 +307,10 @@ public final class RecordingSessions<P, I> implements RecordingControl, AutoClos
     private void beginPreview(P player, CommandActor actor, RecordingDocument document) {
         RecordingSettings current = settings;
         if (closed || !host.online(player) || host.dead(player) || !host.admin(player)) return;
-        if (!current.enabled()) { actor.tell("Recordings are disabled; set [recordings] enabled = true in config.toml."); return; }
-        if (host.resolveWorld(document.world()).isEmpty()) { actor.tell("Recording " + document.id() + " names world " + document.world() + ", which is not loaded."); return; }
+        if (!current.enabled()) { actor.tell(Palette.error("Recordings are off; set [recordings] enabled = true in config.toml")); return; }
+        if (host.resolveWorld(document.world()).isEmpty()) { actor.tell(Palette.error("Recording " + document.id() + " needs world " + document.world() + ", which is not loaded")); return; }
         if (!RecordingWorlds.same(host.world(player), document.world(), host::resolveWorld)) {
-            actor.tell("Recording " + document.id() + " was made in " + document.world() + "; go there to preview it.");
+            actor.tell(Palette.error("Recording " + document.id() + " was made in " + document.world() + "; preview it there"));
             return;
         }
         previews.get(host.id(player)).ifPresent((Preview<P, I> running) -> endPreview(running, null));
@@ -320,11 +321,11 @@ public final class RecordingSessions<P, I> implements RecordingControl, AutoClos
         String name = recorder.map(host::name).or(() -> host.knownName(document.recordedBy())).orElse("Ghost");
         Optional<BodySkin> skin = recorder.flatMap(host::skin);
         try { preview.ghost = host.ghost(player, document, name, skin, current); }
-        catch (RuntimeException failure) { previews.remove(host.id(player), preview); actor.tell("Cannot preview " + document.id() + ": " + failure.getMessage()); return; }
+        catch (RuntimeException failure) { previews.remove(host.id(player), preview); actor.tell(Palette.error("Cannot preview " + document.id() + ": " + failure.getMessage())); return; }
         preview.task = host.everyTick(player, () -> tickPreview(preview), () -> endPreview(preview, null));
         RecordingDocument.Origin origin = document.origin();
         actor.tell("Previewing " + document.id() + " (" + document.durationTicks() + " ticks) at " + Math.round(origin.x()) + " " + Math.round(origin.y()) + " "
-                + Math.round(origin.z()) + ". /animus record preview " + document.id() + " action=stop ends it.");
+                + Math.round(origin.z()) + "; action=stop ends it");
     }
 
     private void tickPreview(Preview<P, I> preview) {
@@ -350,7 +351,7 @@ public final class RecordingSessions<P, I> implements RecordingControl, AutoClos
         if (preview.ghost != null) { preview.ghost.close(); host.release(preview.viewer); }
         previews.remove(host.id(preview.viewer), preview);
         close(preview.task);
-        if (reason != null && host.online(preview.viewer)) preview.actor.tell("Preview " + preview.id + " ended: " + reason + ".");
+        if (reason != null && host.online(preview.viewer)) preview.actor.tell("Preview " + preview.id + " ended: " + reason);
     }
 
     private static void close(AutoCloseable task) {
@@ -375,7 +376,7 @@ public final class RecordingSessions<P, I> implements RecordingControl, AutoClos
             if (take.isEmpty()) continue;
             try {
                 RecordingWriter.Outcome outcome = RecordingWriter.save(runtime.documents(), CatalogReloads.NONE, take.get(), settings.maximumFileBytes());
-                host.info("Recording " + session.capture.id() + (outcome instanceof RecordingWriter.Saved ? " saved" : " not saved, too large") + " at shutdown.");
+                host.info("Recording " + session.capture.id() + (outcome instanceof RecordingWriter.Saved ? " saved" : " not saved, too large") + " at shutdown");
             } catch (IOException | RuntimeException failure) { host.warn("Recording " + session.capture.id() + " not saved at shutdown: " + failure.getMessage()); }
         }
         host.closeGhosts();

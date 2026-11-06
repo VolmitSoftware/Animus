@@ -20,6 +20,7 @@ import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.virtual.Hitbox;
 import art.arcane.animus.core.virtual.WorldPosition;
 import com.google.gson.JsonObject;
@@ -217,7 +218,7 @@ public final class BuildService<P, I> implements AutoCloseable {
         List<String> lines = new ArrayList<>();
         for (BuildSession session : sessions.values()) lines.add(statusOf(session));
         for (String id : loading) lines.add("Build " + id + ": loading");
-        if (lines.isEmpty()) lines.add("No builds. Start one with /animus build start <npc-id> <schematic>");
+        if (lines.isEmpty()) lines.add("No builds; start one with /animus build start <npc> schematic=<file>");
         return lines;
     }
 
@@ -250,7 +251,7 @@ public final class BuildService<P, I> implements AutoCloseable {
                 List<String> lines = new ArrayList<>();
                 lines.add(name + ": " + schematic.format() + " " + schematic.width() + "x" + schematic.height() + "x" + schematic.length()
                         + " | blocks=" + schematic.definedCells() + " | palette=" + schematic.palette().size() + " | unknown-cells=" + palette.unknownCells()
-                        + " | block-entities=" + schematic.blockEntities() + (schematic.blockEntities() > 0 ? " (contents are not copied)" : "")
+                        + " | block-entities=" + schematic.blockEntities() + (schematic.blockEntities() > 0 ? " (contents not copied)" : "")
                         + " | offset=" + schematic.offsetX() + "," + schematic.offsetY() + "," + schematic.offsetZ());
                 schematic.warnings().stream().limit(MAXIMUM_REPORT_LINES).forEach(lines::add);
                 palette.report().stream().limit(MAXIMUM_REPORT_LINES).forEach(lines::add);
@@ -382,14 +383,14 @@ public final class BuildService<P, I> implements AutoCloseable {
             session.bind(platform);
             long taken;
             try { taken = session.donate(held.item(), held.count()); }
-            catch (IllegalStateException refused) { giveBack.accept("Animus build: " + refused.getMessage()); return; }
+            catch (IllegalStateException refused) { giveBack.accept(Palette.error("Build: " + refused.getMessage())); return; }
             long rest = held.count() - taken;
             String message = taken == 0 ? "Build " + session.id() + " does not need " + held.item() : "Donated " + taken + " " + held.item() + " to build " + session.id();
             if (rest <= 0) { living.players().deliver(player, (P back) -> reply.accept(message)); return; }
             if (!living.players().deliver(player, (P back) -> { platform.give(back, held.item(), rest); reply.accept(message); }))
                 log.accept("Cannot hand " + rest + " " + held.item() + " back to player " + player + ", who left");
-        }, (String refused) -> giveBack.accept("Animus build: " + refused));
-        if (!queued) giveBack.accept("Animus build: build commands are busy; try again");
+        }, (String refused) -> giveBack.accept(Palette.error("Build: " + refused)));
+        if (!queued) giveBack.accept(Palette.error("Build commands busy; try again in a moment"));
     }
 
     /**

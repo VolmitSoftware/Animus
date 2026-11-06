@@ -46,6 +46,9 @@ final class ModText {
      */
     static MutableComponent miniMessage(String line) { return converted(MINI_MESSAGE.deserialize(line)); }
 
+    /** An Adventure component, such as a {@link art.arcane.animus.core.text.ChatLine}, as a vanilla component. */
+    static MutableComponent adventure(net.kyori.adventure.text.Component source) { return converted(source); }
+
     private static MutableComponent converted(net.kyori.adventure.text.Component source) {
         MutableComponent out = Component.literal(source instanceof net.kyori.adventure.text.TextComponent text ? text.content() : "");
         out.setStyle(style(source.style()));
@@ -65,6 +68,8 @@ final class ModText {
         if (click != null && click.payload() instanceof net.kyori.adventure.text.event.ClickEvent.Payload.Text text) {
             if (click.action() == net.kyori.adventure.text.event.ClickEvent.Action.RUN_COMMAND) style = style.withClickEvent(new ClickEvent.RunCommand(text.value()));
             else if (click.action() == net.kyori.adventure.text.event.ClickEvent.Action.SUGGEST_COMMAND) style = style.withClickEvent(new ClickEvent.SuggestCommand(text.value()));
+            else if (click.action() == net.kyori.adventure.text.event.ClickEvent.Action.COPY_TO_CLIPBOARD) style = style.withClickEvent(new ClickEvent.CopyToClipboard(text.value()));
+            else if (click.action() == net.kyori.adventure.text.event.ClickEvent.Action.OPEN_URL) style = style.withClickEvent(new ClickEvent.OpenUrl(java.net.URI.create(text.value())));
         }
         net.kyori.adventure.text.event.HoverEvent<?> hover = source.hoverEvent();
         if (hover != null && hover.value() instanceof net.kyori.adventure.text.Component shown) style = style.withHoverEvent(new HoverEvent.ShowText(converted(shown)));

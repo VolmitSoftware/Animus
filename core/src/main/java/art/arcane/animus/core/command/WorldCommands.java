@@ -33,8 +33,8 @@ final class WorldCommands {
         @Director(description = "Stop an NPC's route")
         void stop(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
             CommandActor actor = actor();
-            npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Animus navigation",
-                    () -> "Navigation stop requested for " + id + "; stopped=" + living().stopNavigation(id) + "\n" + living().navigationStatus(id)));
+            npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Navigation",
+                    () -> (living().stopNavigation(id) ? "Stopped the route of " : "No route to stop for ") + id + "\n" + living().navigationStatus(id)));
         }
     }
 
@@ -52,7 +52,7 @@ final class WorldCommands {
         @Director(description = "Dismount a player from their NPC")
         void stop(@Param(name = "player", description = "The riding player's name") String player) {
             CommandActor actor = actor();
-            try { actor.tell(living().stopRider(player) ? Palette.success("Dismounted " + player) : player + " is not riding"); }
+            try { actor.tell(living().stopRider(player) ? Palette.success("Dismounted " + player) : Palette.error(player + " is not riding")); }
             catch (RuntimeException refused) { actor.tell(Palette.error("Ride: " + refused.getMessage())); }
         }
     }

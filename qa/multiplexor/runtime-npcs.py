@@ -197,19 +197,19 @@ finally:
             document = data/'npcs'/state['group']/f'{state["id"]}.json'
             if document.exists() and sha(document) == state['recovery']['invalidSha256']:
                 shutil.copy2(state['recovery']['validBackup'], document)
-                try: console(session, log, 'animus reload', r'.*reload successful.*')
+                try: console(session, log, 'animus reload', r'.*Reloaded; .*')
                 except Exception as error: cleanup_errors.append(str(error))
         if state:
             for suffix in ['', '-world', '-type', '-name']:
                 npc_id = state['id'] + suffix
                 document = data/'npcs'/state['group']/f'{npc_id}.json'
                 if document.exists():
-                    try: console(session, log, f'animus delete {npc_id}', r'.*Deleted; rollback transaction.*')
+                    try: console(session, log, f'animus delete {npc_id}', r'.*Deleted [^;]*; tx .*')
                     except Exception as error: cleanup_errors.append(str(error))
         if args.combat:
             combat_id = report['combatNpcId']
             if (data/'npcs/combatqa'/f'{combat_id}.json').exists():
-                try: console(session, log, f'animus delete {combat_id}', r'.*Deleted; rollback transaction.*')
+                try: console(session, log, f'animus delete {combat_id}', r'.*Deleted [^;]*; tx .*')
                 except Exception as error: cleanup_errors.append(str(error))
             try: console(session, log, 'kill @e[tag=AnimusCombatQA]', r'.*(Killed|No entity was found|No entities were found).*')
             except Exception as error: cleanup_errors.append(str(error))
@@ -217,7 +217,7 @@ finally:
             for suffix in ['', '-unloaded']:
                 movement_id = report['movementNpcId'] + suffix
                 if (data/'npcs/movementqa'/f'{movement_id}.json').exists():
-                    try: console(session, log, f'animus delete {movement_id}', r'.*Deleted; rollback transaction.*')
+                    try: console(session, log, f'animus delete {movement_id}', r'.*Deleted [^;]*; tx .*')
                     except Exception as error: cleanup_errors.append(str(error))
         if arena:
             if expanded_arena:

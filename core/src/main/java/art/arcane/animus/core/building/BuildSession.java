@@ -722,13 +722,13 @@ public final class BuildSession {
         List<String> lines = new ArrayList<>();
         Map<String, Long> totals = remaining();
         if (options.materials() == BuildOptions.Materials.CREATIVE) { lines.add("Build " + id + " uses creative materials; nothing is needed"); return lines; }
-        lines.add("Build " + id + " needs, for the steps left (blocks already in place are not counted off until reached):");
+        lines.add("Build " + id + " needs, for the steps left:");
         for (Map.Entry<String, Long> entry : totals.entrySet()) {
             long have = options.materials() == BuildOptions.Materials.CONTAINER ? access.containerCount(world, container(), entry.getKey()) : ledger.available(entry.getKey());
             if (have < 0) { lines.add(entry.getKey() + ": need " + entry.getValue() + "; " + containerMissing(access)); continue; }
             lines.add(entry.getKey() + ": need " + entry.getValue() + ", have " + have + (have >= entry.getValue() ? "" : ", short " + (entry.getValue() - have)));
         }
-        if (totals.isEmpty()) lines.add("nothing");
+        if (totals.isEmpty()) lines.add("Nothing left to supply");
         return lines;
     }
 
