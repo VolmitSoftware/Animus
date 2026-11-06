@@ -175,6 +175,9 @@
 - Web editor: `folder:=town` matches one folder and `folder:=` the NPCs directly in `npcs/`.
 - Web editor: "New NPC in" a folder opens the new NPC form with that folder filled in.
 - Change sets can move a document: `from` names the old id, and the server writes the new file and removes the old one in one transaction, keeping the revision chain; undo moves it back.
+- `/animus attack` and `/animus target` on Folia; checks run on the NPC's and the target's own regions, with results in the server log.
+- Builds on Folia, including scaffolding, doors and beds; each build takes turns on the region that owns its work.
+- `/animus build status` shows `region-turns`, `out` and `lost` on Folia.
 
 ### Changed
 
@@ -251,6 +254,8 @@
 - Web editor: the NPC browser's move to folder picks from the folder tree or takes a new nested path, including `npcs/` itself.
 - Web editor: moving NPCs to other folders on a server workspace goes out as moves in the next apply, and the live bar counts them as moved.
 - Web editor: a stale `group` in an NPC file is a warning, since the server takes the group from the folder.
+- On Folia, build commands and `animus:build` answer a moment later through your own region; `animus:build` answers `queued`.
+- A donation takes the held stack and returns what the build does not need.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
@@ -385,6 +390,7 @@
 - GUI editor section tabs use the same selected style as the view tabs.
 - The web editor opens, creates and names NPCs directly in `npcs/` or nested folders the way the server does, instead of assuming one folder.
 - Undoing an apply on a server workspace drops the documents it removed without asking the server for them.
+- Build protection counters are safe when several regions use them at once.
 
 ### Notes
 
