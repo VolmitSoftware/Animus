@@ -479,6 +479,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     @Override public boolean resumePatrol(String id) { return navigable(id).resumePatrol(); }
     @Override public void setAppearance(String id, Optional<String> name, Optional<String> skin, boolean reset) { navigable(id).setAppearance(name, skin, reset); }
     @Override public void setEquipment(String id, EquipmentSlot slot, ItemStack item) { navigable(id).setEquipment(slot, item); }
+    @Override public void setAttribute(String id, String attribute, java.util.OptionalDouble value) { navigable(id).setAttribute(attribute, value); }
     @Override public void playAnimation(String id, String animation, double speed, Optional<String> loop, int layer) { navigable(id).playAnimation(animation, speed, loop, layer); }
     @Override public void stopAnimation(String id, java.util.OptionalInt layer, int fadeTicks) { navigable(id).stopAnimation(layer, fadeTicks); }
 

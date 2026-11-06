@@ -174,6 +174,10 @@ final class RegionViewer {
                     if (!admit(PresentationPressure.Tier.AUTHORITATIVE)) return sent;
                     attackSwing(body, now.attackSwings()); sent++; if (!host.current(this)) return sent;
                 }
+                if (body.spawnFinished && !body.attributing && sent < packetBudget && body.attributes != now.attributeRevision()) {
+                    if (!admit(PresentationPressure.Tier.AUTHORITATIVE)) return sent;
+                    attribute(body, now); sent++; if (!host.current(this)) return sent;
+                }
             }
         }
         if (ready && retirements.isEmpty() && sent < packetBudget) { sent += rosters(packetBudget - sent); if (!host.current(this)) return sent; }
@@ -208,7 +212,7 @@ final class RegionViewer {
     }
     private void spawn(RegionActor actor, RegionActor.Publication now) {
         try {
-            NativePacketAdapter.Body body = host.packets.createBody(now.spec().definition().uuid(), now.spec().type(), now.name(), now.spec().appearance(), now.skin());
+            NativePacketAdapter.Body body = host.packets.createBody(now.spec().definition().uuid(), now.spec().type(), now.name(), now.spec().appearance().withAttributes(now.attributes()), now.skin());
             Presented presented = new Presented(actor, body, now);
             visible.put(actor.uuid, presented); presentationOrder.addLast(presented); cosmeticOrder.addLast(presented);
             nativeIds += presented.ids; pendingSpawns++; shown.incrementAndGet();
@@ -235,6 +239,18 @@ final class RegionViewer {
                 if (body.bound) guard.updateSnapshot(body.body.entityId(), body.actor.publication.snapshot());
             }));
         } catch (RuntimeException failure) { host.fail(this, "move", body.actor, failure); }
+    }
+    /** Authoritative: a runtime attribute change on a visible body. */
+    private void attribute(Presented body, RegionActor.Publication now) {
+        body.attributing = true;
+        try {
+            handOver(() -> host.packets.attributes(player, body.body, now.attributes())).whenComplete((nothing, failure) -> enqueue(() -> {
+                if (!host.current(this) || body.retired || visible.get(body.actor.uuid) != body) return;
+                body.attributing = false;
+                if (failure != null) { host.fail(this, "attributes", body.actor, failure); return; }
+                body.attributes = now.attributeRevision();
+            }));
+        } catch (RuntimeException failure) { host.fail(this, "attributes", body.actor, failure); }
     }
     /** Cosmetic: a failed send is recorded and not retried, and never costs the viewer their session. */
     private void equip(Presented body, RegionActor.Publication now) {
@@ -565,8 +581,8 @@ final class RegionViewer {
 
     private static final class Presented {
         final RegionActor actor; final NativePacketAdapter.Body body; final long appearance; final int ids;
-        boolean bound, retired, spawnFinished, despawnFinished, moving, equipping, looking, bonesShown, rigFailed;
-        long pose, equipment, rigIdentity, socketRevision, look, swings, attackSwings;
+        boolean bound, retired, spawnFinished, despawnFinished, moving, equipping, looking, bonesShown, rigFailed, attributing;
+        long pose, equipment, rigIdentity, socketRevision, look, swings, attackSwings, attributes;
         int dragonPhase = DragonBody.PHASE_HOVERING;
         /** The passenger roster last sent for this vehicle; null when unknown, so the next update sends it again. */
         List<Integer> sentRoster;
@@ -577,6 +593,7 @@ final class RegionViewer {
             // A body spawns with its definition's look; a playback look published before the spawn is sent after it.
             look = now.look() == null ? now.lookRevision() : -1;
             swings = now.swings(); attackSwings = now.attackSwings();
+            attributes = now.attributeRevision();
         }
     }
 }

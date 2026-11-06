@@ -331,6 +331,22 @@ void main() {
       expect(dragonTop, lessThan(8.3 - mcFramedTextGap));
     });
 
+    test('the scale attribute sizes the body and lifts its name', () {
+      double top(NpcScene scene) => scene.scene.frame.map((McVec3 p) => p.y).reduce((double a, double b) => a > b ? a : b);
+      NpcScene scaled(Object? scale) => npcScene(NpcLook.fromDefinition(<String, Object?>{
+            'type': 'minecraft:player',
+            'name': 'Steve',
+            if (scale != null) 'attributes': <String, Object?>{'minecraft:scale': scale},
+          }));
+      final NpcScene normal = scaled(null), giant = scaled(2), tiny = scaled(0.5);
+      expect(giant.texts.single.anchor.y, closeTo(normal.texts.single.anchor.y + 1.8, 1e-9));
+      expect(tiny.texts.single.anchor.y, closeTo(normal.texts.single.anchor.y - 0.9, 1e-9));
+      final double body = top(normal) - normal.texts.single.lines.length * 0.25;
+      expect(top(giant) - giant.texts.single.lines.length * 0.25, closeTo(body + 1.8, 1e-9));
+      final McRigNode drawn = byKey(giant)['body']! as McRigNode;
+      expect(drawn.transform, isNot(equals((byKey(normal)['body']! as McRigNode).transform)));
+    });
+
     test('every body fills the view about as much as the player does', () {
       final double player = fill(sceneOf('npcs/players/hero.json'));
       expect(player, greaterThan(0.6));

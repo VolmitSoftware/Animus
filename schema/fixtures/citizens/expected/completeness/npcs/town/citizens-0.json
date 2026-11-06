@@ -8,7 +8,7 @@
   "type": "minecraft:player",
   "spawned": false,
   "migration": {
-    "importId": "de14bc7b40fae6f816c27297122ab341732aa8b44952290cb2446a2cbff248ca",
+    "importId": "7946884b98c469be3d83e0cf3b4f9f4fe8a359ae12944a3f7c5e44454d262111",
     "citizensId": 0,
     "originalSpawned": null,
     "references": [],
@@ -81,13 +81,15 @@
       "afterTicks": 120,
       "teleport": true
     },
-    "openDoors": true,
-    "stepHeight": 1.0
+    "openDoors": true
   },
   "teamColor": "dark_red",
   "tags": [
     "gate-guard"
   ],
+  "attributes": {
+    "step_height": 1.0
+  },
   "modules": {
     "animus:navigation": {
       "enabled": false,

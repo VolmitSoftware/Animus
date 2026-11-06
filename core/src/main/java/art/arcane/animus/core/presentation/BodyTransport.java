@@ -78,6 +78,13 @@ public interface BodyTransport<P, I> extends AutoCloseable {
      * playback does when the recorder sneaks, swims, sprints or glides. A transport without metadata updates ignores it.
      */
     default CompletionStage<Void> look(P viewer, Body body, BodyLook look) { return java.util.concurrent.CompletableFuture.completedFuture(null); }
+    /**
+     * Sets the attributes of a visible body, as a runtime change does; a body spawns with the attributes of its look. Only
+     * attributes the body's type carries are sent. A transport without attribute packets ignores it.
+     */
+    default CompletionStage<Void> attributes(P viewer, Body body, art.arcane.animus.core.npc.NpcAttributes attributes) {
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
+    }
     /** An empty stack clears its slot. */
     CompletionStage<Void> equipment(P viewer, Body body, Map<EquipmentSlot, I> items);
     /** Authoritative: bypasses the ordinary operation limit. */

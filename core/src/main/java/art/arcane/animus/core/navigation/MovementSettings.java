@@ -1,5 +1,7 @@
 package art.arcane.animus.core.navigation;
 
+import art.arcane.animus.core.npc.NpcAttributes;
+import art.arcane.animus.core.presentation.BodyRules;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.util.ArrayList;
@@ -17,11 +19,19 @@ import java.util.Set;
  * closes behind it. {@code stepHeight} and {@code maximumFall} replace the body's own climb and drop. Each plan reaches at most {@code pathRange};
  * a longer leg is walked in {@link LongLeg} segments of that reach. A point within {@code arrivalMargin} counts as reached, and {@code stuck} decides what an NPC
  * that has not moved closer for {@code afterTicks} does: teleport to the point it walks to, or stop.
+ * <p>
+ * The definition's {@code attributes} fill what this object leaves out: {@code movement_speed} the speed,
+ * {@code step_height} the climb and {@code safe_fall_distance} the drop. {@code jump_strength} and {@code gravity} give
+ * {@code jumpHeight}, and {@code gravity} is the fall acceleration of an idle body.
  */
 public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean fly, boolean openDoors, OptionalDouble stepHeight, OptionalInt maximumFall,
-                               OptionalDouble pathRange, OptionalDouble arrivalMargin, Optional<Stuck> stuck) {
+                               OptionalDouble pathRange, OptionalDouble arrivalMargin, Optional<Stuck> stuck, OptionalDouble jumpHeight, double gravity) {
     public static final MovementSettings DEFAULT = new MovementSettings(OptionalDouble.empty(), true, false, false, OptionalDouble.empty(), OptionalInt.empty(),
-            OptionalDouble.empty(), OptionalDouble.empty(), Optional.empty());
+            OptionalDouble.empty(), OptionalDouble.empty(), Optional.empty(), OptionalDouble.empty(), IdleFall.GRAVITY);
+    /** Blocks per second a player walks per unit of {@code movement_speed}, and a mob per unit of its square. */
+    public static final double PLAYER_WALK = 43.17, MOB_WALK = 44.05;
+    /** The navigation speed range an attribute speed is kept within, in blocks per second. */
+    public static final double MINIMUM_SPEED = 1, MAXIMUM_SPEED = 10;
     public static final double MAX_ARRIVAL_MARGIN = 4;
     public static final int MAX_STUCK_TICKS = 12_000;
     private static final Set<String> FIELDS = Set.of("speed", "avoidWater", "fly", "openDoors", "stepHeight", "maximumFall", "pathRange", "arrivalMargin", "stuck");
@@ -35,7 +45,7 @@ public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean
 
     public MovementSettings {
         Objects.requireNonNull(speed); Objects.requireNonNull(stepHeight); Objects.requireNonNull(maximumFall);
-        Objects.requireNonNull(pathRange); Objects.requireNonNull(arrivalMargin); Objects.requireNonNull(stuck);
+        Objects.requireNonNull(pathRange); Objects.requireNonNull(arrivalMargin); Objects.requireNonNull(stuck); Objects.requireNonNull(jumpHeight);
     }
 
     /** @throws IllegalArgumentException naming every malformed field */
@@ -49,9 +59,8 @@ public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean
     /** Reads {@code movement}, appending each malformed field to {@code errors}. */
     public static MovementSettings read(JsonObject definition, List<String> errors) {
         JsonElement value = definition.get("movement");
-        if (value == null) return DEFAULT;
-        if (!value.isJsonObject()) { errors.add("$.movement: expected object"); return DEFAULT; }
-        JsonObject movement = value.getAsJsonObject();
+        if (value != null && !value.isJsonObject()) errors.add("$.movement: expected object");
+        JsonObject movement = value != null && value.isJsonObject() ? value.getAsJsonObject() : new JsonObject();
         OptionalDouble speed = decimal(movement, "speed", 1, 5, "blocks/second", errors);
         boolean avoidWater = flag(movement, "avoidWater", true, errors), fly = flag(movement, "fly", false, errors);
         boolean openDoors = flag(movement, "openDoors", false, errors);
@@ -86,7 +95,33 @@ public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean
             }
         }
         for (String key : movement.keySet()) if (!FIELDS.contains(key)) errors.add("$.movement." + key + ": unknown field");
-        return new MovementSettings(speed, avoidWater, fly, openDoors, step, fall, range, margin, stuck);
+        NpcAttributes attributes = NpcAttributes.of(definition);
+        JsonElement type = definition.get("type");
+        boolean player = type != null && type.isJsonPrimitive() && type.getAsString().equals(BodyRules.PLAYER);
+        if (speed.isEmpty() && attributes.get("movement_speed").isPresent()) speed = OptionalDouble.of(walkSpeed(attributes.value("movement_speed"), player));
+        if (step.isEmpty() && attributes.get("step_height").isPresent()) step = OptionalDouble.of(Math.min(MovementProfile.MAX_STEP, attributes.value("step_height")));
+        if (fall.isEmpty() && attributes.get("safe_fall_distance").isPresent())
+            fall = OptionalInt.of((int) Math.max(0, Math.min(16, Math.floor(attributes.value("safe_fall_distance")))));
+        double gravity = attributes.value("gravity");
+        OptionalDouble jump = attributes.get("jump_strength").isPresent() || attributes.get("gravity").isPresent()
+                ? OptionalDouble.of(jumpHeight(attributes.value("jump_strength"), gravity)) : OptionalDouble.empty();
+        return new MovementSettings(speed, avoidWater, fly, openDoors, step, fall, range, margin, stuck, jump, gravity);
+    }
+
+    /** Blocks per second for a {@code movement_speed}: a player walks linearly with it, a mob with its square, as vanilla moves them. */
+    public static double walkSpeed(double attribute, boolean player) {
+        double blocks = player ? PLAYER_WALK * attribute : MOB_WALK * attribute * attribute;
+        return Math.max(MINIMUM_SPEED, Math.min(MAXIMUM_SPEED, blocks));
+    }
+
+    /** The peak of a vanilla jump: rising by the jump speed, losing {@code gravity} and two percent drag each tick; at most {@link MovementProfile#MAX_JUMP}. */
+    public static double jumpHeight(double strength, double gravity) {
+        double height = 0, speed = strength;
+        for (int tick = 0; tick < 200 && speed > 0 && height < MovementProfile.MAX_JUMP; tick++) {
+            height += speed;
+            speed = (speed - gravity) * IdleFall.DRAG;
+        }
+        return Math.min(MovementProfile.MAX_JUMP, height);
     }
 
     /** The route profile with this NPC's climb, drop, water, flying and door opening applied. Only walking bodies open doors. */
@@ -97,11 +132,12 @@ public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean
             modes = Set.of(MovementProfile.Mode.WALK, MovementProfile.Mode.SWIM);
         double step = stepHeight.orElse(profile.stepHeight());
         int fall = maximumFall.orElse(profile.maximumFall());
+        double jump = jumpHeight.orElse(profile.jumpHeight());
         boolean doors = openDoors && modes.contains(MovementProfile.Mode.WALK) || profile.opensDoors();
         boolean climbs = profile.climbs() && modes.contains(MovementProfile.Mode.WALK);
         if (modes.equals(profile.modes()) && step == profile.stepHeight() && fall == profile.maximumFall() && doors == profile.opensDoors()
-                && climbs == profile.climbs()) return profile;
-        return new MovementProfile(modes, profile.width(), profile.height(), step, profile.jumpHeight(), fall, profile.diagonals(), climbs, doors);
+                && climbs == profile.climbs() && jump == profile.jumpHeight()) return profile;
+        return new MovementProfile(modes, profile.width(), profile.height(), step, jump, fall, profile.diagonals(), climbs, doors);
     }
 
     /** Whether the NPC at {@code at} counts as having reached {@code goal}: within the arrival margin, when one is set. */
@@ -126,11 +162,11 @@ public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean
         return navigation == null || !navigation.isJsonObject() || navigation.getAsJsonObject().has("speed") || navigation.getAsJsonObject().has("route");
     }
 
-    /** Whether a body of this type falls when nothing holds it, given the definition's {@code gravity}. */
+    /** Whether a body of this type falls when nothing holds it: not with {@code gravity} false or a {@code gravity} attribute of 0 or less. */
     public static boolean falls(String type, JsonObject definition) {
         JsonElement gravity = definition.get("gravity");
         boolean off = gravity != null && gravity.isJsonPrimitive() && gravity.getAsJsonPrimitive().isBoolean() && !gravity.getAsBoolean();
-        return !off && BodyMobility.falls(type);
+        return !off && NpcAttributes.of(definition).value("gravity") > 0 && BodyMobility.falls(type);
     }
 
     private static boolean whole(JsonElement value, double minimum, double maximum) {
