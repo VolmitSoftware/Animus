@@ -146,7 +146,7 @@ class EditorPartsTest {
                 new art.arcane.animus.core.RuntimeEnvironment(art.arcane.animus.core.Platform.BUKKIT, "26.2", data));
         runtime.start();
         try (EditorHarness harness = new EditorHarness(directory.resolve("host"))) {
-            EditorService service = new EditorService(runtime, harness.host, (String line) -> {});
+            EditorService service = new EditorService(runtime, harness.host, (String line) -> {}, (String line) -> {});
             try {
                 service.start();
                 EditorCommands commands = new EditorCommands(() -> service, Runnable::run);
