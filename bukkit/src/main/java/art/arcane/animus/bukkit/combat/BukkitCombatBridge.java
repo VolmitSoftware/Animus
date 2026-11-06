@@ -242,7 +242,7 @@ public final class BukkitCombatBridge implements Listener, AutoCloseable {
                 if (!(amount > 0)) { lastStatus = Status.NO_CHANGE; return; }
                 VirtualNpcState.Snapshot after = npc.state.damage(amount);
                 lastStatus = Status.APPLIED;
-                mob.swingMainHand();
+                MobAttackAnimation.show(mob);
                 npc.onChange.accept(after);
                 defense.damaged(npc.npcId(), mob, after);
                 if (!after.active() || !npc.active()) close();

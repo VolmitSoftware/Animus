@@ -67,12 +67,11 @@ class _PackEditorState extends State<PackEditor> {
           title: 'Modules',
           count: modules.length,
           children: <Widget>[
-            dom.p(classes: 'animus-gui-help', <Widget>[
-              labelWithTip(
-                const dom.span(<Widget>[Component.text("Java modules the pack's behaviors use.")]),
-                "A missing required module disables the pack's behaviors. A missing optional one only switches off what needs it.",
-                'Pack modules',
+            const dom.p(classes: 'animus-gui-help', <Widget>[
+              InfoTip(
+                tip: "A missing required module disables the pack's behaviors. A missing optional one only switches off what needs it.",
                 docs: Docs.packs,
+                child: Component.text("Java modules the pack's behaviors use."),
               ),
             ]),
             if (modules.isEmpty)

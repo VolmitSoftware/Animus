@@ -97,7 +97,7 @@ final class RegionActor implements RegionOwner.Body {
                        long appearance, float yaw, float pitch, boolean onGround, long pose,
                        Map<EquipmentSlot, ItemStack> equipment, long equipmentRevision, int ids,
                        String navigation, long arrivals, boolean ride, boolean mount, long revision, NpcRig.Snapshot<ItemStack> rig, int dragonPhase,
-                       List<UUID> passengers, Player rider, CombatView combat, BodyLook look, long lookRevision, long swings) {}
+                       List<UUID> passengers, Player rider, CombatView combat, BodyLook look, long lookRevision, long swings, long attackSwings) {}
     /** What other combat engines and status read of this NPC's combat; null when it has none. */
     record CombatView(CombatSettings settings, CombatLoadout loadout, UUID guarded, String status, int helpers) {}
     /** A passenger whose vehicle another region owns steps onto its seat at most this often. */
@@ -146,7 +146,7 @@ final class RegionActor implements RegionOwner.Body {
     private long nextLook;
     float yaw, pitch;
     private boolean onGround = true;
-    private long pose, arrivals, turns, appearance, equipmentRevision, revision, swings;
+    private long pose, arrivals, turns, appearance, equipmentRevision, revision, swings, attackSwings;
     private double fallSpeed;
     private Route route;
     private WaypointProgress waypoints;
@@ -166,6 +166,8 @@ final class RegionActor implements RegionOwner.Body {
     private int lookMotion;
     private long lookRevision;
     private BodyLook look;
+    /** A fight holds the bow drawn, shown through {@link #look}. */
+    private boolean drawing;
     private String displayName;
     private BodySkin displaySkin;
     private AppearanceRead appearanceRead;
@@ -218,7 +220,7 @@ final class RegionActor implements RegionOwner.Body {
         waypoints = WaypointSettings.parse(spec.definition()).map((WaypointSettings declared) -> progress(declared, WaypointProgress.INLINE)).orElse(null);
         recordingSource = RecordingSource.parse(spec.definition().json()).orElse(null);
         performance.run = null; performance.held = null; performance.playing = false; stepLeg = null; stepProgress = null;
-        lookPose = spec.appearance().pose(); lookMotion = 0; look = null; lookRevision++;
+        lookPose = spec.appearance().pose(); lookMotion = 0; look = null; lookRevision++; drawing = false;
         routeReadWanted = waypoints == null ? routeSource != null || recordingSource != null : !routeReady();
         rigId = RigReference.parse(spec.definition().json()).orElse(null);
         rig = null; rigProblem = null; rigGeneration = -1;
@@ -808,6 +810,8 @@ final class RegionActor implements RegionOwner.Body {
     boolean routing() { return route != null || routeRead != null; }
     /** Swings the arm for every viewer, which sees the new count on its own region. */
     void swing() { swings++; publish(true); }
+    /** Shows one attack; viewers send it with moves, not after cosmetic work. */
+    void attackSwing() { attackSwings++; publish(true); }
     /**
      * Moves the NPC at once onto clear, supported ground this region holds and has loaded, as a build's last resort;
      * false leaves it where it is. A move into another chunk hands the NPC on at the end of its next turn.
@@ -1352,10 +1356,19 @@ final class RegionActor implements RegionOwner.Body {
         changeLook(RecordingSteps.pose(shown, spec.appearance().pose()), RecordingSteps.motion(shown));
     }
     private void resetLook() { changeLook(spec.appearance().pose(), 0); }
+    /** The playback's pose and motion; a bow drawn in a fight stays drawn across them. */
     private void changeLook(NpcPose nextPose, int motion) {
-        if (lookPose == nextPose && lookMotion == motion) return;
-        lookPose = nextPose; lookMotion = motion; lookRevision++;
-        look = BodyLook.of(uuid, spec.type(), displayName, spec.appearance()).moving(nextPose, motion);
+        int shown = motion | (drawing ? BodyLook.USING_ITEM : 0);
+        if (lookPose == nextPose && lookMotion == shown) return;
+        lookPose = nextPose; lookMotion = shown; lookRevision++;
+        look = BodyLook.of(uuid, spec.type(), displayName, spec.appearance()).moving(nextPose, shown);
+    }
+    /** Raises or lowers the bow for every viewer. */
+    void drawing(boolean drawn) {
+        if (drawing == drawn) return;
+        drawing = drawn;
+        changeLook(lookPose, lookMotion & ~BodyLook.USING_ITEM);
+        publish(true);
     }
     /** The recording a hotload re-reads: the one playing or kept, else the declared one. */
     private RecordingSource recordingToRead() {
@@ -1507,11 +1520,11 @@ final class RegionActor implements RegionOwner.Body {
                 && previous.pose() == pose && previous.equipmentRevision() == equipmentRevision && previous.arrivals() == arrivals
                 && Objects.equals(previous.navigation(), navigation()) && previous.rig() == rigSnapshot() && previous.dragonPhase() == dragonPhase
                 && previous.passengers().equals(passengers()) && previous.rider() == rider() && Objects.equals(previous.combat(), combatView())
-                && previous.lookRevision() == lookRevision && previous.swings() == swings) return;
+                && previous.lookRevision() == lookRevision && previous.swings() == swings && previous.attackSwings() == attackSwings) return;
         Map<EquipmentSlot, ItemStack> items = new EnumMap<>(EquipmentSlot.class);
         (rig == null ? equipment : rig.bodyEquipment(equipment)).forEach((slot, item) -> items.put(slot, item.clone()));
         publication = new Publication(presented, snapshot, spec, spec.type(), displayName, displaySkin, appearance, yaw, pitch, onGround, pose,
-                Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision, rigSnapshot(), dragonPhase, passengers(), rider(), combatView(), look, lookRevision, swings);
+                Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision, rigSnapshot(), dragonPhase, passengers(), rider(), combatView(), look, lookRevision, swings, attackSwings);
     }
     private Player rider() { return riding.rider(); }
     private NpcRig.Snapshot<ItemStack> rigSnapshot() {

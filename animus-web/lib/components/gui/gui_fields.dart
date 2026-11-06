@@ -12,6 +12,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_text.dart';
@@ -55,25 +56,24 @@ String guiPathId(String path) => 'animus-at-${path.replaceAll(RegExp(r'[^A-Za-z0
 /// the document has at [path]. With [forId] the label is a `<label for>`
 /// naming the control with that id.
 class GuiRow extends StatelessWidget {
-  const GuiRow({required this.label, required this.child, this.help, this.problems = const <Diagnostic>[], this.forId, super.key});
+  const GuiRow({required this.label, required this.child, this.help, this.tip, this.problems = const <Diagnostic>[], this.forId, super.key});
 
   final String label;
   final Widget child;
   final String? help;
+
+  /// Tip text on the label; with it, [help] always stays inline.
+  final String? tip;
   final List<Diagnostic> problems;
   final String? forId;
 
   @override
   Widget build(BuildContext context) {
-    final ({String? hint, String? tip}) split = splitHelp(help);
+    final ({String? hint, String? tip}) split = tip == null ? splitHelp(help) : (hint: help == null || help!.isEmpty ? null : help, tip: tip);
     return dom.div(classes: 'animus-gui-row${problems.any((Diagnostic d) => d.severity == DiagnosticSeverity.error) ? ' has-error' : ''}', <Widget>[
-      labelWithTip(
-        forId != null
-            ? dom.label(htmlFor: forId, classes: 'animus-gui-label', <Widget>[Component.text(label)])
-            : dom.span(classes: 'animus-gui-label', <Widget>[Component.text(label)]),
-        split.tip,
-        label,
-      ),
+      forId != null
+          ? dom.label(htmlFor: forId, classes: 'animus-gui-label', <Widget>[withTip(Component.text(label), split.tip)])
+          : dom.span(classes: 'animus-gui-label', <Widget>[withTip(Component.text(label), split.tip)]),
       dom.div(classes: 'animus-gui-control', <Widget>[
         child,
         if (split.hint != null) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(split.hint!)]),
@@ -542,12 +542,16 @@ class GuiStyledText extends StatelessWidget {
 
 /// A collapsible group of fields.
 class GuiSection extends StatelessWidget {
-  const GuiSection({required this.title, required this.children, this.open = true, this.count, super.key});
+  const GuiSection({required this.title, required this.children, this.open = true, this.count, this.tip, this.docs, super.key});
 
   final String title;
   final List<Widget> children;
   final bool open;
   final int? count;
+
+  /// Tip text on the title, linking to [docs] or the surrounding page.
+  final String? tip;
+  final DocLink? docs;
 
   @override
   Widget build(BuildContext context) => dom.details(
@@ -555,7 +559,7 @@ class GuiSection extends StatelessWidget {
         attributes: <String, String>{if (open) 'open': ''},
         <Widget>[
           dom.summary(<Widget>[
-            Component.text(title),
+            withTip(Component.text(title), tip, docs: docs),
             if (count != null) dom.span(classes: 'animus-count', <Widget>[Component.text('$count')]),
           ]),
           dom.div(classes: 'animus-gui-section-body', children),

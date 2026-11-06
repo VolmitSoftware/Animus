@@ -170,6 +170,10 @@ final class RegionViewer {
                     if (!admit(PresentationPressure.Tier.AUTHORITATIVE)) return sent;
                     equip(body, now); sent++; if (!host.current(this)) return sent;
                 }
+                if (body.spawnFinished && body.bound && sent < packetBudget && body.attackSwings != now.attackSwings()) {
+                    if (!admit(PresentationPressure.Tier.AUTHORITATIVE)) return sent;
+                    attackSwing(body, now.attackSwings()); sent++; if (!host.current(this)) return sent;
+                }
             }
         }
         if (ready && retirements.isEmpty() && sent < packetBudget) { sent += rosters(packetBudget - sent); if (!host.current(this)) return sent; }
@@ -266,6 +270,18 @@ final class RegionViewer {
             });
         } catch (RuntimeException failure) { host.cosmeticFailed(this, "swing", body.actor, failure); }
         return true;
+    }
+    /**
+     * One swing for every attack the owner published since the last, admitted like a move: an attack is feedback for a
+     * hit the viewer may feel, so it neither waits for cosmetic budget nor goes stale. A failed send is not retried.
+     */
+    private void attackSwing(Presented body, long attackSwings) {
+        body.attackSwings = attackSwings;
+        try {
+            handOver(() -> host.packets.swing(player, body.body)).whenComplete((nothing, failure) -> {
+                if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) host.cosmeticFailed(this, "attack swing", body.actor, failure); });
+            });
+        } catch (RuntimeException failure) { host.cosmeticFailed(this, "attack swing", body.actor, failure); }
     }
     /** Cosmetic: the dragon's wing phase from its owner's publication. A failed send is tried again on a later update. */
     private boolean phase(Presented body, int phase) {
@@ -550,7 +566,7 @@ final class RegionViewer {
     private static final class Presented {
         final RegionActor actor; final NativePacketAdapter.Body body; final long appearance; final int ids;
         boolean bound, retired, spawnFinished, despawnFinished, moving, equipping, looking, bonesShown, rigFailed;
-        long pose, equipment, rigIdentity, socketRevision, look, swings;
+        long pose, equipment, rigIdentity, socketRevision, look, swings, attackSwings;
         int dragonPhase = DragonBody.PHASE_HOVERING;
         /** The passenger roster last sent for this vehicle; null when unknown, so the next update sends it again. */
         List<Integer> sentRoster;
@@ -560,7 +576,7 @@ final class RegionViewer {
             equipment = now.equipment().isEmpty() ? now.equipmentRevision() : -1;
             // A body spawns with its definition's look; a playback look published before the spawn is sent after it.
             look = now.look() == null ? now.lookRevision() : -1;
-            swings = now.swings();
+            swings = now.swings(); attackSwings = now.attackSwings();
         }
     }
 }
