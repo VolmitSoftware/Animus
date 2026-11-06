@@ -48,6 +48,21 @@ class RecordingWriterTest {
         }
     }
 
+    @Test void shouldKeepTheStoredDetailsWhenARecordingIsTakenAgain(@TempDir Path directory) throws IOException {
+        CatalogReloads catalogs = (CatalogChange change, Consumer<String> problems) -> { };
+        try (DocumentStore store = new DocumentStore(directory)) {
+            RecordingDocument first = take("demo", 100).document(1);
+            RecordingDocument.Details details = new RecordingDocument.Details("Walk to the stall", List.of("market"), Optional.of(Playback.ONCE), 0.5);
+            store.commit(List.of(new DocumentStore.Change("recordings/demo.json", "missing",
+                    new RecordingDocument(1, "demo", first.recordedBy(), first.world(), first.origin(), first.sampleTicks(), first.durationTicks(), first.frames(),
+                            first.events(), details).serialize())));
+            assertInstanceOf(RecordingWriter.Saved.class, RecordingWriter.save(store, catalogs, take("demo", 60), 1_048_576));
+            RecordingDocument again = RecordingDocuments.read(store, "demo", 1_048_576);
+            assertEquals(2, again.revision());
+            assertEquals(details, again.details());
+        }
+    }
+
     @Test void shouldRefuseASaveAboveTheFileLimitWithItsSizeAndWriteNothing(@TempDir Path directory) throws IOException {
         List<CatalogChange> reloads = new ArrayList<>();
         try (DocumentStore store = new DocumentStore(directory)) {

@@ -13,12 +13,14 @@ import 'package:web/web.dart' as web;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/schema_fields.dart';
+import '../../logic/inspect/typed_values.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
 import '../../logic/help_text.dart';
 import '../info_tip.dart';
 import '../select/suggest_input.dart';
+import 'typed_values_editor.dart';
 
 /// A label with a required marker; keys read as words (`waitTicks` is "Wait ticks").
 String fieldLabel(FieldSpec field, {String? label}) => '${label ?? humanizeKey(field.key)}${field.required ? ' *' : ''}';
@@ -161,7 +163,17 @@ class InspectControl extends StatelessWidget {
         if (field.options.length == 1 && (current == null || current == field.options.first.value)) {
           return dom.code(classes: 'animus-inspect-const', <Widget>[Component.text(jsonEncode(field.options.first.value))]);
         }
-        if (!textual) break;
+        if (!textual) {
+          final Map<String, Object> byLabel = <String, Object>{for (final FieldOption option in field.options) option.label: option.value};
+          return GuiSelect(
+            id: controlId(path),
+            value: current == null ? null : '$current',
+            options: options,
+            allowNone: !field.required,
+            noneLabel: field.required ? 'Pick ${humanizeKey(field.key).toLowerCase()}' : 'Not set',
+            onChanged: (String? next) => onChanged(next == null ? null : byLabel[next]),
+          );
+        }
         if (field.openChoice) {
           return SuggestInput(
             value: current is String ? current : '',
@@ -211,30 +223,127 @@ class InspectControl extends StatelessWidget {
         }
       case FieldKind.object:
         final SchemaView? view = schema;
-        if (view != null && (current is Map<String, Object?> || current == null) && field.schema.containsKey('properties')) {
-          return InspectObject(
-            schema: view,
-            node: field.schema,
+        if (current is Map<String, Object?> || current == null) {
+          void put(JsonMap next) => onChanged(next.isEmpty && !field.required ? null : next);
+          if (view != null && view.fields(field.schema, current).isNotEmpty) {
+            return InspectObject(schema: view, node: field.schema, value: asMap(current), path: path, diagnostics: diagnostics, onChanged: put);
+          }
+          final Map<String, Object?>? values = view?.additional(field.schema, current, '');
+          return KeyValueEditor(
             value: asMap(current),
-            path: path,
-            diagnostics: diagnostics,
-            onChanged: (JsonMap next) => onChanged(next.isEmpty && !field.required ? null : next),
+            label: humanizeKey(field.key),
+            onChanged: put,
+            valueControl: view == null || values == null || values.isEmpty
+                ? null
+                : (String key, Object? entry, void Function(Object? value) onEntry) => InspectControl(
+                      field: view.field(key, values),
+                      value: entry,
+                      path: childPath(path, key),
+                      diagnostics: diagnostics,
+                      schema: view,
+                      onChanged: onEntry,
+                    ),
           );
         }
       case FieldKind.array:
         final Map<String, Object?> items = schema?.resolve(field.schema['items']) ?? const <String, Object?>{};
-        if (items['type'] == 'string' && (current is List<Object?> || current == null) && asList(current).every((Object? item) => item is String)) {
-          return GuiLinesEditor(
-            lines: stringList(current),
-            mode: GuiTextMode.plain,
-            addLabel: 'Add',
-            onChanged: (List<String> lines) => onChanged(lines.isEmpty && !field.required ? null : lines),
-          );
+        if (current is List<Object?> || current == null) {
+          if (items['type'] == 'string' && !items.containsKey('enum') && asList(current).every((Object? item) => item is String)) {
+            return GuiLinesEditor(
+              lines: stringList(current),
+              mode: GuiTextMode.plain,
+              addLabel: 'Add',
+              onChanged: (List<String> lines) => onChanged(lines.isEmpty && !field.required ? null : lines),
+            );
+          }
+          final SchemaView? view = schema;
+          if (view != null && items.isNotEmpty) {
+            return InspectArray(
+              schema: view,
+              items: view.field('${field.key} item', items),
+              value: asList(current),
+              path: path,
+              diagnostics: diagnostics,
+              onChanged: (List<Object?> next) => onChanged(next.isEmpty && !field.required ? null : next),
+            );
+          }
         }
       case FieldKind.any:
         break;
     }
-    return KeptJsonEditor(value: current, label: field.key, onChanged: onChanged);
+    return TypedValueEditor(value: current, label: humanizeKey(field.key), onChanged: onChanged);
+  }
+}
+
+/// A list whose items share the schema [items]: one control per item, or a
+/// form per item for objects, with move, remove and add.
+class InspectArray extends StatelessWidget {
+  const InspectArray({required this.schema, required this.items, required this.value, required this.path, required this.onChanged, this.diagnostics = const <Diagnostic>[], super.key});
+
+  final SchemaView schema;
+  final FieldSpec items;
+  final List<Object?> value;
+  final String path;
+  final void Function(List<Object?> value) onChanged;
+  final List<Diagnostic> diagnostics;
+
+  /// A starting value for a new item of [items].
+  Object? _blank() => switch (items.kind) {
+        FieldKind.choice => items.options.isEmpty ? '' : items.options.first.value,
+        FieldKind.string => '',
+        FieldKind.integer || FieldKind.number => items.minimum ?? 0,
+        FieldKind.boolean => false,
+        FieldKind.object => <String, Object?>{
+            for (final FieldSpec field in schema.fields(items.schema, const <String, Object?>{}))
+              if (field.required && field.kind == FieldKind.choice && field.options.isNotEmpty) field.key: field.options.first.value,
+          },
+        FieldKind.array => <Object?>[],
+        FieldKind.any => '',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final String noun = humanizeKey(items.key);
+    return dom.div(classes: 'animus-inspect-array', attributes: <String, String>{'role': 'group', 'aria-label': noun}, <Widget>[
+      for (int index = 0; index < value.length; index++)
+        dom.div(key: ValueKey<String>('item:$index'), classes: 'animus-inspect-array-item', <Widget>[
+          InspectControl(
+            field: items,
+            value: value[index],
+            path: indexPath(path, index),
+            diagnostics: diagnostics,
+            schema: schema,
+            onChanged: (Object? next) => onChanged(<Object?>[...value]..[index] = next),
+          ),
+          for (final Diagnostic problem in diagnosticsAt(diagnostics, indexPath(path, index)))
+            dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', attributes: const <String, String>{'role': 'note'}, <Widget>[Component.text(problem.message)]),
+          dom.div(classes: 'animus-inspect-array-actions', <Widget>[
+            GuiIconButton(
+              icon: ArcaneIcon.arrowUp(size: IconSize.sm),
+              label: 'Move $noun ${index + 1} up',
+              disabled: index == 0,
+              onPressed: () => onChanged(moveItem(value, index, index - 1)),
+            ),
+            GuiIconButton(
+              icon: ArcaneIcon.arrowDown(size: IconSize.sm),
+              label: 'Move $noun ${index + 1} down',
+              disabled: index == value.length - 1,
+              onPressed: () => onChanged(moveItem(value, index, index + 1)),
+            ),
+            GuiIconButton(
+              icon: ArcaneIcon.x(size: IconSize.sm),
+              label: 'Remove $noun ${index + 1}',
+              onPressed: () => onChanged(<Object?>[...value]..removeAt(index)),
+            ),
+          ]),
+        ]),
+      Button.ghost(
+        label: 'Add',
+        size: ButtonSize.small,
+        attributes: <String, String>{'aria-label': 'Add $noun'},
+        onPressed: () => onChanged(<Object?>[...value, _blank()]),
+      ),
+    ]);
   }
 }
 
@@ -266,7 +375,8 @@ class InspectObject extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final List<FieldSpec> fields = schema.fields(node, value);
-    final Set<String> known = <String>{for (final FieldSpec field in fields) field.key};
+    final Set<String> known = <String>{for (final FieldSpec field in fields) field.key, ...skip};
+    final JsonMap unknown = unknownEntries(value, known);
     void put(String key, Object? next) => onChanged(asMap(writeIn(value, <JsonStep>[key], next)));
     return dom.div(classes: 'animus-inspect-object', <Widget>[
       for (final FieldSpec field in fields)
@@ -280,15 +390,18 @@ class InspectObject extends StatelessWidget {
             schema: schema,
             onChanged: (Object? next) => put(field.key, next),
           ),
-      for (final MapEntry<String, Object?> entry in value.entries)
-        if (!known.contains(entry.key) && !skip.contains(entry.key))
-          GuiRow(
-            key: ValueKey<String>('kept:${entry.key}'),
-            label: entry.key,
-            help: 'Kept as written; the server reads it.',
-            problems: diagnosticsAt(diagnostics, childPath(path, entry.key), nested: true),
-            child: KeptJsonEditor(value: entry.value, label: entry.key, onChanged: (Object? next) => put(entry.key, next)),
+      if (unknown.isNotEmpty)
+        GuiRow(
+          key: const ValueKey<String>('other-fields'),
+          label: 'Other fields',
+          tip: 'Keys this form does not know. They are kept as written and the server reads them.',
+          problems: <Diagnostic>[for (final String key in unknown.keys) ...diagnosticsAt(diagnostics, childPath(path, key), nested: true)],
+          child: KeyValueEditor(
+            value: unknown,
+            label: 'Other fields',
+            onChanged: (JsonMap next) => onChanged(withUnknownEntries(value, known, next)),
           ),
+        ),
     ]);
   }
 }

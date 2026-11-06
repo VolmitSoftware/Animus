@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "revision": 2,
+  "id": "town:market",
+  "title": "&6Market",
+  "modes": [
+    "buy",
+    "sell",
+    "trade"
+  ],
+  "defaultMode": "buy",
+  "confirm": true,
+  "pages": [
+    {
+      "name": "Food",
+      "rows": 3,
+      "buy": {
+        "10": {
+          "id": "bread",
+          "type": "buy",
+          "item": {
+            "id": "minecraft:bread",
+            "count": 4
+          },
+          "price": 12,
+          "allowStack": true,
+          "limit": {
+            "perPlayer": 64,
+            "resetSeconds": 86400
+          },
+          "discount": {
+            "price": 9,
+            "start": "2026-12-20T00:00:00Z",
+            "end": "2026-12-27T00:00:00Z"
+          }
+        },
+        "12": {
+          "id": "golden-apple",
+          "type": "buy",
+          "item": {
+            "id": "minecraft:golden_apple"
+          },
+          "price": 250.5,
+          "stock": {
+            "maximum": 8,
+            "restockSeconds": 3600
+          },
+          "permission": "town.market.rare",
+          "display": {
+            "name": "&6Golden apple",
+            "lore": [
+              "&7Restocked every hour."
+            ]
+          }
+        },
+        "14": {
+          "id": "town-kit",
+          "type": "command",
+          "item": {
+            "id": "minecraft:chest"
+          },
+          "price": 100,
+          "commands": [
+            {
+              "command": "give {player} minecraft:torch 16",
+              "as": "console"
+            }
+          ],
+          "display": {
+            "name": "&eStarter kit"
+          }
+        }
+      },
+      "sell": {
+        "11": {
+          "id": "wheat",
+          "type": "sell",
+          "item": {
+            "id": "minecraft:wheat",
+            "count": 16
+          },
+          "price": 4,
+          "sellPartial": true
+        }
+      },
+      "trade": {
+        "13": {
+          "id": "emerald-for-diamond",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:diamond"
+          },
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:emerald"
+              },
+              "amount": 8
+            }
+          ],
+          "gives": [
+            {
+              "item": {
+                "id": "minecraft:diamond"
+              },
+              "amount": 1
+            }
+          ],
+          "limit": {
+            "global": 100
+          }
+        }
+      }
+    },
+    {
+      "name": "Tools",
+      "rows": 2,
+      "permission": "town.market.tools",
+      "buy": {
+        "4": {
+          "id": "iron-pickaxe",
+          "type": "buy",
+          "item": {
+            "id": "minecraft:iron_pickaxe"
+          },
+          "price": 80
+        }
+      }
+    }
+  ]
+}

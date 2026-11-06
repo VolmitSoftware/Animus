@@ -73,10 +73,10 @@ class RecordingPlaybackActionTest {
         assertEquals(List.of("recording:market-walk:pingpong"), platform.calls);
     }
 
-    @Test void playbackDefaultsToLoop() throws Exception {
+    @Test void unsetPlaybackLeavesTheModeToTheRecording() throws Exception {
         start(5000);
         assertEquals(Outcome.Status.OK, settled(play("{\"recording\":\"market-walk\"}")).status());
-        assertEquals(List.of("recording:market-walk:loop"), platform.calls);
+        assertEquals(List.of("recording:market-walk:own"), platform.calls);
     }
 
     @Test void waitingOncePlaybackCompletesWhenTheRecordingEnds() throws Exception {
@@ -126,7 +126,7 @@ class RecordingPlaybackActionTest {
         start(5000);
         assertTrue(validate(PLAY, ONCE_WAIT).isEmpty());
         assertTrue(validate(PLAY, "{\"recording\":\"a\",\"playback\":\"loop\"}").isEmpty());
-        assertEquals("play-recording-wait-loop", validate(PLAY, "{\"recording\":\"market-walk\",\"wait\":true}").getFirst().code());
+        assertTrue(validate(PLAY, "{\"recording\":\"market-walk\",\"wait\":true}").isEmpty(), "the recording may play once by its own playback");
         assertEquals("play-recording-wait-loop", validate(PLAY, "{\"recording\":\"market-walk\",\"playback\":\"pingpong\",\"wait\":true}").getFirst().code());
         assertEquals("recording-id", validate(PLAY, "{\"recording\":\"Market Walk\"}").getFirst().code());
         assertEquals("recording-id", validate(PLAY, "{\"recording\":\"-walk\"}").getFirst().code());
@@ -142,7 +142,7 @@ class RecordingPlaybackActionTest {
 
     @Test void invalidWaitIsRefusedBeforeThePlatform() throws Exception {
         start(5000);
-        assertEquals(Outcome.Status.INVALID, settled(play("{\"recording\":\"market-walk\",\"wait\":true}")).status());
+        assertEquals(Outcome.Status.INVALID, settled(play("{\"recording\":\"market-walk\",\"playback\":\"loop\",\"wait\":true}")).status());
         assertTrue(platform.calls.isEmpty());
     }
 

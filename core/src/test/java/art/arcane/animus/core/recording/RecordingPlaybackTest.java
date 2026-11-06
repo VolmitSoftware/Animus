@@ -159,6 +159,45 @@ class RecordingPlaybackTest {
         assertThrows(IllegalArgumentException.class, () -> RecordingPlayback.resume(simple(), new RecordingPlayback.State(9, RecordingPlayback.Direction.FORWARD, Playback.LOOP)));
     }
 
+    private static RecordingDocument paced(double speed) {
+        RecordingDocument base = simple();
+        return new RecordingDocument(base.revision(), base.id(), base.recordedBy(), base.world(), base.origin(), base.sampleTicks(), base.durationTicks(),
+                base.frames(), base.events(), new RecordingDocument.Details("", List.of(), Optional.empty(), speed));
+    }
+
+    @Test void speedScalesHowFarEachAdvanceMoves() {
+        RecordingPlayback doubled = new RecordingPlayback(paced(2), Playback.ONCE, 0);
+        doubled.due();
+        doubled.advance();
+        assertEquals(2, doubled.cursor());
+        assertEquals(List.of(new RecordingEvent.Swing(2)), doubled.due());
+        doubled.advance();
+        assertEquals(4, doubled.cursor());
+        assertTrue(doubled.due().getFirst() instanceof RecordingEvent.Use);
+        assertTrue(doubled.finished());
+
+        RecordingPlayback quarter = new RecordingPlayback(paced(0.25), Playback.LOOP, 0);
+        List<Integer> cursors = new ArrayList<>();
+        for (int i = 0; i < 8; i++) { quarter.advance(); cursors.add(quarter.cursor()); }
+        assertEquals(List.of(0, 0, 0, 1, 1, 1, 1, 2), cursors);
+
+        RecordingPlayback fast = new RecordingPlayback(paced(1.5), Playback.PINGPONG, 0);
+        fast.due();
+        List<RecordingEvent> crossed = new ArrayList<>();
+        for (int i = 0; i < 4; i++) { fast.advance(); crossed.addAll(fast.due()); }
+        assertEquals(2, fast.cursor(), "six ticks forward and back from 0 at 1.5 per advance");
+        assertEquals(List.of(new RecordingEvent.Swing(2), new RecordingEvent.Use(4, 1, 64, 1, "minecraft:oak_door"), new RecordingEvent.Swing(2)), crossed);
+    }
+
+    @Test void documentPlaybackIsTheDefaultModeWhenASourceNamesNone() {
+        RecordingDocument once = new RecordingDocument(1, "walk", RECORDER, "world", simple().origin(), 2, 4, simple().frames(), List.of(),
+                new RecordingDocument.Details("", List.of(), Optional.of(Playback.ONCE), 1));
+        assertEquals(Playback.ONCE, new RecordingSource("walk", Optional.empty()).mode(once));
+        assertEquals(Playback.LOOP, new RecordingSource("walk", Optional.empty()).mode(simple()));
+        assertEquals(Playback.PINGPONG, new RecordingSource("walk", Optional.of(Playback.PINGPONG)).mode(once));
+        assertEquals(Playback.ONCE, new RecordingRun(new RecordingSource("walk", Optional.empty()), once).playback().mode());
+    }
+
     @Test void playbackKeysParse() {
         assertEquals(Optional.of(Playback.PINGPONG), Playback.parse("pingpong"));
         assertEquals(Optional.empty(), Playback.parse("PINGPONG"));

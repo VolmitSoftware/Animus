@@ -38,7 +38,7 @@ public final class RecordingRun {
 
     /** Starts from the first frame. */
     public RecordingRun(RecordingSource source, RecordingDocument document) {
-        this(source, document, new RecordingPlayback(document, source.playback(), 0), -1);
+        this(source, document, new RecordingPlayback(document, source.mode(document), 0), -1);
     }
 
     private RecordingRun(RecordingSource source, RecordingDocument document, RecordingPlayback playback, int point) {
@@ -53,7 +53,7 @@ public final class RecordingRun {
      */
     public static RecordingRun step(RecordingDocument document, int point, int fromTick, int toTick) {
         if (point < 0) throw new IllegalArgumentException("A step belongs to a route point");
-        return new RecordingRun(new RecordingSource(document.id(), Playback.ONCE), document, RecordingPlayback.segment(document, fromTick, toTick), point);
+        return new RecordingRun(new RecordingSource(document.id(), Optional.of(Playback.ONCE)), document, RecordingPlayback.segment(document, fromTick, toTick), point);
     }
 
     /**
@@ -61,7 +61,7 @@ public final class RecordingRun {
      * plays on from there. A state of another mode, or one outside the document, starts from the first frame instead.
      */
     public static RecordingRun resume(RecordingSource source, RecordingDocument document, Optional<RecordingPlayback.State> state) {
-        if (state.isEmpty() || state.get().mode() != source.playback() || state.get().cursor() > document.durationTicks())
+        if (state.isEmpty() || state.get().mode() != source.mode(document) || state.get().cursor() > document.durationTicks())
             return new RecordingRun(source, document);
         try { return new RecordingRun(source, document, RecordingPlayback.resume(document, state.get()), -1); }
         catch (IllegalArgumentException mismatched) { return new RecordingRun(source, document); }
@@ -147,7 +147,7 @@ public final class RecordingRun {
     /** The same line with another state word, such as {@code stopped} for a run kept after its NPC stopped. */
     public String describe(String state) {
         if (step()) return "step=recording:" + source.recording() + " cursor=" + playback.cursor() + "/" + playback.end() + " state=" + state;
-        return "recording=" + source.recording() + " playback=" + source.playback().key() + " cursor=" + playback.cursor() + "/" + document.durationTicks()
+        return "recording=" + source.recording() + " playback=" + playback.mode().key() + " cursor=" + playback.cursor() + "/" + document.durationTicks()
                 + " state=" + state;
     }
 

@@ -388,7 +388,7 @@ public final class NpcSchemaGenerator {
         JsonObject recording = pattern(IDENTIFIER);
         recording.addProperty("maxLength", 64);
         properties.add("recording", described(recording, "A recording under recordings/ to play instead of a route."));
-        properties.add("playback", described(choices(List.of("once", "loop", "pingpong")), "Recording only: once, loop (the default) or pingpong."));
+        properties.add("playback", described(choices(List.of("once", "loop", "pingpong")), "Recording only: once, loop or pingpong. Unset plays the recording's own playback, else loop."));
         routeFields(properties);
         navigation.add("properties", properties);
         JsonObject routed = new JsonObject();

@@ -638,3 +638,49 @@ button.animus-chest-slot:focus-visible {
   grid-template-columns: minmax(0, 1fr);
   max-width: 56rem;
 }
+
+/* Item picker: the item's inventory icon beside its id field. */
+.animus-item-picker {
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+.animus-item-picker-icon {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 1px solid var(--animus-border);
+  background: color-mix(in srgb, var(--animus-border) 60%, transparent);
+  color: var(--animus-muted);
+}
+
+.animus-item-picker-img {
+  width: 2.25rem;
+  height: 2.25rem;
+  image-rendering: pixelated;
+}
+
+.animus-item-picker-note {
+  grid-column: 2;
+}
+
+.animus-item-picker.is-bare {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.animus-item-picker.is-bare > .animus-item-picker-note {
+  grid-column: 1;
+}
+
+/* Typed forms inside a GUI row: preset values and inventory args. */
+.animus-gui-preset-values,
+.animus-gui-args {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+}

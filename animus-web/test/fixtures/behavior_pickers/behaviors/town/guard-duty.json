@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:guard-duty",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Halt."
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction"
+    }
+  ]
+}

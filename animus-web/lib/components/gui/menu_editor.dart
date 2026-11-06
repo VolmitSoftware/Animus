@@ -8,6 +8,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../logic/gui/action_targets.dart';
 import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/text_animation.dart';
@@ -209,6 +210,7 @@ class _MenuEditorState extends State<MenuEditor> {
         diagnostics: _diagnostics,
         chest: false,
         namedLists: _namedLists,
+        lists: menuListIds(_doc),
         names: ExpressionNames(animations: animationCompletionIds(component.document.id, component.animations.keys)),
         onChanged: (JsonMap next) => _write(<JsonStep>['components', index, 'data'], next),
       ),
@@ -309,6 +311,7 @@ class _MenuEditorState extends State<MenuEditor> {
             path: childPath(r'$.actions', entry.key),
             diagnostics: _diagnostics,
             namedLists: _namedLists,
+            lists: menuListIds(_doc),
             onChanged: (JsonList next) => _write(<JsonStep>['actions', entry.key], next),
           ),
           Button.ghost(

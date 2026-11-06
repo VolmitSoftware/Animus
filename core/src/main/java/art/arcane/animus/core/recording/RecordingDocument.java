@@ -25,13 +25,14 @@ import java.util.UUID;
  * {@link #serialize()} writes the one byte-exact form the server stores, which {@link #parse} reads back unchanged.
  */
 public record RecordingDocument(long revision, String id, UUID recordedBy, String world, Origin origin, int sampleTicks, int durationTicks,
-                                List<RecordingFrame> frames, List<RecordingEvent> events) {
+                                List<RecordingFrame> frames, List<RecordingEvent> events, Details details) {
     public static final int SCHEMA_VERSION = 1, MAXIMUM_EVENTS = 4096, MAXIMUM_SAMPLE_TICKS = 20;
     public static final int MAXIMUM_DURATION = RecordingSettings.MAXIMUM_TICKS;
     public static final String ID = "[a-z0-9][a-z0-9_-]{0,63}";
     private static final int MAXIMUM_REPORTED = 32;
     private static final double MAXIMUM_COORDINATE = 30_000_000;
-    private static final Set<String> FIELDS = Set.of("schemaVersion", "revision", "id", "recordedBy", "world", "origin", "sampleTicks", "durationTicks", "frames", "events");
+    private static final Set<String> FIELDS = Set.of("schemaVersion", "revision", "id", "recordedBy", "world", "origin", "sampleTicks", "durationTicks",
+            "description", "tags", "playback", "speed", "frames", "events");
     private static final Set<String> ORIGIN_FIELDS = Set.of("x", "y", "z", "yaw", "pitch");
     private static final Gson STRINGS = new GsonBuilder().disableHtmlEscaping().create();
 
@@ -44,9 +45,41 @@ public record RecordingDocument(long revision, String id, UUID recordedBy, Strin
         }
     }
 
+    /**
+     * What the editor lets an owner change on a recording without touching its frames. {@code playback} is the mode a
+     * navigation module or action gets when it names none ({@link Playback#DEFAULT} when this is empty too); {@code speed}
+     * is how many recorded ticks one game tick plays. An empty description and no tags are not stored, nor is speed 1.
+     */
+    public record Details(String description, List<String> tags, Optional<Playback> playback, double speed) {
+        public static final int MAXIMUM_DESCRIPTION = 256, MAXIMUM_TAGS = 32;
+        public static final double MINIMUM_SPEED = 0.25, MAXIMUM_SPEED = 4;
+        public static final String TAG = "[a-z0-9][a-z0-9_-]{0,31}";
+        public static final Details NONE = new Details("", List.of(), Optional.empty(), 1);
+
+        public Details {
+            Objects.requireNonNull(description); Objects.requireNonNull(playback);
+            tags = List.copyOf(tags);
+            if (description.length() > MAXIMUM_DESCRIPTION) throw new IllegalArgumentException("$.description: expected text of at most 256 characters");
+            if (tags.size() > MAXIMUM_TAGS || Set.copyOf(tags).size() != tags.size() || !tags.stream().allMatch((String tag) -> tag.matches(TAG)))
+                throw new IllegalArgumentException("$.tags: expected at most 32 distinct tags of 1-32 lowercase letters, digits, _ or -");
+            if (!speed(speed)) throw new IllegalArgumentException("$.speed: expected a number 0.25..4");
+        }
+
+        /** {@link #speed} in hundredths of a tick, the step {@link RecordingPlayback} advances by. */
+        public int hundredths() { return (int) Math.round(speed * 100); }
+
+        private static boolean speed(double value) { return Double.isFinite(value) && value >= MINIMUM_SPEED && value <= MAXIMUM_SPEED; }
+    }
+
+    /** A recording without details, as a capture makes it. */
+    public RecordingDocument(long revision, String id, UUID recordedBy, String world, Origin origin, int sampleTicks, int durationTicks,
+                             List<RecordingFrame> frames, List<RecordingEvent> events) {
+        this(revision, id, recordedBy, world, origin, sampleTicks, durationTicks, frames, events, Details.NONE);
+    }
+
     /** @throws IllegalArgumentException with {@code $.field: message} problems joined by {@code ; } */
     public RecordingDocument {
-        Objects.requireNonNull(id); Objects.requireNonNull(recordedBy); Objects.requireNonNull(world); Objects.requireNonNull(origin);
+        Objects.requireNonNull(id); Objects.requireNonNull(recordedBy); Objects.requireNonNull(world); Objects.requireNonNull(origin); Objects.requireNonNull(details);
         frames = List.copyOf(frames);
         events = List.copyOf(events);
         List<String> problems = invariants(revision, id, world, sampleTicks, durationTicks, frames, events);
@@ -87,7 +120,16 @@ public record RecordingDocument(long revision, String id, UUID recordedBy, Strin
                 .append(",\n  \"origin\": {\"x\": ").append(number(origin.x())).append(", \"y\": ").append(number(origin.y()))
                 .append(", \"z\": ").append(number(origin.z())).append(", \"yaw\": ").append(number(origin.yaw()))
                 .append(", \"pitch\": ").append(number(origin.pitch())).append("},\n  \"sampleTicks\": ").append(sampleTicks)
-                .append(",\n  \"durationTicks\": ").append(durationTicks).append(",\n  \"frames\": [\n");
+                .append(",\n  \"durationTicks\": ").append(durationTicks).append(",\n");
+        if (!details.description().isEmpty()) out.append("  \"description\": ").append(STRINGS.toJson(details.description())).append(",\n");
+        if (!details.tags().isEmpty()) {
+            out.append("  \"tags\": [");
+            for (int i = 0; i < details.tags().size(); i++) out.append(i == 0 ? "" : ", ").append(STRINGS.toJson(details.tags().get(i)));
+            out.append("],\n");
+        }
+        details.playback().ifPresent((Playback mode) -> out.append("  \"playback\": \"").append(mode.key()).append("\",\n"));
+        if (details.speed() != 1) out.append("  \"speed\": ").append(number(details.speed())).append(",\n");
+        out.append("  \"frames\": [\n");
         for (int i = 0; i < frames.size(); i++) {
             RecordingFrame frame = frames.get(i);
             out.append("    [").append(frame.tick()).append(", ").append(number(frame.dx())).append(", ").append(number(frame.dy())).append(", ")
@@ -147,9 +189,45 @@ public record RecordingDocument(long revision, String id, UUID recordedBy, Strin
         List<RecordingFrame> frames = frames(source.get("frames"), sampleTicks > 0 && durationTicks > 0 ? maximumFrames(durationTicks, sampleTicks) : -1,
                 durationTicks, sampleTicks, errors);
         List<RecordingEvent> events = events(source.get("events"), eventTicks, errors);
+        Details details = details(source, errors);
         if (!errors.isEmpty()) throw new IOException(join(errors));
-        try { return new RecordingDocument(revision, id, recordedBy, world, origin, sampleTicks, durationTicks, frames, events); }
+        try { return new RecordingDocument(revision, id, recordedBy, world, origin, sampleTicks, durationTicks, frames, events, details); }
         catch (IllegalArgumentException invalid) { throw new IOException(invalid.getMessage(), invalid); }
+    }
+
+    private static Details details(JsonObject source, List<String> errors) {
+        int before = errors.size();
+        String description = "";
+        JsonElement text = source.get("description");
+        if (text != null) {
+            if (!text.isJsonPrimitive() || !text.getAsJsonPrimitive().isString() || text.getAsString().length() > Details.MAXIMUM_DESCRIPTION)
+                errors.add("$.description: expected text of at most " + Details.MAXIMUM_DESCRIPTION + " characters");
+            else description = text.getAsString();
+        }
+        List<String> tags = new ArrayList<>();
+        JsonElement list = source.get("tags");
+        if (list != null && !list.isJsonArray()) errors.add("$.tags: expected array");
+        else if (list != null && list.getAsJsonArray().size() > Details.MAXIMUM_TAGS) errors.add("$.tags: expected at most " + Details.MAXIMUM_TAGS + " tags");
+        else if (list != null) for (int i = 0; i < list.getAsJsonArray().size(); i++) {
+            JsonElement tag = list.getAsJsonArray().get(i);
+            if (!tag.isJsonPrimitive() || !tag.getAsJsonPrimitive().isString() || !tag.getAsString().matches(Details.TAG))
+                errors.add("$.tags[" + i + "]: expected 1-32 lowercase letters, digits, _ or -");
+            else if (tags.contains(tag.getAsString())) errors.add("$.tags[" + i + "]: duplicate tag " + tag.getAsString());
+            else tags.add(tag.getAsString());
+        }
+        Optional<Playback> playback = Optional.empty();
+        JsonElement mode = source.get("playback");
+        if (mode != null) {
+            playback = mode.isJsonPrimitive() && mode.getAsJsonPrimitive().isString() ? Playback.parse(mode.getAsString()) : Optional.empty();
+            if (playback.isEmpty()) errors.add("$.playback: expected once, loop or pingpong");
+        }
+        double speed = 1;
+        JsonElement pace = source.get("speed");
+        if (pace != null) {
+            if (!pace.isJsonPrimitive() || !pace.getAsJsonPrimitive().isNumber() || !Details.speed(pace.getAsDouble())) errors.add("$.speed: expected a number 0.25..4");
+            else speed = pace.getAsDouble();
+        }
+        return errors.size() == before ? new Details(description, tags, playback, speed) : Details.NONE;
     }
 
     private static Origin origin(JsonElement value, List<String> errors) {

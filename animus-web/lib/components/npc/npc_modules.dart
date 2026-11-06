@@ -7,7 +7,6 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
-import '../../logic/inspect/schema_fields.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
@@ -15,7 +14,6 @@ import '../inspect/inspect_fields.dart';
 import '../../logic/npc/route_model.dart';
 import 'npc_section.dart';
 import 'route_editor.dart';
-import '../select/suggest_input.dart';
 
 const String shopModule = 'animus:shop';
 const String mountModule = 'animus:mount';
@@ -50,7 +48,6 @@ class ShopBindingEditor extends StatelessWidget {
     const String shopId = 'animus-npc-shop';
     const String openOnId = 'animus-npc-shop-open-on';
     if (value == null) {
-      if (shops.isEmpty) return const dom.div(<Widget>[]);
       return dom.div(classes: 'animus-npc-module', <Widget>[
         const NpcSubhead('Shop', help: 'No shop.'),
         const dom.label(classes: 'animus-sr-only', attributes: <String, String>{'for': shopId}, <Widget>[Component.text('Open a workspace shop on click')]),
@@ -71,17 +68,21 @@ class ShopBindingEditor extends StatelessWidget {
     final String? shop = asString(module['shop']);
     return dom.div(classes: 'animus-npc-module', <Widget>[
       const NpcSubhead('Shop'),
-      GuiRow(
+      InspectRow(
         label: 'Shop',
+        labelFor: shopId,
         help: 'Opens on click. Sneaking admins select the NPC.',
         problems: diagnosticsAt(diagnostics, '$path.shop'),
         child: dom.div(classes: 'animus-gui-line', <Widget>[
-          SuggestInput(
-            value: shop ?? '',
-            label: 'Shop id',
-            placeholder: 'town:baker',
-            suggestions: <FieldOption>[for (final String id in shops) FieldOption(id)],
-            onChanged: (String text) => onChanged(<String, Object?>{...module, 'shop': text.trim()}),
+          GuiSelect(
+            references: DocumentKind.shop,
+            id: shopId,
+            value: shop == null || shop.isEmpty ? null : shop,
+            options: shops,
+            noneLabel: 'Pick a shop',
+            onChanged: (String? id) {
+              if (id != null) onChanged(<String, Object?>{...module, 'shop': id});
+            },
           ),
           if (shop != null && shops.contains(shop) && onOpen != null)
             Button.ghost(label: 'Open', size: ButtonSize.small, onPressed: () => onOpen!(DocumentKind.shop, shop)),
@@ -138,11 +139,18 @@ class NavigationEditor extends StatelessWidget {
     this.imported = false,
     this.diagnostics = const <Diagnostic>[],
     this.onOpen,
+    this.onCopyRoute,
+    this.copyLabel = 'Make a copy for this NPC',
     super.key,
   });
 
   /// The module object, or null.
   final Object? value;
+
+  /// Copies the referenced route to a new route document this NPC alone
+  /// uses; null hides the button.
+  final void Function()? onCopyRoute;
+  final String copyLabel;
 
   /// The workspace's route documents.
   final List<AnimusDocument> routes;
@@ -282,9 +290,16 @@ class NavigationEditor extends StatelessWidget {
                   ? GuiTextInput(id: routeId, value: reference ?? '', label: 'Route id', placeholder: 'town-patrol', onChanged: (String id) => onChanged(<String, Object?>{...module, 'route': id.trim()}))
                   : GuiSelect(references: DocumentKind.route, id: routeId, value: reference, options: routeIds, onChanged: (String? id) => onChanged(<String, Object?>{...module, 'route': id ?? ''})),
             ),
-            if (routeDocument != null && onOpen != null)
+            if (routeDocument != null && (onOpen != null || onCopyRoute != null))
               dom.div(classes: 'animus-row', <Widget>[
-                Button.ghost(label: 'Open route $reference', size: ButtonSize.small, onPressed: () => onOpen!(DocumentKind.route, reference!)),
+                if (onOpen != null)
+                  Button.secondary(
+                    label: 'Edit route',
+                    size: ButtonSize.small,
+                    attributes: <String, String>{'aria-label': 'Edit route $reference'},
+                    onPressed: () => onOpen!(DocumentKind.route, reference!),
+                  ),
+                if (onCopyRoute != null) Button.ghost(label: copyLabel, size: ButtonSize.small, onPressed: onCopyRoute),
               ]),
             if (routeDocument == null)
               const dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('Not a route in this workspace; the server may have it.')])
@@ -339,14 +354,14 @@ class NavigationEditor extends StatelessWidget {
       InspectRow(
         label: 'Playback',
         labelFor: playbackId,
-        help: _playbackHelp[playback ?? 'loop'] ?? 'Expected once, loop or pingpong.',
+        help: playback == null ? "The recording's own playback, else loop." : _playbackHelp[playback] ?? 'Expected once, loop or pingpong.',
         problems: at('playback'),
         child: GuiSelect(
           id: playbackId,
           value: playback,
           options: navigationPlaybacks,
           allowNone: true,
-          noneLabel: 'loop (default)',
+          noneLabel: 'recording default',
           onChanged: (String? next) {
             final JsonMap updated = <String, Object?>{...module};
             if (next == null) {

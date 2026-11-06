@@ -28,7 +28,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {sidebar, topbarAction} = require('./support/shell.cjs');
-const {chooseAndWait, valueOf} = require('./support/select.cjs');
+const {choose, chooseAndWait, valueOf} = require('./support/select.cjs');
 
 const folder = path.resolve(__dirname, 'fixtures/npc_browser');
 const site = process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })();
@@ -519,7 +519,7 @@ async function local(browser, viewport, tag, theme) {
   await offHand.scrollIntoViewIfNeeded();
   await offHand.fill('minecraft:shield');
   await offHand.blur();
-  await look.getByRole('radio', {name: /^Skin 1 of 1, .*dc33741f$/}).click();
+  await choose(look.locator('#animus-skin-pick'), skinHash);
   await settle(page);
   json = await codeOf(page);
   assert.deepEqual(json.equipment.off_hand, {id: 'minecraft:shield'});
@@ -559,7 +559,7 @@ async function local(browser, viewport, tag, theme) {
   const skin = page.getByRole('region', {name: 'Skin'});
   await skin.waitFor();
   await skin.getByText(skinHash).waitFor();
-  await skin.getByText('Slim arms (Alex)').waitFor();
+  await skin.locator('.animus-skin-facts').getByText('Slim arms (Alex)').waitFor();
   await skin.getByRole('button', {name: /North Guard \(town\/guard-north\)/}).waitFor();
   await skin.getByRole('button', {name: 'Load skin PNG'}).waitFor();
   await shot(page, `${tag}-12-skin`);

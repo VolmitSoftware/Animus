@@ -6,7 +6,14 @@
 /// validates every definition again when an import is applied, so a module the browser accepted wrongly is still refused.
 library;
 
+import 'dart:convert';
+
+import '../../model/animus_document.dart';
+import '../gui/gui_json.dart';
 import '../inspect/inspect_schemas.dart';
+import '../npc/group_merge.dart' show groupMergeNpc;
+import '../npc/combat_settings.dart';
+import '../npc/group_model.dart';
 import '../npc/npc_attributes.dart';
 import 'citizens_traits.dart' show teamColors;
 import 'java_json.dart';
@@ -84,36 +91,132 @@ List<String> validateDefinition(JObject object) {
   return errors;
 }
 
-/// `DefinitionSpec.activation`: the rules every server applies when it spawns a definition, so the preview's valid count
-/// matches what can spawn. A malformed native `animus:mount` module is not diagnosed here (the converter never writes one).
-List<String> activationErrors(JObject definition) {
+/// `DefinitionSpec.activation` over a converted definition.
+List<String> activationErrors(JObject definition) => definitionActivationErrors(asMap(jsonDecode(writeJson(definition))));
+
+/// `DefinitionSpec.activation`: the rules every server applies when it spawns a definition, on its plain JSON. The
+/// converter's preview counts with it, and the editor reports it on NPC documents and on their effective definitions.
+List<String> definitionActivationErrors(JsonMap definition) {
   final List<String> errors = <String>[];
-  final JElement? type = definition.get('type');
-  if (definition.has('skin') && !(type is JString && type.value == 'minecraft:player')) errors.add(r'$.skin: textures require a player body');
-  final JElement? pose = definition.get('pose');
-  if (pose is JString && pose.value == 'sitting' && _declaresMount(definition)) {
+  if (definition.containsKey('skin') && definition['type'] != 'minecraft:player') errors.add(r'$.skin: textures require a player body');
+  if (definition['pose'] == 'sitting' && _declaresMount(definition)) {
     errors.add(r'$.pose: a sitting NPC cannot also ride another NPC; remove the pose or the mount');
   }
   return errors;
 }
 
-/// `MountDeclaration.parse(...).isPresent()` for well-formed documents.
-bool _declaresMount(JObject definition) {
-  final JElement? modules = definition.get('modules');
-  if (modules is JObject && modules.has('animus:mount')) {
-    final JElement? module = modules.get('animus:mount');
-    final JElement? enabled = module is JObject ? module.get('enabled') : null;
-    return !(enabled is JBool && !enabled.value);
+/// [errors] as `path: message` lines split into diagnostics.
+List<Diagnostic> definitionDiagnostics(List<String> errors, {String code = 'definition'}) => <Diagnostic>[
+      for (final String error in errors)
+        Diagnostic(DiagnosticSeverity.error, error.substring(0, error.indexOf(': ')), error.substring(error.indexOf(': ') + 2), code: code),
+    ];
+
+/// The activation rules on an NPC document's own fields.
+List<Diagnostic> npcActivationDiagnostics(Object? npc) =>
+    npc is Map<String, Object?> ? definitionDiagnostics(definitionActivationErrors(npc), code: 'activation') : const <Diagnostic>[];
+
+/// The activation rules on [npc]'s effective definition over [groups]: the server checks the merged definition, so a
+/// group's skin on a llama member is refused too. Problems of the NPC's own fields are left to
+/// [npcActivationDiagnostics]; the rest name the group that set the value.
+List<Diagnostic> effectiveActivationDiagnostics(JsonMap npc, Map<String, JsonMap> groups) {
+  final NpcEffective? effective = effectiveNpc(npc, groups);
+  if (effective == null) return const <Diagnostic>[];
+  final Set<String> own = definitionActivationErrors(npc).toSet();
+  final List<String> errors = <String>[];
+  for (final String error in definitionActivationErrors(effective.json)) {
+    if (own.contains(error)) continue;
+    final String field = error.substring(2, error.indexOf(': '));
+    final String source = effective.sourceOf(field);
+    errors.add(source == groupMergeNpc ? error : '$error (the $field comes from group $source)');
   }
-  final JElement? migration = definition.get('migration');
-  final JElement? references = migration is JObject ? migration.get('references') : null;
-  if (references is! JArray) return false;
-  for (final JElement reference in references.elements) {
-    if (reference is! JObject) continue;
-    final JElement? kind = reference.get('kind');
-    if (!(kind is JString && kind.value == 'mount')) continue;
-    final JElement? status = reference.get('status');
-    return !(status is JString && status.value == 'none');
+  return definitionDiagnostics(errors, code: 'activation');
+}
+
+/// Server rules the generated NPC schema cannot say, on an editor document's plain JSON: control characters in the name
+/// and hologram lines (`NpcAppearance.displayText`), an attribute set twice (`NpcAttributes`), inventory slots past its
+/// size (`NpcInventory`), the pitch range (`DefinitionSpec.validate`), riding itself (`MountRelations`) and look-close
+/// ranges (`LookClose`). [id] is the NPC's document id (`town/guard`), null for a group's values.
+List<String> definitionRuleErrors(JsonMap definition, {String? id}) {
+  final List<String> errors = <String>[];
+  final Object? name = definition['name'];
+  if (name is String && !displayText(name)) errors.add('\$.name: expected at most $maxText characters without control characters');
+  final List<Object?> lines = asList(asMap(definition['hologram'])['lines']);
+  for (int i = 0; i < lines.length; i++) {
+    final Object? line = lines[i];
+    final Object? text = line is Map<String, Object?> ? line['text'] : line;
+    if (text is String && text.length <= maxText && !displayText(text)) {
+      errors.add('\$.hologram.lines[$i]: expected at most $maxText characters without control characters');
+    }
+  }
+  final Object? pitch = asMap(definition['position'])['pitch'];
+  if (pitch is num && pitch.abs() > 90 && pitch.abs() <= 30000000) errors.add(r'$.position.pitch: must be within -90..90');
+  final Set<String> attributes = <String>{};
+  for (final String key in asMap(definition[attributesField]).keys) {
+    if (!attributes.add(bareAttributeId(key))) errors.add('\$.$attributesField.$key: ${bareAttributeId(key)} is set twice');
+  }
+  final JsonMap inventory = asMap(definition['inventory']);
+  final Object? size = inventory['size'];
+  if (size is int && size >= 9 && size <= maxInventorySize && size % 9 == 0) {
+    for (final String slot in asMap(inventory['slots']).keys) {
+      if (RegExp(r'^(?:0|[1-9][0-9]?)$').hasMatch(slot) && int.parse(slot) >= size) errors.add('\$.inventory.slots.$slot: slot outside the inventory size $size');
+    }
+  }
+  final JsonMap modules = asMap(definition['modules']);
+  final Object? vehicle = asMap(modules['animus:mount'])['vehicle'];
+  if (id != null && vehicle == id) errors.add(r'$.modules.animus:mount.vehicle: an NPC cannot ride itself');
+  final JsonMap randomLook = asMap(asMap(modules['animus:look-close'])['randomLook']);
+  for (final String key in const <String>['yaw', 'pitch']) {
+    final List<Object?> range = asList(randomLook[key]);
+    if (range.length == 2 && range[0] is num && range[1] is num && (range[0]! as num) > (range[1]! as num)) {
+      errors.add('\$.modules.animus:look-close.randomLook.$key: the minimum is above the maximum');
+    }
+  }
+  return errors;
+}
+
+/// The diagnostics of [definitionRuleErrors] for an NPC document at [id].
+List<Diagnostic> npcRuleDiagnostics(Object? npc, String id) =>
+    npc is Map<String, Object?> ? definitionDiagnostics(definitionRuleErrors(npc, id: id), code: 'definition') : const <Diagnostic>[];
+
+/// `GroupDocument` and `GroupDocuments` rules the group schema cannot say: the id matches the file, the description
+/// has no control characters, the file is at most 256 KiB ([bytes] long), and the values pass [definitionRuleErrors]
+/// and the combat module's checks, under `$.values`.
+List<String> groupDocumentErrors(JsonMap group, String id, int bytes) {
+  final List<String> errors = <String>[];
+  if (bytes > 256 * 1024) errors.add(r'$: the group file exceeds 256 KiB');
+  final Object? declared = group['id'];
+  if (declared is String && RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$').hasMatch(declared) && declared != id) {
+    errors.add('\$.id: the group id is $declared but the file is $id');
+  }
+  final Object? description = group['description'];
+  if (description is String && description.length <= maxText && !displayText(description)) {
+    errors.add('\$.description: expected at most $maxText characters without control characters');
+  }
+  final JsonMap values = asMap(group['values']);
+  for (final String error in definitionRuleErrors(values)) {
+    errors.add('\$.values.${error.substring(2)}');
+  }
+  final JsonMap modules = asMap(values['modules']);
+  if (modules.containsKey(combatModule)) {
+    for (final Diagnostic problem in validateCombat(modules[combatModule])) {
+      errors.add('\$.values.${problem.path.substring(2)}: ${problem.message}');
+    }
+  }
+  return errors;
+}
+
+/// The diagnostics of [groupDocumentErrors] for a group document at [id] with [source].
+List<Diagnostic> groupRuleDiagnostics(Object? group, String id, String source) =>
+    group is Map<String, Object?> ? definitionDiagnostics(groupDocumentErrors(group, id, utf8.encode(source).length), code: 'group') : const <Diagnostic>[];
+
+/// `MountDeclaration.parse(...).isPresent()` for well-formed documents.
+bool _declaresMount(JsonMap definition) {
+  final JsonMap modules = asMap(definition['modules']);
+  if (modules.containsKey('animus:mount')) return asMap(modules['animus:mount'])['enabled'] != false;
+  for (final Object? reference in asList(asMap(definition['migration'])['references'])) {
+    final JsonMap entry = asMap(reference);
+    if (entry['kind'] != 'mount') continue;
+    return entry['status'] != 'none';
   }
   return false;
 }

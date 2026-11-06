@@ -15,17 +15,21 @@ import '../../logic/inspect/behavior_operands.dart';
 import '../../logic/inspect/completion_catalog.dart';
 import '../../logic/inspect/inspect_schemas.dart';
 import '../../logic/inspect/schema_fields.dart';
-import '../../logic/npc/dialogue_tree.dart';
+import '../../logic/inspect/behavior_kept.dart';
+import '../../logic/inspect/typed_values.dart';
+import '../../logic/conversation/conversation_json.dart';
+import '../../logic/npc/dialogue_prompts.dart';
+import '../../logic/npc/reference_options.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
 import '../info_tip.dart';
-import '../npc/dialogue_view.dart';
 import 'behavior_inputs.dart';
 import 'behavior_nodes.dart';
 import 'inspect_fields.dart';
+import 'typed_values_editor.dart' show KeyValueEditor;
 
 class BehaviorEditor extends StatelessWidget {
-  const BehaviorEditor({required this.document, required this.onJson, required this.schemas, this.diagnostics = const <Diagnostic>[], super.key});
+  const BehaviorEditor({required this.document, required this.onJson, required this.schemas, this.diagnostics = const <Diagnostic>[], this.onConversation, super.key});
 
   final AnimusDocument document;
   final JsonEdit onJson;
@@ -33,6 +37,9 @@ class BehaviorEditor extends StatelessWidget {
 
   /// The browser's and the server's diagnostics together.
   final List<Diagnostic> diagnostics;
+
+  /// Switches to the Conversation tab; null hides the link to it.
+  final void Function()? onConversation;
 
   JsonMap get _doc => asMap(document.json);
   CompletionCatalog get _catalog => schemas.catalog;
@@ -48,8 +55,6 @@ class BehaviorEditor extends StatelessWidget {
 
   FieldSpec _spec(String key) =>
       schemas.behavior.fields(schemas.behavior.root, _doc).where((FieldSpec field) => field.key == key).firstOrNull ?? FieldSpec(key: key, kind: FieldKind.any);
-
-  static const Set<String> _documentKeys = <String>{'schemaVersion', 'revision', 'id', 'server', 'entry', 'variables', 'routines', 'triggers'};
 
   @override
   Widget build(BuildContext context) {
@@ -91,22 +96,26 @@ class BehaviorEditor extends StatelessWidget {
             onChanged: (bool on) => onJson((Object? latest) => setServerBehavior(asMap(latest), on), coalesce: 'behavior:server'),
           ),
         ),
-        for (final MapEntry<String, Object?> entry in doc.entries)
-          if (!_documentKeys.contains(entry.key))
-            GuiRow(
-              label: entry.key,
-              help: 'Kept as written',
-              problems: diagnosticsAt(diagnostics, childPath(r'$', entry.key), nested: true),
-              child: KeptJsonEditor(value: entry.value, label: entry.key, onChanged: (Object? v) => _write(<JsonStep>[entry.key], v)),
-            ),
+        if (unknownEntries(doc, behaviorDocumentKeys) case final JsonMap other when other.isNotEmpty)
+          _otherFields(other, r'$', (JsonMap next) => onJson(writeAt(doc, const <JsonStep>[], withUnknownEntries(doc, behaviorDocumentKeys, next)), coalesce: 'behavior:other')),
       ]),
       _variables(doc, server),
       _routines(doc, behavior),
       _triggers(doc, behavior),
-      if (dialogueTree(doc) case final DialogueTree tree when tree.hasDialogue)
-        GuiSection(title: 'Conversation', children: <Widget>[DialogueView(tree: tree, write: _write)]),
+      if (onConversation != null && (conversationOf(doc) != null || hasDialogueTriggers(doc)))
+        dom.div(classes: 'animus-row animus-behavior-conversation', <Widget>[
+          Button.secondary(label: 'Edit in the Conversation tab', size: ButtonSize.small, onPressed: onConversation),
+        ]),
     ]);
   }
+
+  /// Keys no control here lays out, as a typed key/value editor.
+  Widget _otherFields(JsonMap other, String path, void Function(JsonMap next) put) => GuiRow(
+        label: 'Other fields',
+        tip: 'Keys this editor does not know. They are kept as written and the server reads them.',
+        problems: <Diagnostic>[for (final String key in other.keys) ...diagnosticsAt(diagnostics, childPath(path, key), nested: true)],
+        child: KeyValueEditor(value: other, label: path == r'$' ? 'Other fields' : 'Other fields of ${path.substring(2)}', onChanged: put),
+      );
 
   Widget _variables(JsonMap doc, bool server) {
     final JsonMap variables = asMap(doc['variables']);
@@ -275,13 +284,44 @@ class BehaviorEditor extends StatelessWidget {
         schema: field.schema,
       );
 
+  /// The prompt and the option a `dialogue_choice` trigger answers, picked
+  /// from the prompts this behavior asks.
+  Widget _answerPicker(JsonMap trigger, FieldSpec raw, int index, List<DialoguePrompt> prompts, String path, void Function(JsonMap next) put) {
+    final bool dialogue = raw.key == 'dialogue';
+    final String? value = asString(trigger[raw.key]);
+    final PickerOptions options = dialogue ? promptOptions(prompts) : choiceOptions(prompts, asString(trigger['dialogue']));
+    final String? note = value == null || options.ids.contains(value)
+        ? (dialogue && prompts.isEmpty ? 'No prompt yet. Add an animus:choices action to a routine.' : null)
+        : (dialogue ? 'No prompt $value in this behavior.' : 'Not an option of this prompt.');
+    return GuiRow(
+      key: ValueKey<String>('$path.${raw.key}'),
+      label: fieldLabel(raw),
+      help: raw.help,
+      problems: diagnosticsAt(diagnostics, childPath(path, raw.key)),
+      child: dom.div(classes: 'animus-control-stack', <Widget>[
+        GuiSelect(
+          value: value,
+          options: options.ids,
+          labels: options.labels,
+          allowNone: !dialogue,
+          noneLabel: dialogue ? 'Pick a prompt' : 'Any option',
+          label: dialogue ? 'Prompt of trigger ${index + 1}' : 'Option of trigger ${index + 1}',
+          onChanged: (String? next) => put(dialogue ? withDialogue(trigger, next, prompts) : asMap(writeIn(trigger, <JsonStep>['choice'], next))),
+        ),
+        if (note != null) dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text(note)]),
+      ]),
+    );
+  }
+
   Widget _trigger(JsonList triggers, int index, void Function(JsonList next) put, BehaviorContext behavior) {
     final JsonMap trigger = asMap(triggers[index]);
     final String? event = asString(trigger['event']);
     final TriggerSpec? spec = _catalog.triggers[event];
     final List<JsonStep> steps = <JsonStep>['triggers', index];
     final String path = formatPath(steps);
-    final Set<String> known = <String>{for (final FieldSpec field in spec?.fields ?? const <FieldSpec>[]) field.key};
+    final Set<String> known = triggerKnownKeys(spec);
+    final bool answers = event == 'dialogue_choice';
+    final List<DialoguePrompt> prompts = answers ? dialoguePrompts(_doc) : const <DialoguePrompt>[];
     final bool misplaced = spec != null && !spec.allowedIn(server: behavior.server);
     final List<String> events = <String>[..._catalog.eventsFor(server: behavior.server), if (event != null && misplaced) event];
     return dom.div(
@@ -332,6 +372,8 @@ class BehaviorEditor extends StatelessWidget {
                     onChanged: (String? v) => _write(<JsonStep>[...steps, raw.key], v),
                   ),
                 )
+              else if (answers && (raw.key == 'dialogue' || raw.key == 'choice'))
+                _answerPicker(trigger, raw, index, prompts, path, (JsonMap next) => put(<Object?>[...triggers]..[index] = next))
               else
                 InspectField(
                   key: ValueKey<String>('$path.${raw.key}'),
@@ -339,16 +381,13 @@ class BehaviorEditor extends StatelessWidget {
                   value: trigger[raw.key],
                   path: childPath(path, raw.key),
                   diagnostics: diagnostics,
+                  suggestions: answers && raw.key == 'id' && asString(trigger['dialogue']) != null
+                      ? <FieldOption>[FieldOption(dialogueTriggerId(asString(trigger['dialogue'])!, asString(trigger['choice']), <String>[for (int other = 0; other < triggers.length; other++) if (other != index) asString(asMap(triggers[other])['id']) ?? '']))]
+                      : const <FieldOption>[],
                   onChanged: (Object? v) => _write(<JsonStep>[...steps, raw.key], v),
                 ),
-          for (final MapEntry<String, Object?> entry in trigger.entries)
-            if (!known.contains(entry.key) && entry.key != 'event')
-              GuiRow(
-                label: entry.key,
-                help: 'Unknown field, kept as written',
-                problems: diagnosticsAt(diagnostics, childPath(path, entry.key), nested: true),
-                child: KeptJsonEditor(value: entry.value, label: entry.key, onChanged: (Object? v) => _write(<JsonStep>[...steps, entry.key], v)),
-              ),
+          if (unknownEntries(trigger, known) case final JsonMap other when other.isNotEmpty)
+            _otherFields(other, path, (JsonMap next) => put(<Object?>[...triggers]..[index] = withUnknownEntries(trigger, known, next))),
         ]),
       ],
     );

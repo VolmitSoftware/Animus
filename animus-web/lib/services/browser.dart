@@ -95,7 +95,7 @@ Future<PickedFiles?> pickDirectory() async {
   String name = 'Animus';
   for (final web.File file in files) {
     final String relative = file.webkitRelativePath.isEmpty ? file.name : file.webkitRelativePath;
-    if (!relative.endsWith('.json') && !(relative.endsWith('.png') && relative.contains('pack/assets/'))) {
+    if (!relative.endsWith('.json') && !(relative.endsWith('.png') && (relative.contains('pack/assets/') || relative.contains('editor/skins/')))) {
       contents[relative] = Uint8List(0);
       continue;
     }

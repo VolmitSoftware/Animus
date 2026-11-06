@@ -9,6 +9,8 @@ library;
 
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
+import '../inspect/inspect_schemas.dart';
+import '../inspect/schema_fields.dart';
 import 'gui_json.dart';
 
 /// Core's wording for a document that names a preset.
@@ -32,6 +34,56 @@ String? presetKindFor(DocumentKind kind) => switch (kind) {
       DocumentKind.textAnimation => 'animations',
       _ => null,
     };
+
+/// The Animus document kind whose fields preset kind [presetKind] holds,
+/// for the kinds Animus has documents for.
+DocumentKind? presetDocumentKind(String presetKind) => switch (presetKind) {
+      'inventories' => DocumentKind.inventory,
+      'holograms' => DocumentKind.hologram,
+      'menus' => DocumentKind.menu,
+      'animations' => DocumentKind.textAnimation,
+      _ => null,
+    };
+
+/// The schema of the document preset kind [presetKind] fills, or null.
+SchemaView? presetSchema(String presetKind) {
+  final DocumentKind? kind = presetDocumentKind(presetKind);
+  return kind == null ? null : InspectSchemas.embedded.forKind(kind);
+}
+
+/// A document schema [root] as a preset values form: nothing required
+/// (values are partial) and no reserved keys.
+JsonMap presetFormNode(JsonMap root) => <String, Object?>{
+      for (final MapEntry<String, Object?> entry in root.entries)
+        if (entry.key != 'required') entry.key: entry.value,
+      'properties': <String, Object?>{
+        for (final MapEntry<String, Object?> entry in asMap(root['properties']).entries)
+          if (!presetReservedKeys.contains(entry.key)) entry.key: entry.value,
+      },
+    };
+
+/// [doc] with `defaults.<kind>` set to [values]; empty values remove the
+/// kind, and an emptied `defaults` goes too.
+JsonMap withPresetDefaults(JsonMap doc, String kind, JsonMap values) {
+  final JsonMap defaults = <String, Object?>{...asMap(doc['defaults'])};
+  if (values.isEmpty) {
+    defaults.remove(kind);
+  } else {
+    defaults[kind] = values;
+  }
+  final JsonMap next = <String, Object?>{...doc};
+  if (defaults.isEmpty) {
+    next.remove('defaults');
+  } else {
+    next['defaults'] = defaults;
+  }
+  return next;
+}
+
+/// [doc] with preset [name] of [kind]'s `values` set to [values]; its other
+/// keys stay.
+JsonMap withPresetValues(JsonMap doc, String kind, String name, JsonMap values) =>
+    asMap(writeIn(doc, <JsonStep>['presets', kind, name, 'values'], values));
 
 /// Whether [name] is a preset name the schema allows.
 bool validPresetName(String name) =>

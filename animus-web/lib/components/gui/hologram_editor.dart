@@ -17,6 +17,7 @@ import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import 'actions_editor.dart';
 import 'component_editor.dart';
+import '../mc/item_picker.dart';
 import 'gui_fields.dart';
 import 'gui_stage_preview.dart';
 import 'presets_editor.dart';
@@ -284,8 +285,7 @@ class _HologramEditorState extends State<HologramEditor> {
     }
 
     return dom.div(classes: 'animus-gui-fields animus-gui-holo-item', <Widget>[
-      row('Item', 'item', (String id) => GuiTextInput(id: id, value: asString(icon['item']) ?? '', mode: GuiTextMode.template, names: _names, label: 'Row ${index + 1} item', onChanged: (String v) => field('item', v)),
-          help: 'Such as minecraft:diamond'),
+      row('Item', 'item', (String id) => ItemPicker(id: id, value: asString(icon['item']) ?? '', label: 'Row ${index + 1} item', placeholder: 'minecraft:diamond', onChanged: (String v) => field('item', v))),
       row('Count', 'count', (String id) => GuiNumberInput(id: id, value: asInt(icon['count']), label: 'Row ${index + 1} count', onChanged: (num? v) => field('count', v)), help: '1 to 99'),
       row('Name', 'name', (String id) => GuiTextInput(id: id, value: asString(icon['name']) ?? '', mode: GuiTextMode.template, names: _names, label: 'Row ${index + 1} name', onChanged: (String v) => field('name', v))),
       row('Lore', 'lore', (String _) => GuiLinesEditor(lines: stringList(icon['lore']), names: _names, onChanged: (List<String> lines) => field('lore', lines))),
