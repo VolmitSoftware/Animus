@@ -368,7 +368,9 @@ class _EditorShellState extends State<EditorShell> {
         dark: component.brightness == Brightness.dark,
         compact: _compact,
         workspace: workspace,
-        session: component.session,
+        // The live bar shows the connection inside a server workspace, so the
+        // top bar shows it only on the screens without one.
+        session: _showsLiveBar(workspace) ? null : component.session,
         undoLabel: store.undoLabel,
         redoLabel: store.redoLabel,
         drawerOpen: _drawerOpen,
@@ -401,6 +403,13 @@ class _EditorShellState extends State<EditorShell> {
         _workspace(workspace),
       if (_paletteOpen) CommandPalette(key: const ValueKey<String>('palette'), commands: _commands(workspace), onClose: _closePalette),
     ]);
+  }
+
+  /// True when the route renders the workspace with its live bar.
+  bool _showsLiveBar(WorkspaceSnapshot? workspace) {
+    final EditorRoute route = component.route;
+    if (workspace == null || workspace.server == null || component.session == null || route is PairRoute) return false;
+    return !(route is ServerRoute && component.hub.server(route.serverId) == null);
   }
 
   Widget _problemBanner(EditorStore store, WorkspaceSnapshot? workspace) =>

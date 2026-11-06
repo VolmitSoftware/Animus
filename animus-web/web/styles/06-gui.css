@@ -513,27 +513,10 @@ button.animus-chest-slot:focus-visible {
   min-width: 0;
 }
 
-/* Section tabs: the selected tab is raised in grey with a pink rule under
-   it; the pink fill belongs to the primary action. */
-.animus-gui-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  padding: 0.25rem;
-  border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
-  background: var(--background, #0d0d0f);
-}
-
-.animus-gui-tabs [role="tab"] {
-  position: relative;
-  color: var(--animus-muted);
-}
-
-.animus-gui-tabs [role="tab"][aria-selected="true"] {
-  background: var(--secondary, var(--animus-panel));
-  color: var(--foreground, inherit);
-  box-shadow: inset 0 -2px 0 var(--primary, #ff5fa8);
+/* Section tabs share the view tabs' frame, tab and selected rule
+   (`.animus-tabs`, `.animus-tab`). */
+.animus-gui-tabs .animus-tab:disabled {
+  opacity: 0.5;
 }
 
 /* Menu component pick zones over the stage: invisible until hovered, and

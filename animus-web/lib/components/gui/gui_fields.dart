@@ -551,16 +551,25 @@ class GuiTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => dom.div(
-        classes: 'animus-gui-tabs',
+        // `.animus-tabs` takes the editor-wide selected-tab rule, so these
+        // read the same as the document's view tabs.
+        classes: 'animus-tabs animus-gui-tabs',
         attributes: <String, String>{'role': 'tablist', 'aria-label': label},
         <Widget>[
+          // Native buttons, as in the view tabs: an arcane button's inline
+          // style would hide the selected tab's pink rule.
           for (int index = 0; index < tabs.length; index++)
-            Button.ghost(
-              label: tabs[index],
-              size: ButtonSize.small,
-              disabled: disabled.contains(index),
-              attributes: <String, String>{'role': 'tab', 'aria-selected': '${index == selected}', 'data-tab': '$index'},
-              onPressed: () => onSelect(index),
+            dom.button(
+              classes: 'animus-tab',
+              attributes: <String, String>{
+                'type': 'button',
+                'role': 'tab',
+                'aria-selected': '${index == selected}',
+                'data-tab': '$index',
+                if (disabled.contains(index)) 'disabled': '',
+              },
+              events: <String, void Function(web.Event)>{'click': (web.Event _) => onSelect(index)},
+              <Widget>[Component.text(tabs[index])],
             ),
         ],
       );

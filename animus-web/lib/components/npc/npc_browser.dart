@@ -9,6 +9,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../logic/gui/gui_text.dart';
 import '../../logic/npc/npc_bulk.dart';
 import '../../logic/npc/npc_catalog.dart';
 import '../../logic/npc/tree_keys.dart';
@@ -546,7 +547,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
         dom.div(classes: 'animus-npc-name', <Widget>[
           _face(entry),
           dom.div(classes: 'animus-npc-name-text', <Widget>[
-            dom.a(href: DocumentRoute(component.workspace.id, DocumentKind.npc, entry.key).format(), <Widget>[Component.text(entry.name)]),
+            dom.a(href: DocumentRoute(component.workspace.id, DocumentKind.npc, entry.key).format(), <Widget>[Component.text(guiPlainText(entry.name))]),
             dom.code(classes: 'animus-muted', <Widget>[Component.text(entry.key)]),
           ]),
         ]),
