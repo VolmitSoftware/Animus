@@ -8,6 +8,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "text": {
           "type": "string",
@@ -30,6 +31,7 @@
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -68,6 +70,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "operation": {
           "type": "string",
@@ -167,6 +170,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "id": {
           "type": "string",
@@ -199,6 +203,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "operation": {
           "type": "string",
@@ -226,6 +231,7 @@
       "privileged": true,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "command": {
           "type": "string",
@@ -256,6 +262,7 @@
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -287,6 +294,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "title": {
           "type": "string",
@@ -319,6 +327,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "item": {
           "type": "string",
@@ -357,6 +366,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "permission": {
           "type": "string",
@@ -373,6 +383,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "x": {
           "type": "number",
@@ -416,6 +427,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "text": {
           "type": "string",
@@ -448,6 +460,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "route": {
           "type": "string",
@@ -517,6 +530,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "spawned": {
           "type": "boolean",
@@ -554,6 +568,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "gui": {
           "type": "string",
@@ -586,6 +601,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "shop": {
           "type": "string",
@@ -608,6 +624,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "animation": {
           "type": "string",
@@ -646,6 +663,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "sound": {
           "type": "string",
@@ -702,6 +720,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "radius": {
           "type": "number",
@@ -722,6 +741,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "pose": {
           "type": "string",
@@ -738,6 +758,7 @@
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -793,6 +814,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "text": {
           "type": "string",
@@ -829,6 +851,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "name": {
           "type": "string",
@@ -866,6 +889,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "slot": {
           "type": "string",
@@ -895,6 +919,7 @@
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -937,6 +962,7 @@
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -983,6 +1009,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "particle": {
           "type": "string",
@@ -1039,6 +1066,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "layer": {
           "type": "integer",
@@ -1061,6 +1089,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {}
     },
     {
@@ -1070,6 +1099,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "item": {
           "type": "string",
@@ -1098,6 +1128,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "target": {
           "type": "string",
@@ -1176,6 +1207,7 @@
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "title": {
           "type": "string",
@@ -1668,6 +1700,9 @@
       "description": "A player joins the server. first: true matches only first joins, false only returning players.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "first"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -1731,6 +1766,9 @@
       "description": "A player sends a chat message, optionally matching a case-insensitive pattern with * wildcards.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "message"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -1767,6 +1805,12 @@
       "description": "A player or the console runs the Animus-managed command this trigger registers.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "command",
+        "alias",
+        "args",
+        "raw_args"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -1856,6 +1900,9 @@
       "description": "A player dies.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "message"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -1914,6 +1961,10 @@
       "description": "A player moves to another world, optionally only from or to named worlds.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "from",
+        "to"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -2235,6 +2286,148 @@
       "variables",
       "routines",
       "triggers"
-    ]
+    ],
+    "expressions": {
+      "maxLength": 4096,
+      "namePattern": "^[a-z][a-z0-9_]{0,63}$",
+      "roots": [
+        "player",
+        "npc",
+        "server",
+        "context"
+      ],
+      "reserved": [
+        "context",
+        "false",
+        "npc",
+        "player",
+        "server",
+        "true"
+      ],
+      "facts": {
+        "player": [
+          "name",
+          "uuid",
+          "online",
+          "health",
+          "max_health",
+          "food",
+          "level",
+          "world",
+          "x",
+          "y",
+          "z",
+          "location",
+          "gamemode",
+          "op",
+          "sneaking",
+          "flying",
+          "item_in_hand",
+          "item_in_hand_amount"
+        ],
+        "npc": [
+          "name",
+          "id",
+          "uuid",
+          "spawned",
+          "health",
+          "world",
+          "x",
+          "y",
+          "z",
+          "location"
+        ],
+        "server": [
+          "online_players",
+          "max_players",
+          "tick",
+          "time_millis"
+        ]
+      },
+      "flagScopes": [
+        "player",
+        "npc",
+        "relationship",
+        "global"
+      ],
+      "functions": [
+        "get",
+        "has",
+        "keys",
+        "values",
+        "put",
+        "remove",
+        "append",
+        "insert",
+        "index_of",
+        "first",
+        "last",
+        "slice",
+        "reverse",
+        "sort",
+        "sum",
+        "join",
+        "split",
+        "range",
+        "trim",
+        "replace",
+        "starts_with",
+        "ends_with",
+        "num",
+        "int",
+        "truthy",
+        "same",
+        "text",
+        "random",
+        "random_decimal",
+        "chance",
+        "pick",
+        "flag",
+        "has_flag",
+        "quest"
+      ],
+      "standardFunctions": [
+        "abs",
+        "align",
+        "alpha",
+        "argb",
+        "bar",
+        "ceil",
+        "clamp",
+        "contains",
+        "cos",
+        "fixed",
+        "flash",
+        "floor",
+        "hex",
+        "len",
+        "lerp",
+        "lower",
+        "marquee",
+        "max",
+        "min",
+        "mix",
+        "mod",
+        "number",
+        "odometer",
+        "palette",
+        "plain",
+        "pow",
+        "readable",
+        "rgb",
+        "round",
+        "scanner",
+        "scramble",
+        "select",
+        "sin",
+        "smoothstep",
+        "str",
+        "timeline",
+        "typewriter",
+        "upper",
+        "wave",
+        "wipe"
+      ]
+    }
   }
 }

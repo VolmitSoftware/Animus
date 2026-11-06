@@ -140,6 +140,14 @@
 - The editor's live bar says when the pairing is about to expire and offers Pair again when the server ends it.
 - The editor's Sync page can ask the server what became of a push whose answer was lost.
 - The fake server gains test controls for token expiry, forced errors, lost apply answers, relay errors, limit closes and an offline player.
+- The editor edits every Denizen v2 behavior node: foreach, while, break, continue and return, with loop variables picked or declared for you.
+- One operand control in the behavior editor takes a typed value, a variable, an expression or a template wherever the language allows an operand.
+- Expression and template fields check their syntax and complete variables, facts and functions as you type, in the Visual and Code views.
+- Action and condition arguments can be filled at run time from a variable, an expression or a template.
+- A server switch in the behavior editor, with server events, scopes, capabilities and timer limits to match.
+- The editor opens, creates, edits and exports `server-behaviors.json`, and the workspace overview counts the listed server behaviors.
+- The dry run runs loops, expressions, templates, call results and server events, and asks about facts only a server knows.
+- `completions.json` lists the expression language, which capabilities need an NPC, and each server event's context keys.
 
 ### Changed
 
@@ -229,6 +237,9 @@
 - The server catalog in the editor is grouped by kind and shows each document's revision in words.
 - The converter screen names all four sources, leads the Citizens review with its warnings and lists skipped dtlTraders files.
 - Live editing for a server runs in one browser tab at a time; another tab waits and takes over.
+- The behavior tree reads by indentation with one thin rail per level, and shows each step's type and a plain summary when collapsed.
+- Field labels read as words ("Cooldown ticks"), and format problems say what the value must look like instead of showing a pattern.
+- New variables are named `flag_2` rather than `flag-2`, so expressions can read them.
 
 ### Fixed
 
@@ -291,6 +302,12 @@
 - A failed catalog load no longer shows Loading forever.
 - Forgetting a server removes its live workspace, and tabs no longer overwrite each other's saved servers.
 - An apply the browser resent after a dropped connection is recovered instead of reported as refused.
+- Typing an expression into a while or condition no longer reports "Invalid JSON".
+- Setting a variable from an expression no longer writes a second, conflicting operand.
+- Changing a list, map or any variable's type gives it a matching starting value instead of empty text.
+- New while and foreach steps are valid as soon as they are added.
+- The editor keeps `server-behaviors.json` when a data folder is opened and exported.
+- The code view names a JSON syntax error by line and column in words.
 
 ### Notes
 

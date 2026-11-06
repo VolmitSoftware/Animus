@@ -5,6 +5,7 @@
 library;
 
 import '../gui/gui_json.dart';
+import 'behavior_language.dart';
 import 'schema_fields.dart';
 
 /// One action or condition capability.
@@ -18,6 +19,7 @@ class CapabilitySpec {
     required this.reason,
     required this.arguments,
     this.oneOfRequired = const <List<String>>[],
+    this.reach = 'both',
   });
 
   final String id;
@@ -35,18 +37,40 @@ class CapabilitySpec {
   /// Groups of arguments of which one group must be given whole.
   final List<List<String>> oneOfRequired;
 
+  /// `npc` when it needs an NPC body, so a server behavior cannot run it;
+  /// otherwise `both`.
+  final String reach;
+
+  bool get npcOnly => reach == 'npc';
+
   /// A short note for pickers: unavailable reasons and privilege.
   String get note => <String>[if (!available) reason, if (privileged) 'privileged'].join('; ');
 }
 
 /// One trigger event and its fields.
 class TriggerSpec {
-  const TriggerSpec({required this.event, required this.description, required this.carriesPlayer, required this.fields});
+  const TriggerSpec({
+    required this.event,
+    required this.description,
+    required this.carriesPlayer,
+    required this.fields,
+    this.reach = 'npc',
+    this.context = const <String>[],
+  });
 
   final String event;
   final String description;
   final bool carriesPlayer;
   final List<FieldSpec> fields;
+
+  /// `npc`, `server` or `both`: which behaviors may use the event.
+  final String reach;
+
+  /// Keys expressions read as `context.<key>` when this event starts a run.
+  final List<String> context;
+
+  /// Whether a behavior with [server] set may use this event.
+  bool allowedIn({required bool server}) => server ? reach != 'npc' : reach != 'server';
 }
 
 /// One behavior node type and its fields.
@@ -72,6 +96,7 @@ class CompletionCatalog {
     this.variableTypes = const <String>[],
     this.variableScopes = const <String>[],
     this.variableLifetimes = const <String>[],
+    this.expressionLanguage,
   });
 
   factory CompletionCatalog.fromJson(Object? json) {
@@ -92,6 +117,7 @@ class CompletionCatalog {
               oneOfRequired: <List<String>>[
                 for (final Object? group in asList(raw['oneOfRequired'])) <String>[for (final Object? key in asList(group)) if (key is String) key],
               ],
+              reach: asString(raw['reach']) ?? 'both',
             ),
       ],
       triggers: <String, TriggerSpec>{
@@ -101,6 +127,8 @@ class CompletionCatalog {
             description: asString(asMap(entry.value)['description']) ?? '',
             carriesPlayer: asMap(entry.value)['carriesPlayer'] == true,
             fields: _fields(asMap(entry.value)['fields']),
+            reach: asString(asMap(entry.value)['reach']) ?? 'npc',
+            context: <String>[for (final Object? key in asList(asMap(entry.value)['context'])) if (key is String) key],
           ),
       },
       nodes: <String, NodeSpec>{
@@ -114,6 +142,7 @@ class CompletionCatalog {
       variableTypes: <String>[for (final Object? value in asList(language['variableTypes'])) if (value is String) value],
       variableScopes: <String>[for (final Object? value in asList(language['variableScopes'])) if (value is String) value],
       variableLifetimes: <String>[for (final Object? value in asList(language['variableLifetimes'])) if (value is String) value],
+      expressionLanguage: ExpressionLanguage.fromJson(language['expressions']),
     );
   }
 
@@ -123,13 +152,25 @@ class CompletionCatalog {
   final List<String> variableTypes;
   final List<String> variableScopes;
   final List<String> variableLifetimes;
+  /// What behavior expressions can name, as the source published it.
+  final ExpressionLanguage? expressionLanguage;
+
+  /// What behavior expressions can name.
+  ExpressionLanguage get expressions => expressionLanguage ?? ExpressionLanguage.fallback;
+
+  /// Events a behavior may use: server events when [server], NPC ones otherwise.
+  List<String> eventsFor({required bool server}) => <String>[
+        for (final TriggerSpec spec in triggers.values)
+          if (spec.allowedIn(server: server)) spec.event,
+      ];
 
   CapabilitySpec? capability(String? id) => capabilities.where((CapabilitySpec spec) => spec.id == id).firstOrNull;
 
   /// Capabilities a node of [nodeType] (`action` or `condition`) may run.
-  List<CapabilitySpec> capabilitiesFor(String nodeType) => <CapabilitySpec>[
+  /// A [server] behavior gets no NPC-only capability.
+  List<CapabilitySpec> capabilitiesFor(String nodeType, {bool server = false}) => <CapabilitySpec>[
         for (final CapabilitySpec spec in capabilities)
-          if (spec.kind == nodeType) spec,
+          if (spec.kind == nodeType && !(server && spec.npcOnly)) spec,
       ];
 
   /// The completions.json field map turned into field descriptors. Field
@@ -158,7 +199,7 @@ FieldSpec fieldFromSpec(String key, JsonMap spec) {
     kind: choices.isNotEmpty
         ? FieldKind.choice
         : switch (type) {
-            'string' || 'identifier' || 'routine' || 'variable' || 'capability' || 'event' => FieldKind.string,
+            'string' || 'identifier' || 'routine' || 'variable' || 'capability' || 'event' || 'expression' => FieldKind.string,
             'integer' => FieldKind.integer,
             'number' => FieldKind.number,
             'boolean' => FieldKind.boolean,

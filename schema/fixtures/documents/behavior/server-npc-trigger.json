@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:broken-server",
+  "server": true,
+  "entry": "main",
+  "variables": {
+    "mood": {"type": "string", "initial": "calm", "scope": "npc", "lifetime": "transient"}
+  },
+  "routines": {
+    "main": {"type": "wait", "ticks": 1}
+  },
+  "triggers": [
+    {"id": "click", "event": "interaction"},
+    {"id": "fast", "event": "timer", "intervalTicks": 5}
+  ]
+}
