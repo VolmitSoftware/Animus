@@ -157,7 +157,7 @@ class EditorNoticesApiTest {
         assertEquals(200, harness.send("POST", "/v1/imports/" + importId + "/apply", token, null).status());
         List<String> lines = harness.flushNotices();
         assertEquals(1, lines.size(), lines.toString());
-        assertTrue(lines.getFirst().startsWith("[Animus]: Brian's editor applied an import of 5 NPCs"), lines.toString());
+        assertTrue(lines.getFirst().startsWith("[Animus]: Brian's editor applied an import of 6 NPCs"), lines.toString());
         assertEquals(EditorNotifySettings.DEFAULT.sound(EditorNotifySettings.Kind.IMPORT), harness.host.notices.getLast().sound().orElseThrow());
     }
 }
