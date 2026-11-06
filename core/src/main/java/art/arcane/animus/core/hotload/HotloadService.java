@@ -40,7 +40,7 @@ import java.util.function.Predicate;
 public final class HotloadService implements AutoCloseable {
     public static final long POLL_MILLIS = 500;
     private static final long APPLY_TIMEOUT_SECONDS = 60, ACTIVATION_TIMEOUT_SECONDS = 10;
-    private static final Set<DocumentKind> NPC_GROUP = EnumSet.of(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.ROUTE);
+    private static final Set<DocumentKind> NPC_GROUP = EnumSet.of(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.ROUTE, DocumentKind.GROUP);
     private static final Set<DocumentKind> SCREENS = EnumSet.of(DocumentKind.SHOP, DocumentKind.INVENTORY, DocumentKind.MENU,
             DocumentKind.HOLOGRAM, DocumentKind.TEXT_ANIMATION, DocumentKind.PRESETS);
 
@@ -251,13 +251,13 @@ public final class HotloadService implements AutoCloseable {
         catch (TimeoutException | ExecutionException | java.util.concurrent.CancellationException slow) { return Optional.empty(); }
     }
 
-    /** Settings first, then what NPCs depend on (skins, routes, rigs, behaviors), then NPCs, GUIs and schematics. */
+    /** Settings first, then what NPCs depend on (skins, routes, groups, rigs, behaviors), then NPCs, GUIs and schematics. */
     private static int priority(HotloadTargets.Target target) {
         if (target.area() == HotloadTargets.Area.CONFIG) return 0;
         if (target.area() == HotloadTargets.Area.SCHEMATIC) return 7;
         return switch (target.kind().orElseThrow()) {
             case SKIN -> 1;
-            case ROUTE -> 2;
+            case ROUTE, GROUP -> 2;
             case RIG, ANIMATION -> 3;
             case BEHAVIOR, PACK -> 4;
             case NPC -> 5;

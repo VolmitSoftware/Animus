@@ -1,5 +1,6 @@
 package art.arcane.animus.core.migration;
 
+import art.arcane.animus.core.npc.GroupDocument;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.runtime.DefinitionSpec;
@@ -24,7 +25,7 @@ public final class CitizensImporter {
      * {@code citizens} prefix; module converters use theirs. Groups other than {@code citizens} come from converter version 7.
      */
     static final String NPC_PATH = "npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,62}-[0-9]+\\.json";
-    static final String BUNDLE_PATH = "(?:npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,62}-[0-9]+|skins/[a-f0-9]{64}|behaviors/citizens/(?:text|commands)-[0-9]+)\\.json";
+    static final String BUNDLE_PATH = "(?:npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,62}-[0-9]+|skins/[a-f0-9]{64}|behaviors/citizens/(?:text|commands)-[0-9]+|groups/citizens-[a-f0-9]{8})\\.json";
     /** A generated behavior of converter version 8 and later. */
     static final String BEHAVIOR_PATH = "behaviors/citizens/(?:text|commands)-[0-9]+\\.json";
     public enum Status { CONVERTED, REQUIRES_INTEGRATION, REQUIRES_REVIEW, UNSUPPORTED_PRESERVED }
@@ -35,6 +36,8 @@ public final class CitizensImporter {
         @Override public JsonObject summary() { return summary.deepCopy(); }
         /** Generated behavior documents in the bundle; none before converter version 8. */
         public int behaviors() { return summary.has("behaviors") ? summary.get("behaviors").getAsInt() : 0; }
+        /** Trait groups factored out with the {@code factor-groups} option; none without it. */
+        public int groups() { return summary.has("groups") ? summary.get("groups").getAsInt() : 0; }
         /** Counts only: routes and their points, look-close and generated behaviors. */
         public String conversions() {
             if (!summary.has("conversions")) return "nothing (converter v" + converterVersion() + ")";
@@ -51,11 +54,16 @@ public final class CitizensImporter {
             BuilderMapping.BUILDER_TRAIT, BuilderMapping.CONSTRUCTOR_TRAIT);
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
-    public Preview preview(Path source, Path destination, Map<String, String> worldMap) throws IOException {
-        try (DocumentStore store = new DocumentStore(destination)) { return preview(source, store, worldMap); }
+    public Preview preview(Path source, Path destination, Map<String, String> worldMap) throws IOException { return preview(source, destination, worldMap, false); }
+
+    public Preview preview(Path source, Path destination, Map<String, String> worldMap, boolean factorGroups) throws IOException {
+        try (DocumentStore store = new DocumentStore(destination)) { return preview(source, store, worldMap, factorGroups); }
     }
 
-    public Preview preview(Path source, DocumentStore store, Map<String, String> worldMap) throws IOException {
+    public Preview preview(Path source, DocumentStore store, Map<String, String> worldMap) throws IOException { return preview(source, store, worldMap, false); }
+
+    /** With {@code factorGroups}, NPCs that share their groupable fields are factored into trait groups ({@link GroupFactoring}). */
+    public Preview preview(Path source, DocumentStore store, Map<String, String> worldMap, boolean factorGroups) throws IOException {
         String original = JsonDocuments.read(source);
         JsonObject options = new JsonObject();
         for (var entry : new TreeMap<>(worldMap).entrySet()) {
@@ -63,7 +71,7 @@ public final class CitizensImporter {
                 throw new IOException("World mappings require nonblank source and destination names");
             options.addProperty(entry.getKey(), entry.getValue());
         }
-        String id = JsonDocuments.hash("animus-citizens-v" + CONVERTER_VERSION + "\n" + JsonDocuments.hash(original) + "\n" + options);
+        String id = JsonDocuments.hash("animus-citizens-v" + CONVERTER_VERSION + "\n" + JsonDocuments.hash(original) + "\n" + options + (factorGroups ? "\nfactor-groups" : ""));
         {
             Path imports = store.resolve("imports");
             Files.createDirectories(imports);
@@ -110,6 +118,7 @@ public final class CitizensImporter {
                 Set<Integer> numericIds = new HashSet<>();
                 int valid = 0;
                 Set<String> skins = new HashSet<>();
+                Map<String, JsonObject> deferred = new LinkedHashMap<>();
                 for (var npc : root.getAsJsonObject("npc").entrySet()) {
                     String key = npc.getKey();
                     if (!key.matches("0|[1-9][0-9]{0,9}")) throw new IOException("$.npc." + key + ": invalid numeric ID");
@@ -269,9 +278,26 @@ public final class CitizensImporter {
                     if (!errors.isEmpty()) issues.add("citizens-" + key + ": " + String.join("; ", errors));
                     else valid++;
 
-                    writeBundle(temporary, "npcs/" + definition.get("group").getAsString() + "/citizens-" + key + ".json", JsonDocuments.write(definition), manifest);
+                    String npcPath = "npcs/" + definition.get("group").getAsString() + "/citizens-" + key + ".json";
+                    if (factorGroups) deferred.put(npcPath, definition);
+                    else writeBundle(temporary, npcPath, JsonDocuments.write(definition), manifest);
                     DocumentStore.atomic(temporary.resolve("records/" + key + ".json"), JsonDocuments.write(record));
                     DocumentStore.atomic(temporary.resolve("reports/" + key + ".json"), JsonDocuments.write(report));
+                }
+                if (factorGroups) {
+                    GroupFactoring.Result factored = GroupFactoring.factor(deferred);
+                    for (Map.Entry<String, JsonObject> definition : factored.definitions().entrySet())
+                        writeBundle(temporary, definition.getKey(), JsonDocuments.write(definition.getValue()), manifest);
+                    JsonArray groups = new JsonArray();
+                    for (GroupFactoring.Group group : factored.groups()) {
+                        writeBundle(temporary, group.path(), group.content(), manifest);
+                        JsonObject entry = new JsonObject();
+                        entry.addProperty("id", group.id());
+                        entry.addProperty("members", group.members().size());
+                        groups.add(entry);
+                    }
+                    summary.addProperty("groups", factored.groups().size());
+                    summary.add("factoredGroups", groups);
                 }
                 summary.addProperty("records", numericIds.size());
                 summary.addProperty("valid", valid);
@@ -358,7 +384,7 @@ public final class CitizensImporter {
         int npcCount = 0;
         Set<String> requiredSkins = new HashSet<>();
         Set<String> bundledSkins = new HashSet<>();
-        int behaviorCount = 0;
+        int behaviorCount = 0, groupCount = 0;
         for (var document : documents.entrySet()) {
             String relative = document.getKey();
             if (!relative.matches(BUNDLE_PATH)) throw new IOException("Invalid bundle path: " + relative);
@@ -374,6 +400,11 @@ public final class CitizensImporter {
                 JsonObject json = definition.json();
                 if (json.has("skin")) requiredSkins.add("skins/" + json.get("skin").getAsString() + ".json");
                 npcCount++;
+            } else if (relative.startsWith("groups/")) {
+                groupCount++;
+                if (GroupDocument.parse(relative.substring(7, relative.length() - 5), content).group().isEmpty()) throw new IOException("Invalid factored group: " + relative);
+                if (before != null && !before.equals(content)) throw new IOException("Group collision: " + relative + " exists with other content");
+                if (before != null) continue;
             } else if (relative.startsWith("behaviors/")) {
                 behaviorCount++;
                 if (before != null && !before.equals(content)) throw new IOException("Behavior collision: " + relative + " exists with other content");
@@ -386,7 +417,7 @@ public final class CitizensImporter {
             }
             changes.add(new DocumentStore.Change(relative, "missing", content));
         }
-        if (npcCount != preview.records() || bundledSkins.size() != preview.skins() || behaviorCount != preview.behaviors() || !bundledSkins.containsAll(requiredSkins))
+        if (npcCount != preview.records() || bundledSkins.size() != preview.skins() || behaviorCount != preview.behaviors() || groupCount != preview.groups() || !bundledSkins.containsAll(requiredSkins))
             throw new IOException("Incomplete import manifest or missing referenced skins");
         JsonObject receipt = new JsonObject();
         receipt.addProperty("importId", id);

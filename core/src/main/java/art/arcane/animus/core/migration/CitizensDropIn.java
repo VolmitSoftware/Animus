@@ -161,9 +161,11 @@ public final class CitizensDropIn {
         String mode = "reject";
         String label = null;
         Map<String, String> worlds = new TreeMap<>();
+        boolean factorGroups = false;
         for (int index = 0; index < args.length; index++) {
             String argument = args[index];
-            if (argument.contains("=")) {
+            if (argument.equals("factor-groups")) factorGroups = true;
+            else if (argument.contains("=")) {
                 String[] pair = argument.split("=", 2);
                 if (pair[0].isBlank() || pair[1].isBlank() || worlds.putIfAbsent(pair[0], pair[1]) != null) throw new IOException("Invalid or repeated world mapping: " + argument);
             } else if (argument.equals("reject") || argument.equals("replace")) mode = argument;
@@ -171,7 +173,7 @@ public final class CitizensDropIn {
                 if (index + 1 >= args.length) throw new IOException("duplicate needs a copy label, such as duplicate town-copy");
                 mode = argument;
                 label = args[++index];
-            } else throw new IOException("import citizens [reject|replace|duplicate <label>] [oldWorld=newWorld ...] | apply | review | accept <category...|all> | rollback");
+            } else throw new IOException("import citizens [reject|replace|duplicate <label>] [factor-groups] [oldWorld=newWorld ...] | apply | review | accept <category...|all> | rollback");
         }
         JsonObject previous = state();
         Sources sources = find();
@@ -192,7 +194,7 @@ public final class CitizensDropIn {
             return lines;
         }
         Found save = sources.saves().get();
-        CitizensImporter.Preview preview = new CitizensImporter().preview(save.path(), store, worlds);
+        CitizensImporter.Preview preview = new CitizensImporter().preview(save.path(), store, worlds, factorGroups);
         if (preview.valid() != preview.records())
             throw new IOException(preview.records() - preview.valid() + " of " + preview.records() + " records do not convert; see " + preview.directory().resolve("report.json"));
         ImportApplications.Preview application = ImportApplications.stage(store, preview.id(), mode, label);
@@ -270,15 +272,15 @@ public final class CitizensDropIn {
         List<String> lines = citizensPending ? applyCitizens(state) : new ArrayList<>();
         JsonArray transactions = state.has("transactions") ? state.getAsJsonArray("transactions") : new JsonArray();
         try {
-            if (shopkeepersPending) lines.addAll(ShopkeepersDropIn.apply(store, state, npcs.all(), transactions));
-            else lines.addAll(ShopkeepersDropIn.bindPending(store, state, npcs.all(), transactions));
+            if (shopkeepersPending) lines.addAll(ShopkeepersDropIn.apply(store, state, npcs.stored(), transactions));
+            else lines.addAll(ShopkeepersDropIn.bindPending(store, state, npcs.stored(), transactions));
         } catch (IOException | RuntimeException failure) {
             if (!citizensPending) throw failure;
             lines.add("Shopkeepers import failed and nothing of it was installed: " + failure.getMessage() + ". The Citizens import stays applied; fix the cause and run /animus import citizens apply again.");
             return lines;
         }
         if (denizenPending) {
-            try { lines.addAll(DenizenDropIn.apply(store, state, npcs.all(), transactions)); }
+            try { lines.addAll(DenizenDropIn.apply(store, state, npcs.stored(), transactions)); }
             catch (IOException | RuntimeException failure) {
                 state.add("transactions", transactions);
                 writeState(state);
@@ -426,12 +428,14 @@ public final class CitizensDropIn {
         categories.forEach((String category) -> accepted.put(category, 0));
         List<String> problems = new ArrayList<>();
         for (NpcDefinition definition : imported(state)) {
-            JsonObject json = definition.json();
+            // Waiting is read from the effective definition; a setting a factored group holds is accepted in the group.
+            JsonObject effective = definition.json(), json = npcs.draft(definition.id()).document();
             boolean edited = false;
             for (String category : categories) {
+                if (!waiting(effective, category)) continue;
+                accepted.merge(category, 1, Integer::sum);
                 if (!waiting(json, category)) continue;
                 acceptCategory(json, category);
-                accepted.merge(category, 1, Integer::sum);
                 edited = true;
             }
             if (!edited) continue;
@@ -444,9 +448,11 @@ public final class CitizensDropIn {
         }
         List<String> lines = new ArrayList<>();
         Optional<DocumentStore.Change> servers = categories.contains("denizen") ? DenizenDropIn.serverBehaviors(store, state) : Optional.empty();
-        if (changed.isEmpty() && servers.isEmpty()) lines.add("Nothing waiting in " + String.join(", ", categories));
+        List<DocumentStore.Change> others = new ArrayList<>(GroupFactoring.accept(store, state, categories));
+        servers.ifPresent(others::add);
+        if (changed.isEmpty() && others.isEmpty()) lines.add("Nothing waiting in " + String.join(", ", categories));
         else {
-            String transaction = DefinitionBatch.commit(store, changed, expected, servers.map(List::of).orElse(List.of()));
+            String transaction = DefinitionBatch.commit(store, changed, expected, others);
             state.getAsJsonArray("transactions").add(transaction);
             writeState(state);
             List<String> errors = npcs.reload();
@@ -552,7 +558,7 @@ public final class CitizensDropIn {
         };
     }
 
-    private static void acceptCategory(JsonObject json, String category) {
+    static void acceptCategory(JsonObject json, String category) {
         if (category.equals("spawn")) { json.addProperty("spawned", true); return; }
         if (category.equals("denizen")) { DenizenImporter.accept(json); return; }
         String module = switch (category) {
@@ -658,10 +664,8 @@ public final class CitizensDropIn {
     /** The review counts of a staged preview, the same numbers {@code review} shows after apply. */
     static List<String> summaryLines(CitizensImporter.Preview preview) throws IOException {
         JsonObject summary = preview.summary();
-        List<JsonObject> staged = new ArrayList<>();
-        for (String path : summary.getAsJsonObject("documents").keySet())
-            if (path.startsWith("npcs/")) staged.add(JsonDocuments.object(JsonDocuments.read(preview.directory().resolve(path))));
-        List<String> lines = new ArrayList<>();
+        List<JsonObject> staged = GroupFactoring.staged(preview);
+        List<String> lines = new ArrayList<>(GroupFactoring.reviewLine(summary).stream().toList());
         lines.add(converted(staged));
         lines.add("Off until accepted: " + counts(pending(staged)) + "; the rest stay despawned");
         Map<String, Integer> preserved = preserved(staged);

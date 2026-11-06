@@ -504,7 +504,13 @@ public final class BehaviorSchemaGenerator {
         tags.addProperty("maxItems", NpcDefinition.MAX_TAGS);
         tags.addProperty("uniqueItems", true);
         properties.add("tags", tags);
-        JsonObject rig = described(type("object"), "The rig under rigs/ this NPC's body shows.");
+        JsonObject groups = described(type("array"), "Trait groups under groups/ whose values this NPC takes, in merge order; the NPC's own fields win.");
+        groups.add("items", pattern("^[a-z0-9][a-z0-9_-]{0,63}$"));
+        groups.addProperty("minItems", 1);
+        groups.addProperty("maxItems", NpcDefinition.MAX_GROUPS);
+        groups.addProperty("uniqueItems", true);
+        properties.add("groups", groups);
+        JsonObject rig =described(type("object"), "The rig under rigs/ this NPC's body shows.");
         rig.addProperty("additionalProperties", false);
         rig.add("required", strings("id"));
         rig.add("properties", property("id", pattern("^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$")).getAsJsonObject("properties"));

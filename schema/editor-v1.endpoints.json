@@ -42,6 +42,7 @@
     "npc": {"folder": "npcs", "applyScope": "apply:npcs", "schema": "generated/npc.schema.json"},
     "route": {"folder": "routes", "applyScope": "apply:npcs", "schema": null},
     "skin": {"folder": "skins", "applyScope": "apply:npcs", "schema": null},
+    "group": {"folder": "groups", "applyScope": "apply:npcs", "schema": "group-v1.schema.json"},
     "behavior": {"folder": "behaviors", "applyScope": "apply:behaviors", "schema": "generated/behavior.schema.json"},
     "pack": {"folder": "packs", "applyScope": "apply:behaviors", "schema": "generated/pack.schema.json"},
     "shop": {"folder": "shops", "applyScope": "apply:gui", "schema": "shop-v1.schema.json"},

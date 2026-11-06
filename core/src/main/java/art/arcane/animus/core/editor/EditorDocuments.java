@@ -33,7 +33,7 @@ import java.util.regex.Pattern;
  */
 public final class EditorDocuments {
     /** Kinds whose documents carry a {@code revision} the server increments on every apply. */
-    public static final Set<DocumentKind> REVISIONED = EnumSet.of(DocumentKind.NPC, DocumentKind.BEHAVIOR, DocumentKind.SHOP, DocumentKind.INVENTORY,
+    public static final Set<DocumentKind> REVISIONED = EnumSet.of(DocumentKind.NPC, DocumentKind.GROUP, DocumentKind.BEHAVIOR, DocumentKind.SHOP, DocumentKind.INVENTORY,
             DocumentKind.HOLOGRAM, DocumentKind.PRESETS, DocumentKind.RIG, DocumentKind.ANIMATION);
     private static final String SEGMENT = "[a-z0-9][a-z0-9_-]{0,63}";
     private static final Pattern PROBLEM = Pattern.compile("^(\\$[^:\\s]*):\\s*(.+)$", Pattern.DOTALL);
@@ -90,6 +90,7 @@ public final class EditorDocuments {
             return switch (kind) {
                 case NPC -> path.matches("npcs/" + SEGMENT + "/" + SEGMENT + "\\.json") ? Optional.of(path.substring(5, path.length() - 5)) : Optional.empty();
                 case ROUTE -> path.matches("routes/" + SEGMENT + "\\.json") ? Optional.of(path.substring(7, path.length() - 5)) : Optional.empty();
+                case GROUP -> path.matches("groups/" + SEGMENT + "\\.json") ? Optional.of(path.substring(7, path.length() - 5)) : Optional.empty();
                 case SKIN -> path.matches("skins/[a-f0-9]{64}\\.json") ? Optional.of(path.substring(6, 70)) : Optional.empty();
                 case BEHAVIOR -> Optional.of(BehaviorPath.idFor(path));
                 case PACK -> path.matches("packs/" + SEGMENT + "/pack\\.json") ? Optional.of(path.substring(6, path.length() - 10)) : Optional.empty();
@@ -107,7 +108,7 @@ public final class EditorDocuments {
     /** The path a new document of this id gets. Behaviors outside packs go under {@code behaviors/}. */
     public static String pathFor(DocumentKind kind, String id) throws EditorError {
         String path = switch (kind) {
-            case NPC, ROUTE -> kind.folder() + "/" + id + ".json";
+            case NPC, ROUTE, GROUP -> kind.folder() + "/" + id + ".json";
             case SKIN -> "skins/" + id + ".json";
             case BEHAVIOR -> {
                 try { yield BehaviorPath.forId(id); }
@@ -186,6 +187,7 @@ public final class EditorDocuments {
             case INVENTORY -> problems(diagnostics, GuiDocument.parse(id, text).problems());
             case RIG -> problems(diagnostics, art.arcane.animus.core.rig.RigDocument.parse(id, text).problems());
             case ANIMATION -> problems(diagnostics, art.arcane.animus.core.rig.AnimationDocument.parse(id, text).problems());
+            case GROUP -> problems(diagnostics, art.arcane.animus.core.npc.GroupDocument.parse(id, text).problems());
             case ROUTE -> {
                 try { WaypointSettings.document(text); }
                 catch (IOException | RuntimeException invalid) { problems(diagnostics, List.of(String.valueOf(invalid.getMessage()))); }

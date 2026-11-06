@@ -5,6 +5,7 @@ import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.DebugWatch;
 import art.arcane.animus.core.metrics.MetricsSnapshot;
 import art.arcane.animus.core.metrics.Subsystem;
+import art.arcane.animus.core.npc.GroupCommands;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.AnimusRuntime;
@@ -195,7 +196,7 @@ public final class AnimusModRuntime {
             next.ticks.every(measured.timed(Subsystem.BEHAVIORS, next.serverBehaviors::tick));
             next.commands = new AnimusCommands(new AnimusCommands.Services(next.runtime, files, next.living, () -> owner.behaviors, next.extensions,
                     next.builtins, next.combat::execute, Map.of("proof", BUKKIT_ONLY, "foliaproof", BUKKIT_ONLY, "build", new BuildCommands(() -> owner.builds, owner.builds::unavailable),
-                            "shop", next.shops.shopCommand(), "gui", next.guis.command(), "editor", new EditorCommands(() -> owner.editor, files),
+                            "shop", next.shops.shopCommand(), "gui", next.guis.command(), "editor", new EditorCommands(() -> owner.editor, files), "groups", new GroupCommands(next.runtime::npcs, files, next.living::selection, next.living::refresh),
                             "debug", new DebugCommands(() -> measured, owner.watch,
                                     (String id) -> owner.runtime.isRunning() ? owner.runtime.npcs().find(id).map(NpcDefinition::uuid) : Optional.empty(),
                                     () -> { EditorService active = owner.editor; return active == null ? List.of("Editor: off") : active.status(); })), () -> owner.stopping));

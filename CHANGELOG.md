@@ -112,6 +112,13 @@
 - Server-wide behaviors with join, quit, chat, command, start, timer, death, respawn, world-change and module triggers, plus Animus-managed commands.
 - Message, title, actionbar, teleport, give-item, take-item and give-book actions, and a player override on player actions.
 - Flags hold any value and can expire; durable state stores lists, maps and expiry.
+- Trait groups: `groups/<id>.json` documents of shared definition values that NPCs list in `groups` and merge before their own fields.
+- Group merge rules: objects merge recursively, behaviors and tags append, a `skins` pool picks one skin per NPC UUID.
+- An NPC naming a missing group is refused on edit; a group deleted later leaves its NPCs on their last valid effective definition, reported as `group-problem=`.
+- `/animus inspect` shows the effective definition of an NPC with groups and where each field came from; `/animus status` counts group problems.
+- `/animus groups list|inspect|members|assign|unassign`; assign and unassign edit every matching NPC in one transaction.
+- `factor-groups` option for `/animus import citizens` and `--factor-groups` for the converter's `preview`, which move settings shared by two or more imported NPCs into groups.
+- Shared group schema, merge fixtures and an editor-side merge in `animus-web`.
 
 ### Changed
 

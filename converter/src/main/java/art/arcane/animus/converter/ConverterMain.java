@@ -21,7 +21,7 @@ public final class ConverterMain {
         catch (Exception e) { System.err.println("Animus: " + e.getMessage()); System.exit(1); }
     }
     static String run(String[] args) throws Exception {
-        if (args.length < 2) throw new IllegalArgumentException("Usage: preview <saves.yml> <data-dir> [oldWorld=newWorld ...] | apply <data-dir> <import-id> | stage <data-dir> <import-id> [reject|replace|duplicate <label>] | apply-plan <data-dir> <import-id> <application-id> | rollback <data-dir> <transaction-id> | validate <data-dir> | validate-behaviors <directory> | schema <output-dir> | shops-preview <dtlTraders-folder> <data-dir> [saves.yml] | shops-apply <data-dir> <import-id> | shopkeepers-preview <save.yml> <data-dir> [config=<config.yml>] [citizens=<saves.yml>] | shopkeepers-apply <data-dir> <import-id> | denizen-preview <Denizen-folder> <data-dir> [citizens=<saves.yml>] | digest <staged-dir>");
+        if (args.length < 2) throw new IllegalArgumentException("Usage: preview <saves.yml> <data-dir> [--factor-groups] [oldWorld=newWorld ...] | apply <data-dir> <import-id> | stage <data-dir> <import-id> [reject|replace|duplicate <label>] | apply-plan <data-dir> <import-id> <application-id> | rollback <data-dir> <transaction-id> | validate <data-dir> | validate-behaviors <directory> | schema <output-dir> | shops-preview <dtlTraders-folder> <data-dir> [saves.yml] | shops-apply <data-dir> <import-id> | shopkeepers-preview <save.yml> <data-dir> [config=<config.yml>] [citizens=<saves.yml>] | shopkeepers-apply <data-dir> <import-id> | denizen-preview <Denizen-folder> <data-dir> [citizens=<saves.yml>] | digest <staged-dir>");
         // The canonical hash of a staged Citizens import, comparable with the browser converter's (ImportDigest).
         if (args[0].equals("digest")) { require(args, 2); return ImportDigest.outputHash(Path.of(args[1])); }
         if (args[0].equals("denizen-preview")) return denizenPreview(args);
@@ -42,7 +42,7 @@ public final class ConverterMain {
             try (DocumentStore store = new DocumentStore(Path.of(args[1]))) {
                 NpcRepository repository = new NpcRepository(store);
                 repository.reload();
-                ShopkeepersImporter.Applied applied = new ShopkeepersImporter().apply(store, args[2], repository.all());
+                ShopkeepersImporter.Applied applied = new ShopkeepersImporter().apply(store, args[2], repository.stored());
                 return "Shopkeepers import transaction: " + applied.transaction() + "\nBound to installed Citizens NPCs: " + applied.bound() + "; waiting for their NPC: " + applied.waiting()
                         + (applied.problems().isEmpty() ? "" : "\nNot bound: " + String.join("; ", applied.problems()));
             }
@@ -55,14 +55,17 @@ public final class ConverterMain {
         if (args[0].equals("preview")) {
             if (args.length < 3) throw new IllegalArgumentException("preview requires input and output paths");
             Map<String, String> worlds = new TreeMap<>();
+            boolean factorGroups = false;
             for (int i = 3; i < args.length; i++) {
+                if (args[i].equals("--factor-groups")) { factorGroups = true; continue; }
                 String[] mapping = args[i].split("=", 2);
                 if (mapping.length != 2 || mapping[0].isBlank() || mapping[1].isBlank() || worlds.putIfAbsent(mapping[0], mapping[1]) != null)
                     throw new IllegalArgumentException("Invalid or duplicate world mapping: " + args[i]);
             }
-            CitizensImporter.Preview preview = importer.preview(Path.of(args[1]), Path.of(args[2]), worlds);
+            CitizensImporter.Preview preview = importer.preview(Path.of(args[1]), Path.of(args[2]), worlds, factorGroups);
             return "Preview " + preview.id() + " (converter v" + preview.converterVersion() + ")" + "\nRecords: " + preview.records() + ", valid: " + preview.valid() + ", unique skins: " + preview.skins()
                     + "\nConverted: " + preview.conversions()
+                    + (factorGroups ? "\nFactored groups: " + preview.groups() : "")
                     + "\nMigration warnings: " + preview.warningCount()
                     + "\nReport: " + preview.directory().resolve("report.json") + "\nNo NPCs activated. Inspect reports before explicit apply.";
         }
