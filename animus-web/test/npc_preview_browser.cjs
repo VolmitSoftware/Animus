@@ -4,7 +4,9 @@
 // and no console errors, at desktop width in the dark theme and phone width
 // in the light one, with no horizontal overflow. It also orbits the stage
 // from the keyboard and checks that a skin PNG of the wrong size says why
-// under the stage. Needs the asset pack (tool/extract_minecraft_world_assets.dart)
+// under the stage. A player with no skin wears its built-in placeholder in
+// classic and slim arms (served, decoded, not blank), and the inspector's
+// placeholder grid swaps it. Needs the asset pack (tool/extract_minecraft_world_assets.dart)
 // in the build.
 //
 //   python3 tool/serve_site.py --port <port>
@@ -65,6 +67,11 @@ async function run(browser, viewport, label, dark) {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  const placeholders = new Map();
+  page.on('response', response => {
+    const match = /\/assets\/skins\/placeholder\/([a-z-]+\.png)$/.exec(new URL(response.url()).pathname);
+    if (match) placeholders.set(match[1], response.status());
+  });
   await page.goto(process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })());
   await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
@@ -109,6 +116,42 @@ async function run(browser, viewport, label, dark) {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     assert.ok(overflow <= 0, `${id}: ${overflow}px of horizontal overflow`);
   }
+  // A player with no skin wears its placeholder, classic then slim.
+  const drawn = async n => page.waitForFunction(min => {
+    const element = document.querySelector('.animus-mc-gl-host');
+    return element && Number(element.getAttribute('data-frames')) > min && element.getAttribute('data-unbuilt') === '0';
+  }, n);
+  const wearsPlaceholder = async (file, shot) => {
+    await page.waitForFunction(name => performance.getEntriesByType('resource').some(entry => entry.name.endsWith(`/assets/skins/placeholder/${name}`)), file);
+    await drawn(0);
+    assert.equal(placeholders.get(file), 200, `${file}: served`);
+    assert.equal(await page.locator('.animus-mc-status').getByText('drawn plain white').count(), 0, `${file}: decoded`);
+    const png = await page.locator('.animus-mc-stage').screenshot();
+    const count = await colours(page, png);
+    assert.ok(count > 40, `${file}: canvas looks blank (${count} colours)`);
+    if (shots) fs.writeFileSync(path.join(shots, `${label}-${shot}.png`), png);
+  };
+  await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/players%2Fmerchant?view=preview`);
+  const skinState = page.locator('[data-testid="npc-skin-state"]');
+  await skinState.getByText(/the placeholder \w+ skin \(classic\), in this preview only; the definition names no skin/).waitFor();
+  const look = /placeholder (\w+) skin/.exec(await skinState.textContent())[1].toLowerCase();
+  await wearsPlaceholder(`${look}.png`, `placeholder-${look}-classic`);
+  await page.getByRole('button', {name: 'Slim', exact: true}).click();
+  await skinState.getByText(/the placeholder \w+ skin \(slim\)/).waitFor();
+  await wearsPlaceholder(`${look}-slim.png`, `placeholder-${look}-slim`);
+  // The inspector's grid picks another placeholder for the stage beside it.
+  const other = look === 'miner' ? 'Scholar' : 'Miner';
+  await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/players%2Fmerchant?view=visual`);
+  const appearance = page.locator('details[data-section="appearance"]');
+  if (!(await appearance.evaluate(element => element.open))) await appearance.locator('summary').first().click();
+  const grid = page.getByRole('radiogroup', {name: 'Placeholder skins'});
+  assert.equal(await grid.getByRole('radio').count(), 8);
+  assert.equal(await grid.getByRole('radio', {name: `Placeholder ${look[0].toUpperCase()}${look.slice(1)}`}).getAttribute('aria-checked'), 'true');
+  await grid.getByRole('radio', {name: `Placeholder ${other}`}).click();
+  assert.equal(await grid.getByRole('radio', {name: `Placeholder ${other}`}).getAttribute('aria-checked'), 'true');
+  await skinState.getByText(`the placeholder ${other} skin (classic)`).waitFor();
+  await wearsPlaceholder(`${other.toLowerCase()}.png`, `placeholder-${other.toLowerCase()}-picked`);
+  if (shots) fs.writeFileSync(path.join(shots, `${label}-placeholder-picker.png`), await page.screenshot({fullPage: true}));
   // Text above the hero: the hologram lines and the native nameplate.
   await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/players%2Fhero?view=split`);
   await page.locator('.animus-mc-text').first().waitFor();

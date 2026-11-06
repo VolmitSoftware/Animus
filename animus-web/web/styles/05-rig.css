@@ -84,7 +84,6 @@
   max-height: 22rem;
   overflow: auto;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
 }
 
 .animus-rig-bone {
@@ -92,7 +91,6 @@
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.35rem 0.5rem;
-  border-radius: calc(var(--animus-radius) - 0.2rem);
   cursor: pointer;
 }
 
@@ -251,7 +249,6 @@ html.light .animus-rig-bone-link {
 
 .animus-rig-names-box {
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
   padding: 0.25rem 0.75rem;
 }
 
@@ -309,7 +306,6 @@ html.light .animus-rig-bone-link {
   gap: 0.25rem;
   padding: 0.5rem;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
 }
 
 .animus-rig-name.is-broken {
@@ -346,7 +342,6 @@ html.light .animus-rig-bone-link {
   gap: 0.5rem 1rem;
   align-items: center;
   padding: 0.5rem;
-  border-radius: var(--animus-radius);
   background: color-mix(in srgb, var(--animus-muted) 8%, transparent);
 }
 
@@ -363,7 +358,6 @@ html.light .animus-rig-bone-link {
   align-items: center;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--animus-warning, #e2a336);
-  border-radius: var(--animus-radius);
 }
 
 .animus-rig-lanes {
@@ -389,7 +383,6 @@ html.light .animus-rig-bone-link {
   min-height: 1.75rem;
   padding: 0 0.4rem;
   border: 1px solid transparent;
-  border-radius: calc(var(--animus-radius) - 0.2rem);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -435,7 +428,6 @@ button.animus-rig-lane-label:focus-visible {
   position: relative;
   height: 1.75rem;
   margin: 0 0.6rem;
-  border-radius: calc(var(--animus-radius) - 0.2rem);
   background: color-mix(in srgb, var(--animus-muted) 12%, transparent);
 }
 
@@ -535,7 +527,6 @@ button.animus-rig-lane-label:focus-visible {
 }
 
 .animus-rig-event {
-  border-radius: 50%;
   transform: translate(-50%, -50%);
   cursor: pointer;
 }
@@ -573,7 +564,6 @@ button.animus-rig-lane-label:focus-visible {
   align-items: center;
   padding: 0.5rem;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
 }
 
 .animus-rig-keyframe > p {
@@ -626,6 +616,61 @@ button.animus-rig-lane-label:focus-visible {
   }
 }
 
+/* Touch: keyframes and events keep their small glyph but take a 44 px
+   target; the glyph is drawn by ::before so its states carry over. */
+@media (max-width: 760px), (pointer: coarse) {
+  .animus-rig-lane-keys {
+    min-height: 2.75rem;
+  }
+
+  .animus-rig-key,
+  .animus-rig-event,
+  .animus-rig-key.is-hidden,
+  .animus-rig-key.is-selected,
+  .animus-rig-event.is-selected,
+  .animus-rig-key:hover,
+  .animus-rig-event:hover {
+    width: 2.75rem;
+    height: 2.75rem;
+    border: 0;
+    background: transparent;
+  }
+
+  .animus-rig-key::before,
+  .animus-rig-event::before {
+    content: "";
+    position: absolute;
+    inset: calc(50% - 0.4rem);
+    box-sizing: border-box;
+    border: 1px solid var(--animus-panel);
+    background: var(--animus-muted);
+  }
+
+  .animus-rig-key.is-hidden::before {
+    border: 2px solid var(--animus-muted);
+    background: var(--animus-panel);
+  }
+
+  .animus-rig-key:hover::before,
+  .animus-rig-event:hover::before {
+    background: var(--secondary-foreground, var(--animus-muted));
+  }
+
+  .animus-rig-key.is-selected::before,
+  .animus-rig-event.is-selected::before {
+    border-color: var(--primary, #ff5fa8);
+    background: var(--primary, #ff5fa8);
+  }
+
+  /* Gizmo handles stay round (they are the 3D gizmo) at a 44 px target. */
+  .animus-rig-handle,
+  .animus-rig-handle.is-rotate,
+  .animus-rig-handle.is-scale {
+    r: 22px;
+    fill-opacity: 0.4;
+  }
+}
+
 @media (max-width: 520px) {
   .animus-rig-editor button:not(.animus-rig-key):not(.animus-rig-event),
   .animus-rig-editor select,
@@ -637,12 +682,6 @@ button.animus-rig-lane-label:focus-visible {
 
   .animus-rig-panes > * {
     flex: 1 1 0;
-  }
-
-  .animus-rig-key,
-  .animus-rig-event {
-    width: 1.1rem;
-    height: 1.1rem;
   }
 
   .animus-rig-lane-keys {

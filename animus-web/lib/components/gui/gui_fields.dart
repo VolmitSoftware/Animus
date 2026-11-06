@@ -557,7 +557,7 @@ class GuiTabs extends StatelessWidget {
         attributes: <String, String>{'role': 'tablist', 'aria-label': label},
         <Widget>[
           // Native buttons, as in the view tabs: an arcane button's inline
-          // style would hide the selected tab's pink rule.
+          // style would hide the selected tab's pink border.
           for (int index = 0; index < tabs.length; index++)
             dom.button(
               classes: 'animus-tab',

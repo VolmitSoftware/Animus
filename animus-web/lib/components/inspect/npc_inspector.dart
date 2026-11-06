@@ -87,7 +87,8 @@ class NpcInspector extends StatefulWidget {
   /// and the other NPCs (their tags and squads) are offered from here.
   final List<AnimusDocument> workspaceDocuments;
 
-  /// A skin PNG was loaded; the stage beside the inspector redraws.
+  /// A skin PNG was loaded or a placeholder picked; the stage beside the
+  /// inspector redraws.
   final void Function()? onSkinLoaded;
 
   /// Opens another document of the workspace.
@@ -402,6 +403,7 @@ class _NpcInspectorState extends State<NpcInspector> {
       children: <Widget>[
         const NpcSubhead('Skin'),
         SkinPicker(
+          npcId: component.document.id,
           value: skin,
           skins: _documents(DocumentKind.skin),
           diagnostics: _diagnostics,

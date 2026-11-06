@@ -12,6 +12,7 @@ import 'dart:typed_data';
 import 'package:web/web.dart' as web;
 
 import '../components/mc/mc_asset_loader.dart';
+import '../logic/npc/placeholder_skins.dart';
 import 'skin_textures.dart';
 
 final class LoadedSkin {
@@ -33,6 +34,17 @@ final class SkinImages {
   static final Map<String, LoadedSkin> _loaded = <String, LoadedSkin>{};
 
   static LoadedSkin? forKey(String key) => _loaded[key];
+
+  /// Placeholder looks picked this page session, by NPC document id.
+  static final Map<String, String> _placeholders = <String, String>{};
+
+  /// The placeholder look [npcId] wears when it has no skin texture here:
+  /// the one picked this session, else [defaultPlaceholderLook].
+  static PlaceholderLook placeholderLook(String npcId) => placeholderLookById(_placeholders[npcId]) ?? defaultPlaceholderLook(npcId);
+
+  static PlaceholderSkin placeholderFor(String npcId, {required bool slim}) => placeholderSkinFor(placeholderLook(npcId), slim: slim);
+
+  static void choosePlaceholder(String npcId, PlaceholderLook look) => _placeholders[npcId] = look.id;
 
   /// The skin under [key], registering [png] (a 64x64 PNG the workspace
   /// keeps, see `skinImagePath`) the first time it is asked for.

@@ -100,7 +100,6 @@
   gap: 0.5rem;
   padding: 0.3rem 0.5rem;
   border: 1px solid transparent;
-  border-radius: var(--animus-radius);
   background: none;
   color: inherit;
   font: inherit;
@@ -176,7 +175,6 @@
 .animus-npc-folder-form {
   padding: 0.5rem;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
 }
 
 .animus-npc-folder-actions .animus-error {
@@ -211,7 +209,6 @@
   max-width: 100%;
   padding: 0.0625rem 0.45rem;
   border: 1px solid var(--animus-border);
-  border-radius: 999px;
   font-size: 0.75rem;
   overflow-wrap: anywhere;
 }
@@ -233,7 +230,6 @@
   gap: 0.5rem;
   padding: 0.625rem;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
   background: var(--animus-panel);
   min-width: 0;
 }
@@ -265,7 +261,6 @@
 .animus-npc-list {
   display: grid;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
   min-width: 0;
   overflow: hidden;
 }
@@ -408,7 +403,6 @@
   gap: 0.5rem;
   padding: 0.5rem;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
   min-width: 0;
 }
 
@@ -422,7 +416,6 @@
   width: 2.75rem;
   height: 2.75rem;
   border: 1px solid var(--animus-border);
-  border-radius: 0.25rem;
   background: color-mix(in srgb, var(--animus-border) 60%, transparent);
   color: var(--animus-muted);
 }
@@ -466,7 +459,6 @@
   gap: 0.5rem;
   padding: 0.375rem;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
   background: none;
   color: inherit;
   font: inherit;
@@ -486,7 +478,6 @@
   place-items: center;
   width: 2rem;
   height: 2rem;
-  border-radius: 0.25rem;
   background-repeat: no-repeat;
   background-size: 800% 800%;
   background-position: 14.2857% 14.2857%;
@@ -508,7 +499,6 @@
 .animus-skin-face.is-large {
   width: 6rem;
   height: 6rem;
-  border-radius: var(--animus-radius);
 }
 
 .animus-skin-card-text {
@@ -554,7 +544,6 @@
   width: 100%;
   aspect-ratio: 1 / 1;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
   background: var(--animus-panel);
   touch-action: none;
   user-select: none;
@@ -670,7 +659,6 @@ html.light .animus-route-dot {
   gap: 0.375rem;
   padding: 0.5rem;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
 }
 
 .animus-route-coords {
@@ -704,7 +692,6 @@ html.light .animus-route-dot {
   width: 100%;
   padding: 0.25rem 0.5rem;
   border: 1px solid transparent;
-  border-radius: var(--animus-radius);
   background: none;
   color: inherit;
   font: inherit;
@@ -732,7 +719,6 @@ html.light .animus-route-dot {
   gap: 0.375rem;
   padding: 0.5rem;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
 }
 
 /* Dialogue */
@@ -748,7 +734,6 @@ html.light .animus-route-dot {
   gap: 0.375rem;
   padding: 0.5rem;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
   min-width: 0;
 }
 
@@ -802,7 +787,6 @@ html.light .animus-route-dot {
   gap: 0.375rem;
   padding: 0.5rem;
   border: 1px dashed var(--animus-border);
-  border-radius: var(--animus-radius);
   min-width: 0;
 }
 
@@ -840,7 +824,6 @@ html.light .animus-route-dot {
 .animus-npc-section > summary:focus-visible {
   outline: 2px solid var(--ring, #ff5fa8);
   outline-offset: 2px;
-  border-radius: 0.25rem;
 }
 
 .animus-npc-section-summary {
@@ -902,7 +885,6 @@ html.light .animus-route-dot {
   justify-items: center;
   gap: 0.125rem;
   padding: 0.625rem;
-  border-radius: var(--animus-radius);
   background: #0d0d0f;
   color: #f3f0f2;
   font-family: "Minecraft", var(--font-mono);
