@@ -9,6 +9,7 @@ import art.arcane.animus.core.mount.SeatGeometry;
 import art.arcane.animus.core.npc.ArmorStandLook;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcAppearance;
+import art.arcane.animus.core.npc.NpcAttributes;
 import art.arcane.animus.core.npc.NpcPose;
 import art.arcane.animus.core.presentation.BodyLook;
 import art.arcane.animus.core.presentation.BodyPose;
@@ -70,6 +71,7 @@ import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket;
 import net.minecraft.network.protocol.game.ClientboundSetPassengersPacket;
 import net.minecraft.network.protocol.game.ClientboundSetPlayerTeamPacket;
+import net.minecraft.network.protocol.game.ClientboundUpdateAttributesPacket;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
@@ -388,6 +390,16 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         return send(session, body, PacketKind.EQUIPMENT, List.of(new ClientboundSetEquipmentPacket(body.entityId, entries)));
     }
 
+    @Override public CompletionStage<Void> attributes(ServerPlayer viewer, BodyTransport.Body presented, NpcAttributes values) {
+        Body body = checkBody(presented);
+        Session session = existing(viewer);
+        if (session == null) return unwatched("Viewer is not watched");
+        if (session.visible.get(body.entityId) != body) return failed("Body is not visible to this viewer");
+        ClientboundUpdateAttributesPacket packet = ModAttributes.packet(body.entityId, body.type, values);
+        if (packet == null) return CompletableFuture.completedFuture(null);
+        return send(session, body, PacketKind.METADATA, List.of(packet));
+    }
+
     @Override public CompletionStage<Void> despawn(ServerPlayer viewer, BodyTransport.Body presented) {
         Body body = checkBody(presented);
         Session session = sessions.get(viewer.getUUID());
@@ -617,8 +629,10 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (body.playerInfo != null) values.add(SynchedEntityData.DataValue.create(AvatarDataAccess.animus$skinLayers(), (byte) 0x7f));
         values.addAll(bodyValues(look, body.typeKey));
         if (!values.isEmpty()) packets.add(new ClientboundSetEntityDataPacket(body.entityId, values));
+        ClientboundUpdateAttributesPacket attributes = ModAttributes.packet(body.entityId, body.type, look.traits().attributes());
+        if (attributes != null) packets.add(attributes);
         if (body.displayIds.length > 0) {
-            double lift = BodyLook.lift(body.height, body.seat.seatY(), look.aboveNativeNameplate());
+            double lift = BodyLook.lift(body.height, body.seat.seatY(), look.aboveNativeNameplate(), look.traits().attributes().scale());
             for (int row = 0; row < body.displayIds.length; row++) {
                 BodyLook.TextRow text = look.rows().get(row);
                 packets.add(new ClientboundAddEntityPacket(body.displayIds[row], body.displayUuids[row], pose.x(), pose.y() + body.height, pose.z(), 0f, 0f, textDisplayType, 0, Vec3.ZERO, 0d));

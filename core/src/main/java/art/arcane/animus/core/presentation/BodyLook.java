@@ -153,8 +153,8 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
         return (byte) ((look.small() ? 0x01 : 0) | (look.arms() ? 0x04 : 0) | (look.basePlate() ? 0 : 0x08));
     }
 
-    /** Height above the passenger point at which the lowest text row's bottom sits. */
-    public static double lift(double bodyHeight, double seatY, boolean aboveNativeNameplate) {
-        return bodyHeight - seatY + (aboveNativeNameplate ? 0.55 : 0.3);
+    /** Height above the passenger point at which the lowest text row's bottom sits; the client scales the body and its passenger point by {@code scale}. */
+    public static double lift(double bodyHeight, double seatY, boolean aboveNativeNameplate, double scale) {
+        return scale * (bodyHeight - seatY) + (aboveNativeNameplate ? 0.55 : 0.3);
     }
 }

@@ -16,7 +16,7 @@ public final class VirtualNpcState {
     }
 
     private final UUID npcId;
-    private final Hitbox localBounds;
+    private Hitbox localBounds;
     private final double maximumHealth;
     private WorldPosition position;
     private double health;
@@ -78,6 +78,13 @@ public final class VirtualNpcState {
     public synchronized Snapshot respawn(WorldPosition spawn) {
         Objects.requireNonNull(spawn, "spawn");
         advance(); position = spawn; health = maximumHealth; active = true;
+        return snapshot();
+    }
+
+    /** A runtime scale change: new bounds about the same feet. */
+    public synchronized Snapshot resize(double width, double height) {
+        localBounds = Hitbox.atFeet(Vec3.ZERO, width, height);
+        advance();
         return snapshot();
     }
 

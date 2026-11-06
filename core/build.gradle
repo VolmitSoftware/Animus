@@ -80,3 +80,17 @@ tasks.named('processResources', ProcessResources).configure {
     }
 }
 tasks.named('compileJava').configure { dependsOn('generateBuildIdentity') }
+
+// Rewrites VanillaAttributes.java from the server jar of every supported target, as Fabric Loom caches them. Build the
+// Fabric jar of a target first if its server jar is missing.
+tasks.register('generateAttributeTable', Exec) {
+    group = 'build'
+    description = 'Writes the vanilla attribute table from the supported server jars.'
+    File loom = new File(gradle.gradleUserHomeDir, 'caches/fabric-loom')
+    List<String> arguments = [javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }.get().executablePath.asFile.absolutePath,
+        file('tool/AttributeTableGenerator.java').absolutePath, file('src/main/java/art/arcane/animus/core/npc/VanillaAttributes.java').absolutePath]
+    minecraftTargets.keySet().each { String target ->
+        arguments.add("${target}=${new File(loom, "${target}/minecraft-extracted_server.jar").absolutePath}".toString())
+    }
+    commandLine(arguments)
+}

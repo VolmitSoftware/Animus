@@ -14,6 +14,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
 import '../logic/gui/gui_json.dart';
+import '../logic/npc/npc_attributes.dart';
 import '../logic/npc/route_model.dart';
 import '../logic/offline/new_documents.dart';
 import '../logic/rig_sampler.dart';
@@ -370,6 +371,7 @@ class _NpcPreviewState extends State<NpcPreview> {
         ..._fact('Body', scene.presentable ? look.type : '${look.type} (not presented)'),
         if (component.rig != null)
           ..._fact('Rig', '${component.rig!.id}${_animation == null ? ', rest pose' : ', $_animation at tick ${_tick.toStringAsFixed(1)}${_backToIdle ? ' (back to idle)' : ''}'}'),
+        if (look.scale != 1) ..._fact('Scale', '${formatAttribute(look.scale)} times the vanilla size'),
         if (player) ..._fact('Pose', look.pose.name),
         if (player) ...<Widget>[
           const dom.dt(<Widget>[Component.text('Skin')]),

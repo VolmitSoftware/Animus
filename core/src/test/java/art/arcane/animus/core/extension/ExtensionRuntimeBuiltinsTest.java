@@ -65,6 +65,7 @@ class ExtensionRuntimeBuiltinsTest {
         @Override public void pose(NpcHandle npc, String pose) { throw new AssertionError(); }
         @Override public void setAppearance(NpcHandle npc, AppearanceChange change) { throw new AssertionError(); }
         @Override public void setEquipment(NpcHandle npc, EquipmentSlot slot, Optional<String> item) { throw new AssertionError(); }
+        @Override public void setAttribute(NpcHandle npc, String attribute, java.util.OptionalDouble value) { throw new AssertionError(); }
         @Override public int playSound(NpcHandle npc, Audience audience, SoundEffect sound) { throw new AssertionError(); }
         @Override public int spawnParticle(NpcHandle npc, Audience audience, ParticleEffect particle) { throw new AssertionError(); }
         @Override public void combat(NpcHandle npc, CombatOperation operation, Optional<UUID> target) { throw new AssertionError(); }

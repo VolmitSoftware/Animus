@@ -27,6 +27,7 @@ import art.arcane.animus.core.navigation.PathPlanner;
 import art.arcane.animus.core.navigation.WaypointSettings;
 import art.arcane.animus.core.control.LookClose;
 import art.arcane.animus.core.npc.EquipmentSlot;
+import art.arcane.animus.core.npc.NpcAttributes;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.presentation.BodyPose;
 import art.arcane.animus.core.presentation.BodySkin;
@@ -85,6 +86,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
@@ -960,6 +962,24 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         representBody(value);
     }
     /** An empty stack clears the slot. Runtime-only, like appearance. */
+    @Override public void setAttribute(String id, String attribute, OptionalDouble next) {
+        Value value = navigable(id);
+        NpcAttributes updated = RuntimeAttributes.change(value.spec.appearance().traits().attributes(), value.attributes, attribute, next);
+        if (updated.equals(value.attributes)) return;
+        double scale = value.attributes.scale();
+        value.attributes = updated;
+        value.attributeRevision++;
+        com.google.gson.JsonObject definition = RuntimeAttributes.definition(value.spec.definition().json(), updated);
+        value.movement = MovementSettings.parse(definition);
+        value.falls = MovementSettings.falls(value.spec.type(), definition);
+        if (updated.scale() == scale) return;
+        Geometry geometry = geometries.get(value.spec.type());
+        value.state.resize(geometry.width * updated.scale(), geometry.height * updated.scale());
+        index.upsert(value.state.snapshot());
+        // Text height and rig bones follow the scale, so the body is presented again; a rig binds again at the new size.
+        if (value.rigId != null) bindRig(value);
+        representBody(value);
+    }
     @Override public void setEquipment(String id, EquipmentSlot slot, I item) {
         Value value = navigable(id);
         if (!packets.equipmentAvailable()) throw new IllegalStateException("Equipment packets are unavailable on this server version");
@@ -988,7 +1008,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         RigCatalog catalog = runtime.rigs().catalog();
         value.rigGeneration = catalog.generation();
         List<String> problems = new ArrayList<>();
-        value.rig = NpcRig.bind(value.rigId, catalog, value.seat, (NpcItem item, String path, List<String> errors) -> host.item(item, path, errors), host.emptyItem(), problems).orElse(null);
+        value.rig = NpcRig.bind(value.rigId, catalog, value.seat, value.attributes.scale(), (NpcItem item, String path, List<String> errors) -> host.item(item, path, errors), host.emptyItem(), problems).orElse(null);
         if (value.rig == null) value.rigProblem = String.join("; ", problems.subList(0, Math.min(3, problems.size())));
     }
     private static boolean walking(PersistedNpcService<?, ?>.Value value) {
@@ -1638,7 +1658,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (motionCells < wanted && motionCells < navigationSettings.motionCellsPerTick()) return false;
         WorldPosition at = value.state.snapshot().position();
         boolean swims = BodyMobility.forBody(value.spec.type(), moveWidth(value), moveHeight(value)).supports(MovementProfile.Mode.SWIM);
-        IdleFall.Step step = IdleFall.step(at.point(), value.fallSpeed, moveWidth(value), moveHeight(value), swims, host.collision(at.world()));
+        IdleFall.Step step = IdleFall.step(at.point(), value.fallSpeed, value.movement.gravity(), moveWidth(value), moveHeight(value), swims, host.collision(at.world()));
         motionCells -= step.sampled();
         value.fallSpeed = step.speed();
         boolean falling = step.outcome() == IdleFall.Outcome.FALLING;
@@ -1674,7 +1694,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             WorldPosition at = value.state.snapshot().position();
             if (!falls(value) || !host.worldLoaded(at.world())) { value.supportQueued = false; value.fallSpeed = 0; continue; }
             boolean swims = BodyMobility.forBody(value.spec.type(), moveWidth(value), moveHeight(value)).supports(MovementProfile.Mode.SWIM);
-            IdleFall.Step step = IdleFall.step(at.point(), value.fallSpeed, moveWidth(value), moveHeight(value), swims, host.collision(at.world()));
+            IdleFall.Step step = IdleFall.step(at.point(), value.fallSpeed, value.movement.gravity(), moveWidth(value), moveHeight(value), swims, host.collision(at.world()));
             cells -= step.sampled();
             value.fallSpeed = step.speed();
             boolean falling = step.outcome() == IdleFall.Outcome.FALLING;
@@ -1973,9 +1993,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         VirtualNpcState state;
         if (previous != null && previous.spec.definition().uuid().equals(spec.definition().uuid())) {
             WorldPosition next = previous.spec.position().equals(spec.position()) ? previous.state.snapshot().position() : spec.position();
-            state = previous.state.reconfigured(next, geometry.width, geometry.height, maximumHealth(spec));
+            state = previous.state.reconfigured(next, geometry.width * scale(spec), geometry.height * scale(spec), maximumHealth(spec));
         } else {
-            state = new VirtualNpcState(spec.definition().uuid(), spec.position(), geometry.width, geometry.height, maximumHealth(spec));
+            state = new VirtualNpcState(spec.definition().uuid(), spec.position(), geometry.width * scale(spec), geometry.height * scale(spec), maximumHealth(spec));
             state.spawn();
         }
         boolean sameNpc = previous != null && previous.spec.definition().uuid().equals(spec.definition().uuid());
@@ -1992,6 +2012,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     public static double maximumHealth(DefinitionSpec<?> spec) {
         return CombatSettings.active(spec.definition()).map((CombatSettings combat) -> combat.defense().maximumHealth()).orElse(20.0);
     }
+    /** The body size multiplier: hitbox, reach and path clearance follow it, as the viewers' clients draw it. */
+    public static double scale(DefinitionSpec<?> spec) { return spec.appearance().traits().attributes().scale(); }
     private void remove(Entry entry) {
         if (entry.task != null) { entry.task.cancelled = true; entry.task = null; }
         if (entry.value != null) {
@@ -2076,6 +2098,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                     sent++;
                     if (!current(viewer)) return sent;
                 }
+                if (body.spawnFinished && !body.attributing && sent < packetBudget && body.deliveredAttributeRevision != body.value.attributeRevision) {
+                    if (!attribute(viewer, body)) return sent;
+                    sent++;
+                    if (!current(viewer)) return sent;
+                }
             }
             sent += mountRuntime.updatePassengers(viewer, packetBudget - sent);
         }
@@ -2109,9 +2136,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     }
     private void spawn(Viewer viewer, Value value) {
         try {
-            BodyTransport.Body body = NpcPresentation.body(packets, value.spec, value.displayName, value.displaySkin);
+            BodyTransport.Body body = NpcPresentation.body(packets, value.spec, value.displayName, value.displaySkin, value.attributes);
             Presented presented = new Presented(value, body); viewer.visible.put(body.uuid(), presented); showing.shown(body.uuid(), viewer);
-            presented.deliveredSwings = value.swings; presented.deliveredAttackSwings = value.attackSwings;
+            presented.deliveredSwings = value.swings; presented.deliveredAttackSwings = value.attackSwings; presented.deliveredAttributeRevision = value.attributeRevision;
             viewer.presentationOrder.addLast(presented); viewer.cosmeticOrder.addLast(presented);
             viewer.nativeIds += body.entityIds().length; viewer.pendingSpawns++;
             presented.deliveredPoseRevision = value.poseRevision;
@@ -2177,6 +2204,22 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             body.deliveredEquipmentRevision = revision;
             cosmeticFailed(viewer, "equipment", body.value, failure);
         }
+        return true;
+    }
+    /** Authoritative: a runtime attribute change on a visible body. False when the viewer's outbox is full; the latest attributes go on a later turn. */
+    private boolean attribute(Viewer viewer, Presented body) {
+        if (!admit(viewer, PresentationPressure.Tier.AUTHORITATIVE)) return false;
+        long revision = body.value.attributeRevision;
+        NpcAttributes attributes = body.value.attributes;
+        body.attributing = true;
+        try {
+            handOver(viewer, () -> packets.attributes(viewer.player, body.body, attributes)).whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
+                if (!current(viewer) || body.retired || viewer.visible.get(body.body.uuid()) != body) return;
+                body.attributing = false;
+                if (failure != null) { fail(viewer, "attributes", body.value, failure); return; }
+                body.deliveredAttributeRevision = revision;
+            }));
+        } catch (RuntimeException failure) { fail(viewer, "attributes", body.value, failure); }
         return true;
     }
     /** Cosmetic: the playback pose of a body, sent as metadata. False when the outbox has no room for cosmetic work. */
@@ -2409,7 +2452,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         final MountReference mountReference; final RideSettings ride; final SeatGeometry seat;
         boolean supportQueued; double fallSpeed;
         final LookClose lookClose; long nextLook, nextRandomLook;
-        final MovementSettings movement; final boolean falls, routeSpeedDeclared; final DoorPassage doors;
+        MovementSettings movement; boolean falls; final boolean routeSpeedDeclared; final DoorPassage doors;
+        /** The definition's attributes with runtime changes on top; {@link #attributeRevision} moves with every runtime change. */
+        NpcAttributes attributes; long attributeRevision;
         final DragonMotion dragonMotion = new DragonMotion(); int dragonPhase = DragonBody.PHASE_HOVERING;
         CompletableFuture<Void> routeWatch;
         String displayName; BodySkin displaySkin; AppearanceTask appearanceTask;
@@ -2423,6 +2468,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             mountReference = MountDeclaration.parse(spec.definition().json()).orElse(null);
             ride = RideSettings.parse(spec.definition().json()).orElse(null);
             lookClose = LookClose.parse(spec.definition().json()).orElse(null);
+            attributes = spec.appearance().traits().attributes();
             movement = MovementSettings.parse(spec.definition().json());
             doors = new DoorPassage(spec.definition().uuid());
             falls = MovementSettings.falls(spec.type(), spec.definition().json());
@@ -2460,7 +2506,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     final class Presented {
         final Value value; final BodyTransport.Body body;
         boolean bound, retired, spawnFinished, despawnFinished, moving, equipping, looking;
-        long deliveredPoseRevision, deliveredEquipmentRevision, deliveredLookRevision, deliveredSwings, deliveredAttackSwings;
+        long deliveredPoseRevision, deliveredEquipmentRevision, deliveredLookRevision, deliveredSwings, deliveredAttackSwings, deliveredAttributeRevision;
+        boolean attributing;
         List<Integer> sentRoster = List.of();
         int sentDragonPhase = DragonBody.PHASE_HOVERING;
         BodyTransport.Bones bones; RigView view; long rigIdentity, socketRevision; boolean bonesShown, rigFailed;
