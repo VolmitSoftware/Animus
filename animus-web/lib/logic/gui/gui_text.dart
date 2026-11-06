@@ -1,5 +1,5 @@
 /// GUI text as styled runs: `&` and section-sign codes, `&#RRGGBB`, and the
-/// common MiniMessage colour and style tags (docs/gui.md). Holes are filled
+/// common MiniMessage colour and style tags (wiki animus/11-guis-holograms-menus). Holes are filled
 /// with sample values first. Unknown tags stay as text, as MiniMessage
 /// leaves them.
 library;

@@ -1,6 +1,6 @@
 /// A line-for-line copy of core's `DenizenConverter`: Denizen scripts and flags become Animus behaviors in the
 /// `denizen` namespace and behavior state, with the same staged bytes as the server. Everything that does not convert
-/// is listed in the report with its reason. See docs/migrating-from-citizens.md.
+/// is listed in the report with its reason. See wiki animus/13-migrating-from-citizens.
 library;
 
 import 'dart:collection';

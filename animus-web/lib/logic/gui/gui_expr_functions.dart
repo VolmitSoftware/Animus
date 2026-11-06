@@ -1,7 +1,7 @@
 /// The expression standard library, copied from Gloss Web's
 /// `preview_expr_functions.dart` (Gloss commit in schema/gloss/source.json),
 /// with Gloss's text animation functions, plus Animus's `len`, `contains`,
-/// `lower` and `upper` (docs/gui.md). [previewStdFunction] returns null for
+/// `lower` and `upper` (wiki animus/11-guis-holograms-menus). [previewStdFunction] returns null for
 /// an unknown name.
 library;
 
