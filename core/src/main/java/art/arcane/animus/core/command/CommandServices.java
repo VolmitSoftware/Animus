@@ -22,11 +22,11 @@ import java.util.function.Supplier;
 public record CommandServices(AnimusRuntime runtime, Executor files, NpcRuntime<?, ?> living, Supplier<BehaviorCommands> behaviors,
                               ExtensionRuntime extensions, BuiltinCapabilities builtins, CombatControl combat, ShopService<?, ?> shops,
                               HoloService<?, ?> guis, BuildCommands builds, EditorCommands editor, DebugCommands debug, ProofControl proof,
-                              Supplier<Collection<String>> players, BooleanSupplier stopping) {
+                              RecordingControl recordings, Supplier<Collection<String>> players, BooleanSupplier stopping) {
     public CommandServices {
         Objects.requireNonNull(runtime); Objects.requireNonNull(files); Objects.requireNonNull(living); Objects.requireNonNull(behaviors);
         Objects.requireNonNull(combat); Objects.requireNonNull(shops); Objects.requireNonNull(guis); Objects.requireNonNull(builds);
-        Objects.requireNonNull(editor); Objects.requireNonNull(debug); Objects.requireNonNull(proof); Objects.requireNonNull(players);
+        Objects.requireNonNull(editor); Objects.requireNonNull(debug); Objects.requireNonNull(proof); Objects.requireNonNull(recordings); Objects.requireNonNull(players);
         Objects.requireNonNull(stopping);
     }
 }

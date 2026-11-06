@@ -1,4 +1,4 @@
-package art.arcane.animus.bukkit.recording;
+package art.arcane.animus.core.recording;
 
 import java.util.HashMap;
 import java.util.List;

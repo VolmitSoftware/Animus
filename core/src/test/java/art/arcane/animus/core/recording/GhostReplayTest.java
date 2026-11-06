@@ -1,4 +1,4 @@
-package art.arcane.animus.bukkit.recording;
+package art.arcane.animus.core.recording;
 
 import art.arcane.animus.core.config.RecordingSettings;
 import art.arcane.animus.core.mount.SeatGeometry;
@@ -9,9 +9,6 @@ import art.arcane.animus.core.npc.NpcPose;
 import art.arcane.animus.core.presentation.BodyPose;
 import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.presentation.BodyTransport;
-import art.arcane.animus.core.recording.RecordingDocument;
-import art.arcane.animus.core.recording.RecordingEvent;
-import art.arcane.animus.core.recording.RecordingFrame;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
