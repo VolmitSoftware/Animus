@@ -36,7 +36,7 @@ async function run(browser, viewport, label, theme) {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   // The brand lane ships the mark asset; until then its 404 is expected.
-  page.on('console', message => { if (message.type() === 'error' && !message.location().url.includes('animus-mark')) errors.push(`${message.text()} ${message.location().url}`); });
+  page.on('console', message => { if (message.type() === 'error') errors.push(`${message.text()} ${message.location().url}`); });
   const requests = [];
   page.on('request', request => requests.push(request.url()));
   await page.goto(process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })());

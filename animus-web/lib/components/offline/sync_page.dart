@@ -23,7 +23,7 @@ import '../../state/workspace_sync.dart';
 import '../gui/gui_fields.dart';
 import '../server/connection_pill.dart';
 import '../server/live_confirm.dart';
-import '../server/server_mark.dart';
+import '../brand_mark.dart';
 import 'offline_fields.dart';
 
 class SyncPage extends StatefulWidget {
@@ -185,7 +185,7 @@ class _SyncPageState extends State<SyncPage> {
               classes: 'animus-sync-empty',
               attributes: const <String, String>{'data-testid': 'sync-no-server'},
               <Widget>[
-                serverMark(),
+                const BrandMark(size: 48, classes: 'animus-server-mark'),
                 const dom.p(<Widget>[
                   Component.text(
                     'No server is paired in this browser yet. Run /animus editor pair on the server, then paste the link it prints under Servers on the home page.',

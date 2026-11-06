@@ -112,8 +112,6 @@ function watch(page, errors, allow) {
   page.on('console', (message) => {
     if (message.type() !== 'error') return;
     const text = message.text();
-    // The brand lane ships the mark asset; until then its 404 is expected.
-    if (/animus-mark\.svg/.test(text) || (/Failed to load resource: the server responded with a status of 404/.test(text) && message.location().url.includes('animus-mark'))) return;
     if (allow(text)) return;
     errors.push(text);
   });

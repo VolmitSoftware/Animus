@@ -101,7 +101,7 @@ async function run(browser, viewport, label, skinFile) {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   // The brand lane ships the mark asset; until then its 404 is expected.
-  page.on('console', (message) => { if (message.type() === 'error' && !message.location().url.includes('animus-mark')) errors.push(`${message.text()} (${message.location().url})`); });
+  page.on('console', (message) => { if (message.type() === 'error') errors.push(`${message.text()} (${message.location().url})`); });
 
   // A blank, named workspace lands on the New page.
   await go(page, '');

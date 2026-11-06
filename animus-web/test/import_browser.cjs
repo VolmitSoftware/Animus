@@ -96,8 +96,6 @@ async function run(browser, width, height, label, scratch, theme) {
   page.on('console', (message) => {
     if (message.type() !== 'error') return;
     if ((directDown || forced) && /Failed to load resource|WebSocket connection|net::ERR_/.test(message.text())) return;
-    // The brand lane ships the mark asset; until then its 404 is expected.
-    if (message.location().url.includes('animus-mark')) return;
     errors.push(message.text());
   });
   page.on('pageerror', (error) => errors.push(String(error)));

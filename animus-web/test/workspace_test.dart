@@ -5,6 +5,7 @@ import 'package:animus_editor/logic/shared_schemas.dart';
 import 'package:animus_editor/model/animus_document.dart';
 import 'package:animus_editor/model/document_kind.dart';
 import 'package:animus_editor/state/editor_store.dart';
+import 'package:animus_editor/state/session_owner.dart';
 import 'package:animus_editor/state/workspace_coordination.dart';
 import 'package:animus_editor/state/workspace_repository.dart';
 import 'package:animus_editor/state/workspace_route.dart';
@@ -199,6 +200,30 @@ void main() {
       expect(second.ownedByThisTab, isTrue);
       second.closeWorkspace();
       expect(await locks.tab().tryHold(workspaceLockName(snapshot.id)), isTrue);
+    });
+
+    test('should run live editing in the tab that owns the workspace and hand it over', () async {
+      final SharedWorkspaceLocks locks = SharedWorkspaceLocks();
+      final EditorStore first = EditorStore(repository: repository, schemas: SharedSchemas.embedded, newId: () => 'ws-live', locks: locks.tab());
+      final EditorStore second = EditorStore(repository: repository, schemas: SharedSchemas.embedded, locks: locks.tab());
+      final WorkspaceSnapshot snapshot = await first.openFiles('Export', fixtureFiles('export'));
+      await second.openWorkspace(snapshot.id);
+      final StoreOwner owning = StoreOwner(first);
+      final StoreOwner waiting = StoreOwner(second);
+      final List<bool> heard = <bool>[];
+      waiting.changes.listen(heard.add);
+      expect(owning.owned, isTrue);
+      expect(owning.waiting, isFalse);
+      expect(waiting.owned, isFalse);
+      expect(waiting.waiting, isTrue);
+      first.closeWorkspace();
+      await pumpEventQueue();
+      expect(waiting.owned, isTrue);
+      expect(waiting.waiting, isFalse);
+      expect(heard, <bool>[true]);
+      await owning.release();
+      await waiting.release();
+      second.closeWorkspace();
     });
 
     test('should carry tab notices as JSON and drop malformed ones', () {

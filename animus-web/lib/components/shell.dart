@@ -7,6 +7,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../logic/data_folder.dart';
 import '../logic/gui/gloss_bundle.dart';
 import '../logic/gui/gui_catalog.dart';
 import '../logic/gui/gui_json.dart';
@@ -31,6 +32,7 @@ import 'gui/gui_fields.dart';
 import 'npc/npc_browser.dart';
 import 'offline/home_screen.dart';
 import 'offline/new_document_page.dart';
+import 'offline/offline_fields.dart';
 import 'offline/sync_page.dart';
 import 'rig/rig_actions.dart';
 import 'rig/rig_editor.dart';
@@ -81,6 +83,10 @@ class _EditorShellState extends State<EditorShell> {
   bool _compact = false;
   bool _drawerOpen = false;
   bool _paletteOpen = false;
+
+  /// A Gloss bundle whose documents would replace ones the workspace has,
+  /// waiting for the user to confirm.
+  ({GlossImport imported, String file, List<DocumentLocation> clashes})? _glossPending;
   void Function()? _stopKeys;
   void Function()? _stopMedia;
 
@@ -235,21 +241,46 @@ class _EditorShellState extends State<EditorShell> {
       ArcaneSonner.error(imported.error!);
       return;
     }
+    final List<DocumentLocation> clashes = glossConflicts(imported, component.store.workspace?.documents ?? const <AnimusDocument>[]);
+    if (clashes.isNotEmpty) {
+      setState(() => _glossPending = (imported: imported, file: picked.$1, clashes: clashes));
+      return;
+    }
+    await _commitGloss(imported, picked.$1);
+  }
+
+  Future<void> _commitGloss(GlossImport imported, String file) async {
+    if (_glossPending != null) setState(() => _glossPending = null);
     await component.store.commit(
       documents: <DocumentChange>[
         for (final GlossImportedDocument document in imported.documents) DocumentChange(document.location.kind, document.location.id, document.source),
       ],
-      label: 'import ${picked.$1}',
+      label: 'import $file',
     );
     final int invalid = imported.documents
         .where((GlossImportedDocument d) => !(component.store.document(d.location.kind, d.location.id)?.valid ?? false))
         .length;
     final String skipped = imported.skipped.isEmpty ? '' : ' Skipped: ${imported.skipped.join('; ')}.';
+    final String notes = imported.notes.isEmpty ? '' : ' ${imported.notes.join(' ')}';
     if (invalid > 0) {
-      ArcaneSonner.warning('Imported ${imported.documents.length} documents from ${picked.$1}; $invalid use features Animus refuses.$skipped');
+      ArcaneSonner.warning('Imported ${imported.documents.length} documents from $file; $invalid use features Animus refuses.$skipped$notes');
     } else {
-      ArcaneSonner.success('Imported ${imported.documents.length} documents from ${picked.$1}.$skipped');
+      ArcaneSonner.success('Imported ${imported.documents.length} documents from $file.$skipped$notes');
     }
+  }
+
+  Widget _glossConfirm(({GlossImport imported, String file, List<DocumentLocation> clashes}) pending) {
+    final List<DocumentLocation> clashes = pending.clashes;
+    final String named = clashes.take(5).map((DocumentLocation l) => '${l.kind.label} ${l.id}').join(', ');
+    final String more = clashes.length > 5 ? ' and ${clashes.length - 5} more' : '';
+    return ConfirmRow(
+      key: const ValueKey<String>('gloss-confirm'),
+      question: 'Replace ${clashes.length} ${clashes.length == 1 ? 'document' : 'documents'} with the copies in ${pending.file}?',
+      detail: '$named$more. Undo brings them back.',
+      confirmLabel: 'Replace and import',
+      onConfirm: () => _commitGloss(pending.imported, pending.file),
+      onCancel: () => setState(() => _glossPending = null),
+    );
   }
 
   /// Where [document] goes under [id]: a behavior inside a pack stays in its
@@ -454,6 +485,7 @@ class _EditorShellState extends State<EditorShell> {
         session: component.session,
       ),
       dom.main_(id: mainId, classes: 'animus-main', attributes: const <String, String>{'tabindex': '-1'}, <Widget>[
+        if (_glossPending != null) _glossConfirm(_glossPending!),
         if (session != null)
           LiveBar(
             session: session,

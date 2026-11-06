@@ -1,21 +1,6 @@
 /* NPC browser, typed NPC editors, route editor and dialogue view.
    Cards and rows get a full hairline border, never a one-sided stripe. */
 
-.animus-tree-group h3 .animus-tree-browse {
-  margin-left: auto;
-  font-size: 0.75rem;
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--animus-muted);
-}
-
-.animus-tree-group h3 .animus-tree-browse.is-selected,
-.animus-tree-group h3 .animus-tree-browse:hover {
-  color: inherit;
-  text-decoration: underline;
-}
-
 /* Browser */
 
 .animus-npc-browser {
