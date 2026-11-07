@@ -137,6 +137,21 @@ archery:
         on arrow hits npc:
         - narrate "never converts"
 
+npc_keys:
+    type: world
+    debug: false
+    events:
+        on player drops item:
+        - if !<player.target.is_npc||false>:
+            - stop
+        - if !<player.is_sneaking>:
+            - stop
+        - determine cancelled
+        on player swaps items:
+        - if !<player.target.is_npc||false>:
+            - stop
+        - narrate "You swap hands at <player.target.name>."
+
 broadcasts:
     type: task
     debug: false

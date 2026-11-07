@@ -448,9 +448,19 @@ public final class NativeProtocolClient {
                 for(int i=0;i<count;i++)send(new ServerboundAttackPacket(command.get("id").getAsInt()));
             }
             case "use" -> {
+                // sneak sets the packet's secondary-action flag, as a client right-clicking while sneaking does.
                 Vec3 point=command.has("x")?new Vec3(coordinate(command,"x"),coordinate(command,"y"),coordinate(command,"z")):Vec3.ZERO;
-                send(new ServerboundInteractPacket(command.get("id").getAsInt(), InteractionHand.MAIN_HAND, point, false));
-                event("interaction_point","id",command.get("id").getAsInt(),"x",point.x,"y",point.y,"z",point.z);
+                boolean sneak=flag(command,"sneak");
+                send(new ServerboundInteractPacket(command.get("id").getAsInt(), InteractionHand.MAIN_HAND, point, sneak));
+                event("interaction_point","id",command.get("id").getAsInt(),"x",point.x,"y",point.y,"z",point.z,"sneak",sneak);
+            }
+            case "drop", "swap" -> {
+                // The drop key (all: Ctrl+Q) and the swap-hands key, as the vanilla client sends them.
+                if (!loaded) throw new IllegalStateException("Key presses require an active game connection");
+                ServerboundPlayerActionPacket.Action action = command.get("op").getAsString().equals("swap") ? ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND
+                        : flag(command, "all") ? ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS : ServerboundPlayerActionPacket.Action.DROP_ITEM;
+                send(new ServerboundPlayerActionPacket(action, net.minecraft.core.BlockPos.ZERO, net.minecraft.core.Direction.DOWN));
+                event("key_sent", "action", action.name());
             }
             case "use_block" -> {
                 // A right click on the top face of a block with the main hand, as the vanilla client sends it.

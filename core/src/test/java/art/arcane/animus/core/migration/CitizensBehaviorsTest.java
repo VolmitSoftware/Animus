@@ -199,7 +199,9 @@ class CitizensBehaviorsTest {
         assertEquals(2, left.size(), "the costed command is left out");
         assertEquals("console", left.get(1).getAsJsonObject().getAsJsonObject("arguments").get("as").getAsString(), "operator commands run from the console");
         List<String> warnings = result.warnings();
-        assertTrue(warnings.contains("/traits/commandtrait/commands/2/hand: SHIFT_RIGHT needs a sneaking click, which Animus does not tell apart; not converted"), warnings.toString());
+        assertEquals(json("{\"id\":\"sneak-right\",\"event\":\"interaction\",\"action\":\"sneak_interact\",\"routine\":\"sneak-right\"}"), triggers.get(2));
+        assertEquals("spawn", behavior.getAsJsonObject("routines").getAsJsonObject("sneak-right").getAsJsonObject("arguments").get("command").getAsString());
+        assertTrue(warnings.contains("/traits/commandtrait: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones"), warnings.toString());
         assertTrue(warnings.contains("/traits/commandtrait/commands/3: the command costs money, experience or items, which Animus cannot charge; not converted"));
         assertTrue(warnings.contains("/traits/commandtrait/commands/4/op: the command ran as an operator player; it now runs from the console"));
         assertTrue(warnings.contains("/traits/commandtrait: commands stay denied until citizens:commands-7 is on the [behaviors.actions] commandBehaviors list in config.toml"));

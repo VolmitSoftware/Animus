@@ -22,6 +22,9 @@ public final class TriggerCompiler {
     public static final int MIN_SERVER_INTERVAL_TICKS = 20, MAX_ALIASES = 8, MAX_PATTERN = 256, MAX_COMMAND_TEXT = 256, MAX_WORLD_NAME = 64;
     public static final String COMMAND_NAME = "[a-z0-9_-]{1,32}", PERMISSION = "[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*";
     private static final String IDENTIFIER = "[a-z0-9][a-z0-9_-]{0,63}";
+    /** The {@code action} names of an interaction trigger. */
+    public static final List<String> ACTIONS = java.util.Arrays.stream(TriggerBinding.InteractionFilter.values())
+            .map((TriggerBinding.InteractionFilter filter) -> filter.name().toLowerCase(Locale.ROOT)).toList();
 
     public static final class Invalid extends RuntimeException {
         private final String field;
@@ -84,9 +87,19 @@ public final class TriggerCompiler {
 
     private static TriggerBinding.Spec spec(TriggerKind kind, JsonObject object, String path, boolean server) {
         return switch (kind) {
-            case INTERACTION -> new TriggerBinding.Interaction(object.has("action")
-                    ? named(TriggerBinding.InteractionFilter.class, text(object, "action", path), path + ".action", "interact, attack or any")
-                    : TriggerBinding.InteractionFilter.INTERACT, object.has("consume") ? Optional.of(consume(object, path)) : Optional.empty());
+            case INTERACTION -> {
+                TriggerBinding.InteractionFilter action = object.has("action")
+                        ? named(TriggerBinding.InteractionFilter.class, text(object, "action", path), path + ".action", Suggestions.list(ACTIONS))
+                        : TriggerBinding.InteractionFilter.INTERACT;
+                boolean queue = false;
+                if (object.has("whileRunning")) {
+                    String mode = text(object, "whileRunning", path);
+                    if (!mode.equals("drop") && !mode.equals("queue")) throw new Invalid(path + ".whileRunning", "expected drop or queue");
+                    queue = mode.equals("queue");
+                }
+                yield new TriggerBinding.Interaction(action, object.has("consume") ? Optional.of(consume(object, path)) : Optional.empty(),
+                        object.has("playerCooldownTicks") ? OptionalInt.of(integer(object, "playerCooldownTicks", path, 0, MAX_COOLDOWN_TICKS)) : OptionalInt.empty(), queue);
+            }
             case PROXIMITY -> {
                 if (!object.has("phase")) throw new Invalid(path + ".phase", "expected enter or leave");
                 TriggerBinding.Phase phase = named(TriggerBinding.Phase.class, text(object, "phase", path), path + ".phase", "enter or leave");

@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:world-npc/npc_keys",
+  "entry": "on-player-drops-item",
+  "routines": {
+    "on-player-drops-item": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "expression": "!(true)",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "condition",
+          "expression": "!(context.sneaking)",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "return"
+        }
+      ]
+    },
+    "on-player-swaps-items": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "expression": "!(true)",
+          "then": {
+            "type": "return"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "You swap hands at {{ npc.name }}."
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "on-player-drops-item",
+      "event": "interaction",
+      "action": "drop",
+      "consume": "context.sneaking",
+      "routine": "on-player-drops-item"
+    },
+    {
+      "id": "on-player-swaps-items",
+      "event": "interaction",
+      "action": "swap_hands",
+      "consume": "false",
+      "routine": "on-player-swaps-items"
+    }
+  ]
+}

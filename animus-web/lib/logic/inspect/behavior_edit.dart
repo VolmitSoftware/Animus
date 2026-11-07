@@ -192,6 +192,19 @@ JsonMap defaultTrigger(String event, CompletionCatalog catalog, Iterable<String>
 }
 
 /// The shortest timer interval a server behavior may use, in ticks.
+/// What each `action` of an interaction trigger reads as in a picker.
+const Map<String, String> interactionActionLabels = <String, String>{
+  'interact': 'Right-click',
+  'attack': 'Left-click',
+  'any': 'Any click',
+  'sneak_interact': 'Sneak + right-click',
+  'sneak_attack': 'Sneak + left-click',
+  'drop': 'Drop key (Q)',
+  'sneak_drop': 'Sneak + drop key',
+  'swap_hands': 'Swap hands (F)',
+  'sneak_swap_hands': 'Sneak + swap hands',
+};
+
 const int serverTimerMinimum = 20;
 
 /// [document] with `server` set to [on]. Turning it on raises timer

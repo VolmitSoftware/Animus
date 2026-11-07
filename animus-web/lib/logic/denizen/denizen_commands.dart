@@ -101,6 +101,30 @@ bool _mentionsBody(DenizenItem item, String text) {
   return false;
 }
 
+/// `cooldown <duration> (global)` in an interact script becomes its click trigger's player or global cooldown.
+_Converted _cooldown(DenizenCommand command, _Scope scope) {
+  if (scope.interact == null) return const _Converted.kept('cooldown belongs to an interact script');
+  bool global = false;
+  int? ticks;
+  for (final DenizenArg arg in command.args) {
+    if (arg.prefix.isEmpty && arg.value.toLowerCase() == 'global') {
+      global = true;
+    } else if (arg.prefix.isEmpty || arg.prefix == 'duration') {
+      ticks = denizenTicks(arg.value);
+    } else {
+      return _Converted.kept('cooldown ${arg.prefix}: has no Animus equivalent');
+    }
+  }
+  if (ticks == null) return const _Converted.kept('cooldown needs a literal duration');
+  if (ticks > 72000) return const _Converted.kept('cooldown longer than an hour');
+  if (global) {
+    if (ticks > scope.doc.globalCooldown) scope.doc.globalCooldown = ticks;
+  } else if (ticks > scope.doc.playerCooldown) {
+    scope.doc.playerCooldown = ticks;
+  }
+  return _Converted.of(<JObject>[]);
+}
+
 _Converted _waitFor(DenizenCommand command) {
   if (command.args.length > 1 || command.args.length == 1 && command.args.first.prefix.isNotEmpty) return const _Converted.kept('wait argument has no Animus equivalent');
   final int? ticks = command.args.isEmpty ? 60 : denizenTicks(command.args.first.value);
@@ -794,6 +818,9 @@ class _Commands {
             ? _Converted.of(<JObject>[])
             : const _Converted.kept('only a literal cuboid or ellipsoid noted as:name has an Animus equivalent, as the bounds of area triggers'),
         'narrate' => narrate(command, scope, pending),
+        // An interaction trigger already drops a player's clicks while their run of it is going, which is what engaging guards against.
+        'engage' || 'disengage' => scope.server ? _Converted.kept('${command.name} needs an NPC') : _Converted.of(<JObject>[]),
+        'cooldown' => _cooldown(command, scope),
         'announce' => announce(command, scope, pending),
         'chat' => chat(command, scope, pending),
         'wait' => _waitFor(command),

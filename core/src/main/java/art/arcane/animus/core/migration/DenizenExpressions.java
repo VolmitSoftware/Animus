@@ -377,6 +377,13 @@ final class DenizenExpressions {
             case "gamemode" -> fact("player.gamemode", 's', 2);
             case "is_op" -> fact("player.op", 'b', 2);
             case "is_sneaking" -> fact(scope.context.containsKey("sneaking") ? "context.sneaking" : "player.sneaking", 'b', 2);
+            case "target" -> {
+                // On a drop or swap-hands trigger, the player's target is the NPC the key was pressed at.
+                if (!scope.context.containsKey(DenizenEvents.TARGET)) yield Result.fail("tag player.target has no Animus expression");
+                if (next.filter("is_npc"::equals).isPresent()) yield fact("true", 'b', 3);
+                Result<Step> npc = npc(parts.subList(1, parts.size()), scope, pending);
+                yield npc.failed() ? npc : Result.ok(new Step(npc.value().expr(), npc.value().next() + 1));
+            }
             case "is_flying" -> fact("player.flying", 'b', 2);
             case "is_online" -> fact("player.online", 'b', 2);
             case "world" -> fact("player.world", 's', next.isPresent() && next.get().equals("name") ? 3 : 2);

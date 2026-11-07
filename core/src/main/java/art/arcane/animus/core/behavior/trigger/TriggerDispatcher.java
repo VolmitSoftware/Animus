@@ -24,7 +24,7 @@ import java.util.random.RandomGenerator;
  * queued and running triggers alone.
  */
 public final class TriggerDispatcher implements TriggerSink {
-    public enum DropReason { EVENT_QUEUE, INACTIVE, NPC_QUEUE, TRIGGER_QUEUE, TOTAL_QUEUE, EXPIRED, STALE, START_FAILED, UNAVAILABLE, ACTIVE_CAPACITY }
+    public enum DropReason { EVENT_QUEUE, INACTIVE, NPC_QUEUE, TRIGGER_QUEUE, TOTAL_QUEUE, EXPIRED, STALE, START_FAILED, UNAVAILABLE, ACTIVE_CAPACITY, PLAYER_BUSY }
     @FunctionalInterface public interface Starter { Outcome<UUID> start(Request request); }
     /** {@code event} is what the run reads as {@code context.*}: the click's sneaking and hand for an interaction, nothing for other events. */
     public record Request(Binding binding, NpcDefinition definition, BehaviorCatalog.Accepted accepted, BehaviorProgram program, Optional<UUID> player, Map<String, Object> event) {}
@@ -37,6 +37,9 @@ public final class TriggerDispatcher implements TriggerSink {
     private static final class Stats {
         volatile long lastFired = -1, lastAdmitted = -1, fired, suppressed, dropped;
         volatile int active, queued;
+        /** Pump thread only: each player's queued and running runs of an interaction trigger, and when one was last admitted. */
+        final Map<UUID, Integer> busy = new HashMap<>();
+        final Map<UUID, Long> playerAdmitted = new HashMap<>();
     }
     /** An immutable NPC, accepted program and trigger combination. A source change produces a new one. */
     public static final class Binding {
@@ -60,7 +63,7 @@ public final class TriggerDispatcher implements TriggerSink {
     private record Consumption(BehaviorState state, BehaviorFacts facts) {}
     private record Timer(long due, Binding binding, int interval) {}
 
-    private static final int MAX_DIAGNOSTICS = 64, MAX_TRACKED_NPCS = 16384;
+    private static final int MAX_DIAGNOSTICS = 64, MAX_TRACKED_NPCS = 16384, MAX_TRACKED_PLAYERS = 4096, MAX_COOLDOWN_TICKS = 72000;
     private static final String DISABLED = "disabled in config.toml", BEHAVIORS_DISABLED = "behaviors are disabled in config.toml";
     private volatile TriggerSettings settings; // written by the owner only
     private volatile ProximityTracker.Limits proximityLimits;
@@ -140,10 +143,12 @@ public final class TriggerDispatcher implements TriggerSink {
     public void consumption(BehaviorState state, BehaviorFacts facts) { consumption = new Consumption(Objects.requireNonNull(state), Objects.requireNonNull(facts)); }
 
     /**
-     * Publishes a click and answers whether a behavior consumes it. Called on the clicking player's thread before any
-     * default handling: a click is consumed when an interaction trigger of an enabled behavior on this NPC matches it and
-     * its {@code consume} condition holds now. A consumed click is not handed to modules (shops, hiring, GUIs), riding or
-     * selection; any other click is, whether or not it also fires triggers. A failing condition does not consume.
+     * Publishes a click or key press and answers whether a behavior consumes it. Called on the player's thread before any
+     * default handling: an input is consumed when an interaction trigger of an enabled behavior on this NPC matches it and
+     * its {@code consume} condition holds now, or, for a drop or swap-hands press, when the trigger has no condition. A
+     * consumed click is not handed to modules (shops, hiring, GUIs), riding or selection, and a consumed press does not
+     * drop or swap the item; any other input keeps its default handling, whether or not it also fires triggers. A failing
+     * condition does not consume.
      */
     public boolean click(TriggerEvent.Interaction event) {
         publish(event);
@@ -152,8 +157,8 @@ public final class TriggerDispatcher implements TriggerSink {
         List<Binding> bound = index.byNpc().get(event.npc());
         if (bound == null) return false;
         for (Binding binding : bound) {
-            if (!(binding.trigger.spec() instanceof TriggerBinding.Interaction interaction) || interaction.consume().isEmpty() || !interaction.accepts(event.action())) continue;
-            if (consumes(interaction.consume().get(), binding.behavior, event, reads)) return true;
+            if (!(binding.trigger.spec() instanceof TriggerBinding.Interaction interaction) || !interaction.accepts(event)) continue;
+            if (interaction.consume().isEmpty() ? event.action().key() : consumes(interaction.consume().get(), binding.behavior, event, reads)) return true;
         }
         return false;
     }
@@ -255,6 +260,7 @@ public final class TriggerDispatcher implements TriggerSink {
     }
     public void finished(Request request) {
         Stats stat = request.binding().stats; stat.active = stat.active - 1;
+        idle(request.binding(), request.player());
         activeCount = activeCount - 1;
         decrement(npcActive, request.definition().uuid());
     }
@@ -265,6 +271,7 @@ public final class TriggerDispatcher implements TriggerSink {
         for (Pending pending : queue) {
             drops.get(DropReason.UNAVAILABLE).increment();
             pending.binding().stats.queued = pending.binding().stats.queued - 1;
+            idle(pending.binding(), pending.player());
         }
         queue.clear(); npcQueued.clear(); queuedCount = 0;
         timers.clear(); timerDue.clear(); timerCount = 0;
@@ -429,8 +436,16 @@ public final class TriggerDispatcher implements TriggerSink {
     }
     private boolean enqueue(Binding binding, Optional<UUID> player, Map<String, Object> event) {
         Stats stat = binding.stats;
-        int cooldown = binding.trigger.cooldownTicks().orElse(binding.trigger.spec() instanceof TriggerBinding.Timer ? 0 : settings.defaultCooldownTicks());
+        TriggerBinding.Interaction click = binding.trigger.spec() instanceof TriggerBinding.Interaction interaction && player.isPresent() ? interaction : null;
+        // An interaction trigger's default cooldown is each player's own, so one player's clicks never hold back another's.
+        int cooldown = binding.trigger.cooldownTicks().orElse(click != null || binding.trigger.spec() instanceof TriggerBinding.Timer ? 0 : settings.defaultCooldownTicks());
         if (stat.lastAdmitted >= 0 && tick - stat.lastAdmitted < cooldown) { suppress(binding); return false; }
+        if (click != null) {
+            int own = click.playerCooldownTicks().orElse(binding.trigger.cooldownTicks().isPresent() ? 0 : settings.playerCooldownTicks());
+            Long last = stat.playerAdmitted.get(player.get());
+            if (last != null && tick - last < own) { suppress(binding); return false; }
+            if (!click.queue() && stat.busy.containsKey(player.get())) { drop(binding, DropReason.PLAYER_BUSY); return false; }
+        }
         UUID npc = binding.definition.uuid();
         if (queue.size() >= settings.maximumQueued()) { drop(binding, DropReason.TOTAL_QUEUE); return false; }
         if (npcQueued.getOrDefault(npc, 0) >= settings.queuePerNpc()) { drop(binding, DropReason.NPC_QUEUE); return false; }
@@ -438,7 +453,16 @@ public final class TriggerDispatcher implements TriggerSink {
         queue.addLast(new Pending(binding, player, event, tick, settings.queueLifetimeTicks()));
         queuedCount = queue.size(); stat.queued = stat.queued + 1; stat.lastAdmitted = tick;
         npcQueued.merge(npc, 1, Integer::sum);
+        if (click != null) {
+            stat.busy.merge(player.get(), 1, Integer::sum);
+            if (stat.playerAdmitted.size() >= MAX_TRACKED_PLAYERS) stat.playerAdmitted.values().removeIf((Long admitted) -> tick - admitted >= MAX_COOLDOWN_TICKS);
+            stat.playerAdmitted.put(player.get(), tick);
+        }
         return true;
+    }
+    /** A player's queued or running run of an interaction trigger ended, so their next input may start another. */
+    private static void idle(Binding binding, Optional<UUID> player) {
+        if (player.isPresent()) binding.stats.busy.computeIfPresent(player.get(), (UUID key, Integer count) -> count <= 1 ? null : count - 1);
     }
     private void suppress(Binding binding) { binding.stats.suppressed = binding.stats.suppressed + 1; suppressed.increment(); }
     private void drop(Binding binding, DropReason reason) { binding.stats.dropped = binding.stats.dropped + 1; drops.get(reason).increment(); }
@@ -450,14 +474,15 @@ public final class TriggerDispatcher implements TriggerSink {
             Pending pending = iterator.next();
             Binding binding = pending.binding();
             UUID npc = binding.definition.uuid();
-            if (tick - pending.admitted() > pending.lifetime()) { release(iterator, pending); drop(binding, DropReason.EXPIRED); continue; }
-            if (!current(binding)) { release(iterator, pending); drop(binding, DropReason.STALE); continue; }
+            if (tick - pending.admitted() > pending.lifetime()) { release(iterator, pending); idle(binding, pending.player()); drop(binding, DropReason.EXPIRED); continue; }
+            if (!current(binding)) { release(iterator, pending); idle(binding, pending.player()); drop(binding, DropReason.STALE); continue; }
             if (starts >= settings.startsPerTick() || activeCount >= settings.concurrentTotal()) continue;
             if (npcActive.getOrDefault(npc, 0) >= settings.concurrentPerNpc() || binding.stats.active >= settings.concurrentPerTrigger()) continue;
             Outcome<UUID> result = starter.start(new Request(binding, binding.definition, binding.accepted, binding.program, pending.player(), pending.event()));
             if (result.status() == Outcome.Status.BUSY) { starts = settings.startsPerTick(); continue; }
             release(iterator, pending);
             if (result.status() != Outcome.Status.OK) {
+                idle(binding, pending.player());
                 drop(binding, DropReason.START_FAILED);
                 if (!result.diagnostics().isEmpty()) {
                     Diagnostic refusal = result.diagnostics().getFirst();

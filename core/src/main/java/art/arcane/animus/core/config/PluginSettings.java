@@ -323,7 +323,8 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
                 budget(trigger, "proximityIntervalTicks", triggers.proximityIntervalTicks(), 1, 200, "triggers"),
                 budget(trigger, "proximityViewersPerTick", triggers.proximityViewersPerTick(), 1, 256, "triggers"),
                 budget(trigger, "proximityCandidates", triggers.proximityCandidates(), 1, 1024, "triggers"),
-                budget(trigger, "proximityTrackedPerViewer", triggers.proximityTrackedPerViewer(), 1, 1024, "triggers"));
+                budget(trigger, "proximityTrackedPerViewer", triggers.proximityTrackedPerViewer(), 1, 1024, "triggers"),
+                budget(trigger, "playerCooldownTicks", triggers.playerCooldownTicks(), 0, 72000, "triggers"));
         BehaviorStateStore.Limits stored = defaults.state();
         BehaviorStateStore.Limits stateLimits = new BehaviorStateStore.Limits(
                 budget(state, "maximumKeys", stored.maximumKeys(), 1, 1_048_576, "state"),

@@ -418,7 +418,7 @@ final class CitizensBehaviors {
             JsonObject data = object(entry.getValue());
             if (data == null || !data.has("command") || !data.get("command").isJsonPrimitive()) continue;
             String hand = string(data.get("hand"), "BOTH").toUpperCase(Locale.ROOT);
-            if (!Set.of("LEFT", "RIGHT", "BOTH").contains(hand)) { warnings.add(at + "/hand: " + hand + " needs a sneaking click, which Animus does not tell apart; not converted"); continue; }
+            if (!HANDS.contains(hand)) { warnings.add(at + "/hand: " + hand + " is not a Citizens click; not converted"); continue; }
             if (bool(data.get("npc"), false)) { warnings.add(at + "/npc: commands run as the NPC are not supported; not converted"); continue; }
             if (positive(data.get("cost")) || positive(data.get("experienceCost")) || !entries(data.get("itemCost")).isEmpty()) {
                 warnings.add(at + ": the command costs money, experience or items, which Animus cannot charge; not converted"); continue;
@@ -465,18 +465,28 @@ final class CitizensBehaviors {
         String mode = string(trait.get("executionMode"), "LINEAR").toUpperCase(Locale.ROOT);
         if (trait.has("executionMode")) converted.add(base + "/executionMode");
         if (!Set.of("LINEAR", "RANDOM", "CYCLE", "SEQUENTIAL").contains(mode)) { warnings.add(base + "/executionMode: " + mode + " is not known; commands run in order"); mode = "LINEAR"; }
-        List<Command> right = commands.stream().filter((Command command) -> !command.hand().equals("LEFT")).toList();
-        List<Command> left = commands.stream().filter((Command command) -> !command.hand().equals("RIGHT")).toList();
+        List<Command> right = clicks(commands, "RIGHT", "BOTH"), left = clicks(commands, "LEFT", "BOTH");
+        List<Command> sneakRight = clicks(commands, "SHIFT_RIGHT", "SHIFT_BOTH"), sneakLeft = clicks(commands, "SHIFT_LEFT", "SHIFT_BOTH");
         JsonObject routines = new JsonObject();
         JsonArray triggers = new JsonArray();
-        if (right.equals(left)) routine("click", "any", right, mode, routines, triggers);
+        if (!right.isEmpty() && right.equals(left)) routine("click", "any", right, mode, routines, triggers);
         else {
             if (!right.isEmpty()) routine("right", "interact", right, mode, routines, triggers);
             if (!left.isEmpty()) routine("left", "attack", left, mode, routines, triggers);
         }
+        if (!sneakRight.isEmpty()) routine("sneak-right", "sneak_interact", sneakRight, mode, routines, triggers);
+        if (!sneakLeft.isEmpty()) routine("sneak-left", "sneak_attack", sneakLeft, mode, routines, triggers);
+        if ((!sneakRight.isEmpty() || !sneakLeft.isEmpty()) && commands.stream().anyMatch((Command command) -> !command.hand().startsWith("SHIFT_")))
+            warnings.add(base + ": LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones");
         String id = "commands-" + key;
         warnings.add(base + ": commands stay denied until " + NAMESPACE + ":" + id + " is on the [behaviors.actions] commandBehaviors list in config.toml");
         behavior(id, routines.keySet().iterator().next(), routines, triggers);
+    }
+
+    private static final Set<String> HANDS = Set.of("LEFT", "RIGHT", "BOTH", "SHIFT_LEFT", "SHIFT_RIGHT", "SHIFT_BOTH");
+    /** The commands one click runs: those for that hand and those for both. */
+    private static List<Command> clicks(List<Command> commands, String hand, String both) {
+        return commands.stream().filter((Command command) -> command.hand().equals(hand) || command.hand().equals(both)).toList();
     }
 
     private void routine(String routine, String action, List<Command> commands, String mode, JsonObject routines, JsonArray triggers) {

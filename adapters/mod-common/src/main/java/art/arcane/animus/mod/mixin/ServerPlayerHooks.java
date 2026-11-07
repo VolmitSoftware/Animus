@@ -1,5 +1,6 @@
 package art.arcane.animus.mod.mixin;
 
+import art.arcane.animus.core.behavior.trigger.TriggerEvent;
 import art.arcane.animus.mod.ModHooks;
 import net.minecraft.network.protocol.game.ClientboundContainerClosePacket;
 import net.minecraft.server.level.ServerLevel;
@@ -68,11 +69,11 @@ public abstract class ServerPlayerHooks {
         ModHooks.closing((ServerPlayer) (Object) this);
     }
 
-    /** The drop key; the stack has not left the inventory yet. */
+    /** The drop key, empty hand included; the stack has not left the inventory yet. An NPC the player looks at hears it first. */
     @Inject(method = "drop(Z)V", at = @At("HEAD"), cancellable = true)
     private void animus$dropping(boolean all, CallbackInfo callback) {
         ServerPlayer self = (ServerPlayer) (Object) this;
-        if (!ModHooks.dropping(self, all)) return;
+        if (!ModHooks.pressed(self, TriggerEvent.Action.DROP) && !ModHooks.dropping(self, all)) return;
         callback.cancel();
         self.containerMenu.sendAllDataToRemote();
     }

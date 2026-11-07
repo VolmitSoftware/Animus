@@ -24,6 +24,27 @@ class ViewerSessionTest {
         assertTrue(hit.accepted()); assertEquals(npc.snapshot(), hit.npc());
         assertEquals(OCCLUDED, session.validate(request(7, 110), (origin, point, distance) -> false).rejection());
     }
+    @Test void aimFindsTheNearestVisibleNpcOnTheRayWithinReach() {
+        ViewerSession session = new ViewerSession(viewer, sessionId, new ViewerSession.Limits(4, 8, 100, 4));
+        session.bind(7, npc(3.5).snapshot()); session.bind(8, npc(2).snapshot()); session.bind(9, npc(6).snapshot());
+        java.util.function.Function<VirtualNpcState.Snapshot, ViewerSession.HitShape> bounds = (VirtualNpcState.Snapshot npc) -> ViewerSession.HitShape.BOUNDS;
+        assertEquals(java.util.OptionalInt.of(8), session.aim(eye, new Vec3(0, 0, 1), bounds));
+        session.unbind(8);
+        assertEquals(java.util.OptionalInt.of(7), session.aim(eye, new Vec3(0, 0, 2), bounds), "the direction need not be a unit vector");
+        session.unbind(7);
+        assertEquals(java.util.OptionalInt.empty(), session.aim(eye, new Vec3(0, 0, 1), bounds), "the last NPC is beyond reach");
+        assertEquals(java.util.OptionalInt.empty(), session.aim(eye, Vec3.ZERO, bounds));
+        assertEquals(java.util.OptionalInt.empty(), session.aim(new WorldPosition("other", eye.point()), new Vec3(0, 0, 1), bounds));
+    }
+    @Test void aimSkipsDeadNpcsAndUsesEachNpcsOwnShape() {
+        ViewerSession session = session(8); VirtualNpcState near = npc(2), far = npc(3.5);
+        session.bind(7, near.snapshot()); session.bind(8, far.snapshot());
+        java.util.function.Function<VirtualNpcState.Snapshot, ViewerSession.HitShape> missNear = (VirtualNpcState.Snapshot npc) -> npc.npcId().equals(near.snapshot().npcId())
+                ? (VirtualNpcState.Snapshot target, Vec3 origin, Vec3 direction, double reach) -> java.util.OptionalDouble.empty() : ViewerSession.HitShape.BOUNDS;
+        assertEquals(java.util.OptionalInt.of(8), session.aim(eye, new Vec3(0, 0, 1), missNear));
+        session.updateSnapshot(8, far.damage(50));
+        assertEquals(java.util.OptionalInt.empty(), session.aim(eye, new Vec3(0, 0, 1), missNear));
+    }
     @Test void rejectsForgedViewerSessionUnknownIdWorldAndDirection() {
         ViewerSession session = session(8); session.bind(7, npc(4).snapshot());
         AtomicInteger los = new AtomicInteger(); ViewerSession.LineOfSight clear = (a, b, c) -> { los.incrementAndGet(); return true; };

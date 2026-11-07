@@ -95,6 +95,7 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
     @Override public boolean dead(Player player) { return player.isDead(); }
     @Override public boolean sleeping(Player player) { return player.isSleeping(); }
     @Override public boolean spectator(Player player) { return player.getGameMode() == GameMode.SPECTATOR; }
+    @Override public boolean sneaking(Player player) { return player.isSneaking(); }
     @Override public boolean inVehicle(Player player) { return player.isInsideVehicle(); }
     @Override public int entityId(Player player) { return player.getEntityId(); }
     @Override public WorldPosition position(Player player) { return position(player.getLocation()); }

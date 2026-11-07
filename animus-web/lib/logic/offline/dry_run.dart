@@ -233,6 +233,12 @@ String _eventLine(JsonMap trigger) {
     'interaction' => switch (asString(trigger['action'])) {
         'attack' => 'a player left-clicks the NPC',
         'any' => 'a player clicks the NPC',
+        'sneak_interact' => 'a sneaking player right-clicks the NPC',
+        'sneak_attack' => 'a sneaking player left-clicks the NPC',
+        'drop' => 'a player presses drop at the NPC',
+        'sneak_drop' => 'a sneaking player presses drop at the NPC',
+        'swap_hands' => 'a player presses swap hands at the NPC',
+        'sneak_swap_hands' => 'a sneaking player presses swap hands at the NPC',
         _ => 'a player right-clicks the NPC',
       },
     'proximity' => 'a player comes within ${_number(trigger['radius']) ?? '?'} blocks',

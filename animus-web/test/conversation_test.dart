@@ -110,7 +110,16 @@ void main() {
       expect(read.start.kind, ConversationStartKind.sneakClick);
       expect(read.entry, 'hello');
       expect(read.blocks.keys, <String>['hello'], reason: 'the gate is not a block');
-      expect(writeConversation(read, sneak), sneak);
+      final JsonMap migrated = writeConversation(read, sneak);
+      expect(asList(migrated['triggers']).single, <String, Object?>{'id': 'start', 'event': 'interaction', 'action': 'sneak_interact', 'consume': 'true'});
+      expect(asMap(migrated['routines']).keys, <String>['hello'], reason: 'the sneak action replaces the gate');
+      expect(writeConversation(_read(migrated), migrated), migrated);
+
+      final JsonMap drop = _json('''
+{"schemaVersion": 1, "revision": 1, "id": "a:b", "entry": "hello", "routines": {"hello": {"type": "action", "capability": "animus:say", "arguments": {"text": "Dropped?"}}},
+ "triggers": [{"id": "start", "event": "interaction", "action": "sneak_drop"}]}''');
+      expect(_read(drop).start.kind, ConversationStartKind.sneakDrop);
+      expect(writeConversation(_read(drop), drop), drop);
 
       final JsonMap near = _json('''
 {"schemaVersion": 1, "revision": 1, "id": "a:b", "entry": "main", "routines": {"main": {"type": "action", "capability": "animus:say", "arguments": {"text": "Hi"}}},
@@ -177,7 +186,7 @@ void main() {
     test('should keep the start trigger id and cooldown when the start changes', () {
       final JsonMap behavior = _edit(newConversationBehavior('town:talk'), (Conversation conversation) => setStart(conversation, ConversationStartKind.sneakClick));
       final JsonMap start = asMap(asList(behavior['triggers']).first);
-      expect((start['id'], start['cooldownTicks'], start['routine'], start['consume']), ('start', 40, 'sneak-start', 'context.sneaking'));
+      expect((start['id'], start['cooldownTicks'], start['action'], start['consume']), ('start', 40, 'sneak_interact', 'true'));
       final JsonMap back = _edit(behavior, (Conversation conversation) => setStart(conversation, ConversationStartKind.click));
       expect(asList(back['triggers']).first, <String, Object?>{'id': 'start', 'event': 'interaction', 'cooldownTicks': 40});
       expect(asMap(back['routines']).containsKey('sneak-start'), isFalse);

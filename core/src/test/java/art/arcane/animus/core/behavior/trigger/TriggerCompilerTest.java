@@ -7,6 +7,7 @@ import art.arcane.animus.core.behavior.BehaviorProgram;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.Set;
@@ -64,6 +65,21 @@ class TriggerCompilerTest {
         BehaviorCompiler.Result elsewhere=BehaviorCompiler.compile(document("""
                 [{"id":"near","event":"proximity","phase":"enter","radius":4,"consume":"true"}]"""));
         assertEquals("$.triggers[0].consume",elsewhere.diagnostics().getFirst().field());
+    }
+    @Test void everyInteractionActionCompilesToItsFilter(){
+        BehaviorCompiler.Result result=BehaviorCompiler.compile(document("""
+                [{"id":"a","event":"interaction","action":"interact"},{"id":"b","event":"interaction","action":"attack"},{"id":"c","event":"interaction","action":"any"},
+                 {"id":"d","event":"interaction","action":"sneak_interact"},{"id":"e","event":"interaction","action":"sneak_attack"},
+                 {"id":"f","event":"interaction","action":"drop"},{"id":"g","event":"interaction","action":"sneak_drop"},
+                 {"id":"h","event":"interaction","action":"swap_hands"},{"id":"i","event":"interaction","action":"sneak_swap_hands","consume":"false"}]"""));
+        assertEquals(List.of(),result.diagnostics());
+        List<TriggerBinding.InteractionFilter> filters=new ArrayList<>();
+        for(TriggerBinding binding:result.program().orElseThrow().triggers())filters.add(((TriggerBinding.Interaction)binding.spec()).action());
+        assertEquals(List.of(TriggerBinding.InteractionFilter.values()),filters);
+        BehaviorCompiler.Result unknown=BehaviorCompiler.compile(document("""
+                [{"id":"a","event":"interaction","action":"shift_drop"}]"""));
+        assertEquals("$.triggers[0].action",unknown.diagnostics().getFirst().field());
+        assertTrue(unknown.diagnostics().getFirst().message().contains("sneak_swap_hands"),unknown.diagnostics().getFirst().message());
     }
     @Test void animationFinishedFiltersByAnimationWhenNamed(){
         BehaviorCompiler.Result result=BehaviorCompiler.compile(document("""

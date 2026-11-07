@@ -62,8 +62,13 @@ const Map<String, String> _causes = <String, String>{
 };
 const String _eventName = '[a-z0-9_*]{1,64}';
 
-/// [key] with the areas Denizen notes; [npcEntity] says the script treats the entity as an NPC (`is_npc`).
-_Mapped _denizenEvent(String key, Map<String, _Note> notes, bool npcEntity) {
+/// The `context` key that lets `<player.target>` read the NPC; no Denizen context name contains a dot.
+const String _denizenTarget = 'player.target';
+
+/// [key] with the areas Denizen notes; [npcEntity] says the script treats the entity as an NPC (`is_npc`), and
+/// [npcTarget] that it treats the player's target as one, which makes the drop and swap-hands keys NPC interaction
+/// triggers.
+_Mapped _denizenEvent(String key, Map<String, _Note> notes, bool npcEntity, bool npcTarget) {
   final List<String> tokens = _eventTokens(key);
   if (tokens.isEmpty || tokens[0] != 'on' && tokens[0] != 'after') return const _Mapped.fail('world events start with on or after');
   final List<String> words = <String>[];
@@ -85,6 +90,12 @@ _Mapped _denizenEvent(String key, Map<String, _Note> notes, bool npcEntity) {
   final String event;
   final List<String> w = words;
   switch (phrase) {
+    case 'player drops item' || 'player swaps items' when npcTarget:
+      event = 'interaction';
+      npc = true;
+      trigger.addString('action', phrase == 'player drops item' ? 'drop' : 'swap_hands');
+      context[_denizenTarget] = 'npc';
+      context['sneaking'] = 'sneaking';
     case 'player joins':
     case 'player join':
     case 'player logs in':

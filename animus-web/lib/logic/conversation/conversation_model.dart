@@ -14,14 +14,23 @@ const String playAnimationCapability = 'animus:play-animation';
 
 /// What starts the conversation.
 enum ConversationStartKind {
-  click('Right-click'),
-  sneakClick('Sneak + right-click'),
-  proximity('Walk near'),
-  manual('Command');
+  click('Right-click', 'interact'),
+  sneakClick('Sneak + right-click', 'sneak_interact'),
+  leftClick('Left-click', 'attack'),
+  sneakLeftClick('Sneak + left-click', 'sneak_attack'),
+  drop('Drop key (Q)', 'drop'),
+  sneakDrop('Sneak + drop key', 'sneak_drop'),
+  swapHands('Swap hands (F)', 'swap_hands'),
+  sneakSwapHands('Sneak + swap hands', 'sneak_swap_hands'),
+  proximity('Walk near', null),
+  manual('Command', null);
 
-  const ConversationStartKind(this.label);
+  const ConversationStartKind(this.label, this.action);
 
   final String label;
+
+  /// The interaction trigger's `action`, or null for a start that is no click or key.
+  final String? action;
 }
 
 class ConversationStart {
@@ -35,7 +44,8 @@ class ConversationStart {
   /// The trigger as written, so its cooldown and other keys stay.
   JsonMap trigger;
 
-  /// The routine that checks sneaking before a sneak start.
+  /// The routine an older sneak start used to check sneaking. It is not a
+  /// block, and a rewrite drops it for the sneak_interact action.
   String? gate;
 
   ConversationStart copy() => ConversationStart(kind, radius: radius, trigger: asMap(deepCopy(trigger)), gate: gate);

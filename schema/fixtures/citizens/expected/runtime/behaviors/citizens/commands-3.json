@@ -160,6 +160,14 @@
           }
         }
       ]
+    },
+    "sneak-right": {
+      "type": "action",
+      "capability": "animus:command",
+      "arguments": {
+        "command": "spawn",
+        "as": "player"
+      }
     }
   },
   "triggers": [
@@ -175,6 +183,12 @@
       "event": "interaction",
       "action": "attack",
       "routine": "left"
+    },
+    {
+      "id": "sneak-right",
+      "event": "interaction",
+      "action": "sneak_interact",
+      "routine": "sneak-right"
     }
   ]
 }

@@ -50,6 +50,8 @@ guard_quest:
         gathering:
             click trigger:
                 script:
+                - engage
+                - cooldown 10s
                 - if <player.flag[visits]> >= 3 && <player.has_permission[town.quest]>:
                     - execute as_server "give <player.name> minecraft:emerald 1"
                     - zap done

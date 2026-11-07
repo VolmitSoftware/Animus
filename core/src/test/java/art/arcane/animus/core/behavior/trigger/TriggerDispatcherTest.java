@@ -35,7 +35,7 @@ class TriggerDispatcherTest {
     }
     private void npc(boolean spawned)throws Exception{definitions.set(Map.of("test",definition("test",npc,spawned,"[\""+BEHAVIOR+"\"]")));}
     private static TriggerSettings settings(int queuePerNpc,int queuePerTrigger,int concurrentPerNpc,int concurrentPerTrigger,int cooldown,int inbox){
-        return new TriggerSettings(true,inbox,32,8,64,queuePerNpc,queuePerTrigger,100,32,concurrentPerNpc,concurrentPerTrigger,cooldown,0,4096,1024,1,32,5,16,32,64);
+        return new TriggerSettings(true,inbox,32,8,64,queuePerNpc,queuePerTrigger,100,32,concurrentPerNpc,concurrentPerTrigger,cooldown,0,4096,1024,1,32,5,16,32,64,0);
     }
     private void dispatcher(TriggerSettings settings){dispatcher=new TriggerDispatcher(settings,definitions::get,catalog::get);dispatcher.connect();}
     private Outcome<UUID> start(TriggerDispatcher.Request request){started.add(request);return startResult!=null?startResult:Outcome.ok(UUID.randomUUID());}
@@ -75,24 +75,55 @@ class TriggerDispatcherTest {
         assertEquals(Optional.of(viewer),started.getLast().player());
     }
     @Test void cooldownSuppressesAndCountsUntilItElapses()throws Exception{
-        dispatcher(settings(4,4,4,4,5,16));behavior("[{\"id\":\"click\",\"event\":\"interaction\"}]");npc(true);dispatcher.activated(npc);pump();
-        dispatcher.publish(click());pump();dispatcher.publish(click());pump();
+        dispatcher(settings(4,4,4,4,5,16));behavior("[{\"id\":\"stop\",\"event\":\"waypoint\"}]");npc(true);dispatcher.activated(npc);pump();
+        dispatcher.publish(new TriggerEvent.Waypoint(npc,1));pump();dispatcher.publish(new TriggerEvent.Waypoint(npc,1));pump();
         assertEquals(1,started.size());assertEquals(1,dispatcher.snapshot().suppressed());
         assertEquals(1,dispatcher.rows(0,10).getFirst().suppressed());
-        pump(5);dispatcher.publish(click());pump();assertEquals(2,started.size());
+        pump(5);dispatcher.publish(new TriggerEvent.Waypoint(npc,1));pump();assertEquals(2,started.size());
     }
+    private TriggerDispatcher players(int playerCooldown){
+        TriggerDispatcher made=new TriggerDispatcher(new TriggerSettings(true,64,32,8,64,16,16,100,32,16,16,20,0,4096,1024,1,32,5,16,32,64,playerCooldown),definitions::get,catalog::get);
+        made.connect();return made;
+    }
+    private TriggerEvent.Interaction sneakClick(UUID who){return new TriggerEvent.Interaction(npc,who,TriggerEvent.Action.INTERACT,true,TriggerEvent.Hand.MAIN_HAND);}
+
+    @Test void spammedClicksStartOneRunWhileItRunsAndThePlayerCooldownSpacesTheRest()throws Exception{
+        dispatcher=players(20);behavior("[{\"id\":\"talk\",\"event\":\"interaction\",\"action\":\"sneak_interact\"}]");npc(true);dispatcher.activated(npc);pump();
+        for(int i=0;i<10;i++){dispatcher.click(sneakClick(viewer));pump(4);}
+        assertEquals(1,started.size(),"ten clicks in two seconds while the run is active start it once");
+        assertTrue(dropped(TriggerDispatcher.DropReason.PLAYER_BUSY)>0);
+        UUID other=UUID.randomUUID();dispatcher.click(sneakClick(other));pump();
+        assertEquals(2,started.size(),"another player is not held back by the first one's run or cooldown");
+        dispatcher.finished(started.getFirst());dispatcher.click(sneakClick(viewer));pump();
+        assertEquals(3,started.size(),"the run ended long after the cooldown, so the next click starts it");
+        dispatcher.finished(started.get(2));dispatcher.click(sneakClick(viewer));pump();
+        assertEquals(3,started.size(),"a run that ends quickly still leaves the player cooldown");
+        pump(20);dispatcher.click(sneakClick(viewer));pump();
+        assertEquals(4,started.size());
+    }
+    @Test void explicitTriggerSettingsKeepTheirMeaning()throws Exception{
+        dispatcher=players(20);behavior("[{\"id\":\"a\",\"event\":\"interaction\",\"cooldownTicks\":0,\"whileRunning\":\"queue\"},{\"id\":\"b\",\"event\":\"interaction\",\"playerCooldownTicks\":0}]");
+        npc(true);dispatcher.activated(npc);pump();
+        dispatcher.click(click(viewer));dispatcher.click(click(viewer));pump();
+        assertEquals(List.of("a","b","a"),started.stream().map((TriggerDispatcher.Request request)->request.binding().trigger().id()).toList(),
+                "cooldownTicks 0 turns every cooldown off and queue keeps the second click; b drops it while its run is active");
+        dispatcher=players(0);behavior("[{\"id\":\"c\",\"event\":\"interaction\"}]");dispatcher.activated(npc);pump();started.clear();
+        dispatcher.click(click(viewer));pump();dispatcher.finished(started.getFirst());dispatcher.click(click(viewer));pump();
+        assertEquals(2,started.size(),"playerCooldownTicks 0 in config.toml turns the default off");
+    }
+    private TriggerEvent.Interaction click(UUID who){return new TriggerEvent.Interaction(npc,who,TriggerEvent.Action.INTERACT);}
     @Test void bindingCooldownOverridesTheConfiguredDefault()throws Exception{
         behavior("[{\"id\":\"click\",\"event\":\"interaction\",\"cooldownTicks\":50}]");npc(true);dispatcher.activated(npc);pump();
         dispatcher.publish(click());pump();pump(10);dispatcher.publish(click());pump();assertEquals(1,started.size());
     }
     @Test void npcCooldownAppliesAcrossBindingsOfOneNpc()throws Exception{
-        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,4,4,0,10,4096,1024,1,32,5,16,32,64));
+        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,4,4,0,10,4096,1024,1,32,5,16,32,64,0));
         behavior("[{\"id\":\"a\",\"event\":\"interaction\"},{\"id\":\"b\",\"event\":\"interaction\"},{\"id\":\"c\",\"event\":\"waypoint\"}]");npc(true);dispatcher.activated(npc);pump();
         dispatcher.publish(click());pump();assertEquals(2,started.size());
         dispatcher.publish(new TriggerEvent.Waypoint(npc,1));pump();assertEquals(2,started.size());assertEquals(1,dispatcher.snapshot().suppressed());
     }
     @Test void triggerConcurrencyHoldsWorkInItsBoundedQueueAndOverflowIsDroppedAndCounted()throws Exception{
-        dispatcher(settings(8,2,8,1,0,16));behavior("[{\"id\":\"click\",\"event\":\"interaction\"}]");npc(true);dispatcher.activated(npc);pump();
+        dispatcher(settings(8,2,8,1,0,16));behavior("[{\"id\":\"click\",\"event\":\"interaction\",\"whileRunning\":\"queue\"}]");npc(true);dispatcher.activated(npc);pump();
         for(int i=0;i<5;i++)dispatcher.publish(click());pump();
         assertEquals(1,started.size(),"only one concurrent execution of this trigger");
         assertEquals(1,dispatcher.rows(0,10).getFirst().active());assertEquals(1,dispatcher.rows(0,10).getFirst().queued());
@@ -108,7 +139,7 @@ class TriggerDispatcherTest {
         assertEquals(1,started.size(),"the NPC limit holds across its triggers");assertEquals(1,dispatcher.snapshot().queued());
     }
     @Test void totalQueueIsBoundedAcrossNpcs()throws Exception{
-        dispatcher(new TriggerSettings(true,64,32,8,1,4,4,100,32,1,1,0,0,4096,1024,1,32,5,16,32,64));
+        dispatcher(new TriggerSettings(true,64,32,8,1,4,4,100,32,1,1,0,0,4096,1024,1,32,5,16,32,64,0));
         behavior("[{\"id\":\"a\",\"event\":\"interaction\"},{\"id\":\"b\",\"event\":\"interaction\"},{\"id\":\"c\",\"event\":\"interaction\"}]");npc(true);dispatcher.activated(npc);pump();
         dispatcher.publish(click());pump();
         assertEquals(1,started.size());assertEquals(2,dropped(TriggerDispatcher.DropReason.TOTAL_QUEUE));
@@ -121,11 +152,11 @@ class TriggerDispatcherTest {
         assertEquals(1,dropped(TriggerDispatcher.DropReason.EVENT_QUEUE));
     }
     @Test void eventsPerTickBudgetLeavesTheRestForLaterTicks()throws Exception{
-        dispatcher(new TriggerSettings(true,16,1,8,64,8,8,100,32,8,8,0,0,4096,1024,1,32,5,16,32,64));behavior("[{\"id\":\"click\",\"event\":\"interaction\"}]");npc(true);dispatcher.activated(npc);pump();
+        dispatcher(new TriggerSettings(true,16,1,8,64,8,8,100,32,8,8,0,0,4096,1024,1,32,5,16,32,64,0));behavior("[{\"id\":\"click\",\"event\":\"interaction\",\"whileRunning\":\"queue\"}]");npc(true);dispatcher.activated(npc);pump();
         dispatcher.publish(click());dispatcher.publish(click());pump();assertEquals(1,started.size());pump();assertEquals(2,started.size());
     }
     @Test void startsPerTickBudgetIsHonored()throws Exception{
-        dispatcher(new TriggerSettings(true,16,32,1,64,8,8,100,32,8,8,0,0,4096,1024,1,32,5,16,32,64));behavior("[{\"id\":\"click\",\"event\":\"interaction\"}]");npc(true);dispatcher.activated(npc);pump();
+        dispatcher(new TriggerSettings(true,16,32,1,64,8,8,100,32,8,8,0,0,4096,1024,1,32,5,16,32,64,0));behavior("[{\"id\":\"click\",\"event\":\"interaction\",\"whileRunning\":\"queue\"}]");npc(true);dispatcher.activated(npc);pump();
         dispatcher.publish(click());dispatcher.publish(click());pump();assertEquals(1,started.size());pump();assertEquals(2,started.size());
     }
     @Test void engineCapacityLeavesWorkQueued()throws Exception{
@@ -139,15 +170,15 @@ class TriggerDispatcherTest {
         assertEquals(0,dispatcher.snapshot().queued());assertEquals(0,dispatcher.snapshot().active());assertEquals(1,dropped(TriggerDispatcher.DropReason.START_FAILED));assertEquals(0,dispatcher.rows(0,1).getFirst().fired());
     }
     @Test void queuedWorkExpiresAtItsLifetime()throws Exception{
-        dispatcher(new TriggerSettings(true,16,32,8,64,4,4,3,32,4,1,0,0,4096,1024,1,32,5,16,32,64));behavior("[{\"id\":\"click\",\"event\":\"interaction\"}]");npc(true);dispatcher.activated(npc);pump();
+        dispatcher(new TriggerSettings(true,16,32,8,64,4,4,3,32,4,1,0,0,4096,1024,1,32,5,16,32,64,0));behavior("[{\"id\":\"click\",\"event\":\"interaction\",\"whileRunning\":\"queue\"}]");npc(true);dispatcher.activated(npc);pump();
         dispatcher.publish(click());dispatcher.publish(click());pump();assertEquals(1,started.size());assertEquals(1,dispatcher.snapshot().queued());
         pump(4);assertEquals(0,dispatcher.snapshot().queued());assertEquals(1,dropped(TriggerDispatcher.DropReason.EXPIRED));
         dispatcher.finished(started.getFirst());pump();assertEquals(1,started.size());
     }
     @Test void replacingTheBehaviorDropsQueuedWorkAsStale()throws Exception{
-        behavior("[{\"id\":\"click\",\"event\":\"interaction\"}]");npc(true);dispatcher.activated(npc);pump();
+        behavior("[{\"id\":\"click\",\"event\":\"interaction\",\"whileRunning\":\"queue\"}]");npc(true);dispatcher.activated(npc);pump();
         dispatcher.publish(click());dispatcher.publish(click());pump();assertEquals(1,started.size());
-        behavior("[{\"id\":\"click\",\"event\":\"interaction\"}]");pump();
+        behavior("[{\"id\":\"click\",\"event\":\"interaction\",\"whileRunning\":\"queue\"}]");pump();
         assertEquals(1,started.size());assertEquals(0,dispatcher.snapshot().queued());assertEquals(1,dropped(TriggerDispatcher.DropReason.STALE));
     }
     @Test void timersFireOnTheirIntervalOnlyWhileActive()throws Exception{
@@ -161,13 +192,13 @@ class TriggerDispatcherTest {
         behavior("[{\"id\":\"click\",\"event\":\"interaction\"}]");npc(true);dispatcher.activated(npc);pump();assertEquals(0,dispatcher.snapshot().timers());
     }
     @Test void timerIntervalBelowTheConfiguredMinimumIsDiagnosedAndNotScheduled()throws Exception{
-        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,2,1,0,0,4096,1024,20,32,5,16,32,64));
+        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,2,1,0,0,4096,1024,20,32,5,16,32,64,0));
         behavior("[{\"id\":\"clock\",\"event\":\"timer\",\"intervalTicks\":3}]");npc(true);dispatcher.activated(npc);pump(5);
         assertEquals(0,started.size());assertEquals(0,dispatcher.snapshot().timers());
         Diagnostic diagnostic=dispatcher.snapshot().diagnostics().getFirst();assertEquals("trigger-timer-budget",diagnostic.code());assertTrue(diagnostic.field().contains("example:greeter#clock"));
     }
     @Test void timerCapacityIsBoundedAndDiagnosed()throws Exception{
-        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,2,1,0,0,4096,1,1,32,5,16,32,64));
+        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,2,1,0,0,4096,1,1,32,5,16,32,64,0));
         behavior("[{\"id\":\"a\",\"event\":\"timer\",\"intervalTicks\":3},{\"id\":\"b\",\"event\":\"timer\",\"intervalTicks\":3}]");npc(true);dispatcher.activated(npc);pump();
         assertEquals(1,dispatcher.snapshot().timers());assertTrue(dispatcher.snapshot().diagnostics().stream().anyMatch(item->item.code().equals("trigger-timer-capacity")));
     }
@@ -237,7 +268,7 @@ class TriggerDispatcherTest {
         on.set(false);link.run();link.run();assertFalse(fresh.available());assertEquals(2,log.size());
     }
     @Test void disabledSettingsCannotConnect(){
-        TriggerSettings disabled=new TriggerSettings(false,16,32,8,64,4,2,100,32,2,1,0,0,4096,1024,1,32,5,16,32,64);
+        TriggerSettings disabled=new TriggerSettings(false,16,32,8,64,4,2,100,32,2,1,0,0,4096,1024,1,32,5,16,32,64,0);
         TriggerDispatcher fresh=new TriggerDispatcher(disabled,definitions::get,catalog::get);fresh.connect();
         assertFalse(fresh.available());assertTrue(fresh.snapshot().reason().contains("config.toml"));
     }
@@ -249,7 +280,7 @@ class TriggerDispatcherTest {
         assertEquals("trigger-behavior-unavailable",dispatcher.snapshot().diagnostics().getFirst().code());assertEquals(0,dispatcher.snapshot().bindings());
     }
     @Test void bindingCapacityIsBoundedAndDiagnosed()throws Exception{
-        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,2,1,0,0,1,1024,1,32,5,16,32,64));
+        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,2,1,0,0,1,1024,1,32,5,16,32,64,0));
         behavior("[{\"id\":\"a\",\"event\":\"interaction\"},{\"id\":\"b\",\"event\":\"interaction\"}]");npc(true);dispatcher.activated(npc);pump();
         assertEquals(1,dispatcher.snapshot().bindings());assertTrue(dispatcher.snapshot().diagnostics().stream().anyMatch(item->item.code().equals("trigger-binding-capacity")));
     }
@@ -264,7 +295,7 @@ class TriggerDispatcherTest {
         dispatcher.dead(npc);pump();assertTrue(dispatcher.proximityPlan().npcs().isEmpty());
     }
     @Test void proximityRadiusAboveTheBudgetIsDiagnosedAndUnbound()throws Exception{
-        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,2,1,0,0,4096,1024,1,4,5,16,32,64));
+        dispatcher(new TriggerSettings(true,16,32,8,64,4,2,100,32,2,1,0,0,4096,1024,1,4,5,16,32,64,0));
         behavior("[{\"id\":\"near\",\"event\":\"proximity\",\"phase\":\"enter\",\"radius\":8}]");npc(true);dispatcher.activated(npc);pump();
         assertTrue(dispatcher.proximityPlan().npcs().isEmpty());assertEquals("trigger-proximity-budget",dispatcher.snapshot().diagnostics().getFirst().code());
     }
@@ -337,9 +368,52 @@ class TriggerDispatcherTest {
         npc(true);dispatcher.activated(npc);consumption(new art.arcane.animus.core.behavior.builtin.MemoryBehaviorState());pump();
         assertFalse(dispatcher.click(sneak(true,TriggerEvent.Hand.MAIN_HAND)));
     }
+    private TriggerEvent.Interaction input(TriggerEvent.Action action,boolean sneaking){return new TriggerEvent.Interaction(npc,viewer,action,sneaking,TriggerEvent.Hand.MAIN_HAND);}
+    private List<String> fired(TriggerEvent.Interaction event){started.clear();dispatcher.click(event);pump();List<String> ids=new ArrayList<>();for(TriggerDispatcher.Request request:started){ids.add(request.binding().trigger().id());dispatcher.finished(request);}return ids;}
+
+    @Test void eachActionFiresItsTriggersAndThePlainOnesIgnoreSneaking()throws Exception{
+        behavior("""
+                [{"id":"interact","event":"interaction","action":"interact"},{"id":"attack","event":"interaction","action":"attack"},{"id":"any","event":"interaction","action":"any"},
+                 {"id":"sneak_interact","event":"interaction","action":"sneak_interact"},{"id":"sneak_attack","event":"interaction","action":"sneak_attack"},
+                 {"id":"drop","event":"interaction","action":"drop"},{"id":"sneak_drop","event":"interaction","action":"sneak_drop"},
+                 {"id":"swap_hands","event":"interaction","action":"swap_hands"},{"id":"sneak_swap_hands","event":"interaction","action":"sneak_swap_hands"}]""");
+        npc(true);dispatcher(settings(16,2,16,1,0,16));dispatcher.activated(npc);pump();
+        assertEquals(List.of("interact","any"),fired(input(TriggerEvent.Action.INTERACT,false)));
+        assertEquals(List.of("interact","any","sneak_interact"),fired(input(TriggerEvent.Action.INTERACT,true)));
+        assertEquals(List.of("attack","any"),fired(input(TriggerEvent.Action.ATTACK,false)));
+        assertEquals(List.of("attack","any","sneak_attack"),fired(input(TriggerEvent.Action.ATTACK,true)));
+        assertEquals(List.of("drop"),fired(input(TriggerEvent.Action.DROP,false)),"any stays a click filter");
+        assertEquals(List.of("drop","sneak_drop"),fired(input(TriggerEvent.Action.DROP,true)));
+        assertEquals(List.of("swap_hands"),fired(input(TriggerEvent.Action.SWAP_HANDS,false)));
+        assertEquals(List.of("swap_hands","sneak_swap_hands"),fired(input(TriggerEvent.Action.SWAP_HANDS,true)));
+    }
+    @Test void aDropOrSwapIsConsumedByDefaultWhenATriggerMatches()throws Exception{
+        behavior("""
+                [{"id":"drop","event":"interaction","action":"sneak_drop"},{"id":"swap","event":"interaction","action":"swap_hands","consume":"false"},
+                 {"id":"click","event":"interaction","action":"any"}]""");
+        npc(true);dispatcher.activated(npc);consumption(new art.arcane.animus.core.behavior.builtin.MemoryBehaviorState());pump();
+        assertTrue(dispatcher.click(input(TriggerEvent.Action.DROP,true)));
+        assertFalse(dispatcher.click(input(TriggerEvent.Action.DROP,false)),"no trigger takes a plain drop, so the item drops");
+        assertFalse(dispatcher.click(input(TriggerEvent.Action.SWAP_HANDS,false)),"consume false lets the swap happen");
+        assertFalse(dispatcher.click(input(TriggerEvent.Action.INTERACT,false)),"a click without consume still goes to modules");
+    }
+    @Test void aConsumeConditionDecidesADropAndReadsTheAction()throws Exception{
+        art.arcane.animus.core.behavior.builtin.MemoryBehaviorState state=new art.arcane.animus.core.behavior.builtin.MemoryBehaviorState();
+        behavior("[{\"id\":\"drop\",\"event\":\"interaction\",\"action\":\"drop\",\"consume\":\"same(context.action, 'drop') && has_flag('npc', 'keep')\"}]");
+        npc(true);dispatcher.activated(npc);consumption(state);pump();
+        assertFalse(dispatcher.click(input(TriggerEvent.Action.DROP,false)));
+        flag(state,"npc","keep",true,BehaviorProgram.Type.BOOLEAN);
+        assertTrue(dispatcher.click(input(TriggerEvent.Action.DROP,false)));
+    }
+    @Test void cooldownsApplyToTheNewActions()throws Exception{
+        behavior("[{\"id\":\"drop\",\"event\":\"interaction\",\"action\":\"sneak_drop\",\"cooldownTicks\":5}]");npc(true);dispatcher.activated(npc);pump();
+        assertEquals(List.of("drop"),fired(input(TriggerEvent.Action.DROP,true)));
+        assertEquals(List.of(),fired(input(TriggerEvent.Action.DROP,true)));
+        pump(5);assertEquals(List.of("drop"),fired(input(TriggerEvent.Action.DROP,true)));
+    }
     @Test void aClickRunReadsTheClickContext()throws Exception{
         behavior("[{\"id\":\"click\",\"event\":\"interaction\",\"routine\":\"greet\"}]");npc(true);dispatcher.activated(npc);pump();
         dispatcher.click(sneak(true,TriggerEvent.Hand.OFF_HAND));pump();
-        assertEquals(Map.of("sneaking",true,"hand","off_hand"),started.getFirst().event());
+        assertEquals(Map.of("action","interact","sneaking",true,"hand","off_hand"),started.getFirst().event());
     }
 }

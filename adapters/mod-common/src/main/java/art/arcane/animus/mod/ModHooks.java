@@ -41,6 +41,11 @@ public final class ModHooks {
         AnimusModRuntime active = runtime;
         return active != null && active.interact(player, entityId, attack, hand, secondary);
     }
+    /** The drop or swap-hands key, on the owner pass; true when an NPC interaction trigger consumed it. */
+    public static boolean pressed(ServerPlayer player, art.arcane.animus.core.behavior.trigger.TriggerEvent.Action key) {
+        AnimusModRuntime active = runtime;
+        return active != null && active.pressed(player, key);
+    }
     /** The player's arm-swing packet, on the owner pass. */
     public static void swung(ServerPlayer player, InteractionHand hand) {
         AnimusModRuntime active = runtime;

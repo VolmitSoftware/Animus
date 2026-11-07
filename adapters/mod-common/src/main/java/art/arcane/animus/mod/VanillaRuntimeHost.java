@@ -73,6 +73,7 @@ final class VanillaRuntimeHost implements RuntimeHost<ServerPlayer, ItemStack> {
     @Override public boolean dead(ServerPlayer player) { return !player.isAlive(); }
     @Override public boolean sleeping(ServerPlayer player) { return player.isSleeping(); }
     @Override public boolean spectator(ServerPlayer player) { return player.isSpectator(); }
+    @Override public boolean sneaking(ServerPlayer player) { return player.isShiftKeyDown(); }
     @Override public boolean inVehicle(ServerPlayer player) { return player.isPassenger(); }
     @Override public int entityId(ServerPlayer player) { return player.getId(); }
     @Override public WorldPosition position(ServerPlayer player) {

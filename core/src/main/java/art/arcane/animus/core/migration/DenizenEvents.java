@@ -58,8 +58,15 @@ final class DenizenEvents {
             Map.entry("projectile", "arrow"), Map.entry("poison", "magic"));
     private static final String NAME = "[a-z0-9_*]{1,64}";
 
-    /** {@code key} with the areas Denizen notes; {@code npcEntity} says the script treats the entity as an NPC ({@code is_npc}). */
-    static Mapped event(String key, Map<String, Note> notes, boolean npcEntity) {
+    /** The {@code context} key that lets {@code <player.target>} read the NPC; no Denizen context name contains a dot. */
+    static final String TARGET = "player.target";
+
+    /**
+     * {@code key} with the areas Denizen notes; {@code npcEntity} says the script treats the entity as an NPC
+     * ({@code is_npc}), and {@code npcTarget} that it treats the player's target as one, which makes the drop and
+     * swap-hands keys NPC interaction triggers.
+     */
+    static Mapped event(String key, Map<String, Note> notes, boolean npcEntity, boolean npcTarget) {
         String[] tokens = key.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim().split(" ");
         if (!tokens[0].equals("on") && !tokens[0].equals("after")) return Mapped.fail("world events start with on or after");
         List<String> words = new ArrayList<>();
@@ -74,7 +81,13 @@ final class DenizenEvents {
         boolean player = true, npc = false, cancellable = false;
         String event;
         String[] w = words.toArray(String[]::new);
-        switch (phrase) {
+        if (npcTarget && (phrase.equals("player drops item") || phrase.equals("player swaps items"))) {
+            event = "interaction";
+            npc = true;
+            trigger.addProperty("action", phrase.equals("player drops item") ? "drop" : "swap_hands");
+            context.put(TARGET, "npc");
+            context.put("sneaking", "sneaking");
+        } else switch (phrase) {
             case "player joins", "player join", "player logs in" -> event = "player_join";
             case "player quits", "player quit" -> event = "player_quit";
             case "player chats" -> { event = "player_chat"; context.put("message", "message"); }

@@ -5078,7 +5078,7 @@
     },
     "trigger-interaction": {
       "type": "object",
-      "description": "A viewer's validated hit on the NPC. Runs read context.sneaking and context.hand (main_hand or off_hand).",
+      "description": "A viewer's validated click on the NPC, or the drop or swap-hands key pressed while looking at it in reach. Runs read context.action, context.sneaking and context.hand (main_hand or off_hand).",
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -5102,15 +5102,34 @@
           "enum": [
             "interact",
             "attack",
-            "any"
+            "any",
+            "sneak_interact",
+            "sneak_attack",
+            "drop",
+            "sneak_drop",
+            "swap_hands",
+            "sneak_swap_hands"
           ],
-          "description": "Which hit fires it; interact by default."
+          "description": "What fires it: interact (right click), attack (left click), any click, drop (Q) or swap_hands (F) while looking at the NPC, with or without sneaking; the sneak_ forms only while sneaking. interact by default."
         },
         "consume": {
           "type": "string",
           "pattern": "\\S",
           "maxLength": 4096,
-          "description": "An expression checked when the click arrives, over flags, facts, context.sneaking and context.hand. When it holds, the click belongs to this behavior: shops, hiring, GUIs, riding and selection do not see it. Omit to leave the click to them."
+          "description": "An expression checked as the input arrives, over flags, facts, context.action, context.sneaking and context.hand. When it holds, the input belongs to this behavior: shops, hiring, GUIs, riding and selection do not see a click, and a drop or swap does not happen. Omit to leave a click to them; a drop or swap without it is always consumed, and false lets it happen."
+        },
+        "playerCooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one player's runs of this trigger. Without it the configured playerCooldownTicks applies, unless cooldownTicks is set; 0 turns it off."
+        },
+        "whileRunning": {
+          "enum": [
+            "drop",
+            "queue"
+          ],
+          "description": "What a player's input does while their earlier run of this trigger is queued or running: drop it (default) or queue it."
         }
       },
       "required": [

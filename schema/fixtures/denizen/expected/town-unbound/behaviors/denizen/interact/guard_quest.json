@@ -214,7 +214,8 @@
     {
       "id": "click",
       "event": "interaction",
-      "routine": "click"
+      "routine": "click",
+      "playerCooldownTicks": 200
     },
     {
       "id": "enter",

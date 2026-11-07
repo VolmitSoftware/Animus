@@ -81,7 +81,7 @@ KnownNames knownNames(Iterable<Object?> behaviors) {
 /// Every issue of [conversation].
 List<ConversationIssue> checkConversation(Conversation conversation, {KnownNames names = const KnownNames()}) {
   final List<ConversationIssue> issues = <ConversationIssue>[];
-  final int routines = conversation.blocks.length + (conversation.start.gate == null ? 0 : 1);
+  final int routines = conversation.blocks.length;
   if (routines > routineLimit) issues.add(ConversationIssue(true, '$routines blocks. A behavior holds $routineLimit routines.'));
   final int triggers = conversation.triggerIds.length;
   if (triggers > triggerLimit) issues.add(ConversationIssue(true, '$triggers answers and starts. A behavior holds $triggerLimit triggers.'));

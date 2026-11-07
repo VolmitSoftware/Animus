@@ -261,6 +261,13 @@
 - Web editor: changing a skinned NPC's body away from a player asks to remove the skin, also from the groups that give it, in one undo step.
 - Web editor: typed forms replace JSON boxes for combat rules, return and respawn locations (placed on a grid), drops, ranged effects, pack module configuration, presets and GUI action fields. Item ids, call targets, menu lists and document ids are picked from lists.
 - Web editor: a reusable route on an NPC has Edit route and Make a copy for this NPC.
+- Interaction triggers take the actions `sneak_interact`, `sneak_attack`, `drop`, `sneak_drop`, `swap_hands` and `sneak_swap_hands`. The drop and swap-hands keys fire them while the player looks at an NPC in reach, and a matched press keeps the item unless `consume` says otherwise.
+- Interaction runs and `consume` conditions read `context.action`.
+- The Citizens converter turns `SHIFT_RIGHT`, `SHIFT_LEFT` and `SHIFT_BOTH` commands into sneak triggers; converter version 14.
+- The Denizen converter turns `player drops item` and `player swaps items` in scripts that check `<player.target.is_npc>` into NPC drop and swap triggers; converter version 6.
+- Web editor: the trigger action picker and the conversation start picker list every click and key action.
+- Interaction triggers take `playerCooldownTicks` and `whileRunning` (`drop` or `queue`), and `[behaviors.triggers]` takes `playerCooldownTicks` (default 20).
+- The Denizen converter turns interact-script `cooldown` lines into click trigger cooldowns, accepts `engage` and `disengage`, and gives sneaking-only NPC click events the `sneak_interact` or `sneak_attack` action.
 
 ### Changed
 
@@ -374,6 +381,8 @@
 - Navigation and `play-recording` without `playback` use the recording's own playback, then loop.
 - Recording again under an existing id keeps its description, tags, playback and speed.
 - Web editor: the autocomplete also covers typed key/value text, recording descriptions and tags, skin hashes and addresses, combat respawn worlds and route and recording ids. Item fields use the item picker with search.
+- Web editor: a Sneak + right-click conversation start is saved as a `sneak_interact` trigger instead of a routine that checks sneaking. Older conversations open unchanged and are rewritten on save.
+- Interaction triggers without `cooldownTicks` rate-limit each player on their own, and drop a player's input while that player's run of the trigger is queued or running. Spamming a click starts a dialogue once.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
@@ -551,6 +560,8 @@
 - Opening a data folder in the web editor keeps the skin PNGs under `editor/skins/`.
 - Web editor: a delete confirmation that draws late still takes focus, so Escape cancels it.
 - A Minecraft id without a namespace, such as `netherite_axe` in equipment, a shop offer, combat drops or a `give-item` action, now means the `minecraft:` id instead of being refused. Entity types, villager professions, rig and recording blocks, effects, sounds, particles and Bukkit dimension keys follow the same rule, and the schemas and editor accept both forms.
+- A left-click on an NPC reads `context.sneaking` from the player, since the attack packet carries no sneaking flag; it was always false.
+- The Denizen converter reads `<context.entity.is_npc||false>` as marking the NPC, as it already read `<context.entity.is_npc>`.
 
 ### Notes
 

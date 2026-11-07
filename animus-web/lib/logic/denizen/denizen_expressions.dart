@@ -587,6 +587,12 @@ class _Expressions {
         return _fact('player.op', 'b', 2);
       case 'is_sneaking':
         return _fact(scope.context.containsKey('sneaking') ? 'context.sneaking' : 'player.sneaking', 'b', 2);
+      case 'target':
+        // On a drop or swap-hands trigger, the player's target is the NPC the key was pressed at.
+        if (!scope.context.containsKey(_denizenTarget)) return const _Result<_Step>.fail('tag player.target has no Animus expression');
+        if (next == 'is_npc') return _fact('true', 'b', 3);
+        final _Result<_Step> npc = this.npc(parts.sublist(1), scope, pending);
+        return npc.failed ? npc : _Result<_Step>.ok(_Step(npc.value!.expr, npc.value!.next + 1));
       case 'is_flying':
         return _fact('player.flying', 'b', 2);
       case 'is_online':

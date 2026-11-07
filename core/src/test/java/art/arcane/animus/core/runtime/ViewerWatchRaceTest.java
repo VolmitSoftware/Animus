@@ -247,6 +247,7 @@ class ViewerWatchRaceTest {
         @Override public boolean dead(Player player) { return false; }
         @Override public boolean sleeping(Player player) { return false; }
         @Override public boolean spectator(Player player) { return false; }
+        @Override public boolean sneaking(Player player) { return false; }
         @Override public boolean inVehicle(Player player) { return false; }
         @Override public int entityId(Player player) { return 1; }
         @Override public WorldPosition position(Player player) { return new WorldPosition("world", new Vec3(harness.playersAway ? 5000.5 : 0.5, 64, 0.5)); }

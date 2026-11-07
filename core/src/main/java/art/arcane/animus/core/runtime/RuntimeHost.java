@@ -43,6 +43,8 @@ public interface RuntimeHost<P, I> extends TerrainReader {
     boolean dead(P player);
     boolean sleeping(P player);
     boolean spectator(P player);
+    /** The player holds the sneak key, as the server last heard it. */
+    boolean sneaking(P player);
     /** The player sits in a real server vehicle. */
     boolean inVehicle(P player);
     int entityId(P player);

@@ -107,6 +107,26 @@ public final class ViewerSession implements AutoCloseable {
         return new Validation(Rejection.NONE, npc, point, distance);
     }
 
+    /**
+     * The visible, living NPC nearest along a server ray within reach, for input that names no entity, such as the drop
+     * key. {@code shapes} gives each NPC's hit shape. Spends no action budget: validate the result before acting on it.
+     */
+    public synchronized OptionalInt aim(WorldPosition eye, Vec3 direction, java.util.function.Function<VirtualNpcState.Snapshot, HitShape> shapes) {
+        Objects.requireNonNull(eye, "eye"); Objects.requireNonNull(direction, "direction"); Objects.requireNonNull(shapes, "shapes");
+        if (closed) return OptionalInt.empty();
+        Vec3 unit;
+        try { unit = direction.normalized(); }
+        catch (IllegalArgumentException e) { return OptionalInt.empty(); }
+        int nearest = 0; double distance = Double.POSITIVE_INFINITY;
+        for (Map.Entry<Integer, VirtualNpcState.Snapshot> entry : visible.entrySet()) {
+            VirtualNpcState.Snapshot npc = entry.getValue();
+            if (!npc.active() || npc.health() == 0 || !npc.position().world().equals(eye.world())) continue;
+            OptionalDouble hit = shapes.apply(npc).rayDistance(npc, eye.point(), unit, limits.maximumReach());
+            if (hit.isPresent() && hit.getAsDouble() < distance) { distance = hit.getAsDouble(); nearest = entry.getKey(); }
+        }
+        return nearest == 0 ? OptionalInt.empty() : OptionalInt.of(nearest);
+    }
+
     private void ensureOpen() { if (closed) throw new IllegalStateException("Viewer session is closed"); }
     @Override public synchronized void close() { closed = true; visible.clear(); issued.clear(); }
 }

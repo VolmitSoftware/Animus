@@ -395,6 +395,22 @@ class BehaviorEditor extends StatelessWidget {
                 )
               else if (answers && (raw.key == 'dialogue' || raw.key == 'choice'))
                 _answerPicker(trigger, raw, index, prompts, path, (JsonMap next) => put(<Object?>[...triggers]..[index] = next))
+              else if (event == 'interaction' && raw.key == 'action')
+                GuiRow(
+                  key: ValueKey<String>('$path.${raw.key}'),
+                  label: fieldLabel(raw),
+                  help: raw.help,
+                  problems: diagnosticsAt(diagnostics, childPath(path, raw.key)),
+                  child: GuiSelect(
+                    value: asString(trigger[raw.key]),
+                    options: <String>[for (final FieldOption option in raw.options) option.label],
+                    labels: interactionActionLabels,
+                    allowNone: true,
+                    noneLabel: 'Right-click',
+                    label: 'Action of trigger ${index + 1}',
+                    onChanged: (String? v) => _write(<JsonStep>[...steps, raw.key], v),
+                  ),
+                )
               else
                 InspectField(
                   key: ValueKey<String>('$path.${raw.key}'),

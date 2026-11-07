@@ -33,7 +33,7 @@ class TriggerBridgeTest {
         var accepted=new BehaviorCatalog.Accepted(1,String.format("%064x",1),100,program,Set.of());
         BehaviorCatalog.Snapshot catalog=new BehaviorCatalog.Snapshot(1,Map.of(),Map.of(BEHAVIOR,new BehaviorCatalog.Resolution(BEHAVIOR,true,Optional.of(accepted),List.of())),List.of());
         NpcDefinition definition=NpcDefinition.parse("{\"schemaVersion\":1,\"revision\":1,\"uuid\":\""+npc+"\",\"id\":\"test\",\"group\":\"test\",\"name\":\"Test\",\"type\":\"minecraft:player\",\"spawned\":true,\"behaviors\":[\""+BEHAVIOR+"\"],\"position\":{\"world\":\"world\",\"x\":0,\"y\":61,\"z\":0,\"yaw\":0,\"pitch\":0}}");
-        TriggerSettings settings=new TriggerSettings(true,64,64,64,64,32,8,100,32,16,8,0,0,4096,1024,1,32,1,16,32,64);
+        TriggerSettings settings=new TriggerSettings(true,64,64,64,64,32,8,100,32,16,8,0,0,4096,1024,1,32,1,16,32,64,0);
         dispatcher=new TriggerDispatcher(settings,()->Map.of("test",definition),()->catalog);dispatcher.connect();
         dispatcher.consumption(new art.arcane.animus.core.behavior.builtin.MemoryBehaviorState(),art.arcane.animus.core.behavior.BehaviorFacts.NONE);
         bridge=new TriggerBridge(dispatcher,index);
