@@ -12,6 +12,9 @@ import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/hologram_lines.dart';
 import '../../logic/gui/text_animation.dart';
+import '../../logic/suggest/completion_sources.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../../logic/suggest/field_profiles.dart';
 import '../../mc/gui/gui_scene.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
@@ -321,7 +324,7 @@ class _HologramEditorState extends State<HologramEditor> {
         label: 'World *',
         forId: worldId,
         problems: diagnosticsAt(_diagnostics, r'$.anchor.world'),
-        child: GuiTextInput(id: worldId, value: asString(anchor['world']) ?? '', label: 'World', onChanged: (String v) => _write(<JsonStep>['anchor', 'world'], v)),
+        child: GuiTextInput(id: worldId, value: asString(anchor['world']) ?? '', label: 'World', profile: idProfile(const ValueRef.registry(RegistryKind.world)), onChanged: (String v) => _write(<JsonStep>['anchor', 'world'], v)),
       ),
       GuiRow(
         label: 'Position *',

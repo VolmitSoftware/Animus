@@ -32,6 +32,7 @@ import '../../logic/npc/reference_options.dart';
 import '../../logic/npc/route_copy.dart';
 import '../../logic/npc/route_model.dart';
 import '../../logic/npc/skin_edits.dart';
+import '../../logic/suggest/field_profile.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../conversation/conversation_attach.dart' show ConversationCommit;
@@ -211,8 +212,9 @@ class _NpcInspectorState extends State<NpcInspector> {
     return fields.where((FieldSpec field) => field.key == key).firstOrNull ?? FieldSpec(key: key, kind: FieldKind.any);
   }
 
-  Widget _field(String key, {List<FieldOption> suggestions = const <FieldOption>[], String? label}) => InspectField(
+  Widget _field(String key, {List<FieldOption> suggestions = const <FieldOption>[], String? label, FieldProfile profile = FieldProfile.none}) => InspectField(
     key: ValueKey<String>('npc:$key'),
+    profile: profile,
     field: _spec(key),
     value: _doc[key],
     path: childPath(r'$', key),
@@ -278,7 +280,7 @@ class _NpcInspectorState extends State<NpcInspector> {
       open: _open('identity', true),
       onToggle: (bool open) => setState(() => _opened['identity'] = open),
       children: <Widget>[
-        _field('name'),
+        _field('name', profile: FieldProfile.richText),
         _readOnly('id', 'ID', ''),
         _readOnly('group', 'Folder', ''),
         _readOnly('uuid', 'UUID', 'Never changes.'),

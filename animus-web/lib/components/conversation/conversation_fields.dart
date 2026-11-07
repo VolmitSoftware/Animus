@@ -14,6 +14,10 @@ import '../../logic/conversation/conversation_play.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/completion_catalog.dart';
 import '../../logic/inspect/schema_fields.dart';
+import '../../logic/suggest/completion_sources.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../../logic/suggest/field_profiles.dart';
+import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
 import '../info_tip.dart';
 import '../inspect/inspect_fields.dart' show KeptJsonEditor;
@@ -123,6 +127,11 @@ class ConditionFields extends StatelessWidget {
           label: label,
           code: true,
           placeholder: placeholder,
+          profile: switch (kind) {
+            ConditionKind.flag || ConditionKind.relationship => const FieldProfile(values: <ValueRef>[ValueRef.flags()]),
+            ConditionKind.quest => const FieldProfile(values: <ValueRef>[ValueRef.quests()]),
+            _ => FieldProfile.none,
+          },
           onChanged: (String value) => _editBranch(scope, at, (ConversationBranch b) => b.arguments[key] = value, coalesce: 'if:${at.key}:$key'),
         );
     const List<PickOption> scopes = <PickOption>[PickOption('player', 'Player'), PickOption('npc', 'NPC'), PickOption('global', 'Everyone')];
@@ -172,6 +181,7 @@ class ConditionFields extends StatelessWidget {
               value: heldItemOf(branch.expression ?? '') ?? '',
               label: 'Item held',
               code: true,
+              profile: idProfile(const ValueRef.registry(RegistryKind.item)),
               placeholder: 'minecraft:emerald',
               onChanged: (String value) => _editBranch(scope, at, (ConversationBranch b) => b.expression = heldItemExpression(value.trim()), coalesce: 'if:${at.key}:item'),
             ),
@@ -182,6 +192,7 @@ class ConditionFields extends StatelessWidget {
               value: branch.expression ?? '',
               label: 'Expression',
               code: true,
+              profile: FieldProfile.behaviorExpression,
               placeholder: "player.level >= 10",
               onChanged: (String value) => _editBranch(scope, at, (ConversationBranch b) => b.expression = value, coalesce: 'if:${at.key}:expression'),
             ),
@@ -348,6 +359,7 @@ class ActionArguments extends StatelessWidget {
           label: humanizeKey(field.key),
           code: field.key != 'text' && field.key != 'command',
           placeholder: _placeholder(field.key),
+          profile: argumentProfile(action.capability, field.key),
           onChanged: (String next) => _set(field.key, next, coalesce: 'arg:${at.key}:${field.key}'),
         );
       default:
@@ -408,6 +420,7 @@ class LineExtras extends StatelessWidget {
           value: line.sound ?? '',
           label: 'Sound',
           code: true,
+          profile: idProfile(const ValueRef.registry(RegistryKind.sound)),
           placeholder: 'minecraft:entity.villager.ambient',
           onChanged: (String value) => _edit((ConversationLine l) => l.sound = value.trim().isEmpty ? null : value.trim(), 'sound'),
         ),
@@ -421,6 +434,7 @@ class LineExtras extends StatelessWidget {
           value: line.animation ?? '',
           label: 'Animation',
           code: true,
+          profile: idProfile(const ValueRef.document(DocumentKind.animation)),
           placeholder: scope.suggestions.animations.firstOrNull ?? 'town:golem/wave',
           onChanged: (String value) => _edit((ConversationLine l) => l.animation = value.trim().isEmpty ? null : value.trim(), 'animation'),
         ),
@@ -485,6 +499,7 @@ class OptionExtras extends StatelessWidget {
           value: option.hover ?? '',
           label: 'Hover',
           placeholder: 'Click to choose this answer',
+          profile: FieldProfile.richText,
           onChanged: (String value) => _edit((ConversationOption o) => o.hover = value.isEmpty ? null : value, coalesce: 'hover:${at.key}:$index'),
         ),
       ),

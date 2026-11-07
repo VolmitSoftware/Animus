@@ -14,6 +14,9 @@ import '../../logic/inspect/inspect_schemas.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/inspect/typed_values.dart';
 import '../../logic/npc/combat_forms.dart';
+import '../../logic/suggest/completion_sources.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../../logic/suggest/field_profiles.dart';
 import '../../logic/npc/combat_settings.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
@@ -496,6 +499,7 @@ class _CombatEditorState extends State<CombatEditor> {
               SuggestInput(
                 value: asString(effect['id']) ?? '',
                 label: 'ranged.effect.id',
+                profile: idProfile(const ValueRef.registry(RegistryKind.effect)),
                 placeholder: 'minecraft:instant_health',
                 suggestions: <FieldOption>[
                   for (final String id in _commonEffects)

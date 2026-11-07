@@ -20,6 +20,7 @@ import '../mc/item_picker.dart';
 import '../select/suggest_input.dart';
 import 'gui_fields.dart';
 import 'gui_targets.dart';
+import '../../logic/suggest/field_profile.dart';
 
 /// Labels for the add menu.
 const Map<String, String> actionLabels = <String, String>{
@@ -421,7 +422,7 @@ class ActionsEditor extends StatelessWidget {
               onChanged: (JsonMap next) => set(next.isEmpty ? null : next),
               valueControl: (String key, Object? entry, void Function(Object? value) onEntry) => entry is String || entry == null
                   ? GuiTextInput(value: asString(entry) ?? '', mode: GuiTextMode.template, names: names, label: 'Argument $key', onChanged: onEntry)
-                  : TypedValueEditor(value: entry, label: 'Argument $key', onChanged: onEntry),
+                  : TypedValueEditor(value: entry, label: 'Argument $key', profileFor: (String _) => FieldProfile.guiText, onChanged: onEntry),
             ),
             for (final String key in args.keys)
               if (argumentNameProblem(key) case final String problem)

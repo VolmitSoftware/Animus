@@ -11,8 +11,10 @@ import 'package:web/web.dart' as web;
 
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/select/select_model.dart';
+import '../../logic/suggest/field_profile.dart';
 import '../../model/document_kind.dart';
 import '../../state/document_return.dart';
+import '../suggest/autocomplete_input.dart';
 import 'picker_scope.dart';
 import 'select_popup.dart';
 
@@ -28,11 +30,18 @@ class SuggestInput extends StatefulWidget {
     this.onSubmit,
     this.references,
     this.id,
+    this.profile = FieldProfile.none,
     super.key,
   });
 
   /// The text field's element id, so a row label can name it with `for`.
   final String? id;
+
+  /// What the text completes beyond [suggestions] (registry ids, flags,
+  /// placeholders); a field with one and no [references] is an
+  /// [AutocompleteInput] with the suggestions as its options.
+  final FieldProfile profile;
+
   final String value;
   final void Function(String value) onChanged;
   final List<FieldOption> suggestions;
@@ -167,6 +176,7 @@ class _SuggestInputState extends State<SuggestInput> {
 
   @override
   Widget build(BuildContext context) {
+    if (!component.profile.isNone && component.references == null) return _autocomplete();
     _scope = PickerScope.of(context);
     _claimReturn();
     final SelectRows rows = _rows;
@@ -233,6 +243,31 @@ class _SuggestInputState extends State<SuggestInput> {
             ),
           ],
         ),
+    ]);
+  }
+
+  Widget _autocomplete() {
+    final FieldProfile profile = component.profile.copyWith(options: <ValueOption>[
+      ...component.profile.options,
+      for (final FieldOption option in component.suggestions) ValueOption(option.label, detail: option.description ?? ''),
+    ]);
+    return dom.div(classes: 'animus-gui-text', <Widget>[
+      AutocompleteInput(
+        id: _baseId,
+        value: component.value,
+        profile: profile,
+        label: component.label,
+        placeholder: component.placeholder,
+        onChanged: component.onChanged,
+        // Enter with the list closed submits, as in the plain field.
+        onKey: component.onSubmit == null
+            ? null
+            : (web.KeyboardEvent key) {
+                if (key.key != 'Enter') return false;
+                component.onSubmit!();
+                return true;
+              },
+      ),
     ]);
   }
 

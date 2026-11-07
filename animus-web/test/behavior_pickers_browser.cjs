@@ -107,7 +107,7 @@ async function run(browser, viewport, label, theme) {
   await glow.waitFor();
   assert.equal(await modules.locator('[data-module="example:glow"] textarea').count(), 0, 'no JSON until Advanced');
   assert.equal(await glow.getByRole('textbox', {name: 'Module example:glow key 1'}).inputValue(), 'color');
-  await glow.getByRole('textbox', {name: 'color', exact: true}).fill('amber');
+  await glow.getByRole('combobox', {name: 'color', exact: true}).fill('amber');
   await glow.getByRole('button', {name: 'Add field to Module example:glow'}).click();
   let json = await waitForCode(page, j => j.modules['example:glow'].color === 'amber' && j.modules['example:glow'].key === '', 'module rows');
   assert.equal(json.modules['example:glow'].strength, 2);
@@ -174,13 +174,13 @@ async function run(browser, viewport, label, theme) {
   await editor.waitFor();
   assert.equal(await editor.locator('.animus-dialogue').count(), 0, 'the old dialogue section is gone');
   const other = editor.getByRole('group', {name: 'Other fields', exact: true});
-  await other.getByRole('textbox', {name: 'notes', exact: true}).fill('Harbor team');
+  await other.getByRole('combobox', {name: 'notes', exact: true}).fill('Harbor team');
   json = await waitForCode(page, j => j.notes === 'Harbor team', 'document other field');
   const triggerOther = editor.getByRole('group', {name: 'Other fields of triggers[0]'});
   await triggerOther.getByRole('spinbutton', {name: 'legacy'}).fill('5');
   json = await waitForCode(page, j => j.triggers[0].legacy === 5, 'trigger other field');
   const wave = editor.getByRole('group', {name: 'Arguments', exact: true});
-  await wave.getByRole('textbox', {name: 'style', exact: true}).fill('small');
+  await wave.getByRole('combobox', {name: 'style', exact: true}).fill('small');
   json = await waitForCode(page, j => j.routines.decline.steps[1].arguments.style === 'small', 'module capability argument');
   await shot(page, `${label}-behavior-fields`);
 

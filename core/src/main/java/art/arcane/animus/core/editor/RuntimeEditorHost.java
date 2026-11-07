@@ -30,9 +30,11 @@ import java.util.function.Supplier;
  */
 public final class RuntimeEditorHost<P> implements EditorHost {
     /** What the platform passes in. Applied changes reload through the runtime's {@link AnimusRuntime#catalogs()}. */
-    public record Parts<P>(AnimusRuntime runtime, Executor files, NpcRuntime<P, ?> living, ExtensionRuntime extensions, String platform, String serverName, Supplier<Map<String, Feature>> features, Predicate<P> admin,
-                           EditorNoticeChannel notices, Consumer<String> log) {
-        public Parts { Objects.requireNonNull(runtime); Objects.requireNonNull(files); Objects.requireNonNull(living); Objects.requireNonNull(notices); Objects.requireNonNull(log); }
+    public record Parts<P>(AnimusRuntime runtime, Executor files, NpcRuntime<P, ?> living, ExtensionRuntime extensions, String platform, String serverName, Supplier<Map<String, Feature>> features,
+                           Supplier<Lookups> lookups, Predicate<P> admin, EditorNoticeChannel notices, Consumer<String> log) {
+        public Parts {
+            Objects.requireNonNull(runtime); Objects.requireNonNull(files); Objects.requireNonNull(living); Objects.requireNonNull(lookups); Objects.requireNonNull(notices); Objects.requireNonNull(log);
+        }
     }
 
     private final Parts<P> parts;
@@ -46,6 +48,8 @@ public final class RuntimeEditorHost<P> implements EditorHost {
     @Override public Executor files() { return parts.files(); }
 
     @Override public Map<String, Feature> features() { return parts.features().get(); }
+
+    @Override public Lookups lookups() { return parts.lookups().get(); }
 
     @Override public List<Map.Entry<String, String>> modules() {
         if (parts.extensions() == null) return List.of();

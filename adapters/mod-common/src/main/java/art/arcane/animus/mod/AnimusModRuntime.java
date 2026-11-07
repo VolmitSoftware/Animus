@@ -262,7 +262,7 @@ public final class AnimusModRuntime {
                 "gloss", EditorHost.Feature.no("Gloss is a Bukkit plugin"),
                 "placeholderapi", EditorHost.Feature.no("PlaceholderAPI is a Bukkit plugin"));
         EditorService service = new EditorService(next.runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(next.runtime, files, next.living,
-                next.extensions, platform.name().toLowerCase(java.util.Locale.ROOT), "", features,
+                next.extensions, platform.name().toLowerCase(java.util.Locale.ROOT), "", features, new ModLookups(server)::read,
                 (ServerPlayer player) -> VanillaRuntimeHost.permitted(player.permissions(), "animus.admin"), new ModEditorNotices(server), LOGGER::info)), LOGGER::info, LOGGER::warn);
         try {
             service.start();

@@ -250,6 +250,10 @@
 - Chat replies carry click chips: links show as **[Open]** and **[Click to copy]**, wiki pointers as **[Docs]**, transaction ids as a short id that copies the full one plus **[Undo]**, and long status text behind **[Details]**. The console gets the plain values. `ChatLine` and `DocsLink` are shared for other code to use.
 - `/animus editor pair` replies with **[Open editor]** and **[Click to copy]** instead of printing the link, and a token line with **[Revoke]**.
 - Completion values for `type`, `world` and `group` in `/animus create`, and for the build options.
+- Web editor: one autocomplete for text, expression, id and JSON fields. Typing `{`, `<`, `%`, a name or an id, or pressing Ctrl+Space, lists variables, facts, placeholders, tags with colour swatches, registry ids, workspace ids, flags, quests and commands, matched loosely.
+- Web editor: names, placeholders, tags and ids the server would refuse are underlined, with the reason on hover.
+- `GET /v1/lookups` (read scope) lists the server's registry ids, command names and PlaceholderAPI identifiers for completion.
+- The Minecraft asset extractor writes `registries.json`, the ids the editor completes offline.
 - Recordings take optional `description`, `tags`, `playback` and `speed`. `playback` is the mode used when an NPC or action names none, and `speed` scales playback.
 - Web editor: every document kind has a Visual form. A kind without its own editor, such as an animation whose rig is not in the workspace, gets a form from its schema, and values no schema describes are edited as typed key/value rows with JSON behind Advanced.
 - Web editor: recordings are editable: id, description, tags, default playback, speed, trimming the start and end on the scrub, and Code Apply checked against the server's recording rules.
@@ -363,11 +367,13 @@
 - `/animus inspect` shows a two-line summary with the id and position as copy chips and the JSON behind **[JSON]** and **[Merged]**, instead of printing the JSON.
 - Shop and GUI lists page with `page=`; long build, hotload and import reports are clipped with a count of the rest.
 - Startup logs one `Enabled` line with the time taken, plus warnings only for parts that are down. A repeated failure logs its stack trace once, then one line.
+- Web editor: the separate completion lists of GUI text, behavior expressions and the Code view became the shared autocomplete.
 - Web editor: NPC modules without a schema, unknown behavior and trigger fields, and module capability arguments are edited as typed key/value rows; JSON sits behind Advanced.
 - Web editor: `dialogue_choice` triggers pick their prompt and option from the behavior's own prompts.
 - Web editor: NPC behaviors and the shop are picked from the workspace, and behaviors also from the connected server, with "+ New" and "Manage". "Add by id" is gone.
 - Navigation and `play-recording` without `playback` use the recording's own playback, then loop.
 - Recording again under an existing id keeps its description, tags, playback and speed.
+- Web editor: the autocomplete also covers typed key/value text, recording descriptions and tags, skin hashes and addresses, combat respawn worlds and route and recording ids. Item fields use the item picker with search.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
