@@ -233,8 +233,8 @@ async function menu(page, tag) {
 
 async function shop(page, tag) {
   await open(page, 'town:market');
-  await page.locator('[data-slot="10"]').click();
-  await suggest(page, page.getByLabel('Item id', {exact: true}), 'golden apple', 'minecraft:golden_apple');
+  await page.locator('.animus-shop-preview [data-slot="10"]').click();
+  await suggest(page, page.locator('.animus-shop-board').getByLabel('Gives item', {exact: true}), 'golden apple', 'minecraft:golden_apple');
   await page.locator('.animus-item-picker img').first().waitFor();
   await shot(page, `${tag}-shop-item`);
   const json = await codeOf(page);

@@ -36,6 +36,7 @@ import 'gui/hologram_editor.dart';
 import 'gui/inventory_editor.dart';
 import 'gui/menu_editor.dart';
 import 'gui/shop_editor.dart';
+import 'gui/shop_previews.dart';
 import 'conversation/conversation_attach.dart';
 import 'conversation/conversation_view.dart';
 import 'inspect/behavior_editor.dart';
@@ -489,7 +490,7 @@ class _DocumentPaneState extends State<DocumentPane> {
           diagnostics: <Diagnostic>[..._allDiagnostics(document), ...serverBehaviorsDiagnostics(json, workspace)],
         ),
       DocumentKind.inventory => InventoryEditor(document: document, onJson: onJson, presets: workspacePresets(workspace)),
-      DocumentKind.shop => ShopEditor(document: document, onJson: onJson, layouts: _ids(DocumentKind.inventory)),
+      DocumentKind.shop => ShopEditor(document: document, onJson: onJson, workspaceDocuments: workspace, onCommit: component.onCommit, onOpen: component.onOpen),
       DocumentKind.menu => MenuEditor(document: document, onJson: onJson, animations: workspaceAnimations(workspace)),
       DocumentKind.hologram => HologramEditor(document: document, onJson: onJson, animations: workspaceAnimations(workspace), presets: workspacePresets(workspace)),
       DocumentKind.textAnimation || DocumentKind.presets => guiDataEditor(document, onJson, workspace) ?? _form(document, json),
@@ -609,7 +610,7 @@ class _DocumentPaneState extends State<DocumentPane> {
     if (json is Map<String, Object?> && guiEditorKinds.contains(document.kind)) {
       return switch (document.kind) {
         DocumentKind.inventory => InventoryPreview(document: document),
-        DocumentKind.shop => ShopPreview(document: document),
+        DocumentKind.shop => ShopPreview(document: document, layouts: workspaceLayouts(component.workspaceDocuments)),
         DocumentKind.menu => MenuPreview(document: document, animations: workspaceAnimations(component.workspaceDocuments)),
         _ => HologramPreview(document: document, animations: workspaceAnimations(component.workspaceDocuments)),
       };

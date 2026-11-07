@@ -10,6 +10,7 @@ import '../../logic/gui/gui_json.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
+import '../select/picker_scope.dart';
 import '../inspect/inspect_fields.dart';
 import '../../logic/npc/route_model.dart';
 import 'npc_section.dart';
@@ -45,6 +46,17 @@ class ShopBindingEditor extends StatelessWidget {
   final List<Diagnostic> diagnostics;
   final void Function(DocumentKind kind, String id)? onOpen;
 
+  static const String _emptyField = 'Open a workspace shop on click';
+  static const String _pickField = 'Pick a shop';
+
+  /// "+ New shop": the create step, coming back with the new shop picked
+  /// in the dropdown named [field].
+  Widget _newShop(BuildContext context, String field) {
+    final PickerScope? scope = PickerScope.of(context);
+    if (scope == null) return const dom.span(<Widget>[]);
+    return Button.ghost(label: '+ New shop', size: ButtonSize.small, onPressed: () => scope.run(newActionId, DocumentKind.shop, field, ''));
+  }
+
   @override
   Widget build(BuildContext context) {
     const String shopId = 'animus-npc-shop';
@@ -53,16 +65,19 @@ class ShopBindingEditor extends StatelessWidget {
       return dom.div(classes: 'animus-npc-module', <Widget>[
         const NpcSubhead('Shop', help: 'No shop.'),
         const dom.label(classes: 'animus-sr-only', attributes: <String, String>{'for': shopId}, <Widget>[Component.text('Open a workspace shop on click')]),
-        GuiSelect(
-          references: DocumentKind.shop,
-          id: shopId,
-          value: null,
-          options: shops,
-          noneLabel: 'Open a workspace shop on click',
-          onChanged: (String? id) {
-            if (id != null) onChanged(<String, Object?>{'shop': id});
-          },
-        ),
+        dom.div(classes: 'animus-gui-line', <Widget>[
+          GuiSelect(
+            references: DocumentKind.shop,
+            id: shopId,
+            value: null,
+            options: shops,
+            noneLabel: _emptyField,
+            onChanged: (String? id) {
+              if (id != null) onChanged(<String, Object?>{'shop': id});
+            },
+          ),
+          _newShop(context, _emptyField),
+        ]),
       ]);
     }
     final JsonMap module = asMap(value);
@@ -81,13 +96,14 @@ class ShopBindingEditor extends StatelessWidget {
             id: shopId,
             value: shop == null || shop.isEmpty ? null : shop,
             options: shops,
-            noneLabel: 'Pick a shop',
+            noneLabel: _pickField,
             onChanged: (String? id) {
               if (id != null) onChanged(<String, Object?>{...module, 'shop': id});
             },
           ),
           if (shop != null && shops.contains(shop) && onOpen != null)
-            Button.ghost(label: 'Open', size: ButtonSize.small, onPressed: () => onOpen!(DocumentKind.shop, shop)),
+            Button.secondary(label: 'Edit shop', size: ButtonSize.small, attributes: <String, String>{'aria-label': 'Edit shop $shop'}, onPressed: () => onOpen!(DocumentKind.shop, shop)),
+          _newShop(context, _pickField),
           GuiIconButton(
             icon: ArcaneIcon.x(size: IconSize.sm),
             label: 'Remove the shop',

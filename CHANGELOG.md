@@ -268,6 +268,12 @@
 - Web editor: the trigger action picker and the conversation start picker list every click and key action.
 - Interaction triggers take `playerCooldownTicks` and `whileRunning` (`drop` or `queue`), and `[behaviors.triggers]` takes `playerCooldownTicks` (default 20).
 - The Denizen converter turns interact-script `cooldown` lines into click trigger cooldowns, accepts `engage` and `disengage`, and gives sneaking-only NPC click events the `sneak_interact` or `sneak_attack` action.
+- Web editor: a shop editor. Offers read as trades with item icons and counts, reorder by drag or Alt and the arrow keys, duplicate, delete with Undo, and edit in place: items with count steppers, enchantments and model numbers, money, commands, name and lore, stock, limits and permission.
+- Web editor: the shop editor shows the trading screen and the chest window as two tabs that follow every edit, crossing out offers whose limits ran out or need a permission, and picking offers on click. A shop with a layout GUI is drawn in it, page by page.
+- Web editor: the shop editor lists the NPCs that open the shop, with their window style and a villager's profession and level, and attaches the shop to another NPC in one undo step.
+- Web editor: shop checks for offers a window style cannot show exactly, missing items, zero counts and limits that conflict.
+- Web editor: New shop starts blank or from villager trades, a money shop or a command shop.
+- Web editor: an NPC's shop module has Edit shop and + New shop.
 
 ### Changed
 
@@ -383,6 +389,7 @@
 - Web editor: the autocomplete also covers typed key/value text, recording descriptions and tags, skin hashes and addresses, combat respawn worlds and route and recording ids. Item fields use the item picker with search.
 - Web editor: a Sneak + right-click conversation start is saved as a `sneak_interact` trigger instead of a routine that checks sneaking. Older conversations open unchanged and are rewritten on save.
 - Interaction triggers without `cooldownTicks` rate-limit each player on their own, and drop a player's input while that player's run of the trigger is queued or running. Spamming a click starts a dialogue once.
+- Web editor: the shop editor's slot inspector became the offers board; slots are picked from the chest window preview or set per offer.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
