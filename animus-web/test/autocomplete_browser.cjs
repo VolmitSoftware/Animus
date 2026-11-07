@@ -112,6 +112,18 @@ async function run(browser, viewport, theme) {
   await page.keyboard.press('Escape');
   assert.equal(await hint.count(), 0, `${where}: a namespaced id is not underlined`);
 
+  // Typed fast and left at once (Escape, Tab), the document holds every
+  // keystroke and the sibling argument is untouched.
+  for (const [key, typed] of [['Escape', 'minecraft:golden_sword'], ['Tab', 'minecraft:diamond_sword']]) {
+    await retype(item, typed);
+    await page.keyboard.press(key);
+    await page.getByRole('tab', {name: 'Code'}).click();
+    const action = JSON.parse(await page.locator('.animus-code textarea').inputValue()).routines.main.steps
+      .find(step => step.capability === 'animus:give-item');
+    assert.deepEqual(action.arguments, {item: typed, amount: 1}, `${where}: ${key} keeps the typed item`);
+    await page.getByRole('tab', {name: 'Visual'}).click();
+  }
+
   // A MiniMessage colour in say text, with a swatch.
   const say = editor.getByLabel('text', {exact: true});
   await say.focus();

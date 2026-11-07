@@ -4,6 +4,7 @@
 /// the document.
 library;
 
+import 'dart:js_interop';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
@@ -456,6 +457,20 @@ class GuiSection extends StatefulWidget {
   State<GuiSection> createState() => _GuiSectionState();
 }
 
+/// Handles a click on a `details` element's own summary (not a link or
+/// button inside it): the browser's toggle is cancelled and the caller opens
+/// or closes the part through its state. The browser reports its own toggle
+/// only a task later, and a build in between drops the `open` it set, so a
+/// part opened while an edit lands would fold shut again.
+bool takeSummaryClick(web.Event event) {
+  final web.EventTarget? target = event.target;
+  if (target == null || !target.isA<web.Element>()) return false;
+  final web.Element? control = (target as web.Element).closest('a, button, input, select, textarea, summary');
+  if (control == null || control.tagName.toLowerCase() != 'summary') return false;
+  event.preventDefault();
+  return true;
+}
+
 class _GuiSectionState extends State<GuiSection> {
   /// Kept from the user's own open and close, so an edit that builds the
   /// section again does not fold it back to [GuiSection.open].
@@ -472,7 +487,11 @@ class _GuiSectionState extends State<GuiSection> {
           },
         },
         <Widget>[
-          dom.summary(<Widget>[
+          dom.summary(events: <String, void Function(web.Event)>{
+            'click': (web.Event event) {
+              if (takeSummaryClick(event)) setState(() => _open = !_open);
+            },
+          }, <Widget>[
             withTip(Component.text(component.title), component.tip, docs: component.docs),
             if (component.count != null) dom.span(classes: 'animus-count', <Widget>[Component.text('${component.count}')]),
           ]),

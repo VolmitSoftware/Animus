@@ -569,6 +569,7 @@
 - A Minecraft id without a namespace, such as `netherite_axe` in equipment, a shop offer, combat drops or a `give-item` action, now means the `minecraft:` id instead of being refused. Entity types, villager professions, rig and recording blocks, effects, sounds, particles and Bukkit dimension keys follow the same rule, and the schemas and editor accept both forms.
 - A left-click on an NPC reads `context.sneaking` from the player, since the attack packet carries no sneaking flag; it was always false.
 - The Denizen converter reads `<context.entity.is_npc||false>` as marking the NPC, as it already read `<context.entity.is_npc>`.
+- Web editor: text typed faster than the browser stores it shows at once everywhere, so a field left with Escape, Tab or a click, and a Code view opened right after, hold every keystroke. Before, the open document lagged behind the queued saves, a field fell back to older text when it lost focus, and a Code view opened in that window started from the older text. A collapsible part opened while an edit lands stays open.
 
 ### Notes
 

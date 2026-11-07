@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -22,6 +23,17 @@ class RefusingRepository extends MemoryWorkspaceRepository {
   Future<void> save(WorkspaceSnapshot snapshot) async {
     final Object? refused = refusal;
     if (refused != null) throw refused;
+    return super.save(snapshot);
+  }
+}
+
+/// A repository whose saves wait while [hold] is pending, so commits queue.
+class SlowRepository extends MemoryWorkspaceRepository {
+  Completer<void>? hold;
+
+  @override
+  Future<void> save(WorkspaceSnapshot snapshot) async {
+    await hold?.future;
     return super.save(snapshot);
   }
 }
@@ -119,6 +131,31 @@ void main() {
       expect((store.document(DocumentKind.npc, shown.id)!.json! as Map<String, Object?>)['name'], 'First', reason: 'two undo steps');
       await store.undo();
       expect(store.document(DocumentKind.npc, shown.id)!.source, shown.source);
+    });
+
+    test('should show every keystroke at once while saves are still queued', () async {
+      final SlowRepository slow = SlowRepository();
+      final EditorStore held = EditorStore(repository: slow, schemas: SharedSchemas.embedded, newId: () => 'ws-${++ids}');
+      await held.openFiles('Export', fixtureFiles('export'));
+      final AnimusDocument shown = held.document(DocumentKind.npc, 'examples/greeter')!;
+      final Map<String, Object?> before = shown.json! as Map<String, Object?>;
+      slow.hold = Completer<void>();
+      const String typed = 'Town crier';
+      final List<Future<void>> saves = <Future<void>>[
+        // Each keystroke is worked out from the document drawn before any of them saved.
+        for (int length = 1; length <= typed.length; length++)
+          held.commit(
+            documents: <DocumentChange>[DocumentChange.update(DocumentKind.npc, shown.id, writeAt(shown.json, <JsonStep>['name'], typed.substring(0, length)))],
+            coalesce: 'name',
+          ),
+      ];
+      final Map<String, Object?> pending = held.shown(DocumentKind.npc, shown.id)!.json! as Map<String, Object?>;
+      expect(pending['name'], typed);
+      expect(<String, Object?>{...pending}..remove('name'), <String, Object?>{...before}..remove('name'), reason: 'siblings untouched');
+      slow.hold!.complete();
+      await Future.wait(saves);
+      expect((held.document(DocumentKind.npc, shown.id)!.json! as Map<String, Object?>)['name'], typed);
+      expect(held.shown(DocumentKind.npc, shown.id)!.source, held.document(DocumentKind.npc, shown.id)!.source);
     });
 
     test('should redo an undone edit and say what each step did', () async {
