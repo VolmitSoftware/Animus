@@ -72,7 +72,7 @@ final class NpcCommands extends CommandGroup {
         if (attributes.isEmpty()) document.remove(NpcAttributes.FIELD);
         else document.add(NpcAttributes.FIELD, attributes);
         String transaction = repository.apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
-        return id + ": " + known.id() + (reset ? " reset" : " = " + NpcAttributes.format(number)) + "; transaction " + transaction;
+        return id + ": " + known.id() + (reset ? " reset" : " = " + NpcAttributes.format(number)) + "; tx " + transaction;
     }
 
     /** Attribute ids for completion, bare. */

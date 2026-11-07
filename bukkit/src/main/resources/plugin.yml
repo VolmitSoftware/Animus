@@ -25,7 +25,7 @@ permissions:
     description: Read Animus network and performance diagnostics with /animus debug.
     default: op
   animus.debug.mode:
-    description: Switch /animus debug mode, which logs every per-NPC route, activation and packet diagnostic until restart.
+    description: Switch /animus debug mode, which logs every per-NPC route, spawn and packet diagnostic until restart.
     default: op
   animus.admin:
     description: Manage NPCs, movement, combat, builds, modules, behaviors, imports, and backups.

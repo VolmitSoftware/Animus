@@ -29,7 +29,7 @@ class NpcCommandsTest {
             assertTrue(repository.reload().isEmpty());
 
             String set = NpcCommands.attribute(repository, "guard", "minecraft:scale", "1.5");
-            assertTrue(set.startsWith("guard: scale = 1.5; transaction "), set);
+            assertTrue(set.startsWith("guard: scale = 1.5; tx "), set);
             assertEquals(1.5, attributes(repository).get("scale").getAsDouble());
 
             String gravity = NpcCommands.attribute(repository, "guard", "gravity", "0.02");
@@ -40,7 +40,7 @@ class NpcCommandsTest {
             assertEquals("guard: scale = 1.5 (npc); vanilla default 1, range 0.0625..16", shown.getFirst());
 
             String reset = NpcCommands.attribute(repository, "guard", "scale", "reset");
-            assertTrue(reset.startsWith("guard: scale reset; transaction "), reset);
+            assertTrue(reset.startsWith("guard: scale reset; tx "), reset);
             assertFalse(attributes(repository).has("scale"));
             assertEquals("guard: scale = 3 (giants); vanilla default 1, range 0.0625..16", NpcCommands.show(repository, "guard", "scale").getFirst(),
                     "a group's value shows through once the NPC's own is gone");

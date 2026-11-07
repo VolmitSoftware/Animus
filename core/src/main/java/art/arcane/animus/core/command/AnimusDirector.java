@@ -21,7 +21,6 @@ import art.arcane.volmlib.util.localization.MessageArgs;
 import art.arcane.volmlib.util.localization.TextKey;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -84,17 +83,18 @@ public final class AnimusDirector {
         DirectorRoute route = engine.route(invocation);
         if (!route.invocable()) {
             DirectorRuntimeNode reached = route.node() == null ? engine.getRoot() : route.node();
-            actor.tell(Palette.error("Unknown command /" + label + " " + String.join(" ", tokens)));
+            actor.tell(Palette.error("Unknown command /" + label + " " + String.join(" ", tokens) + "; the commands you may run are below"));
             help(actor, reached, 0);
             return;
         }
         DirectorRuntimeNode node = route.node();
         for (DirectorRuntimeNode gate = node; gate != null; gate = gate.getParent())
             if (!gate.getDescriptor().getOrigin().validFor(actor.player().isPresent())) {
-                actor.tell(Palette.error(actor.player().isPresent() ? "Console only" : "Players only"));
+                actor.tell(Palette.error(actor.player().isPresent() ? "Console only; run /" + label + " " + String.join(" ", tokens) + " from the server console"
+                        : "Players only; run it in game"));
                 return;
             }
-        if (!allowed(actor, node)) { actor.tell(Palette.error("No permission: " + permission(node))); return; }
+        if (!allowed(actor, node)) { actor.tell(Palette.error(refused(node))); return; }
         boolean hidden = hidden(node);
         sender.quiet = hidden;
         CommandActor previous = CURRENT.get();
@@ -108,24 +108,25 @@ public final class AnimusDirector {
         else actor.rich(ChatLine.of(Palette.PREFIX + "&7Usage: &f" + usage(node)).docs(DocsLink.ARGUMENTS));
     }
 
-    /** {@code /animus path <required> [optional=default]}. */
+    /** {@code /animus path <required> [optional=default]}; an empty default reads {@code [key=]}. */
     public static String usage(DirectorRuntimeNode node) {
         StringBuilder usage = new StringBuilder(node.path());
-        for (DirectorParameterDescriptor parameter : node.getDescriptor().getParameters()) {
-            if (parameter.isContextual()) continue;
-            if (parameter.isRequired()) usage.append(" <").append(parameter.getName()).append('>');
-            else usage.append(" [").append(parameter.getName()).append('=').append(parameter.getDefaultValue().isEmpty() ? "…" : parameter.getDefaultValue()).append(']');
-        }
+        for (DirectorParameterDescriptor parameter : node.getDescriptor().getParameters())
+            if (!parameter.isContextual()) usage.append(' ').append(AnimusHelp.chip(parameter));
         return usage.toString();
     }
 
-    /** One page of help for a group, listing what the actor may run. */
+    /** The refusal for a node the actor may not use, naming the permission an operator grants. */
+    static String refused(DirectorRuntimeNode node) {
+        return "No permission: " + permission(node) + "; ask an operator to grant it";
+    }
+
+    /** One page of help for a group, listing what the actor may run, by topic at the root. */
     public void help(CommandActor actor, DirectorRuntimeNode node, int page) {
         DirectorRuntimeNode group = node.isInvocable() && node.getParent() != null ? node.getParent() : node;
-        if (!visible(actor, group)) { actor.tell(Palette.error("No permission: " + permission(group))); return; }
-        List<DirectorRuntimeNode> entries = group.getChildren().stream().filter((DirectorRuntimeNode child) -> visible(actor, child))
-                .sorted(Comparator.comparing((DirectorRuntimeNode child) -> child.getDescriptor().getName(), String.CASE_INSENSITIVE_ORDER)).toList();
-        actor.menu(new DirectorMiniMenu.DirectorHelpPage(group, entries, page, DirectorMiniMenu.MAX_ENTRIES_PER_PAGE));
+        if (!visible(actor, group)) { actor.tell(Palette.error(refused(group))); return; }
+        List<DirectorRuntimeNode> entries = group.getChildren().stream().filter((DirectorRuntimeNode child) -> visible(actor, child)).toList();
+        actor.help(AnimusHelp.page(group, entries, page));
     }
 
     /**

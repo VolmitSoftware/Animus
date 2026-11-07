@@ -6,15 +6,12 @@ import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
 import art.arcane.animus.core.behavior.builtin.PendingChoices;
 import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.Subsystem;
-import art.arcane.animus.core.migration.CitizensDropIn;
-import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.DocsLink;
 import art.arcane.animus.core.text.Palette;
-import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
 import art.arcane.volmlib.util.director.DirectorOrigin;
 import art.arcane.volmlib.util.director.annotations.Director;
@@ -25,17 +22,17 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
- * The {@code /animus} root: NPC definitions, selection, movement and manual combat, plus every command group. The same
+ * The {@code /animus} root: saved NPCs and selection, plus every command group. The same
  * tree runs on Bukkit, Folia and the mod loaders; a platform without a feature answers why it is unavailable.
  */
 @Director(name = BuildIdentity.ID, description = "Manage virtual NPCs, their behaviors and imports")
 public final class AnimusCommandTree extends CommandGroup {
+    NpcCommands npc;
     WorldCommands.Navigation navigation;
     WorldCommands.Ride ride;
     WorldCommands.Combat combat;
@@ -43,22 +40,21 @@ public final class AnimusCommandTree extends CommandGroup {
     ContentCommands.Rigs rigs;
     ContentCommands.Pack pack;
     ContentCommands.Import imports;
+    RecordCommands record;
     ServiceCommands.Shop shop;
     ServiceCommands.Gui gui;
     ServiceCommands.Build build;
     ServiceCommands.Editor editor;
     BehaviorTree.Behaviors behaviors;
     TraitGroupCommands groups;
-    NpcCommands npc;
     DiagnosticCommands.Debug debug;
     DiagnosticCommands.Proof proof;
-    DiagnosticCommands.FoliaProof foliaproof;
-    RecordCommands record;
     ToolkitCommands tools;
     SetupCommands setup;
 
     public AnimusCommandTree(CommandServices services) {
         super(services);
+        npc = new NpcCommands(services);
         navigation = new WorldCommands.Navigation(services);
         ride = new WorldCommands.Ride(services);
         combat = new WorldCommands.Combat(services);
@@ -66,17 +62,15 @@ public final class AnimusCommandTree extends CommandGroup {
         rigs = new ContentCommands.Rigs(services);
         pack = new ContentCommands.Pack(services);
         imports = new ContentCommands.Import(services);
+        record = new RecordCommands(() -> services.recordings());
         shop = new ServiceCommands.Shop(services);
         gui = new ServiceCommands.Gui(services);
         build = new ServiceCommands.Build(services);
         editor = new ServiceCommands.Editor(services);
         behaviors = new BehaviorTree.Behaviors(services);
         groups = new TraitGroupCommands(services);
-        npc = new NpcCommands(services);
         debug = new DiagnosticCommands.Debug(services);
         proof = new DiagnosticCommands.Proof(services);
-        foliaproof = new DiagnosticCommands.FoliaProof(services);
-        record = new RecordCommands(() -> services.recordings());
         tools = new ToolkitCommands(services);
         setup = new SetupCommands(services);
     }
@@ -88,52 +82,7 @@ public final class AnimusCommandTree extends CommandGroup {
     public AnimusDirector director() { return new AnimusDirector(this, this::values); }
 
     /** Completion values by parameter name. */
-    Collection<String> values(String parameter, CommandActor actor) {
-        return switch (parameter) {
-            case "npc", "build" -> {
-                List<String> ids = new ArrayList<>(runtime().npcs().all().stream().map(NpcDefinition::id).limit(100).toList());
-                if (actor.player().isPresent() && living().selection(actor.player().get()).isPresent()) ids.add(SELECTED);
-                yield ids;
-            }
-            case "behavior" -> { BehaviorCommands current = services.behaviors().get(); yield current == null ? List.of() : current.behaviorIds(); }
-            case "state" -> { BehaviorCommands current = services.behaviors().get(); yield current == null ? List.of() : current.stateBehaviors(); }
-            case "execution" -> { BehaviorCommands current = services.behaviors().get(); yield current == null ? List.of() : current.executionIds(); }
-            case "group-id" -> runtime().npcs().groups().groups().keySet().stream().limit(100).toList();
-            case "attribute" -> NpcCommands.ids();
-            case "shop" -> services.shops().shopIds();
-            case "gui" -> services.guis().guiIds();
-            case "menu" -> services.guis().menuIds();
-            case "schematic" -> services.builds().schematicNames();
-            case "animation" -> runtime().rigs().catalog().animations().keySet().stream().limit(100).toList();
-            case "capability" -> services.extensions() == null ? List.of() : services.extensions().capabilities().stream()
-                    .map((art.arcane.animus.api.Capabilities.Availability capability) -> capability.descriptor().key().toString()).limit(100).toList();
-            case "token" -> services.editor().revocable();
-            case "player" -> services.players().get();
-            case "viewer" -> services.debug().viewers();
-            case "enabled" -> List.of("on", "off", "toggle");
-            case "style" -> List.of("native", "chest");
-            case "recording" -> services.recordings().ids();
-            case "action" -> List.of("play", "stop");
-            case "type" -> TYPES;
-            case "world" -> runtime().npcs().all().stream().map((NpcDefinition definition) -> definition.json().getAsJsonObject("position"))
-                    .filter((JsonObject position) -> position != null && position.has("world")).map((JsonObject position) -> position.get("world").getAsString()).distinct().limit(100).toList();
-            case "group" -> runtime().npcs().all().stream().map(NpcDefinition::group).filter((String group) -> !group.isEmpty()).distinct().limit(100).toList();
-            case "mob" -> List.of("stop");
-            case "anchor" -> List.of("center", "corner", "schematic");
-            case "rotation" -> List.of("0", "90", "180", "270");
-            case "mirror" -> List.of("none", "x", "z");
-            case "pattern" -> List.of("spiral", "reversespiral", "linear", "reverselinear");
-            case "materials" -> List.of("creative", "donate", "container");
-            case "groupall", "ignoreair", "ignoreliquids", "excavate", "hold", "silent", "scaffolding" -> List.of("true", "false");
-            case "format" -> List.of("folder", "bundle");
-            case "categories" -> { List<String> categories = new ArrayList<>(CitizensDropIn.CATEGORIES); categories.add("all"); categories.add(CitizensDropIn.COMMANDS); yield categories; }
-            default -> List.of();
-        };
-    }
-
-    /** Common entity types offered for {@code type}; any {@code namespace:type} is accepted. */
-    private static final List<String> TYPES = List.of("minecraft:player", "minecraft:villager", "minecraft:wandering_trader", "minecraft:zombie",
-            "minecraft:skeleton", "minecraft:iron_golem", "minecraft:armor_stand", "minecraft:horse", "minecraft:wolf", "minecraft:cat");
+    Collection<String> values(String parameter, CommandActor actor) { return new CommandCompletions(this).values(parameter, actor); }
 
     private Administration administration() { return new Administration(runtime()); }
 
@@ -169,32 +118,68 @@ public final class AnimusCommandTree extends CommandGroup {
         actor.rich(ChatLine.reply(lines.getFirst() + " | " + state).details("Details", details).docs(DocsLink.COMMANDS));
     }
 
-    @Director(description = "List NPC definitions")
+    @Director(description = "List saved NPCs; click an id to inspect it")
     void list(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
         CommandActor actor = actor();
         Administration administration = administration();
         try {
             services.files().execute(() -> {
                 List<String> rows = administration.rows();
-                if (!stopping()) actor.reply(() -> listing(actor, "NPCs (" + rows.size() + ")", "/" + BuildIdentity.ID + " list", rows, page, "No NPCs yet; /animus create adds one"));
+                if (!stopping()) actor.reply(() -> listing(actor, "NPCs (" + rows.size() + ")", "/" + BuildIdentity.ID + " list", rows, page,
+                        "No NPCs yet; /animus create <id> adds one where you stand", CommandGroup::inspectCommand));
             });
         } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
-    @Director(description = "Create a dormant NPC definition")
-    void create(@Param(name = "id", description = "The new NPC id; its file is npcs/<group>/<id>.json") String id,
-                @Param(name = "type", description = "The entity type, such as minecraft:player") String type,
-                @Param(name = "world", description = "The world it stands in") String world,
-                @Param(name = "x", description = "X position") double x,
-                @Param(name = "y", description = "Y position") double y,
-                @Param(name = "z", description = "Z position") double z,
-                @Param(name = "group", description = "The folder under npcs/ it lives in, such as world/town; group= for npcs/ itself") String group,
-                @Param(name = "name", description = "Its display name; quote it to use spaces") String name) {
+    @Director(description = "Save a new despawned NPC where you stand; the console gives world, x, y and z")
+    void create(@Param(name = "id", description = "The new NPC id; its file is npcs/<folder>/<id>.json") String id,
+                @Param(name = "type", defaultValue = DEFAULT_TYPE, description = "The entity type, such as minecraft:villager") String type,
+                @Param(name = "name", defaultValue = "", description = "Its display name, the id when left out; quote it to use spaces") String name,
+                @Param(name = "folder", defaultValue = "", description = "The folder under npcs/ it lives in, such as world/town; npcs/ itself when left out") String folder,
+                @Param(name = "world", defaultValue = "", description = "The world it stands in; yours when left out") String world,
+                @Param(name = "x", defaultValue = "", description = "X position; yours when left out") String x,
+                @Param(name = "y", defaultValue = "", description = "Y position; yours when left out") String y,
+                @Param(name = "z", defaultValue = "", description = "Z position; yours when left out") String z) {
         CommandActor actor = actor();
-        files(actor, () -> { String line = administration().create(id, type, world, x, y, z, group, name); living().refresh(); return List.of(Palette.success(line)); });
+        Placement placement;
+        try { placement = placement(actor.position(), world, x, y, z); }
+        catch (IllegalArgumentException missing) { actor.tell(Palette.error(missing.getMessage())); return; }
+        String shown = name.isEmpty() ? id : name;
+        files(actor, () -> {
+            String line = administration().create(id, type, placement.world(), placement.x(), placement.y(), placement.z(), folder, shown);
+            living().refresh();
+            return List.of(Palette.success(line + "; /" + BuildIdentity.ID + " spawn " + id + " shows it"));
+        });
     }
 
-    @Director(description = "Show an NPC's definition and runtime state")
+    static final String DEFAULT_TYPE = "minecraft:player";
+
+    /** Where {@code create} puts an NPC: the given values, each missing one taken from where the player stands. */
+    record Placement(String world, double x, double y, double z) {}
+
+    /**
+     * The given world and coordinates, each left out one from {@code standing}. Without a standing position, as for the
+     * console, every value must be given. Throws with the reply when one is missing or not a number.
+     */
+    static Placement placement(Optional<WorldPosition> standing, String world, String x, String y, String z) {
+        if (standing.isEmpty() && (world.isEmpty() || x.isEmpty() || y.isEmpty() || z.isEmpty()))
+            throw new IllegalArgumentException("The console gives world=, x=, y= and z=, such as world=world x=0 y=64 z=0");
+        return new Placement(world.isEmpty() ? standing.get().world() : world,
+                coordinate("x", x, standing.map((WorldPosition at) -> at.point().x())),
+                coordinate("y", y, standing.map((WorldPosition at) -> at.point().y())),
+                coordinate("z", z, standing.map((WorldPosition at) -> at.point().z())));
+    }
+
+    private static double coordinate(String axis, String given, Optional<Double> standing) {
+        if (given.isEmpty()) return Math.round(standing.orElseThrow() * 100) / 100.0;
+        try {
+            double value = Double.parseDouble(given);
+            if (Double.isFinite(value)) return value;
+        } catch (NumberFormatException notNumber) { /* answered below */ }
+        throw new IllegalArgumentException(axis + " must be a number, such as " + axis + "=12.5");
+    }
+
+    @Director(description = "Show an NPC's definition and whether it is active")
     void inspect(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
         CommandActor actor = actor();
         Administration administration = administration();
@@ -203,7 +188,7 @@ public final class AnimusCommandTree extends CommandGroup {
                 services.files().execute(() -> {
                     Administration.Inspection inspection;
                     try { inspection = administration.inspect(id); }
-                    catch (IOException | RuntimeException failure) { reply(actor, Palette.error(String.valueOf(failure.getMessage()))); return; }
+                    catch (IOException | RuntimeException failure) { reply(actor, Palette.error(reason(failure))); return; }
                     if (!stopping()) actor.reply(() -> { if (!stopping()) inspect(actor, inspection, living().inspect(id)); });
                 });
             } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
@@ -240,26 +225,30 @@ public final class AnimusCommandTree extends CommandGroup {
         npc(actor, npc).ifPresent((String id) -> change(actor, id, Optional.of(patch)));
     }
 
-    @Director(description = "Copy an NPC definition under a new id, dormant")
+    @Director(description = "Copy an NPC under a new id, despawned")
     void clone(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
                @Param(name = "id", description = "The copy's id") String id) {
         CommandActor actor = actor();
-        npc(actor, npc).ifPresent((String source) -> files(actor, () -> { String line = administration().duplicate(source, id); living().refresh(); return List.of(Palette.success(line)); }));
+        npc(actor, npc).ifPresent((String source) -> files(actor, () -> {
+            String line = administration().duplicate(source, id);
+            living().refresh();
+            return List.of(Palette.success(line + "; /" + BuildIdentity.ID + " spawn " + id + " shows it"));
+        }));
     }
 
-    @Director(description = "Delete an NPC definition; rollback restores it")
+    @Director(description = "Delete an NPC's file; rollback restores it")
     void delete(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
         CommandActor actor = actor();
         npc(actor, npc).ifPresent((String id) -> files(actor, () -> { String line = administration().delete(id); living().refresh(); return List.of(Palette.success(line)); }));
     }
 
-    @Director(description = "Spawn an NPC after checking it can run here")
+    @Director(description = "Mark an NPC spawned after checking it can run here")
     void spawn(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
         CommandActor actor = actor();
         npc(actor, npc).ifPresent((String id) -> change(actor, id, Optional.empty()));
     }
 
-    @Director(description = "Despawn an NPC; its definition stays")
+    @Director(description = "Mark an NPC despawned; its file stays")
     void despawn(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
         CommandActor actor = actor();
         npc(actor, npc).ifPresent((String id) -> files(actor, () -> { String line = administration().spawned(id, false); living().refresh(); return List.of(Palette.success(line)); }));
@@ -279,7 +268,7 @@ public final class AnimusCommandTree extends CommandGroup {
         });
     }
 
-    @Director(description = "Undo a transaction by its id")
+    @Director(description = "Undo a change by its transaction id")
     void rollback(@Param(name = "transaction", description = "The transaction id a change reported") String transaction) {
         CommandActor actor = actor();
         files(actor, () -> {
@@ -296,7 +285,7 @@ public final class AnimusCommandTree extends CommandGroup {
         try {
             living().select(actor.player().orElseThrow(), npc);
             actor.rich(ChatLine.success("Selected ").copyable(npc));
-        } catch (RuntimeException refused) { actor.tell(Palette.error(String.valueOf(refused.getMessage()))); }
+        } catch (RuntimeException refused) { actor.tell(Palette.error(reason(refused) + "; /animus list shows ids")); }
     }
 
     @Director(description = "Show your selected NPC", origin = DirectorOrigin.PLAYER)
@@ -305,54 +294,6 @@ public final class AnimusCommandTree extends CommandGroup {
         Optional<String> selected = living().selection(actor.player().orElseThrow());
         if (selected.isPresent()) actor.rich(ChatLine.reply("Selected ").copyable(selected.get()));
         else actor.tell("No NPC selected; /animus select <npc> or right-click one");
-    }
-
-    @Director(description = "Walk, swim or fly an NPC to a point; whole-number x and z mean the block centre")
-    void navigate(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
-                  @Param(name = "x", description = "Target X") double x,
-                  @Param(name = "y", description = "Target Y") double y,
-                  @Param(name = "z", description = "Target Z") double z,
-                  @Param(name = "mode", defaultValue = "walk", description = "walk, swim or fly") MovementProfile.Mode mode,
-                  @Param(name = "speed", defaultValue = "2.0", description = "Blocks per second") double speed) {
-        CommandActor actor = actor();
-        npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Navigation", () -> {
-            WorldPosition destination = new WorldPosition(living().navigationOrigin(id).world(), new Vec3(blockCenter(x), y, blockCenter(z)));
-            return id + " heading to " + blockCenter(x) + " " + y + " " + blockCenter(z) + " (" + mode.name().toLowerCase(java.util.Locale.ROOT) + "); route " + living().navigate(id, destination, mode, speed);
-        }));
-    }
-
-    /**
-     * A whole-number x or z names a block, so the goal is its centre; a goal on the block corner makes the body clip the
-     * next block. A fractional value is an exact point and stays.
-     */
-    static double blockCenter(double coordinate) { return coordinate == Math.floor(coordinate) ? coordinate + 0.5 : coordinate; }
-
-    @Director(description = "Turn an NPC to look at a point")
-    void look(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
-              @Param(name = "x", description = "Target X") double x,
-              @Param(name = "y", description = "Target Y") double y,
-              @Param(name = "z", description = "Target Z") double z) {
-        CommandActor actor = actor();
-        npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Navigation", () -> {
-            living().lookAt(id, new WorldPosition(living().navigationOrigin(id).world(), new Vec3(x, y, z)));
-            return id + " looks at " + x + " " + y + " " + z;
-        }));
-    }
-
-    @Director(description = "Make an NPC hit a living entity once")
-    void attack(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
-                @Param(name = "target", description = "The target's UUID") UUID target,
-                @Param(name = "damage", defaultValue = "1", description = "Damage dealt") double damage) {
-        CommandActor actor = actor();
-        npc(actor, npc).ifPresent((String id) -> WorldCommands.combat(actor, () -> services.combat().attack(id, target, damage)));
-    }
-
-    @Director(description = "Lend a mob to an NPC's control, or stop with stop")
-    void target(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
-                @Param(name = "mob", description = "The mob's UUID, or stop to end every control") String mob) {
-        CommandActor actor = actor();
-        npc(actor, npc).ifPresent((String id) -> WorldCommands.combat(actor, () -> mob.equalsIgnoreCase("stop")
-                ? services.combat().releaseMobs(id) : services.combat().control(id, UUID.fromString(mob))));
     }
 
     @Director(hidden = true, description = "Answer a dialogue choice")
@@ -387,7 +328,7 @@ public final class AnimusCommandTree extends CommandGroup {
                     }
                     NpcRepository.Draft draft = new NpcRepository.Draft(before.path(), before.expectedHash(), before.expectedRevision(), document);
                     if (!stopping()) actor.reply(() -> commit(actor, candidate, draft, patch.isEmpty()));
-                } catch (IOException | RuntimeException e) { reply(actor, Palette.error(String.valueOf(e.getMessage()))); }
+                } catch (IOException | RuntimeException e) { reply(actor, Palette.error(reason(e))); }
             });
         } catch (RejectedExecutionException e) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
@@ -397,7 +338,8 @@ public final class AnimusCommandTree extends CommandGroup {
         JsonElement spawned = draft.document().get("spawned");
         List<String> errors = spawned != null && spawned.isJsonPrimitive() && spawned.getAsBoolean() ? living().validateActivation(candidate) : List.of();
         if (!errors.isEmpty()) {
-            actor.rich(ChatLine.error((spawn ? "Cannot spawn " : "Cannot save ") + candidate.id() + ": " + errors.getFirst() + (errors.size() == 1 ? "" : " (+" + (errors.size() - 1) + " more)"))
+            actor.rich(ChatLine.error((spawn ? "Cannot spawn " : "Cannot save ") + candidate.id() + ": " + errors.getFirst() + (errors.size() == 1 ? "" : " (+" + (errors.size() - 1) + " more)")
+                    + "; fix it with /animus edit " + candidate.id())
                     .details("All", errors).docs(DocsLink.ACTIVATION));
             return;
         }
@@ -406,8 +348,8 @@ public final class AnimusCommandTree extends CommandGroup {
                 try {
                     String tx = runtime().npcs().apply(draft);
                     living().refresh();
-                    reply(actor, Palette.success((spawn ? "Spawning " : "Saved ") + candidate.id() + "; tx " + tx));
-                } catch (IOException | RuntimeException e) { reply(actor, Palette.error(String.valueOf(e.getMessage()))); }
+                    reply(actor, Palette.success((spawn ? "Spawning " : "Saved ") + candidate.id() + "; tx " + tx + (spawn ? "; it becomes active once its chunk loads" : "")));
+                } catch (IOException | RuntimeException e) { reply(actor, Palette.error(reason(e))); }
             });
         } catch (RejectedExecutionException e) { actor.tell(Palette.error(CommandActor.BUSY + "; nothing was saved")); }
     }
@@ -415,9 +357,8 @@ public final class AnimusCommandTree extends CommandGroup {
     /** Builds this tree without services and renders its help, so a packaged jar proves Director loads without a server. */
     public static int selfCheck() {
         AnimusDirector director = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
-        int lines = art.arcane.volmlib.util.director.help.DirectorMiniMenu.render(
-                new art.arcane.volmlib.util.director.help.DirectorMiniMenu.DirectorHelpPage(director.engine().getRoot(), director.engine().getRoot().getChildren(), 0,
-                        art.arcane.volmlib.util.director.help.DirectorMiniMenu.MAX_ENTRIES_PER_PAGE), AnimusDirector.THEME, AnimusDirector.TEXT).size();
+        AnimusHelp.Page page = AnimusHelp.page(director.engine().getRoot(), director.engine().getRoot().getChildren(), 0);
+        int lines = AnimusHelp.lines(page).stream().map(ChatLine::component).toList().size();
         return lines + CommandWords.tokens("edit guard {\"name\":\"A B\"}").size();
     }
 }

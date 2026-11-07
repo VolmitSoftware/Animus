@@ -82,8 +82,8 @@ public final class FoliaFixture extends JavaPlugin implements Listener {
         try {
             Channel channel=channel(p);
             channel.eventLoop().execute(()->{try{Thread.sleep(1500);}catch(InterruptedException e){Thread.currentThread().interrupt();}});
-            animus(p,"foliaproof","spawn");
-            delayed(p,4,()->{animus(p,"foliaproof","clear");p.sendMessage("Folia QA watch stalled then cleared owner=true");},()->{});
+            animus(p,"proof","folia","spawn");
+            delayed(p,4,()->{animus(p,"proof","folia","clear");p.sendMessage("Folia QA watch stalled then cleared owner=true");},()->{});
         }catch(ReflectiveOperationException e){throw new IllegalStateException(e);}
     }
     private Object service() throws ReflectiveOperationException {
@@ -103,7 +103,7 @@ public final class FoliaFixture extends JavaPlugin implements Listener {
         try {
             Channel channel=channel(p);
             channel.eventLoop().execute(()->{try{Thread.sleep(2000);}catch(InterruptedException e){Thread.currentThread().interrupt();}});
-            animus(p,"foliaproof","spawn");
+            animus(p,"proof","folia","spawn");
             delayed(p,4,()->closeService(p),()->{});
         }catch(ReflectiveOperationException e){throw new IllegalStateException(e);}
     }
@@ -111,10 +111,10 @@ public final class FoliaFixture extends JavaPlugin implements Listener {
         try {
             Channel channel=channel(p);
             channel.eventLoop().execute(()->{try{Thread.sleep(3000);}catch(InterruptedException e){Thread.currentThread().interrupt();}});
-            animus(p,"foliaproof","spawn");
+            animus(p,"proof","folia","spawn");
             delayed(p,4,()->{
                 // A bounded owner hold proves global disable does not wait on it.
-                for(int i=0;i<8;i++)animus(p,"foliaproof","status");
+                for(int i=0;i<8;i++)animus(p,"proof","folia","status");
                 CountDownLatch released=new CountDownLatch(1);
                 getServer().getGlobalRegionScheduler().run(this,ignored->{
                     try {
@@ -165,9 +165,9 @@ public final class FoliaFixture extends JavaPlugin implements Listener {
             var matcher=java.util.regex.Pattern.compile("lifetime admissions=(\\d+)/64").matcher(status);
             if(!matcher.find())throw new IllegalStateException("missing admissions counter");
             boolean exhausted=Integer.parseInt(matcher.group(1))==64;
-            animus(p,"foliaproof","spawn");
+            animus(p,"proof","folia","spawn");
             delayed(p,2,()->{
-                animus(p,"foliaproof","clear");
+                animus(p,"proof","folia","clear");
                 if(!exhausted){burstStep(p,service,hold,attempted+1);return;}
                 try {
                     String terminal=(String)service.getClass().getMethod("status").invoke(service);
@@ -322,7 +322,7 @@ public final class FoliaFixture extends JavaPlugin implements Listener {
                 case "arm" -> { if(!Set.of("allow","cancel","clear","replace","teleport","teleportsame").contains(request[1]))throw new IllegalArgumentException("invalid action");s.action=request[1];p.sendMessage("Folia QA armed="+s.action); }
                 case "wall" -> block(p,true,Boolean.parseBoolean(request[1]));
                 case "hole" -> block(p,false,Boolean.parseBoolean(request[1]));
-                case "queueclear" -> { if(request.length>1)animus(p,"foliaproof","spawn",request[1]);else animus(p,"foliaproof","spawn");animus(p,"foliaproof","clear");p.sendMessage("Folia QA queued spawn then clear owner=true"); }
+                case "queueclear" -> { if(request.length>1)animus(p,"proof","folia","spawn",request[1]);else animus(p,"proof","folia","spawn");animus(p,"proof","folia","clear");p.sendMessage("Folia QA queued spawn then clear owner=true"); }
                 case "teleport" -> { own(p);p.teleportAsync(new Location(p.getWorld(),s.slot*8192+8.5,61,8.5,0,0));p.sendMessage("Folia QA teleport requested"); }
                 case "transport" -> transport(p);
                 case "iohold" -> holdIo(p);
@@ -341,7 +341,7 @@ public final class FoliaFixture extends JavaPlugin implements Listener {
                     p.sendMessage("Folia QA permission revoked");
                     delayed(p,20,()->{p.removeAttachment(denied);p.sendMessage("Folia QA permission restored");},()->{});
                 }
-                case "queueteleport" -> { animus(p,"foliaproof","spawn");own(p);p.teleportAsync(p.getLocation().add(request.length>1&&request[1].equals("same")?0:1,0,0)).whenComplete((ok,problem)->later(p,()->p.sendMessage("Folia QA queued teleport completed success="+ok))); }
+                case "queueteleport" -> { animus(p,"proof","folia","spawn");own(p);p.teleportAsync(p.getLocation().add(request.length>1&&request[1].equals("same")?0:1,0,0)).whenComplete((ok,problem)->later(p,()->p.sendMessage("Folia QA queued teleport completed success="+ok))); }
                 case "visibleteleport" -> { own(p);p.teleportAsync(p.getLocation().add(request.length>1&&request[1].equals("same")?0:1,0,0)).whenComplete((ok,problem)->later(p,()->p.sendMessage("Folia QA visible teleport completed success="+ok))); }
                 case "stallclear" -> stallClear(p);
                 case "pendingclose" -> pendingClose(p);
@@ -353,12 +353,12 @@ public final class FoliaFixture extends JavaPlugin implements Listener {
                     }catch(ReflectiveOperationException e){throw new IllegalStateException(e);}
                 }
                 case "joinprobe" -> { joinProbes.add(p.getUniqueId());p.sendMessage("Folia QA next join probe armed"); }
-                case "queuequit" -> { animus(p,"foliaproof","spawn");p.sendMessage("Folia QA queued spawn then kick");p.kick(net.kyori.adventure.text.Component.text("Folia QA retirement")); }
+                case "queuequit" -> { animus(p,"proof","folia","spawn");p.sendMessage("Folia QA queued spawn then kick");p.kick(net.kyori.adventure.text.Component.text("Folia QA retirement")); }
                 case "probe" -> probe(p);
-                case "commandburst" -> { for(int i=0;i<9;i++)animus(p,"foliaproof","status");p.sendMessage("Folia QA queued status callbacks=9"); }
+                case "commandburst" -> { for(int i=0;i<9;i++)animus(p,"proof","folia","status");p.sendMessage("Folia QA queued status callbacks=9"); }
                 case "health" -> { own(p);p.sendMessage("Folia QA health="+p.getHealth()+" events="+s.events+" owner=true"); }
                 case "position" -> { own(p);Location l=p.getLocation();p.sendMessage("Folia QA position x="+l.getX()+" y="+l.getY()+" z="+l.getZ()+" yaw="+l.getYaw()+" owner=true"); }
-                case "cleanup" -> { animus(p,"foliaproof","clear");states.remove(p.getUniqueId());probes.remove(p.getUniqueId());p.sendMessage("Folia QA cleaned"); }
+                case "cleanup" -> { animus(p,"proof","folia","clear");states.remove(p.getUniqueId());probes.remove(p.getUniqueId());p.sendMessage("Folia QA cleaned"); }
                 default -> throw new IllegalArgumentException("unknown operation");
             }
         });return true;
@@ -374,8 +374,8 @@ public final class FoliaFixture extends JavaPlugin implements Listener {
             String action=s.action;s.action="allow";
             switch(action) {
                 case "cancel" -> { event.setCancelled(true);p.sendMessage("Folia QA cancelled interaction"); }
-                case "clear" -> { animus(p,"foliaproof","clear");p.sendMessage("Folia QA cleared during event"); }
-                case "replace" -> { animus(p,"foliaproof","clear");animus(p,"foliaproof","spawn");p.sendMessage("Folia QA replaced during event"); }
+                case "clear" -> { animus(p,"proof","folia","clear");p.sendMessage("Folia QA cleared during event"); }
+                case "replace" -> { animus(p,"proof","folia","clear");animus(p,"proof","folia","spawn");p.sendMessage("Folia QA replaced during event"); }
                 case "teleport" -> { own(p);p.teleportAsync(p.getLocation().add(1,0,0));p.sendMessage("Folia QA teleported during event"); }
                 case "teleportsame" -> { int before=teleportEpoch(p);p.teleportAsync(p.getLocation());int after=teleportEpoch(p);p.sendMessage("Folia QA same-position event teleport epoch-before="+before+" epoch-after="+after); }
                 default -> {}
@@ -391,7 +391,7 @@ public final class FoliaFixture extends JavaPlugin implements Listener {
         Player p=event.getPlayer();own(p);
         if(!joinProbes.remove(p.getUniqueId()))return;
         // FIFO next-owner-tick observation precedes the actual production spawn callback.
-        later(p,()->joinFootprint(p));animus(p,"foliaproof","spawn");
+        later(p,()->joinFootprint(p));animus(p,"proof","folia","spawn");
     }
     @EventHandler public void chunkLoad(ChunkLoadEvent event) { observeChunk(event.getChunk()); }
     @EventHandler public void chunkUnload(ChunkUnloadEvent event) { observeChunk(event.getChunk()); }

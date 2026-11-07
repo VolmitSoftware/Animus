@@ -104,7 +104,7 @@ public final class FoliaStationaryProofService implements Listener, AutoCloseabl
                                 +" | uuid="+(lease.body==null?"pending":lease.body.uuid())+" | generation="+lease.generation+" | viewer-epoch="+lease.epoch.sequence()+" | phase="+lease.phase
                                 +" | accepted="+lease.accepted+" | rejected="+lease.rejected+" | transport-ready="+lease.visible));
                     }
-                    default -> throw new IllegalArgumentException("foliaproof status | spawn [skin-hash] | clear");
+                    default -> throw new IllegalArgumentException("proof folia status | spawn [skin=] | clear");
                 }
             } catch (RuntimeException failure) { if(owner.owns(viewer)) viewer.sendMessage("Folia proof: "+failure.getMessage()); }
             finally { released.run(); }

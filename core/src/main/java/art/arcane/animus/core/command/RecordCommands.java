@@ -1,10 +1,11 @@
 package art.arcane.animus.core.command;
 
+import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.volmlib.util.director.DirectorOrigin;
 import art.arcane.volmlib.util.director.annotations.Director;
 import art.arcane.volmlib.util.director.annotations.Param;
-import java.util.Locale;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -32,32 +33,23 @@ final class RecordCommands {
     void cancel() { recordings().cancel(actor()); }
 
     @Director(description = "Show running recordings and previews")
-    void status() {
+    void status(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
         CommandActor actor = actor();
-        recordings().status(actor).stream().limit(CommandGroup.MAXIMUM_LINES).forEach(actor::tell);
+        List<String> rows = recordings().status(actor);
+        CommandGroup.listing(actor, "Recordings (" + rows.size() + ")", "/" + BuildIdentity.ID + " record status", rows, page, "Nothing recording; /animus record start <recording> begins");
     }
 
     @Director(description = "Show or hide the ghost that replays your last moves while you record", origin = DirectorOrigin.PLAYER)
-    void ghost(@Param(name = "enabled", description = "on, off or toggle") String enabled) {
+    void ghost(@Param(name = "enabled", defaultValue = DiagnosticCommands.TOGGLE, description = "on, off or toggle") String enabled) {
         CommandActor actor = actor();
-        Optional<Boolean> chosen = switch (enabled.toLowerCase(Locale.ROOT)) {
-            case "toggle" -> Optional.empty();
-            case "on", "true", "yes", "enabled" -> Optional.of(true);
-            case "off", "false", "no", "disabled" -> Optional.of(false);
-            default -> null;
-        };
-        if (chosen == null) { actor.tell(Palette.error("Unknown state " + enabled + "; use on, off or toggle")); return; }
-        recordings().ghost(actor, chosen);
+        Optional<Optional<Boolean>> chosen = DiagnosticCommands.enabled(enabled);
+        if (chosen.isEmpty()) { actor.tell(Palette.error(DiagnosticCommands.unknownState(enabled))); return; }
+        recordings().ghost(actor, chosen.get());
     }
 
-    @Director(description = "Play a saved recording once as a ghost only you see, or stop it", origin = DirectorOrigin.PLAYER)
-    void preview(@Param(name = "recording", description = "The saved recording id") String recording,
-                 @Param(name = "action", defaultValue = "play", description = "play, or stop to end the preview") String action) {
-        CommandActor actor = actor();
-        switch (action.toLowerCase(Locale.ROOT)) {
-            case "play" -> recordings().preview(actor, recording);
-            case "stop" -> recordings().stopPreview(actor);
-            default -> actor.tell(Palette.error("Unknown action " + action + "; use play or stop"));
-        }
-    }
+    @Director(description = "Play a saved recording once as a ghost only you see", origin = DirectorOrigin.PLAYER)
+    void preview(@Param(name = "recording", description = "The saved recording id") String recording) { recordings().preview(actor(), recording); }
+
+    @Director(description = "End your recording preview", origin = DirectorOrigin.PLAYER)
+    void clear() { recordings().stopPreview(actor()); }
 }

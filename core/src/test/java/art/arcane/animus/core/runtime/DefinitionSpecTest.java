@@ -71,7 +71,7 @@ class DefinitionSpecTest {
         ActivationWarnings warnings = new ActivationWarnings(logged::add);
         warnings.failed("frog", "$.skin: textures require a player body");
         warnings.failed("frog", "$.skin: textures require a player body");
-        assertEquals(List.of("NPC frog cannot activate: $.skin: textures require a player body"), logged);
+        assertEquals(List.of("NPC frog cannot become active: $.skin: textures require a player body"), logged);
         warnings.failed("frog", "$.position.world: world is not loaded");
         assertEquals(2, logged.size());
         warnings.cleared("frog");

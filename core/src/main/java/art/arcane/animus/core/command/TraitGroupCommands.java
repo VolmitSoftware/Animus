@@ -26,8 +26,6 @@ import java.util.function.Predicate;
 final class TraitGroupCommands extends CommandGroup {
     static final String SELECTORS = "Give exactly one of folder=<folder>, tag=<tag> or ids=a,b (@selected for your selection)";
 
-    private static final int LISTED = 40;
-
     TraitGroupCommands(CommandServices services) { super(services); }
 
     @Director(description = "List trait groups with their members and problems")
@@ -38,25 +36,34 @@ final class TraitGroupCommands extends CommandGroup {
             services.files().execute(() -> {
                 List<String> rows = rows(repository);
                 String title = "Trait groups (" + repository.groups().groups().size() + ", " + repository.groupProblems().size() + " problems)";
-                if (!stopping()) actor.reply(() -> listing(actor, title, "/" + BuildIdentity.ID + " groups list", rows, page, "No trait groups; save one as groups/<id>.json"));
+                if (!stopping()) actor.reply(() -> listing(actor, title, "/" + BuildIdentity.ID + " groups list", rows, page, "No trait groups; save one as groups/<id>.json, then /animus reload",
+                        (String id) -> "/" + BuildIdentity.ID + " groups inspect " + id));
             });
         } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
     @Director(description = "Show a group's values and problems")
-    void inspect(@Param(name = "group-id", description = "The trait group id") String group) {
+    void inspect(@Param(name = "group", description = "The trait group id") String group) {
         NpcRepository repository = runtime().npcs();
         files(actor(), () -> inspect(repository, group));
     }
 
-    @Director(description = "List the NPCs that use a group")
-    void members(@Param(name = "group-id", description = "The trait group id") String group) {
+    @Director(description = "List the NPCs that use a group; click one to inspect it")
+    void members(@Param(name = "group", description = "The trait group id") String group,
+                 @Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
+        CommandActor actor = actor();
         NpcRepository repository = runtime().npcs();
-        files(actor(), () -> members(repository, group));
+        try {
+            services.files().execute(() -> {
+                List<String> members = memberIds(repository, group);
+                if (!stopping()) actor.reply(() -> listing(actor, "Members of " + group + " (" + members.size() + ")", "/" + BuildIdentity.ID + " groups members " + group,
+                        members, page, "No NPC lists " + group + "; /animus groups assign " + group + " ids=<npc> adds one", CommandGroup::inspectCommand));
+            });
+        } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
     @Director(description = "Add a group to every matching NPC in one transaction")
-    void assign(@Param(name = "group-id", description = "The trait group id") String group,
+    void assign(@Param(name = "group", description = "The trait group id") String group,
                 @Param(name = "folder", defaultValue = "", description = "NPCs whose folder under npcs/ is exactly this") String folder,
                 @Param(name = "tag", defaultValue = "", description = "NPCs whose effective tags include this") String tag,
                 @Param(name = "ids", defaultValue = "", description = "Comma-separated NPC ids; @selected is your selection") String ids) {
@@ -64,7 +71,7 @@ final class TraitGroupCommands extends CommandGroup {
     }
 
     @Director(description = "Remove a group from every matching NPC in one transaction")
-    void unassign(@Param(name = "group-id", description = "The trait group id") String group,
+    void unassign(@Param(name = "group", description = "The trait group id") String group,
                   @Param(name = "folder", defaultValue = "", description = "NPCs whose folder under npcs/ is exactly this") String folder,
                   @Param(name = "tag", defaultValue = "", description = "NPCs whose effective tags include this") String tag,
                   @Param(name = "ids", defaultValue = "", description = "Comma-separated NPC ids; @selected is your selection") String ids) {
@@ -113,18 +120,12 @@ final class TraitGroupCommands extends CommandGroup {
     }
 
     static List<String> inspect(NpcRepository repository, String id) throws IOException {
-        GroupDocument group = repository.groups().find(id).orElseThrow(() -> new IOException("Unknown group " + id));
+        GroupDocument group = repository.groups().find(id).orElseThrow(() -> new IOException("Unknown group " + id + "; /animus groups list shows ids"));
         List<String> lines = new ArrayList<>(List.of("Group " + group.id() + " | revision " + group.revision() + " | members " + memberIds(repository, id).size()
                 + (group.description().isEmpty() ? "" : " | " + group.description())));
         lines.add(group.values().toString());
         repository.groups().problems().stream().filter((String problem) -> problem.startsWith(group.path() + ": ")).forEach(lines::add);
         return lines;
-    }
-
-    static List<String> members(NpcRepository repository, String id) {
-        List<String> members = memberIds(repository, id);
-        String shown = String.join(", ", members.stream().limit(LISTED).toList()) + (members.size() > LISTED ? ", +" + (members.size() - LISTED) + " more" : "");
-        return List.of("Members of " + id + " (" + members.size() + ")" + (members.isEmpty() ? "" : ": " + shown));
     }
 
     /** Adds or removes {@code id} in the {@code groups} of every matching stored NPC, as one transaction. File lane. */
@@ -151,7 +152,7 @@ final class TraitGroupCommands extends CommandGroup {
         return head + "; tx " + repository.applyAll(drafts);
     }
 
-    private static List<String> memberIds(NpcRepository repository, String id) {
+    static List<String> memberIds(NpcRepository repository, String id) {
         return repository.stored().stream().filter((NpcDefinition definition) -> definition.groups().contains(id)).map(NpcDefinition::id).sorted().toList();
     }
 }

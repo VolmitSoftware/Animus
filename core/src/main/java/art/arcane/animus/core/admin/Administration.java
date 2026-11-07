@@ -85,7 +85,7 @@ public final class Administration {
 
     public Inspection inspect(String id) throws IOException {
         NpcRepository.Draft draft = runtime.npcs().draft(id);
-        NpcDefinition effective = runtime.npcs().find(id).orElseThrow(() -> new IOException("Unknown NPC " + id));
+        NpcDefinition effective = runtime.npcs().find(id).orElseThrow(() -> new IOException("Unknown NPC: " + id + "; /animus list shows ids"));
         List<String> provenance = effective.groups().isEmpty() ? List.of() : runtime.npcs().provenance(id).entrySet().stream()
                 .map((Map.Entry<String, String> entry) -> entry.getKey() + " from " + entry.getValue()).toList();
         return new Inspection(effective, draft.document().toString(), effective.json().toString(), provenance,
@@ -93,7 +93,7 @@ public final class Administration {
     }
 
     public String create(String id, String type, String world, double x, double y, double z, String group, String name) throws IOException {
-        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) throw new IOException("Coordinates must be numbers");
+        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) throw new IOException("Coordinates must be numbers, such as x=0 y=64 z=0");
         JsonObject object = new JsonObject();
         object.addProperty("schemaVersion", 1); object.addProperty("revision", 1);
         object.addProperty("uuid", UUID.randomUUID().toString()); object.addProperty("id", id);
@@ -146,7 +146,7 @@ public final class Administration {
         JsonObject document = draft.document();
         document.addProperty("spawned", spawn);
         String tx = runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
-        return (spawn ? "Spawn requested for " : "Despawn requested for ") + id + "; tx " + tx;
+        return (spawn ? "Spawn requested for " : "Despawn requested for ") + id + "; tx " + tx + (spawn ? "" : "; /animus spawn " + id + " brings it back");
     }
 
     public String duplicate(String id, String copy) throws IOException {
@@ -163,8 +163,11 @@ public final class Administration {
 
     public List<String> reload() throws IOException { return checked("Reloaded", runtime.npcs().reload()); }
 
+    /** {@code All definitions valid; 3 saved, 2 spawned}, or the problems with the command that shows the rest. */
     private List<String> checked(String operation, List<String> errors) {
-        return errors.isEmpty() ? List.of(operation + "; " + runtime.npcs().all().size() + " active") : errors;
+        if (!errors.isEmpty()) return errors;
+        long spawned = runtime.npcs().all().stream().filter(NpcDefinition::spawned).count();
+        return List.of(operation + "; " + runtime.npcs().all().size() + " saved, " + spawned + " spawned");
     }
 
     /** One step of the Citizens drop-in flow; the catalogs its transactions touched reload even when it fails part way. */
@@ -188,7 +191,7 @@ public final class Administration {
      * {@code worlds} renames Citizens worlds; a converter is chosen by key or by the file.
      */
     public List<String> preview(String file, Optional<String> converter, Map<String, String> worlds) throws IOException {
-        if (!file.matches("[a-zA-Z0-9_-]+\\.[a-zA-Z0-9]{1,8}")) throw new IOException("Give a plain file name under imports/inbox/, such as saves.yml");
+        if (!file.matches("[a-zA-Z0-9_-]+\\.[a-zA-Z0-9]{1,8}")) throw new IOException("Give a plain file name under imports/inbox/, such as saves.yml; tab completion lists them");
         CitizensImporter importer = new CitizensImporter();
         Path path = runtime.documents().resolve("imports/inbox/" + file);
         CitizensImporter.Preview preview;
@@ -211,7 +214,7 @@ public final class Administration {
     public List<String> stage(String importId, String mode, Optional<String> label) throws IOException {
         ImportApplications.Preview application = ImportApplications.stage(runtime.documents(), importId, mode, label.orElse(null));
         return List.of("Application " + application.applicationId() + ": " + application.mode() + ", " + application.records() + " records, " + application.replacements() + " replacements",
-                "Review " + relative(application.report()) + ", then /animus import apply-plan " + importId + " " + application.applicationId());
+                "Review " + relative(application.report()) + ", then /animus import plan " + importId + " " + application.applicationId());
     }
 
     public List<String> apply(String importId) throws IOException { return installed(new CitizensImporter().apply(runtime.documents(), importId)); }
@@ -222,8 +225,8 @@ public final class Administration {
         List<String> errors = runtime.npcs().reload();
         List<String> notes = catalogs(List.of(tx), false);
         if (!errors.isEmpty()) throw new IOException("Import stored, but these files were refused and keep their last valid version: " + String.join("; ", errors));
-        if (tx.equals("already-applied")) return List.of("Already installed; nothing changed");
-        List<String> lines = new ArrayList<>(List.of(Palette.success("Installed dormant NPCs; tx " + tx)));
+        if (tx.equals("already-applied")) return List.of("Already installed; nothing changed, /animus list shows the NPCs");
+        List<String> lines = new ArrayList<>(List.of(Palette.success("Installed dormant NPCs; tx " + tx + "; /animus list shows them, /animus spawn <id> shows one")));
         lines.addAll(notes);
         return lines;
     }

@@ -143,7 +143,7 @@ def run_target(args, version):
             expected_binding = r'Packet proof unavailable on Folia' if args.project == 'folia' else rf'Packet proof ready \| Minecraft {re.escape(version)}'
             report['checks'].append(server.command('animus proof status', expected_binding))
             if cycle == 0:
-                report['checks'].append(server.command('animus create platform-smoke minecraft:player world 0 64 0 qa "Platform Smoke"', r'Created dormant platform-smoke;'))
+                report['checks'].append(server.command('animus create platform-smoke type=minecraft:player world=world x=0 y=64 z=0 folder=qa name="Platform Smoke"', r'Created dormant platform-smoke;'))
                 report['checks'].append(server.command('animus inspect platform-smoke', r'"name":"Platform Smoke"'))
                 report['checks'].append(server.command('animus validate', r'All definitions valid;'))
             else:

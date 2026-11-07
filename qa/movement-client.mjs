@@ -54,7 +54,7 @@ class Client extends NativeClient {
     throw new Error(`Navigation condition timed out: ${status?.text}`);
   }
   async route(target, mode = 'walk', speed = 2, npc = id) {
-    const e = await this.command(`animus navigate ${npc} ${target.x} ${target.y} ${target.z} mode=${mode} speed=${speed}`, `${npc} heading to`);
+    const e = await this.command(`animus navigation go ${npc} ${target.x} ${target.y} ${target.z} mode=${mode} speed=${speed}`, `${npc} heading to`);
     return e.text.match(/; route (\S+)/)[1];
   }
   async arrive(target, mode = 'walk', speed = 2) {
@@ -110,7 +110,7 @@ try {
   await owner.command('execute in minecraft:overworld run tp @s 0.0 61.0 0.0 0 0', 'Teleported AnimusProofQA');
   if (owner.position?.x !== 0 || owner.position?.y !== 61 || owner.position?.z !== 0)
     await owner.wait(e => e.event === 'position' && e.x === 0 && e.y === 61 && e.z === 0, tp);
-  await owner.command(`animus create ${id} minecraft:player world .5 61 3.5 movementqa "Motion Guard"`, `Created dormant ${id}`); live = true;
+  await owner.command(`animus create ${id} type=minecraft:player world=world x=.5 y=61 z=3.5 folder=movementqa name="Motion Guard"`, `Created dormant ${id}`); live = true;
   uuid = (await owner.inspect()).document.uuid;
   await owner.command(`animusqa expect ${uuid}`, 'QA production expect');
   await owner.command(`animusqa motion expect ${uuid}`, 'QA motion expect');
@@ -247,7 +247,7 @@ try {
   }
   assert(sourceChunk !== undefined, 'QA requires an observed loaded source and absent destination within one bounded leg');
   const farStart = sourceChunk * 16 + 14.5, farGoal = targetChunk * 16 + 2.5;
-  await owner.command(`animus create ${farId} minecraft:player world ${farStart} 100 8.5 movementqa "Unloaded Guard"`, `Created dormant ${farId}`);
+  await owner.command(`animus create ${farId} type=minecraft:player world=world x=${farStart} y=100 z=8.5 folder=movementqa name="Unloaded Guard"`, `Created dormant ${farId}`);
   await owner.command(`animus spawn ${farId}`, `Spawning ${farId}`);
   const sourceBefore = await owner.command(`animusqa motion chunk ${sourceChunk} 0 status`, 'QA chunk');
   assert(sourceBefore.text.includes('loaded=true') && sourceBefore.text.includes('forced=false'), 'Only the destination may be unavailable in this case');

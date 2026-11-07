@@ -72,7 +72,7 @@ public final class RuntimeEditorHost<P> implements EditorHost {
             try { result.complete(parts.living().validateActivation(definition)); }
             catch (RuntimeException failure) { result.complete(List.of(String.valueOf(failure.getMessage()))); }
         });
-        if (!accepted) result.complete(List.of("the server refused the activation check; retry shortly"));
+        if (!accepted) result.complete(List.of("the server refused the spawn check; retry shortly"));
         return result;
     }
 

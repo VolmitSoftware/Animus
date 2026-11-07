@@ -30,7 +30,7 @@ public final class ChatLine {
     private static final String NEXT = "Next: ";
     private static final int SHORT_ID = 8, SHORT_HASH = 12;
 
-    private enum Click { COPY, OPEN, SUGGEST, RUN }
+    private enum Click { COPY, OPEN, SUGGEST, RUN, NONE }
 
     /** A clickable label. {@code console} is what the console sees in its place, or null for nothing. */
     private record Chip(String label, Palette tone, Click click, String value, String hover, String console) {}
@@ -113,8 +113,19 @@ public final class ChatLine {
     /** A bracketed label that puts {@code command} in the player's chat box to edit and send. The console sees nothing. */
     public ChatLine suggest(String label, String command, String hover) { return chip(new Chip("[" + label + "]", Palette.PINK_LIGHT, Click.SUGGEST, command, hover, null)); }
 
-    /** A bracketed label that runs {@code command} as the player. The console sees the command. */
+    /** A bracketed label that runs {@code command} as the player, such as a page arrow or [Setup]. The console sees the command. */
     public ChatLine run(String label, String command, String hover) { return chip(new Chip("[" + label + "]", Palette.PINK_LIGHT, Click.RUN, command, hover, command)); }
+
+    /**
+     * {@code label} in {@code tone} that runs {@code command} when {@code run}, or puts it in the chat box to finish
+     * otherwise, such as a help entry or a clickable id. The console sees the label.
+     */
+    public ChatLine command(String label, Palette tone, String command, boolean run, String hover) {
+        return chip(new Chip(label, tone, run ? Click.RUN : Click.SUGGEST, command, hover, label));
+    }
+
+    /** {@code label} in {@code tone} with {@code hover} and no click, such as a parameter chip. The console sees the label. */
+    public ChatLine hover(String label, Palette tone, String hover) { return chip(new Chip(label, tone, Click.NONE, "", hover, label)); }
 
     /** The command as itself in pink; a click puts it, up to its first placeholder, in the chat box. The console sees the command. */
     private ChatLine command(String command) {
@@ -190,6 +201,7 @@ public final class ChatLine {
                 case OPEN -> ClickEvent.openUrl(chip.value());
                 case SUGGEST -> ClickEvent.suggestCommand(chip.value());
                 case RUN -> ClickEvent.runCommand(chip.value());
+                case NONE -> null;
             };
             line.append(Component.text(chip.label(), TextColor.color(chip.tone().rgb()))
                     .hoverEvent(HoverEvent.showText(Component.text(chip.hover(), TextColor.color(Palette.GREY.rgb()))))
@@ -228,6 +240,13 @@ public final class ChatLine {
         int end = url.length();
         while (end > 0 && ".,;:)'\"".indexOf(url.charAt(end - 1)) >= 0) end--;
         return url.substring(0, end);
+    }
+
+    /** The text a player reads, chips as their labels, without colour codes; for measuring how wide a line is. */
+    public String visible() {
+        StringBuilder out = new StringBuilder();
+        for (Object piece : pieces) out.append(piece instanceof String text ? RichText.plain(text) : ((Chip) piece).label());
+        return out.toString();
     }
 
     /** The console text without colour codes. */

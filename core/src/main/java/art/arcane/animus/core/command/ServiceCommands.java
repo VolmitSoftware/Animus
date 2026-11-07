@@ -34,7 +34,8 @@ final class ServiceCommands {
         @Director(description = "List the loaded shops")
         void list(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             List<String> rows = services.shops().rows();
-            listing(actor(), "Shops (" + rows.size() + ")", "/" + BuildIdentity.ID + " shop list", rows, page, "No shops; save one under shops/");
+            listing(actor(), "Shops (" + rows.size() + ")", "/" + BuildIdentity.ID + " shop list", rows, page, "No shops; save one under shops/, then /animus shop reload",
+                    (String shop) -> "/" + BuildIdentity.ID + " shop open " + shop);
         }
 
         @Director(description = "Open a shop for yourself or a player")
@@ -64,10 +65,10 @@ final class ServiceCommands {
     static final class ShopImport extends CommandGroup {
         ShopImport(CommandServices services) { super(services); }
 
-        @Director(description = "Preview a shop folder from imports/inbox/")
-        void preview(@Param(name = "folder", description = "A folder directly under imports/inbox/") String folder,
+        @Director(description = "Preview a dtlTraders or Shopkeepers folder from imports/inbox/")
+        void preview(@Param(name = "source", description = "A folder directly under imports/inbox/") String source,
                      @Param(name = "saves", defaultValue = "", description = "A .yml saves file directly under imports/inbox/") String saves) {
-            services.shops().importPreview(actor(), folder, given(saves));
+            services.shops().importPreview(actor(), source, given(saves));
         }
 
         @Director(description = "Install a shop preview")
@@ -137,7 +138,7 @@ final class ServiceCommands {
 
         @Director(description = "Copy Gloss's live documents into Animus")
         void gloss(@Param(name = "kind", description = "all, inventory, menu, hologram or animation") HoloService.Listing kind,
-                   @Param(name = "id", defaultValue = "all", description = "One document id of that kind, or all") String id,
+                   @Param(name = "document", defaultValue = "all", description = "One document id of that kind, or all") String id,
                    @Param(name = "namespace", defaultValue = GlossIds.DEFAULT_NAMESPACE, description = "The Animus namespace to write into") String namespace,
                    @Param(name = "replace", defaultValue = "false", description = "Overwrite documents that exist") boolean replace) {
             CommandActor actor = actor();
@@ -146,7 +147,7 @@ final class ServiceCommands {
         }
 
         @Director(description = "Import a Gloss folder or .json bundle from imports/inbox/")
-        void file(@Param(name = "name", description = "A folder or .json bundle directly under imports/inbox/") String name,
+        void file(@Param(name = "source", description = "A folder or .json bundle directly under imports/inbox/") String name,
                   @Param(name = "namespace", defaultValue = GlossIds.DEFAULT_NAMESPACE, description = "The Animus namespace to write into") String namespace,
                   @Param(name = "replace", defaultValue = "false", description = "Overwrite documents that exist") boolean replace) {
             CommandActor actor = actor();
@@ -160,7 +161,7 @@ final class ServiceCommands {
 
         @Director(description = "Write Animus documents into Gloss's live folders")
         void gloss(@Param(name = "kind", description = "all, inventory, menu, hologram or animation") HoloService.Listing kind,
-                   @Param(name = "id", defaultValue = "all", description = "One document id of that kind, or all") String id,
+                   @Param(name = "document", defaultValue = "all", description = "One document id of that kind, or all") String id,
                    @Param(name = "replace", defaultValue = "false", description = "Overwrite Gloss documents that exist") boolean replace) {
             services.guis().exchange().exportGloss(actor(), Gui.kind(kind), id.equalsIgnoreCase("all") ? Optional.empty() : Optional.of(id), replace);
         }
@@ -187,10 +188,18 @@ final class ServiceCommands {
         void status(@Param(name = "build", defaultValue = "", description = "A build id or its NPC") String build) { builds().status(actor(), given(build)); }
 
         @Director(description = "List running and paused builds")
-        void list() { builds().list(actor()); }
+        void list(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
+            CommandActor actor = actor();
+            builds().rows(actor, (List<String> rows) -> listing(actor, "Builds (" + rows.size() + ")", "/" + BuildIdentity.ID + " build list", rows, page,
+                    "No builds; /animus build start <npc> schematic=<file> starts one", (String id) -> "/" + BuildIdentity.ID + " build status build=" + id));
+        }
 
         @Director(description = "List the schematics in the schematics folder")
-        void schematics() { builds().schematics(actor()); }
+        void schematics(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
+            CommandActor actor = actor();
+            builds().schematicRows(actor, (List<String> rows) -> listing(actor, "Schematics (" + rows.size() + ")", "/" + BuildIdentity.ID + " build schematics", rows, page,
+                    "No schematics; add .schem or .nbt files to schematics/", (String name) -> "/" + BuildIdentity.ID + " build inspect " + name));
+        }
 
         @Director(description = "Read a schematic's size and blocks")
         void inspect(@Param(name = "schematic", description = "The schematic file name") String schematic) { builds().inspect(actor(), schematic); }
@@ -239,7 +248,7 @@ final class ServiceCommands {
         void cancel(@Param(name = "build", description = "A build id or its NPC") String build) { builds().cancel(actor(), build); }
 
         @Director(description = "Remove the blocks a build placed")
-        void undo(@Param(name = "build", description = "A build id or its NPC") String build) { builds().undo(actor(), build); }
+        void rollback(@Param(name = "build", description = "A build id or its NPC") String build) { builds().undo(actor(), build); }
 
         @Director(description = "List what a build still needs")
         void survey(@Param(name = "build", description = "A build id or its NPC") String build) { builds().survey(actor(), build); }
@@ -249,16 +258,16 @@ final class ServiceCommands {
         void donate(@Param(name = "build", description = "A build id or its NPC") String build) { builds().donate(actor(), build); }
     }
 
-    @Director(name = "team", description = "Add or remove helper NPCs on a build")
+    @Director(name = "team", description = "Assign or unassign helper NPCs on a build")
     static final class Team extends CommandGroup {
         Team(CommandServices services) { super(services); }
 
-        @Director(description = "Add a helper NPC to a build")
-        void add(@Param(name = "build", description = "A build id or its NPC") String build,
+        @Director(description = "Assign a helper NPC to a build")
+        void assign(@Param(name = "build", description = "A build id or its NPC") String build,
                  @Param(name = "npc", description = "The helper NPC id") String npc) { services.builds().team(actor(), build, true, npc); }
 
-        @Director(description = "Remove a helper NPC from a build")
-        void remove(@Param(name = "build", description = "A build id or its NPC") String build,
+        @Director(description = "Unassign a helper NPC from a build")
+        void unassign(@Param(name = "build", description = "A build id or its NPC") String build,
                     @Param(name = "npc", description = "The helper NPC id") String npc) { services.builds().team(actor(), build, false, npc); }
     }
 
@@ -272,16 +281,17 @@ final class ServiceCommands {
         @Director(description = "Make a single-use pairing link")
         void pair(@Param(name = "label", defaultValue = "", description = "A name for the token, such as laptop") String label,
                   @Param(name = "scopes", defaultValue = "", description = "Comma-separated scopes; the pairing defaults when left out") String scopes,
-                  @Param(name = "groups", defaultValue = "", description = "Comma-separated NPC groups the token may edit") String groups,
+                  @Param(name = "folders", defaultValue = "", description = "Comma-separated NPC folders the token may edit; every folder when left out") String folders,
                   @Param(name = "expires", defaultValue = "", description = "Lifetime such as 7d, 12h or 30m") String expires) {
-            services.editor().pair(actor(), label, scopes, groups, expires);
+            services.editor().pair(actor(), label, scopes, folders, expires);
         }
 
         @Director(description = "List editor tokens")
         void tokens(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             CommandActor actor = actor();
             services.editor().tokens(actor).ifPresent((List<String> rows) ->
-                    listing(actor, "Editor tokens (" + rows.size() + ")", "/" + BuildIdentity.ID + " editor tokens", rows, page, "No editor tokens."));
+                    listing(actor, "Editor tokens (" + rows.size() + ")", "/" + BuildIdentity.ID + " editor tokens", rows, page, "No editor tokens; /animus editor pair makes one",
+                            (String token) -> "/" + BuildIdentity.ID + " editor revoke " + token));
         }
 
         @Director(description = "Revoke a token, or all of them")

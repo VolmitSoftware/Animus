@@ -82,7 +82,7 @@ try:
             ('animus combat status',r'.*Combat unavailable: .*Folia.*'),
             ('animus navigation status folia-qa',r'.*Navigation folia-qa: disabled in config\.toml.*')]:
             disabled.append(console(session,log,command,pattern))
-        ready=console(session,log,'animus foliaproof status',r'.*Folia stationary proof ready.*admitted=0/8.*')
+        ready=console(session,log,'animus proof folia status',r'.*Folia stationary proof ready.*admitted=0/8.*')
         transcript=evidence/f'{phase}-client.ndjson'
         command=['node',str(root/'qa/folia-proof/client.mjs'),'--version',a.version,'--port',str(port),'--libraries',str(instance/'libraries'),'--phase',phase,'--skin',a.skin_file.stem,'--skin-file',str(a.skin_file.resolve())]
         timed_out=False
@@ -102,7 +102,7 @@ try:
         report['phases'].append(record)
         checkpoint()
         time.sleep(.25)
-        record['cleanupReceipt']=console(session,log,'foliaqa servicestatus' if phase=='shutdown' else 'animus foliaproof status',r'.*Folia stationary proof '+('unavailable: closed' if phase=='shutdown' else 'ready')+r'.*admitted=0/8.*pending-spawns=0/8.*command-work=0/8.*skin-reads=0/2.*')
+        record['cleanupReceipt']=console(session,log,'foliaqa servicestatus' if phase=='shutdown' else 'animus proof folia status',r'.*Folia stationary proof '+('unavailable: closed' if phase=='shutdown' else 'ready')+r'.*admitted=0/8.*pending-spawns=0/8.*command-work=0/8.*skin-reads=0/2.*')
         record['fixtureReceipt']=console(session,log,'foliaqa counters',r'.*Folia QA counters.*failures=0 scheduled=0 states=0 probes=0 joins=0 io-held=0 network-held=0.*')
         assert child.returncode==0 and record.get('clientResult',{}).get('status')=='passed',f'{phase} failed; see {transcript}'
         start=time.monotonic();record['stop']=run(a,'runtime','stop',name,'--graceful');record['stopSeconds']=time.monotonic()-start;session=None

@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.volmlib.util.director.annotations.Director;
 import art.arcane.volmlib.util.director.annotations.Param;
-import art.arcane.volmlib.util.director.help.DirectorMiniMenu;
 import art.arcane.volmlib.util.director.runtime.DirectorParameterDescriptor;
 import art.arcane.volmlib.util.director.runtime.DirectorRuntimeNode;
 import java.util.ArrayList;
@@ -21,7 +20,7 @@ class AnimusDirectorTest {
     /** A console or player holding exactly the given nodes; output is kept as plain text. */
     static class Actor implements CommandActor {
         final List<String> lines = new ArrayList<>();
-        final List<DirectorMiniMenu.DirectorHelpPage> pages = new ArrayList<>();
+        final List<AnimusHelp.Page> pages = new ArrayList<>();
         final Set<String> nodes;
         final Optional<UUID> player;
         Actor(boolean player, String... nodes) { this.player = player ? Optional.of(UUID.randomUUID()) : Optional.empty(); this.nodes = Set.of(nodes); }
@@ -30,9 +29,10 @@ class AnimusDirectorTest {
         @Override public void plain(String line) { lines.add(RichText.plain(line)); }
         @Override public Optional<UUID> player() { return player; }
         @Override public boolean reply(Runnable action) { action.run(); return true; }
-        @Override public void menu(DirectorMiniMenu.DirectorHelpPage page) { pages.add(page); }
+        @Override public void help(AnimusHelp.Page page) { pages.add(page); }
         String text() { return String.join("\n", lines); }
-        List<String> entries() { return pages.getLast().entries().stream().map((DirectorRuntimeNode node) -> node.getDescriptor().getName()).toList(); }
+        /** The names the last help page lists, A-Z. */
+        List<String> entries() { return pages.getLast().entries().stream().map((DirectorRuntimeNode node) -> node.getDescriptor().getName()).sorted().toList(); }
     }
 
     /** A small tree that records what each command received. */
@@ -106,7 +106,7 @@ class AnimusDirectorTest {
     @Test void permissionsGateExecutionHelpAndCompletion() {
         Actor visitor = new Actor(true, "probe.open");
         run(visitor, "spawn", "guard");
-        assertTrue(visitor.text().contains("No permission: animus."), visitor.text());
+        assertTrue(visitor.text().contains("No permission: animus.admin; ask an operator to grant it"), visitor.text());
         run(visitor, "open");
         assertEquals(List.of("open"), probe.calls);
         run(visitor);
@@ -144,12 +144,12 @@ class AnimusDirectorTest {
     @Test void groupsAndUnknownWordsShowHelp() {
         Actor admin = new Actor(false, AnimusDirector.ADMIN);
         run(admin, "group");
-        assertEquals("/probe group", admin.pages.getLast().node().path());
+        assertEquals("/probe group", admin.pages.getLast().group().path());
         run(admin, "help");
-        assertEquals("/probe", admin.pages.getLast().node().path());
+        assertEquals("/probe", admin.pages.getLast().group().path());
         run(admin, "nothing-like-this");
         assertTrue(admin.text().contains("Unknown command"), admin.text());
-        assertEquals("/probe", admin.pages.getLast().node().path());
+        assertEquals("/probe", admin.pages.getLast().group().path());
     }
 
     /** Every real command maps its required words and keyed defaults; it then fails only for lack of services. */
@@ -202,7 +202,7 @@ class AnimusDirectorTest {
             log.debug(false);
             real.execute(operator, new String[]{"debug", "mode"});
             assertTrue(log.debug());
-            assertTrue(operator.text().contains("Debug mode on: every NPC's route, activation and packet diagnostics log until restart"), operator.text());
+            assertTrue(operator.text().contains("Debug mode on: every NPC's route, spawn and packet diagnostics log until restart"), operator.text());
             real.execute(operator, new String[]{"debug", "mode", "enabled=off"});
             assertFalse(log.debug());
             assertTrue(operator.text().contains("Debug mode off: per-NPC diagnostics summarize every"), operator.text());
@@ -215,11 +215,11 @@ class AnimusDirectorTest {
         } finally { log.debug(false); }
     }
 
-    @Test void navigateCentresWholeBlockCoordinates() {
-        assertEquals(10.5, AnimusCommandTree.blockCenter(10));
-        assertEquals(-3.5, AnimusCommandTree.blockCenter(-4));
-        assertEquals(10.25, AnimusCommandTree.blockCenter(10.25), "an exact point stays");
-        assertEquals(0.5, AnimusCommandTree.blockCenter(0));
+    @Test void navigationGoCentresWholeBlockCoordinates() {
+        assertEquals(10.5, WorldCommands.Navigation.blockCenter(10));
+        assertEquals(-3.5, WorldCommands.Navigation.blockCenter(-4));
+        assertEquals(10.25, WorldCommands.Navigation.blockCenter(10.25), "an exact point stays");
+        assertEquals(0.5, WorldCommands.Navigation.blockCenter(0));
     }
 
     @Test void npcReferencesResolveThroughNestedFolders() throws Exception {

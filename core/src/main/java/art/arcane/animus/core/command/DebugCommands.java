@@ -58,7 +58,8 @@ public final class DebugCommands {
 
     public void watch(CommandActor actor) { tell(actor, watchToggle(actor)); }
 
-    private static void tell(CommandActor actor, List<String> lines) { for (String line : lines) actor.tell(RichText.colorize(line)); }
+    /** The console reads the whole report; a player gets its first lines and the rest behind [Details]. */
+    private static void tell(CommandActor actor, List<String> lines) { CommandGroup.lines(actor, lines.stream().map(RichText::colorize).toList()); }
 
     private MetricsSnapshot snapshot() { return metrics.get().snapshot(); }
 
@@ -73,7 +74,7 @@ public final class DebugCommands {
         List<String> lines = new ArrayList<>();
         lines.add(HEADER);
         if (snapshot.sequence() == 0) lines.add("&7No measurement yet; try again in a second");
-        lines.add(fmt("&7NPCs &8(%s)&7: &f%d &7definitions, &f%d &7active, &f%d &7dormant, &f%d &7sleeping patrols",
+        lines.add(fmt("&7NPCs &8(%s)&7: &f%d &7saved, &f%d &7active, &f%d &7spawned and waiting for a player nearby, &f%d &7sleeping patrols",
                 gauges.runtime(), gauges.definitions(), gauges.active(), gauges.dormant(), gauges.sleepingRoutes()));
         lines.add(fmt("&7Viewers: &f%d &7watching, &f%d &7bodies shown", gauges.viewers(), gauges.visible()));
         lines.add(fmt("&7Network &8(last %ds)&7: &f%.1f &7pkt/s, &f~%s&7/s, &f%.2f &7pkt/tick, NPC clicks in &f%.1f&7/s",
@@ -170,14 +171,14 @@ public final class DebugCommands {
 
     private List<String> npc(String id) {
         Optional<UUID> uuid = npcIds.apply(id);
-        if (uuid.isEmpty()) return List.of("&7Unknown NPC: &f" + id);
+        if (uuid.isEmpty()) return List.of("&7Unknown NPC: &f" + id + "&7; /animus list shows ids");
         MetricsSnapshot snapshot = snapshot();
         List<String> lines = new ArrayList<>();
         lines.add(HEADER);
         Optional<Load> load = metrics.get().npcLoad(uuid.get());
         Optional<MetricsSnapshot.LoadRow> row = snapshot.npc(uuid.get());
         boolean placed = snapshot.gauges().places().stream().anyMatch((RuntimeGauges.NpcPlace place) -> place.npc().equals(uuid.get()));
-        lines.add(fmt("&7NPC &f%s &8(%s)&7: %s", id, uuid.get(), placed ? "active" : "not active"));
+        lines.add(fmt("&7NPC &f%s &8(%s)&7: %s", id, uuid.get(), placed ? "active" : "not active; spawned NPCs become active once their chunk loads"));
         if (load.isEmpty()) { lines.add("&7No packets or time recorded for this NPC in the last minute"); lines.add(HONEST); return lines; }
         MetricsSnapshot.Rates second = snapshot.second();
         long packets = row.map(MetricsSnapshot.LoadRow::packets).orElse(0L), bytesSent = row.map(MetricsSnapshot.LoadRow::bytes).orElse(0L);

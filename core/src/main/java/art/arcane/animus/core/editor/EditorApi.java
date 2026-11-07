@@ -869,7 +869,7 @@ public final class EditorApi implements EditorRequestHandler {
                 if (!problems.isEmpty()) {
                     JsonArray diagnostics = new JsonArray();
                     problems.stream().limit(32).forEach((String problem) -> diagnostics.add(EditorDocuments.diagnostic("error", "$", problem, "activation")));
-                    answer.complete(EditorReplies.error(new EditorError(EditorError.Code.INVALID_REQUEST, "The NPC cannot activate.", -1, diagnostics)));
+                    answer.complete(EditorReplies.error(new EditorError(EditorError.Code.INVALID_REQUEST, "The NPC cannot be spawned here.", -1, diagnostics)));
                     return;
                 }
                 try {

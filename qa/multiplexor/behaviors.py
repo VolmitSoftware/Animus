@@ -239,7 +239,7 @@ class Scenario:
 
     def create(self, identity):
         self.reserve(self.source(identity)); self.reserve(self.checkpoint(identity))
-        self.command(f'animus create {identity} minecraft:player world 0 61 3 qa "Behavior QA"', rf'.*Created dormant {re.escape(identity)};.*')
+        self.command(f'animus create {identity} type=minecraft:player world=world x=0 y=61 z=3 folder=qa name="Behavior QA"', rf'.*Created dormant {re.escape(identity)};.*')
         saved = read(self.source(identity))
         for path in (self.source(identity), self.checkpoint(identity)):
             no_symlinks(path); self.owned_files[str(path.relative_to(self.data))]['hashes'].append(sha(path))

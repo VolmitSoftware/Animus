@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * The packet preview tools behind {@code /animus proof} and {@code /animus foliaproof}. They read Bukkit's server
+ * The packet preview tools behind {@code /animus proof} and {@code /animus proof folia}. They read Bukkit's server
  * internals, so every other platform answers with {@link #unavailable}. Called on the actor's owner.
  */
 public interface ProofControl {
@@ -21,6 +21,8 @@ public interface ProofControl {
     void foliaStatus(CommandActor actor);
     void foliaSpawn(CommandActor actor, Optional<String> skin);
     void foliaClear(CommandActor actor);
+    /** The actor's preview body ids, for completing {@code entity}, {@code vehicle} and {@code riders}. */
+    default List<Integer> bodies(CommandActor actor) { return List.of(); }
 
     /** Every preview command refuses with {@code reason}. */
     static ProofControl unavailable(String reason) {

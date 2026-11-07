@@ -118,7 +118,7 @@ public record LookClose(double range, boolean lineOfSight, boolean whileNavigati
         return value.getAsBoolean();
     }
 
-    /** The facing from an NPC's eye toward a point, as {@code /animus look} turns it; empty when the point is the eye. */
+    /** The facing from an NPC's eye toward a point, as {@code /animus navigation look} turns it; empty when the point is the eye. */
     public static Optional<Facing> facing(Vec3 eye, Vec3 target) {
         Vec3 delta = target.subtract(eye);
         if (delta.distance(Vec3.ZERO) < .000001) return Optional.empty();

@@ -21,7 +21,8 @@ import java.util.function.Supplier;
  */
 public final class BuildCommands {
     public static final String DONATE_PERMISSION = "animus.build.donate";
-    private static final int LISTED = 40, CLIPPED = 12;
+    private static final int CLIPPED = 12;
+    private static final String BUILD = "Build ";
     private final Supplier<BuildService<?, ?>> service;
     private final Supplier<Optional<String>> unavailable;
 
@@ -39,14 +40,38 @@ public final class BuildCommands {
         });
     }
 
-    public void list(CommandActor actor) { run(actor, (BuildService<?, ?> builds, CommandActor owner) -> clipped(owner, builds.list())); }
-
-    public void schematics(CommandActor actor) {
+    /** The builds as {@code id | state} rows for a paged listing, handed over on the actor's own owner. */
+    public void rows(CommandActor actor, Consumer<List<String>> shown) {
         run(actor, (BuildService<?, ?> builds, CommandActor owner) -> {
-            List<String> names = builds.schematics();
-            owner.tell(names.isEmpty() ? "No schematics; add .schem or .nbt files to " + BuildService.SCHEMATICS + "/"
-                    : "Schematics (" + names.size() + "): " + String.join(", ", names.stream().limit(LISTED).toList()) + (names.size() > LISTED ? ", +" + (names.size() - LISTED) + " more" : ""));
+            List<String> rows = builds.list().stream().filter((String line) -> line.startsWith(BUILD)).map(BuildCommands::row).toList();
+            if (!actor.reply(() -> shown.accept(rows))) shown.accept(rows);
         });
+    }
+
+    /** {@code Build <id>: <state>} as {@code <id> | <state>}. */
+    static String row(String line) {
+        int colon = line.indexOf(": ");
+        return colon < 0 ? line.substring(BUILD.length()) : line.substring(BUILD.length(), colon) + " | " + line.substring(colon + 2);
+    }
+
+    /** Schematic file names for a paged listing, handed over on the actor's own owner. */
+    public void schematicRows(CommandActor actor, Consumer<List<String>> shown) {
+        run(actor, (BuildService<?, ?> builds, CommandActor owner) -> {
+            List<String> rows = builds.schematics();
+            if (!actor.reply(() -> shown.accept(rows))) shown.accept(rows);
+        });
+    }
+
+    /** Build ids for completion; none while building is unavailable. */
+    public List<String> buildIds() {
+        if (unavailable.get().isPresent()) return List.of();
+        try {
+            return service.get().list().stream().filter((String line) -> line.startsWith(BUILD)).map((String line) -> {
+                String row = row(line);
+                int split = row.indexOf(" | ");
+                return split < 0 ? row : row.substring(0, split);
+            }).limit(100).toList();
+        } catch (RuntimeException unreadable) { return List.of(); }
     }
 
     public void inspect(CommandActor actor, String schematic) {
@@ -84,10 +109,10 @@ public final class BuildCommands {
 
     public void survey(CommandActor actor, String build) { run(actor, (BuildService<?, ?> builds, CommandActor owner) -> clipped(owner, builds.survey(build))); }
 
-    /** At most {@link #CLIPPED} lines, then how many more there are. */
+    /** At most {@link #CLIPPED} lines, then how many there were and the next step. */
     private static void clipped(CommandActor owner, List<String> lines) {
         lines.stream().limit(CLIPPED).forEach(owner::tell);
-        if (lines.size() > CLIPPED) owner.tell("+" + (lines.size() - CLIPPED) + " more");
+        if (lines.size() > CLIPPED) owner.tell("Showing " + CLIPPED + " of " + lines.size() + "; place what is listed, then /animus build survey again");
     }
 
     /** The held items go to the build; only a player can donate. Runs on the player's own owner. */
@@ -95,7 +120,7 @@ public final class BuildCommands {
         Optional<String> refused = unavailable.get();
         if (refused.isPresent()) { actor.tell(Palette.error("Builds unavailable: " + refused.get())); return; }
         try {
-            if (actor.player().isEmpty()) throw new IllegalArgumentException("Players only");
+            if (actor.player().isEmpty()) throw new IllegalArgumentException("Players only; run it in game holding the items");
             service.get().donateHeld(build, actor.player().get(), actor::tell);
         } catch (RuntimeException failure) { actor.tell(Palette.error("Build: " + failure.getMessage())); }
     }

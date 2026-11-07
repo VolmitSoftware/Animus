@@ -240,7 +240,7 @@ class Server {
     throw new Error('reload stayed busy');
   }
   async npc(id, type, x, y, z, display, edit = {}, spawned = true) {
-    await this.cmd(`animus create ${id} ${type} world ${x} ${y} ${z} live ${display}`, new RegExp(`Created dormant ${id}`));
+    await this.cmd(`animus create ${id} type=${type} world=world x=${x} y=${y} z=${z} folder=live name=${display}`, new RegExp(`Created dormant ${id}`));
     if (Object.keys(edit).length) await this.cmd(`animus edit ${id} ${JSON.stringify(edit)}`, /Saved[^;]*; tx /);
     if (spawned) await this.cmd(`animus spawn ${id}`, new RegExp(`Spawning ${id}`));
     return JSON.parse(readFileSync(path.join(data, 'npcs/live', `${id}.json`), 'utf8')).uuid;
@@ -376,7 +376,7 @@ async function triggers() {
   });
   await check('trigger waypoint arrival', async () => {
     const from = owner.events.length;
-    await server.cmd('animus navigate trig 4 61 10 mode=walk speed=3', /./);
+    await server.cmd('animus navigation go trig 4 61 10 mode=walk speed=3', /./);
     return (await owner.chat('Trigger » waypoint-fired', from, 15_000)).text;
   });
   await check('behaviors triggers output', async () => {
@@ -555,19 +555,19 @@ async function state() {
     assert.match((await server.reload())[0], /APPLIED/);
     return startup.replace(/\[[^\]]*\]: /g, '').slice(0, 240);
   });
-  await check('state purge relationship', async () => { await server.capture(`animus behaviors state purge relationship st ${OWNER.uuid}`, /Behavior state purge: \w+[^\n]*/); const { lines } = await values(owner); assert.equal(lines[2], 'unset'); assert.notEqual(lines[0], 'unset'); return lines.join(','); });
-  await check('state purge npc', async () => { await server.capture('animus behaviors state purge npc st', /Behavior state purge: \w+[^\n]*/); const { lines } = await values(owner); assert.equal(lines[0], 'unset'); return lines.join(','); });
-  await check('state purge player', async () => { await server.capture(`animus behaviors state purge player ${OWNER.uuid}`, /Behavior state purge: \w+[^\n]*/); const { lines } = await values(owner); assert.equal(lines[1], 'unset'); return lines.join(','); });
-  await check('state purge behavior', async () => { await server.capture('animus behaviors state purge behavior live:state', /Behavior state purge: \w+[^\n]*/); const { lines } = await values(owner); assert.equal(lines[3], 'unset'); return lines.join(','); });
+  await check('state purge relationship', async () => { await server.capture(`animus behaviors state delete relationship st ${OWNER.uuid}`, /Behavior state delete: \w+[^\n]*/); const { lines } = await values(owner); assert.equal(lines[2], 'unset'); assert.notEqual(lines[0], 'unset'); return lines.join(','); });
+  await check('state purge npc', async () => { await server.capture('animus behaviors state delete npc st', /Behavior state delete: \w+[^\n]*/); const { lines } = await values(owner); assert.equal(lines[0], 'unset'); return lines.join(','); });
+  await check('state purge player', async () => { await server.capture(`animus behaviors state delete player ${OWNER.uuid}`, /Behavior state delete: \w+[^\n]*/); const { lines } = await values(owner); assert.equal(lines[1], 'unset'); return lines.join(','); });
+  await check('state purge behavior', async () => { await server.capture('animus behaviors state delete behavior live:state', /Behavior state delete: \w+[^\n]*/); const { lines } = await values(owner); assert.equal(lines[3], 'unset'); return lines.join(','); });
   await check('state purge all', async () => {
     await owner.look(body.x, body.y + .9, body.z);
     const from = owner.events.length; owner.send('use', { id: body.id }); await owner.chat('write-one', from);
-    const text = await server.capture('animus behaviors state purge all confirm', /Behavior state purge: \w+[^\n]*/);
+    const text = await server.capture('animus behaviors state delete all confirm', /Behavior state delete: \w+[^\n]*/);
     const { lines } = await values(owner);
     assert.deepEqual(lines, ['unset', 'unset', 'unset', 'unset', 'unset']);
     await delay(6000);
     assert(!Object.values(files).some(existsSync), 'files remain after purge all');
-    return text.match(/Behavior state purge:[^\n]*/)[0];
+    return text.match(/Behavior state delete:[^\n]*/)[0];
   });
   await owner.close();
   await server.cmd('animus delete st', /Deleted/);
@@ -714,7 +714,7 @@ async function actions() {
     return diagnosticOf(result.text).replace(/^.*Behavior diagnostic/, 'diagnostic').slice(0, 200);
   });
   await check('navigate wait fails when blocked mid-walk', async () => {
-    await server.cmd('animus navigate act 0 61 3 mode=walk speed=5', /./); await delay(2000);
+    await server.cmd('animus navigation go act 0 61 3 mode=walk speed=5', /./); await delay(2000);
     server.behavior('live:nav', { routines: { main: seq(action('animus:navigate', { x: 12, y: 61, z: 3, speed: 1, wait: true, timeoutTicks: 600 }), sayTo('walled-arrived')) } });
     await server.reload();
     const execution = await owner.run('act', 'live:nav');
@@ -726,7 +726,7 @@ async function actions() {
     return diagnosticOf(result.text).replace(/^.*Behavior diagnostic/, 'diagnostic').slice(0, 200);
   });
   await check('navigate wait times out', async () => {
-    await server.cmd('animus navigate act 0 61 3 mode=walk speed=5', /./); await delay(3000);
+    await server.cmd('animus navigation go act 0 61 3 mode=walk speed=5', /./); await delay(3000);
     const result = await runDoc(owner, 'nav', action('animus:navigate', { x: 30, y: 61, z: 3, speed: 1, wait: true, timeoutTicks: 20 }));
     assert.equal(result.state, 'FAILED');
     assert(/navigation-timeout/.test(result.text), result.text.slice(0, 400));
@@ -1222,7 +1222,7 @@ async function dragon() {
   await check('moving dragon uses flight phase and returns to sitting', async () => {
     await go(0, 61, -20);
     const from = owner.events.length;
-    const reply = await server.capture('animus navigate drake 0 61 16 mode=walk speed=2', /heading to[^\n]*|Navigation[^\n]*/, 2500);
+    const reply = await server.capture('animus navigation go drake 0 61 16 mode=walk speed=2', /heading to[^\n]*|Navigation[^\n]*/, 2500);
     const status = await server.capture('animus navigation status drake', /Navigation[^\n]*|Animus navigation[^\n]*/);
     note(reply + status);
     const phases = () => owner.events.slice(from).filter(e => e.event === 'metadata' && e.id === body.id).map(e => JSON.stringify(e.fields)).join(' ');
@@ -1354,7 +1354,7 @@ async function foliaMounts(owner, at) {
     const before = await inspect('fhorse');
     const goal = [before.x + 24, before.y, before.z];
     await owner.tp(before.x + 12, before.y, before.z - 4);
-    await server.cmd(`animus navigate fhorse ${goal[0].toFixed(1)} ${goal[1]} ${goal[2].toFixed(1)} mode=walk speed=4`, /Navigation|navigation|route/i);
+    await server.cmd(`animus navigation go fhorse ${goal[0].toFixed(1)} ${goal[1]} ${goal[2].toFixed(1)} mode=walk speed=4`, /Navigation|navigation|route/i);
     const end = await until(async () => { const h = await inspect('fhorse'); return { ok: Math.abs(h.x - goal[0]) < .7, x: h.x, line: h.line.slice(0, 200) }; }, 30000, 'horse did not arrive');
     const rider = await inspect('fknight');
     const chunks = Math.floor(goal[0] / 16) - Math.floor(before.x / 16);
@@ -1491,7 +1491,7 @@ async function foliaDragon(owner, at) {
     await owner.wait(e => e.event === 'metadata' && e.id === body.id && e.fields.some(f => f.value === 6), from, 8000);
     const moved = owner.events.length;
     const goal = at(-20, 46);
-    await server.cmd(`animus navigate fdrake ${goal[0]} ${goal[1]} ${goal[2]} mode=walk speed=2`, /Navigation|navigation|route/i);
+    await server.cmd(`animus navigation go fdrake ${goal[0]} ${goal[1]} ${goal[2]} mode=walk speed=2`, /Navigation|navigation|route/i);
     await owner.wait(e => e.event === 'metadata' && e.id === body.id && e.fields.some(f => f.value === 0), moved, 10000);
     await owner.wait(e => e.event === 'metadata' && e.id === body.id && e.fields.some(f => f.value === 6), moved, 20000);
     return owner.events.filter(e => e.event === 'metadata' && e.id === body.id).map(e => JSON.stringify(e.fields)).join(' ').slice(0, 200);
@@ -2187,7 +2187,7 @@ async function building() {
       for (const id of kinds) held.push(await itemCount(OWNER.name, id));
       assert.deepEqual(held, [5, 5, 5]);
       // Undo puts the air back; it does not walk and is limited by undoPerTick (32), so 18 cells take one tick.
-      const undo = plain((await server.cmd(`animus build undo ${BUILD.npc}`, new RegExp(`Undoing \\d+ changes of build ${BUILD.npc}[^\\n]*|Animus build: [^\\n]*`)))[0]);
+      const undo = plain((await server.cmd(`animus build rollback ${BUILD.npc}`, new RegExp(`Undoing \\d+ changes of build ${BUILD.npc}[^\\n]*|Animus build: [^\\n]*`)))[0]);
       assert.equal(undo, `Undoing 18 changes of build ${BUILD.npc}`);
       const undone = await until(async () => { const s = await buildStatus(BUILD.npc); return { ok: /: undone /.test(s), s }; }, 20_000, 'undo did not finish');
       assert.match(undone.s, /restored=18 kept=0/);
@@ -2274,7 +2274,7 @@ async function scaffolding() {
       assert(top >= oy + 9, `the rigger only reached y=${top}`);
       let jump = 0;
       for (let i = 1; i < moves.length; i++) jump = Math.max(jump, Math.abs(moves[i].y - moves[i - 1].y));
-      const undo = plain((await server.cmd(`animus build undo ${SCAFFOLD.npc}`, new RegExp(`Undoing \\d+ changes of build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*`)))[0]);
+      const undo = plain((await server.cmd(`animus build rollback ${SCAFFOLD.npc}`, new RegExp(`Undoing \\d+ changes of build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*`)))[0]);
       assert.match(undo, new RegExp(`^Undoing \\d+ changes of build ${SCAFFOLD.npc}`));
       const undone = await until(async () => { const s = await buildStatus(SCAFFOLD.npc); return { ok: /: undone /.test(s), s }; }, 30_000, 'undo did not finish');
       assert.match(undone.s, /restored=\d+ kept=0/);
@@ -2438,7 +2438,7 @@ async function foliaManual(owner, at) {
   const npcAt = at(4, -10);
   const uuid = await server.npc('fmanual', 'minecraft:player', ...npcAt, 'Duelist');
   await owner.body(uuid);
-  const attack = async (target, damage) => foliaLog(`animus attack fmanual ${target} damage=${damage}`, /Attack fmanual: (?!QUEUED)[^\n]*/);
+  const attack = async (target, damage) => foliaLog(`animus combat attack fmanual ${target} damage=${damage}`, /Attack fmanual: (?!QUEUED)[^\n]*/);
   await check('Folia: attack hits a mob on its region', async () => {
     // A cow has no armor, so the whole hit lands.
     const cow = await summon(31, 'minecraft:cow', npcAt[0] + 1.5, npcAt[1], npcAt[2], 'NoAI:1b,Health:10f');
@@ -2473,12 +2473,12 @@ async function foliaManual(owner, at) {
     await owner.tp(npcAt[0] - 6, npcAt[1], npcAt[2]);
     const before = await inspect('fmanual');
     const zombie = await summon(32, 'minecraft:zombie', npcAt[0] + 5.5, npcAt[1], npcAt[2], 'Health:40f');
-    const started = await foliaLog(`animus target fmanual ${zombie}`, /Mob control started[^\n]*|Mob control fmanual: (?!QUEUED)[^\n]*/);
+    const started = await foliaLog(`animus combat mob fmanual ${zombie}`, /Mob control started[^\n]*|Mob control fmanual: (?!QUEUED)[^\n]*/);
     assert.match(started, /Mob control started npc=fmanual/);
     const hurt = await until(async () => { const n = await inspect('fmanual'); return { ok: n.health < before.health, health: n.health }; }, 20_000, 'the zombie never hit the NPC');
     const status = plain(await server.capture('animus combat status', /Combat \w+[^\n]*/)).match(/Combat \w+[^\n]*/)[0];
     const from = logText().length;
-    const released = await foliaLog('animus target fmanual stop', /Released \d+ mob control leases for fmanual/);
+    const released = await foliaLog('animus combat mob fmanual stop', /Released \d+ mob control leases for fmanual/);
     await server.waitLog(/Mob control fmanual ended: STOPPED/, from, 10_000);
     await server.cmd(`kill ${zombie}`, /Killed|No entity/).catch(() => {});
     assert.match(released, /Released 1 /);
@@ -2486,7 +2486,7 @@ async function foliaManual(owner, at) {
     return `NPC health ${before.health} -> ${hurt.health}; ${status.match(/manual attack[^|]*\|[^|]*/)?.[0]}; ${released}`;
   });
   await check('Folia: target refuses a player as on Paper', async () => {
-    const line = await foliaLog(`animus target fmanual ${OWNER.uuid}`, /Target control requires an existing supported mob|Animus[^\n]*target[^\n]*/i);
+    const line = await foliaLog(`animus combat mob fmanual ${OWNER.uuid}`, /Target control requires an existing supported mob|Animus[^\n]*target[^\n]*/i);
     assert.match(line, /Target control requires an existing supported mob/);
     return line;
   });
@@ -2564,7 +2564,7 @@ async function foliaBuilds(owner, at) {
       assert(crossed >= 2, 'the rigger never left its first chunk column');
       const turns = plain(await server.capture('animus build status', /Builds [^\n]*/)).match(/region-turns=(\d+) out=\d+ lost=(\d+)/);
       assert(turns && Number(turns[1]) > 0 && turns[2] === '0', `region turns: ${turns?.[0]}`);
-      const undo = await foliaLog(`animus build undo ${SCAFFOLD.npc}`, new RegExp(`Undoing \\d+ changes of build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*`));
+      const undo = await foliaLog(`animus build rollback ${SCAFFOLD.npc}`, new RegExp(`Undoing \\d+ changes of build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*`));
       assert.match(undo, new RegExp(`^Undoing \\d+ changes of build ${SCAFFOLD.npc}`));
       const undone = await until(async () => { const s = await buildStatus(SCAFFOLD.npc); return { ok: /: undone /.test(s), s }; }, 30_000, 'undo did not finish');
       assert.match(undone.s, /restored=\d+ kept=0/);
@@ -2588,7 +2588,7 @@ async function foliaBuilds(owner, at) {
       await until(async () => { const n = await inspect('fhelper'); return { ok: /: active/.test(n.line), line: n.line.slice(0, 160) }; }, 15_000, 'helper never became active');
       const restarted = await foliaLog(startCommand, startPattern);
       assert.match(restarted, /^Started build rigger/);
-      const added = await foliaLog(`animus build team add ${SCAFFOLD.npc} fhelper`, /Added fhelper to build[^\n]*|Animus build: [^\n]*/);
+      const added = await foliaLog(`animus build team assign ${SCAFFOLD.npc} fhelper`, /Added fhelper to build[^\n]*|Animus build: [^\n]*/);
       assert.match(added, /Added fhelper to build rigger; team=rigger,fhelper/);
       const routed = await until(async () => {
         const line = plain(await server.capture('animus navigation status fhelper', /Navigation fhelper:[^\n]*/)).match(/Navigation fhelper:[^\n]*/)?.[0] ?? '';
@@ -2628,7 +2628,7 @@ async function smoke() {
   });
   await check('smoke navigation arrives', async () => {
     const from = owner.events.length;
-    await server.cmd('animus navigate smoke 4 61 6 mode=walk speed=3', /./);
+    await server.cmd('animus navigation go smoke 4 61 6 mode=walk speed=3', /./);
     await owner.chat('Smoke » smoke-arrived', from, 15_000);
     const moved = owner.events.slice(from).filter(e => e.event === 'move' && e.id === body.id).at(-1);
     assert(moved && Math.abs(moved.x - 4.5) < 1, JSON.stringify(moved));
@@ -2727,7 +2727,7 @@ async function worlds() {
     await delay(1000);
     await server.cmd('execute in minecraft:the_nether run fill -3 99 -3 3 99 3 minecraft:netherrack', /Successfully filled|No blocks were filled/);
     await server.cmd('execute in minecraft:the_nether run fill -3 100 -3 3 103 3 minecraft:air', /Successfully filled|No blocks were filled/);
-    await server.cmd('animus create wnether minecraft:player minecraft:the_nether 2 100 2 live Netherling', /Created dormant wnether/);
+    await server.cmd('animus create wnether type=minecraft:player world=minecraft:the_nether x=2 y=100 z=2 folder=live name=Netherling', /Created dormant wnether/);
     await server.cmd('animus spawn wnether', /Spawning wnether/);
     const nether = JSON.parse(readFileSync(path.join(data, 'npcs/live', 'wnether.json'), 'utf8')).uuid;
     await delay(800);

@@ -263,7 +263,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         int sleeping = 0;
         int playing = 0;
         for (RegionActor actor : actors.values()) { if (actor.routeSleeping) sleeping++; if (actor.performance.playing) playing++; }
-        return "NPC runtime ready on Folia regions | active=" + index.size() + " | dormant=" + Math.max(0, actors.size() - index.size())
+        return "NPC runtime ready on Folia regions | active=" + index.size() + " | waiting=" + Math.max(0, actors.size() - index.size())
                 + " | routes-sleeping=" + sleeping + " | recordings=" + playing + " | navigation-pressure=" + navigationPressureStatus
                 + " | viewers=" + viewers.size() + " | visible=" + visible + " | handoffs=" + transfers.size() + " | file-reads=" + reads.get()
                 + " | accepted=" + accepted.get() + " | rejected=" + rejected.get() + " | path-jobs=" + navigation.outstandingJobs()
@@ -295,10 +295,10 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         if (!available()) return "Runtime " + id + ": " + (closed ? "closed" : unavailable);
         NpcDefinition definition = runtime.npcs().snapshot().get(id);
         if (definition == null) return "Runtime " + id + ": unknown";
-        if (!DefinitionSpec.spawned(definition)) return "Runtime " + id + ": dormant";
+        if (!DefinitionSpec.spawned(definition)) return "Runtime " + id + ": despawned; /animus spawn " + id + " shows it";
         RegionActor actor = actors.get(id);
         String error = definitionErrors.get(id);
-        if (actor == null) return "Runtime " + id + ": " + (skinReads.containsKey(id) ? "loading skin" : error == null ? "activation pending (active capacity " + MAX_ACTIVE + ")" : "unavailable; " + error);
+        if (actor == null) return "Runtime " + id + ": " + (skinReads.containsKey(id) ? "loading skin" : error == null ? "spawned, waiting to become active (at most " + MAX_ACTIVE + " active)" : "unavailable; " + error);
         RegionActor.Publication view = actor.publication;
         NpcOwnership.Phase phase = actor.owner.ownership().state().phase();
         String state = view.live() ? "active" : phase == NpcOwnership.Phase.DORMANT ? "waiting for its chunk to load or a player nearby" : phase.name().toLowerCase(java.util.Locale.ROOT);
@@ -408,7 +408,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     @Override public void select(UUID viewer, String id) {
         if (!available()) throw new IllegalStateException("NPC runtime " + (closed ? "closed" : unavailable));
         if (!runtime.npcs().snapshot().containsKey(id)) throw new IllegalArgumentException("Unknown NPC: " + id);
-        if (!selections.containsKey(viewer) && selections.size() >= settings().maximumViewers()) throw new IllegalStateException("Selection capacity reached");
+        if (!selections.containsKey(viewer) && selections.size() >= settings().maximumViewers()) throw new IllegalStateException("Selection capacity reached; raise [npcs] maximumViewers in config.toml");
         selections.put(viewer, id);
     }
     /**
@@ -454,7 +454,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         if (!available()) return "Navigation " + id + ": " + (closed ? "closed" : unavailable);
         RegionActor actor = actors.get(id);
         RegionActor.Publication view = actor == null ? null : actor.publication;
-        return "Navigation " + id + ": " + (view == null || !view.live() ? "inactive" : view.navigation() + "; position=" + view.snapshot().position().point() + "; arrivals=" + view.arrivals());
+        return "Navigation " + id + ": " + (view == null || !view.live() ? "not active" : view.navigation() + "; position=" + view.snapshot().position().point() + "; arrivals=" + view.arrivals());
     }
 
     @Override public boolean onOwner(UUID npc, Runnable work, Consumer<String> refused) { return submit(available() ? byUuid.get(npc) : null, work, refused); }
@@ -489,7 +489,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
 
     private RegionActor navigable(String id) {
         RegionActor actor = owned(id);
-        if (actor == null || !actor.navigable()) throw new IllegalStateException("NPC must be active with its current definition applied");
+        if (actor == null || !actor.navigable()) throw new IllegalStateException("The NPC is not active; it becomes active once its chunk loads or a player comes near, then retry");
         return actor;
     }
     /** The NPC, when the calling thread is its owner. */

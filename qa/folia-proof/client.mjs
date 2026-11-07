@@ -24,10 +24,10 @@ class Client extends NativeClient {
     this.feet={x:slot*8192+8.5,y:61,z:8.5};
     return f;
   }
-  async status() { return (await this.command('animus foliaproof status','Folia stationary proof ready')).text; }
+  async status() { return (await this.command('animus proof folia status','Folia stationary proof ready')).text; }
   async body(skin=null) {
     const from=this.events.length;
-    const reply=await this.command(`animus foliaproof spawn${skin?` skin=${skin}`:''}`,'Folia proof spawned',20_000);
+    const reply=await this.command(`animus proof folia spawn${skin?` skin=${skin}`:''}`,'Folia proof spawned',20_000);
     const f=fields(reply.text),body={id:Number(f.id),uuid:f.uuid,generation:Number(f.generation),x:Number(f.x),y:Number(f.y),z:Number(f.z),height:Number(f.height)};
     assert.equal(f.preview,'true');assert.equal(f['owner-checked'],'true');
     const packet=await this.wait(e=>e.event==='spawn'&&e.id===body.id,from);
@@ -38,7 +38,7 @@ class Client extends NativeClient {
   }
   async clear(body) {
     const from=this.events.length;
-    await this.command('animus foliaproof clear','Folia proof cleared');
+    await this.command('animus proof folia clear','Folia proof cleared');
     if(body)await this.removed(body,from);
   }
   async removed(body,from=0) {
@@ -185,7 +185,7 @@ try {
     pass('reentrant-same-position-teleport-retirement',{before:epochs['epoch-before'],after:epochs['epoch-after']});await reconnect.setup(0);
     await reconnect.command('foliaqa hole true','Folia QA hole=true');
     const rejected=reconnect.events.length;
-    await reconnect.command('animus foliaproof spawn','Target/support halo must be owned, loaded, sent, clear and on verified full-block ground');
+    await reconnect.command('animus proof folia spawn','Target/support halo must be owned, loaded, sent, clear and on verified full-block ground');
     assert(!reconnect.events.slice(rejected).some(e=>e.event==='spawn'&&e.type==='minecraft:player'));
     await reconnect.command('foliaqa hole false','Folia QA hole=false');pass('unsupported-ground-refused-before-spawn');
     const probe=await reconnect.command('foliaqa probe','Folia QA terrain probe');
@@ -217,16 +217,16 @@ try {
     for(let i=1;i<9;i++){const p=new Client(i);await p.ready();await p.setup(0);peers.push(p);}
     const bodies=[];for(let i=0;i<8;i++)bodies.push(await peers[i].body());
     const from=peers[8].events.length;
-    await peers[8].command('animus foliaproof spawn','Eight proof leases already admitted');
+    await peers[8].command('animus proof folia spawn','Eight proof leases already admitted');
     assert(!peers[8].events.slice(from).some(e=>e.event==='chat'&&e.text.includes('Folia proof spawned')));
     assert((await owner.status()).includes('admitted=8/8'));pass('eight-viewers-ninth-refused',{admitted:8});
     for(let i=0;i<8;i++)await peers[i].clear(bodies[i]);
     await owner.command('foliaqa iohold','Folia QA file worker held');
     for(const p of peers.slice(0,2)) {
-      p.send('command',{text:`animus foliaproof spawn skin=${args.get('skin')}`});
+      p.send('command',{text:`animus proof folia spawn skin=${args.get('skin')}`});
       const status=await p.status();assert(status.includes('phase=SKIN_PENDING'));
     }
-    await peers[2].command(`animus foliaproof spawn skin=${args.get('skin')}`,'Two skin reads already pending');
+    await peers[2].command(`animus proof folia spawn skin=${args.get('skin')}`,'Two skin reads already pending');
     assert((await owner.status()).includes('skin-reads=2/2'));pass('concurrent-skin-read-bound');
     await owner.clear();await peers[1].clear();
     const afterSkin=owner.events.length;
@@ -250,7 +250,7 @@ try {
     assert.equal(Number(fields(burstReceipt.text).attempts),65-prior);
     assert(burstReceipt.text.includes('publication-stalled=true'));pass('slow-netty-retirement-bound',{receipt:burstReceipt.text});
     const limit=owner.events.length;
-    await owner.command('animus foliaproof spawn','64 proof admissions exhausted');
+    await owner.command('animus proof folia spawn','64 proof admissions exhausted');
     assert(!owner.events.slice(limit).some(e=>e.event==='chat'&&e.text.includes('Folia proof spawned')));
     const status=await owner.status();assert(status.includes('admitted=0/8'));assert(status.includes('lifetime admissions=64/64'));
     pass('lifetime-admission-ceiling',{admissions:64});
@@ -259,7 +259,7 @@ try {
   } else {
     const peer=new Client(1);await peer.ready();await peer.setup(1);
     await owner.command('foliaqa iohold','Folia QA file worker held');
-    peer.send('command',{text:`animus foliaproof spawn skin=${args.get('skin')}`});
+    peer.send('command',{text:`animus proof folia spawn skin=${args.get('skin')}`});
     assert((await peer.status()).includes('phase=SKIN_PENDING'));
     const start=owner.events.length;
     const disabled=await owner.command('foliaqa pendingdisable','Folia QA plugin disable',15_000);

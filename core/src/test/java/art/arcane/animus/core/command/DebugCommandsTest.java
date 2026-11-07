@@ -75,6 +75,14 @@ class DebugCommandsTest {
         assertTrue(busy.contains("presentation"), busy);
     }
 
+    @Test void aPlayerGetsTheReportsWithinSixLines() {
+        second();
+        List<String> summary = run(new Actor(player), "debug");
+        assertTrue(summary.size() <= CommandGroup.PLAYER_LINES, summary.toString());
+        assertTrue(summary.getLast().startsWith("[Animus]: Showing 5 of "), summary.toString());
+        assertTrue(run(new Actor(null), "debug").size() > CommandGroup.PLAYER_LINES, "the console reads the whole report");
+    }
+
     @Test void networkListsKindsAndOneViewer() {
         Actor console = new Actor(null);
         metrics.sent(metrics.viewer(player, "Alex"), null, PacketKind.HOLOGRAM, 5);

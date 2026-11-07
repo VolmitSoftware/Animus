@@ -31,7 +31,7 @@ class RecordCommandsTest {
 
     private final Control control = new Control();
     private final AnimusDirector director = new AnimusDirector(new Root(control),
-            (String parameter, CommandActor actor) -> parameter.equals("recording") ? control.ids() : parameter.equals("action") ? List.of("play", "stop") : List.of());
+            (String parameter, CommandActor actor) -> parameter.equals("recording") ? control.ids() : List.of());
 
     private AnimusDirectorTest.Actor run(boolean player, String... words) {
         AnimusDirectorTest.Actor actor = new AnimusDirectorTest.Actor(player, AnimusDirector.ADMIN);
@@ -43,10 +43,10 @@ class RecordCommandsTest {
         run(true, "record", "start", "demo");
         run(true, "record", "stop");
         run(true, "record", "cancel");
-        run(true, "record", "ghost", "off");
-        run(true, "record", "ghost", "toggle");
+        run(true, "record", "ghost", "enabled=off");
+        run(true, "record", "ghost");
         run(true, "record", "preview", "demo");
-        run(true, "record", "preview", "demo", "action=stop");
+        run(true, "record", "clear");
         AnimusDirectorTest.Actor console = run(false, "record", "status");
         assertEquals(List.of("start demo", "stop", "cancel", "ghost false", "ghost toggle", "preview demo", "unpreview", "status"), control.calls);
         assertTrue(console.text().contains("Recordings enabled"), console.text());
@@ -55,10 +55,10 @@ class RecordCommandsTest {
     @Test void badWordsAreRefusedWithTheUsageLine() {
         AnimusDirectorTest.Actor stray = run(true, "record", "preview", "demo", "stop");
         assertTrue(stray.text().contains("Usage: /animus record preview"), stray.text());
-        AnimusDirectorTest.Actor state = run(true, "record", "ghost", "maybe");
-        assertTrue(state.text().contains("Unknown state maybe"), state.text());
-        AnimusDirectorTest.Actor action = run(true, "record", "preview", "demo", "action=rewind");
-        assertTrue(action.text().contains("Unknown action rewind"), action.text());
+        AnimusDirectorTest.Actor state = run(true, "record", "ghost", "enabled=maybe");
+        assertTrue(state.text().contains("Unknown state maybe; use enabled=on, enabled=off or enabled=toggle"), state.text());
+        AnimusDirectorTest.Actor positional = run(true, "record", "ghost", "off");
+        assertTrue(positional.text().contains("Usage: /animus record ghost [enabled=toggle]"), positional.text());
         assertEquals(List.of(), control.calls);
     }
 
@@ -74,6 +74,6 @@ class RecordCommandsTest {
     @Test void recordingIdsComplete() {
         AnimusDirectorTest.Actor admin = new AnimusDirectorTest.Actor(true, AnimusDirector.ADMIN);
         assertEquals(List.of("demo"), director.complete(admin, new String[]{"record", "preview", "d"}));
-        assertTrue(director.complete(admin, new String[]{"record", ""}).containsAll(List.of("start", "stop", "cancel", "status", "ghost", "preview")));
+        assertTrue(director.complete(admin, new String[]{"record", ""}).containsAll(List.of("start", "stop", "cancel", "status", "ghost", "preview", "clear")));
     }
 }

@@ -27,6 +27,19 @@ class BehaviorCommandsTest {
     private final Queue<Runnable> replies=new ConcurrentLinkedQueue<>();
     private final List<String> messages=new ArrayList<>();
     private final UUID playerId=UUID.randomUUID();
+    private final List<art.arcane.volmlib.util.director.help.DirectorMiniMenu.ContentMenu> menus=new ArrayList<>();
+    private final List<art.arcane.animus.core.text.ChatLine> rich=new ArrayList<>();
+    /** A player whose listings and chip lines are kept as sent, to check what a player's screen gets. */
+    private CommandActor screen(){
+        return new CommandActor(){
+            @Override public boolean permitted(String node){return true;}
+            @Override public void tell(String message){messages.add(message);}
+            @Override public Optional<UUID> player(){return Optional.of(playerId);}
+            @Override public boolean reply(Runnable action){replies.add(action);return true;}
+            @Override public void rich(art.arcane.animus.core.text.ChatLine line){rich.add(line);}
+            @Override public void menu(art.arcane.volmlib.util.director.help.DirectorMiniMenu.ContentMenu menu){menus.add(menu);}
+        };
+    }
     private CommandActor sender(boolean player,boolean permission){
         return new CommandActor(){
             @Override public boolean permitted(String node){assertSame(owner,Thread.currentThread(),"Permission access must remain on command/reply owner");return permission;}
@@ -46,7 +59,7 @@ class BehaviorCommandsTest {
             case "packs"->service.packs(sender,args.length>2?Integer.parseInt(args[2]):1);
             case "run"->service.run(sender,args[2],args[3]);
             case "inspect"->service.inspect(sender,UUID.fromString(args[2]));
-            case "trace"->service.trace(sender,args[2]);
+            case "trace"->service.trace(sender,args[2],1);
             case "cancel"->service.cancel(sender,UUID.fromString(args[2]));
             case "triggers"->service.triggers(sender,args.length>2?Integer.parseInt(args[2]):1);
             case "state"->{
@@ -169,10 +182,28 @@ class BehaviorCommandsTest {
             harness.extensions.start();assertEquals(0,submitted.get());assertTrue(harness.service.diagnosticRuntime().snapshot().executions().isEmpty());CommandActor sender=sender(false,true);exec(harness.service,sender,new String[]{"behaviors","reload"});pump();assertTrue(messages.getFirst().contains("DISABLED"));assertEquals(0,submitted.get());
         }
     }
+    @Test void aPlayerGetsStatusAndReportsAsOneLineWithDetails()throws Exception{
+        for(int i=0;i<30;i++)source("example:s"+i,1,1);
+        try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
+            harness.start();CommandActor screen=screen();
+            exec(harness.service,screen,new String[]{"behaviors","status"});pump();
+            assertEquals(1,rich.size());assertTrue(messages.isEmpty(),messages.toString());
+            String status=rich.getFirst().toString();
+            assertTrue(status.startsWith("[Animus]: Behaviors READY: 30 documents, 30 available, 0 running; triggers "),status);
+            assertTrue(rich.getFirst().visible().endsWith("[Details]"),rich.getFirst().visible());
+            for(int i=0;i<30;i++)Files.writeString(root.resolve("behaviors/example/s"+i+".json"),"malformed");rich.clear();
+            exec(harness.service,screen,new String[]{"behaviors","validate"});until(()->!rich.isEmpty());
+            assertEquals(1,rich.size(),"a long report is one line on a player's screen");assertTrue(rich.getFirst().toString().contains("Behaviors validate: INVALID"),rich.getFirst().toString());
+            assertTrue(messages.isEmpty(),messages.toString());
+        }
+    }
     @Test void pagesAndDiagnosticsAreBoundedAndDeniedCommandsDoNotRun()throws Exception{
         for(int i=0;i<30;i++)source("example:p"+i,1,1);
         try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
-            harness.start();CommandActor sender=sender(false,true);exec(harness.service,sender,new String[]{"behaviors","list","2"});pump();assertEquals(11,messages.size());assertTrue(messages.getFirst().contains("30 documents; page 2"));
+            harness.start();CommandActor sender=sender(false,true);exec(harness.service,sender,new String[]{"behaviors","list","2"});pump();assertEquals(31,messages.size(),"the console gets every row");assertEquals("--- Behaviors ---",messages.getFirst());
+            exec(harness.service,screen(),new String[]{"behaviors","list","2"});pump();
+            var page=menus.getLast().page();assertEquals(2,page.page());assertEquals(BehaviorCommands.PAGE_SIZE,page.endIndex()-page.startIndex());assertEquals(30,page.total());
+            assertEquals("/animus behaviors list",menus.getLast().command(),"the arrows run the neighbouring pages");
             for(int i=0;i<30;i++)Files.writeString(root.resolve("behaviors/example/p"+i+".json"),"malformed");messages.clear();exec(harness.service,sender,new String[]{"behaviors","validate"});until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors validate: INVALID")));assertEquals(17,messages.size());
         }
     }
@@ -193,11 +224,11 @@ class BehaviorCommandsTest {
             command(harness,sender,"persistent-keys=1/65536","state","status");
             assertTrue(messages.getFirst().contains("invalid=0"),messages.toString());
             command(harness,sender,"state=COMPLETED","trace","test");
-            assertTrue(messages.getFirst().contains("active=0"),messages.toString());assertTrue(messages.stream().anyMatch(line->line.contains("trigger=manual")),messages.toString());
-            assertTrue(messages.stream().anyMatch(line->line.startsWith("Behavior recent: execution="+execution)),messages.toString());
+            assertTrue(messages.getFirst().contains("0 running"),messages.toString());assertTrue(messages.stream().anyMatch(line->line.contains("trigger=manual")),messages.toString());
+            assertTrue(messages.stream().anyMatch(line->line.startsWith("⇀ "+execution+" | recent")),messages.toString());
             command(harness,sender,"NOT_FOUND","trace","nobody");
             assertEquals(1,harness.runtime.behaviorState().status().persistentKeys());
-            command(harness,sender,"Behavior state purge: OK | documents=1 | keys=1","state","purge","npc","test");
+            command(harness,sender,"Behavior state delete: OK | documents=1 | keys=1","state","delete","npc","test");
             assertEquals(0,harness.runtime.behaviorState().status().persistentKeys());
         }
     }
@@ -246,7 +277,7 @@ class BehaviorCommandsTest {
             until(()->Files.exists(stored));
             assertTrue(Files.readString(stored).contains("\"value\": 7"),Files.readString(stored));
             command(harness,sender,"trigger=example:quest#click","trace","test");
-            String recent=messages.stream().filter(line->line.startsWith("Behavior recent:")).findFirst().orElseThrow();assertTrue(recent.contains("state=COMPLETED"),recent);
+            String recent=messages.stream().filter(line->line.startsWith("⇀ ")&&line.contains(" | recent | ")).findFirst().orElseThrow();assertTrue(recent.contains("state=COMPLETED"),recent);
             var execution=harness.service.diagnosticRuntime().snapshot().executions().values().stream().filter(item->item.trigger().isPresent()).findFirst().orElseThrow();
             assertEquals(Optional.of(playerId),execution.player());assertEquals(7L,execution.report().variables().get("trust").value());
             command(harness,sender,"trigger=example:quest#click","inspect",execution.report().id().toString());
@@ -259,13 +290,13 @@ class BehaviorCommandsTest {
             UUID npc=harness.runtime.npcs().find("test").orElseThrow().uuid();triggers.activated(npc);
             until(()->triggers.snapshot().bindings()==1);
             CommandActor sender=sender(false,true);exec(harness.service,sender,new String[]{"behaviors","triggers"});pump();
-            assertTrue(messages.getFirst().startsWith("Behavior triggers: AVAILABLE"),messages.getFirst());assertTrue(messages.getFirst().contains("bindings=1"));
-            String row=messages.stream().filter(line->line.startsWith("Trigger ")).findFirst().orElseThrow();
-            assertTrue(row.contains("npc=test"));assertTrue(row.contains("behavior=example:greeter"));assertTrue(row.contains("trigger=click"));assertTrue(row.contains("event=interaction"));assertTrue(row.contains("last-fired=never"));
+            assertTrue(messages.get(1).startsWith("⇀ NPC triggers | AVAILABLE"),messages.toString());assertTrue(messages.get(1).contains("bindings=1"));
+            String row=messages.stream().filter(line->line.startsWith("⇀ test | ")).findFirst().orElseThrow();
+            assertTrue(row.contains("behavior=example:greeter"));assertTrue(row.contains("trigger=click"));assertTrue(row.contains("event=interaction"));assertTrue(row.contains("last-fired=never"));
             assertEquals(art.arcane.animus.api.Outcome.Status.OK,triggers.publish(new art.arcane.animus.core.behavior.trigger.TriggerEvent.Interaction(npc,playerId,art.arcane.animus.core.behavior.trigger.TriggerEvent.Action.INTERACT)).status());
             until(()->harness.service.diagnosticRuntime().snapshot().executions().values().stream().anyMatch(item->item.trigger().isPresent()));
             messages.clear();exec(harness.service,sender,new String[]{"behaviors","triggers"});pump();
-            assertTrue(messages.stream().anyMatch(line->line.startsWith("Trigger ")&&line.contains("fired=1")&&!line.contains("last-fired=never")),messages.toString());
+            assertTrue(messages.stream().anyMatch(line->line.startsWith("⇀ test | ")&&line.contains("fired=1")&&!line.contains("last-fired=never")),messages.toString());
             var execution=harness.service.diagnosticRuntime().snapshot().executions().values().iterator().next();assertEquals(Optional.of(playerId),execution.player());
             messages.clear();exec(harness.service,sender,new String[]{"behaviors","inspect",execution.report().id().toString()});until(()->!messages.isEmpty());assertTrue(messages.getFirst().contains("trigger=example:greeter#click"),messages.getFirst());
             assertTrue(harness.service.statusLines().stream().anyMatch(line->line.startsWith("Behavior triggers: AVAILABLE")));
@@ -278,7 +309,9 @@ class BehaviorCommandsTest {
             harness.start();attach(harness,"example:greeter");var triggers=harness.service.triggers();triggers.connect();triggers.activated(harness.runtime.npcs().find("test").orElseThrow().uuid());
             until(()->triggers.snapshot().bindings()==30);
             CommandActor sender=sender(false,true);exec(harness.service,sender,new String[]{"behaviors","triggers","2"});pump();
-            assertTrue(messages.size()<=24,messages.toString());assertEquals(10,messages.stream().filter(line->line.startsWith("Trigger ")).count());
+            assertEquals(30,messages.stream().filter(line->line.startsWith("⇀ test | ")).count(),"the console gets every binding");
+            exec(harness.service,screen(),new String[]{"behaviors","triggers","2"});pump();
+            var page=menus.getLast().page();assertEquals(BehaviorCommands.PAGE_SIZE,page.endIndex()-page.startIndex());assertEquals(32,page.total());assertTrue(menus.getLast().title().startsWith("Trigger bindings"));
             messages.clear();exec(harness.service,sender,new String[]{"behaviors","triggers","0"});pump();assertTrue(messages.getFirst().contains("Page must be"));
         }
     }
@@ -287,7 +320,7 @@ class BehaviorCommandsTest {
         try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
             harness.start();attach(harness,"example:greeter");harness.service.triggers().unavailable("NPC runtime unavailable on Folia until region-safe ownership and snapshots are proven");
             CommandActor sender=sender(false,true);exec(harness.service,sender,new String[]{"behaviors","triggers"});pump();
-            assertTrue(messages.getFirst().startsWith("Behavior triggers: UNAVAILABLE"),messages.getFirst());assertTrue(messages.getFirst().contains("Folia"));
+            assertTrue(messages.get(1).startsWith("⇀ NPC triggers | UNAVAILABLE"),messages.toString());assertTrue(messages.get(1).contains("Folia"));
             var outcome=harness.service.triggers().publish(new art.arcane.animus.core.behavior.trigger.TriggerEvent.Waypoint(UUID.randomUUID(),1));assertEquals(art.arcane.animus.api.Outcome.Status.UNAVAILABLE,outcome.status());
             harness.run(sender,"example:greeter");
         }
@@ -295,7 +328,7 @@ class BehaviorCommandsTest {
     @Test void disabledBehaviorsKeepAnUnavailableDispatcherAndReportIt()throws Exception{
         var defaults=BehaviorSettings.DEFAULT;var disabled=new BehaviorSettings(false,defaults.maximumOperations(),defaults.operationsPerTick(),defaults.tickMillis(),defaults.deliveryBudgetMillis(),defaults.engine(),defaults.catalog(),defaults.triggers(),defaults.state(),defaults.actions(),defaults.server());
         try(var harness=new Harness(disabled,observer->task->{})){
-            assertFalse(harness.service.triggers().available());exec(harness.service,sender(false,true),new String[]{"behaviors","triggers"});pump();assertTrue(messages.getFirst().contains("UNAVAILABLE | reason=behaviors are disabled"),messages.toString());
+            assertFalse(harness.service.triggers().available());exec(harness.service,sender(false,true),new String[]{"behaviors","triggers"});pump();assertTrue(messages.get(1).contains("UNAVAILABLE | reason=behaviors are disabled"),messages.toString());
         }
     }
     @Test void schemaWritesGeneratedFilesThroughTheFileLane()throws Exception{
@@ -349,7 +382,7 @@ class BehaviorCommandsTest {
             until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors reload: APPLIED")));
             assertTrue(messages.stream().anyMatch(line->line.contains("pack-module-unavailable")),messages.toString());
             messages.clear();exec(harness.service,sender,new String[]{"behaviors","packs"});pump();
-            assertTrue(messages.stream().anyMatch(line->line.startsWith("Behavior pack town")&&line.contains("manifest=valid")&&line.contains("missing-modules=gatekeeper")),messages.toString());
+            assertTrue(messages.stream().anyMatch(line->line.startsWith("⇀ town | ")&&line.contains("manifest=valid")&&line.contains("missing-modules=gatekeeper")),messages.toString());
             messages.clear();exec(harness.service,sender,new String[]{"behaviors","list"});pump();
             assertTrue(messages.stream().anyMatch(line->line.contains("town:greeter")&&line.contains("available=false")),messages.toString());
         }

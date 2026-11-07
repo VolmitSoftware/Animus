@@ -42,7 +42,7 @@ import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 
 /**
- * {@code /animus attack} and {@code /animus target} on Folia. The NPC's region captures where the NPC stands and hands
+ * {@code /animus combat attack} and {@code /animus combat mob} on Folia. The NPC's region captures where the NPC stands and hands
  * the hit to the target's own entity scheduler, which checks the target, reach, line of sight over chunks it owns and
  * protection, fires {@link VirtualNpcDamageEvent} and applies the damage there. A controlled mob runs on its own entity
  * scheduler and reads the NPC only through its published state; its hits on the NPC go to the NPC's mailbox, where the

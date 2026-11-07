@@ -37,7 +37,7 @@ class TraitGroupCommandsTest {
             String transaction = assigned.substring(assigned.lastIndexOf(' ') + 1);
             assertTrue(store.paths(transaction).contains("npcs/town/guard.json"));
             assertEquals("gold", repository.find("guard").orElseThrow().json().get("teamColor").getAsString());
-            assertEquals(List.of("Members of watch (2): baker, guard"), TraitGroupCommands.members(repository, "watch"));
+            assertEquals(List.of("baker", "guard"), TraitGroupCommands.memberIds(repository, "watch"));
             assertEquals(List.of("watch | revision 1 | members 2 | Town watch"), TraitGroupCommands.rows(repository));
             assertEquals("Group watch | revision 1 | members 2 | Town watch", TraitGroupCommands.inspect(repository, "watch").getFirst());
 
@@ -70,7 +70,7 @@ class TraitGroupCommandsTest {
     }
 
     @Test void theGroupsCommandsTakeOneKeyedSelector() {
-        AnimusDirector director = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> parameter.equals("group-id") ? List.of("watch", "market") : List.of());
+        AnimusDirector director = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> parameter.equals("group") ? List.of("watch", "market") : List.of());
         AnimusDirectorTest.Actor admin = new AnimusDirectorTest.Actor(false, AnimusDirector.ADMIN);
         director.execute(admin, new String[]{"groups", "assign", "watch"});
         assertTrue(admin.text().contains(TraitGroupCommands.SELECTORS), admin.text());
@@ -79,7 +79,7 @@ class TraitGroupCommandsTest {
         assertTrue(admin.text().contains(TraitGroupCommands.SELECTORS), admin.text());
         admin.lines.clear();
         director.execute(admin, new String[]{"groups", "assign", "watch", "town"});
-        assertTrue(admin.text().contains("Unexpected \"town\"") && admin.text().contains("Usage: /animus groups assign <group-id> [folder=…] [tag=…] [ids=…]"), admin.text());
+        assertTrue(admin.text().contains("Unexpected \"town\"") && admin.text().contains("Usage: /animus groups assign <group> [folder=] [tag=] [ids=]"), admin.text());
         admin.lines.clear();
         director.execute(admin, new String[]{"groups", "unassign", "watch", "selection"});
         assertTrue(admin.text().contains("Unexpected \"selection\""), admin.text());
@@ -88,7 +88,7 @@ class TraitGroupCommandsTest {
         assertTrue(admin.text().contains("The console has no selection"), admin.text());
         admin.lines.clear();
         director.execute(admin, new String[]{"groups", "inspect"});
-        assertTrue(admin.text().contains("Missing argument \"group-id\""), admin.text());
+        assertTrue(admin.text().contains("Missing argument \"group\""), admin.text());
 
         director.execute(admin, new String[]{"groups"});
         assertEquals(List.of("assign", "inspect", "list", "members", "unassign"), admin.entries());

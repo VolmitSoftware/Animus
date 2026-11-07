@@ -95,6 +95,12 @@ final class PacketProofService implements Listener, AutoCloseable {
         return available() && viewer.isOnline() && !viewer.isDead() && viewer.hasPermission("animus.admin")
                 && request.world().equals(viewer.getWorld().getUID());
     }
+    /** The viewer's preview body ids, for completion. */
+    List<Integer> bodyIds(Player viewer) {
+        ProofSession session = sessions.get(viewer.getUniqueId());
+        return session == null ? List.of() : session.bodies.keySet().stream().sorted().toList();
+    }
+
     String status(Player viewer) {
         if (!live()) return "Packet proof " + (closed ? "closed" : !enabled ? "disabled; set packetProofEnabled = true in config.toml" : unavailable);
         ProofSession session = viewer == null ? null : sessions.get(viewer.getUniqueId());

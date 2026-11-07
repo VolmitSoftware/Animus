@@ -60,7 +60,7 @@ final class ContentCommands {
 
         private ExtensionRuntime extensions(CommandActor actor) {
             ExtensionRuntime extensions = services.extensions();
-            if (extensions == null) actor.tell(Palette.error("Modules unavailable; see the startup log"));
+            if (extensions == null) actor.tell(Palette.error("Modules unavailable; the startup log names why, fix it and restart"));
             return extensions;
         }
 
@@ -122,18 +122,18 @@ final class ContentCommands {
             ExtensionRuntime extensions = extensions(actor);
             if (extensions == null) return;
             String[] parts = capability.split(":", -1);
-            if (parts.length != 2) { actor.tell(Palette.error("Capability must be namespace:name")); return; }
+            if (parts.length != 2) { actor.tell(Palette.error("Capability must be namespace:name; /animus modules capabilities lists them")); return; }
             Optional<String> id = npc(actor, npc);
             if (id.isEmpty()) return;
             Optional<NpcDefinition> definition = runtime().npcs().find(id.get());
-            if (definition.isEmpty()) { actor.tell(Palette.error("Unknown NPC: " + id.get())); return; }
+            if (definition.isEmpty()) { actor.tell(Palette.error(unknownNpc(id.get()))); return; }
             Capabilities.Key key = new Capabilities.Key(parts[0], parts[1]);
             NpcHandle handle = new NpcHandle(definition.get().uuid());
             CompletionStage<? extends Outcome<?>> result;
             try { result = action ? extensions.action(key, handle, actor.player(), input) : extensions.condition(key, handle, actor.player(), input); }
-            catch (RuntimeException refused) { actor.tell(Palette.error("Module " + key + ": " + refused.getMessage())); return; }
+            catch (RuntimeException refused) { actor.tell(Palette.error("Module " + key + ": " + reason(refused))); return; }
             result.whenComplete((Outcome<?> outcome, Throwable failure) -> {
-                if (failure != null) reply(actor, Palette.error("Module " + key + ": FAILED; result delivery failed"));
+                if (failure != null) reply(actor, Palette.error("Module " + key + ": FAILED; result delivery failed, the server log has the cause"));
                 else reply(actor, "Module " + key + ": " + outcome.status() + outcome.value().map((Object value) -> "; result " + value).orElseGet(() ->
                         "; " + outcome.diagnostics().stream().map(Diagnostic::code).collect(Collectors.joining(", "))));
             });
@@ -216,7 +216,7 @@ final class ContentCommands {
         }
     }
 
-    @Director(name = "import", description = "Convert Citizens and module formats into dormant NPCs")
+    @Director(name = "import", description = "Convert Citizens and module formats into despawned NPCs")
     static final class Import extends CommandGroup {
         Citizens citizens;
 
@@ -244,14 +244,14 @@ final class ContentCommands {
             imported(actor, () -> new Administration(runtime()).stage(preview, mode.name().toLowerCase(Locale.ROOT), given(copy)));
         }
 
-        @Director(description = "Install a preview as dormant NPCs")
+        @Director(description = "Install a preview as despawned NPCs")
         void apply(@Param(name = "preview", description = "The preview id") String preview) {
             CommandActor actor = actor();
             imported(actor, () -> new Administration(runtime()).apply(preview));
         }
 
-        @Director(name = "apply-plan", description = "Install a staged application of a preview")
-        void applyPlan(@Param(name = "preview", description = "The preview id") String preview,
+        @Director(description = "Install a staged application of a preview")
+        void plan(@Param(name = "preview", description = "The preview id") String preview,
                        @Param(name = "application", description = "The application id stage reported") String application) {
             CommandActor actor = actor();
             imported(actor, () -> new Administration(runtime()).applyPlan(preview, application));

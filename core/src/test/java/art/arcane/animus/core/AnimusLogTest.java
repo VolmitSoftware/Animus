@@ -92,7 +92,7 @@ class AnimusLogTest {
             shared.debug(true);
             warnings.failed("guard", "world missing");
             warnings.failed("guard", "world missing");
-            assertEquals(List.of("NPC guard cannot activate: world missing"), lines, "once per NPC and failure with debug mode on");
+            assertEquals(List.of("NPC guard cannot become active: world missing"), lines, "once per NPC and failure with debug mode on");
         } finally { shared.debug(false); }
     }
 

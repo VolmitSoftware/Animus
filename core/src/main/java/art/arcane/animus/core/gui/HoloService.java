@@ -619,7 +619,7 @@ public final class HoloService<P, S> implements AutoCloseable {
     private void deliver(CommandActor actor, Optional<String> named, Consumer<P> work) {
         Optional<UUID> target = named.isPresent() ? shops.playerNamed(named.get()) : actor.player();
         if (target.isEmpty()) { actor.tell(Palette.error(named.map((String name) -> "Unknown player " + name).orElse("Give player= from the console"))); return; }
-        if (!living.players().deliver(target.get(), work)) actor.tell(Palette.error("That player is not online"));
+        if (!living.players().deliver(target.get(), work)) actor.tell(Palette.error("That player is not online; check the name with tab completion"));
     }
 
     private void answer(CommandActor actor, String message) { if (!closed && !actor.reply(() -> actor.tell(message))) log.accept(message); }

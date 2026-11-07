@@ -61,7 +61,7 @@ try:
     server.command('animus status', r'Animus 0\.1\.0 \| BUKKIT')
     for npc in ('qa-smoke-copy', 'qa-smoke'):
         server.command('animus delete ' + npc, r'Deleted [^;]*; tx |Unknown NPC:')
-    server.command('animus create qa-smoke minecraft:player world 0 64 0 qa "Smoke Guard"', r'Created dormant qa-smoke;')
+    server.command('animus create qa-smoke type=minecraft:player world=world x=0 y=64 z=0 folder=qa name="Smoke Guard"', r'Created dormant qa-smoke;')
     server.command('animus edit qa-smoke {"name":"Persisted Guard"}', r'Saved[^;]*; tx ')
     server.command('animus inspect qa-smoke', r'"name":"Persisted Guard"')
     server.command('animus clone qa-smoke qa-smoke-copy', r'Cloned [^;]*; tx ')

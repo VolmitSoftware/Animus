@@ -435,7 +435,7 @@ public final class AnimusPlugin extends JavaPlugin {
 
     private static CommandSender sender(CommandActor actor) { return ((BukkitActor) actor).sender(); }
 
-    /** The packet previews: {@code /animus proof} reaches persisted NPCs never, {@code foliaproof} runs on Folia only. */
+    /** The packet previews: {@code /animus proof} reaches persisted NPCs never, {@code proof folia} runs on Folia only. */
     private final class BukkitProof implements ProofControl {
         /** The player viewer, or empty after telling the console that previews belong to a player. */
         private Optional<Player> viewer(CommandActor actor) {
@@ -450,6 +450,7 @@ public final class AnimusPlugin extends JavaPlugin {
         }
 
         @Override public void status(CommandActor actor) { actor.tell(proof.status(sender(actor) instanceof Player player ? player : null)); }
+        @Override public List<Integer> bodies(CommandActor actor) { return sender(actor) instanceof Player player ? proof.bodyIds(player) : List.of(); }
         @Override public void spawn(CommandActor actor, String type, Optional<String> skin) {
             viewer(actor).ifPresent((Player player) -> run(actor, () -> {
                 if (skin.isEmpty()) proof.spawn(player, type, null, null);
@@ -498,7 +499,7 @@ public final class AnimusPlugin extends JavaPlugin {
 
         private void folia(CommandActor actor, String operation, String skin) {
             if (!folia(actor)) return;
-            if (!(sender(actor) instanceof Player player)) { actor.tell(Palette.error("Players only")); return; }
+            if (!(sender(actor) instanceof Player player)) { actor.tell(Palette.error("Players only; run it in game")); return; }
             if (!foliaProof.execute(player, operation, skin)) actor.tell(Palette.error("Folia proof queue full or unavailable; try again in a moment"));
         }
     }

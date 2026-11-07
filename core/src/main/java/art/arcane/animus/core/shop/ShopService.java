@@ -304,7 +304,7 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
     private void deliver(CommandActor actor, Optional<String> named, Consumer<P> work) {
         Optional<UUID> target = named.isPresent() ? playerNamed.apply(named.get()) : actor.player();
         if (target.isEmpty()) { actor.tell(Palette.error(named.map((String name) -> "Unknown player " + name).orElse("Give player= from the console"))); return; }
-        if (!living.players().deliver(target.get(), work)) actor.tell(Palette.error("That player is not online"));
+        if (!living.players().deliver(target.get(), work)) actor.tell(Palette.error("That player is not online; check the name with tab completion"));
     }
 
     private void answer(CommandActor actor, String message) { if (!closed && !actor.reply(() -> actor.tell(message))) log.accept(message); }

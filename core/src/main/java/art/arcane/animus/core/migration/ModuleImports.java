@@ -24,7 +24,7 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * Module converters write the same reviewed preview bundle as the built-in Citizens converter, so {@code import apply},
- * {@code import stage} and {@code import apply-plan} handle them unchanged. Call from the file lane; it waits for the
+ * {@code import stage} and {@code import plan} handle them unchanged. Call from the file lane; it waits for the
  * bounded module invocation, whose own deadline always settles it.
  */
 public final class ModuleImports {

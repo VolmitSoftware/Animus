@@ -120,11 +120,11 @@ class AdministrationTest {
             String application = id("Application ", staged.getFirst());
             assertTrue(runtime.npcs().all().isEmpty());
             assertEquals("Application " + application + ": reject, 1 records, 0 replacements", admin.stage(original, "reject", Optional.empty()).getFirst());
-            assertTrue(staged.get(1).startsWith("Review imports/") && staged.get(1).endsWith(", then /animus import apply-plan " + original + " " + application), staged.get(1));
+            assertTrue(staged.get(1).startsWith("Review imports/") && staged.get(1).endsWith(", then /animus import plan " + original + " " + application), staged.get(1));
             List<String> installed = admin.applyPlan(original, application);
             assertTrue(RichText.plain(installed.getFirst()).startsWith("[Animus]: Installed dormant NPCs; tx "), installed.getFirst());
             initialTransaction = transaction(installed.getFirst());
-            assertEquals(List.of("Already installed; nothing changed"), admin.applyPlan(original, application));
+            assertEquals(List.of("Already installed; nothing changed, /animus list shows the NPCs"), admin.applyPlan(original, application));
             assertEquals(1, runtime.npcs().all().size());
             assertFalse(runtime.npcs().find("citizens-1").orElseThrow().json().get("spawned").getAsBoolean());
             String copy = id("Application ", admin.stage(original, "duplicate", Optional.of("backup")).getFirst());
@@ -153,7 +153,10 @@ class AdministrationTest {
         try (AnimusRuntime runtime = new AnimusRuntime(environment)) { runtime.start(); assertTrue(runtime.npcs().all().isEmpty()); }
     }
 
-    private static String transaction(String receipt) { return receipt.substring(receipt.lastIndexOf("tx ") + 3); }
+    private static String transaction(String receipt) {
+        int start = receipt.lastIndexOf("tx ") + 3;
+        return receipt.substring(start, Math.min(receipt.length(), start + 36));
+    }
 
     /** The id after {@code lead} in a {@code <lead><id>: ...} receipt. */
     private static String id(String lead, String receipt) {

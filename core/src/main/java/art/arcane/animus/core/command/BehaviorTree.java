@@ -14,7 +14,7 @@ final class BehaviorTree {
     static void with(CommandServices services, Consumer<BehaviorCommands> work) {
         CommandActor actor = AnimusDirector.actor();
         BehaviorCommands behaviors = services.behaviors().get();
-        if (behaviors == null) actor.tell(Palette.error("Behaviors unavailable; see the startup log"));
+        if (behaviors == null) actor.tell(Palette.error("Behaviors unavailable; the startup log names why, fix it and restart"));
         else work.accept(behaviors);
     }
 
@@ -64,9 +64,10 @@ final class BehaviorTree {
         }
 
         @Director(description = "Show an NPC's running and recent executions")
-        void trace(@Param(name = "npc", description = "The NPC id or UUID, or @selected") String npc) {
+        void trace(@Param(name = "npc", description = "The NPC id or UUID, or @selected") String npc,
+                   @Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             CommandActor actor = actor();
-            npc(actor, npc).ifPresent((String id) -> with(services, (BehaviorCommands behaviors) -> behaviors.trace(actor, id)));
+            npc(actor, npc).ifPresent((String id) -> with(services, (BehaviorCommands behaviors) -> behaviors.trace(actor, id, page)));
         }
 
         @Director(description = "Cancel a running execution")
@@ -82,22 +83,22 @@ final class BehaviorTree {
 
     @Director(name = "state", description = "Stored behavior variables")
     static final class State extends CommandGroup {
-        Purge purge;
+        Delete delete;
 
         State(CommandServices services) {
             super(services);
-            purge = new Purge(services);
+            delete = new Delete(services);
         }
 
         @Director(description = "Show stored keys, sizes and flush health")
         void status() { with(services, (BehaviorCommands behaviors) -> behaviors.stateStatus(actor())); }
     }
 
-    @Director(name = "purge", description = "Delete stored behavior variables")
-    static final class Purge extends CommandGroup {
+    @Director(name = "delete", description = "Delete stored behavior variables")
+    static final class Delete extends CommandGroup {
         Everything all;
 
-        Purge(CommandServices services) {
+        Delete(CommandServices services) {
             super(services);
             all = new Everything(services);
         }
@@ -113,13 +114,13 @@ final class BehaviorTree {
         }
 
         @Director(description = "Delete what behaviors stored on a player")
-        void player(@Param(name = "player", description = "The player's UUID") UUID player) {
+        void player(@Param(name = "uuid", description = "The player's UUID") UUID player) {
             with(services, (BehaviorCommands behaviors) -> behaviors.purgePlayer(actor(), player));
         }
 
         @Director(description = "Delete what behaviors stored between an NPC and a player")
         void relationship(@Param(name = "npc", description = "The NPC id or UUID") String npc,
-                          @Param(name = "player", description = "The player's UUID") UUID player) {
+                          @Param(name = "uuid", description = "The player's UUID") UUID player) {
             with(services, (BehaviorCommands behaviors) -> behaviors.purgeRelationship(actor(), npc, player));
         }
     }

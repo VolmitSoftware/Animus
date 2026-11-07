@@ -91,7 +91,7 @@ public final class EditorCommands {
 
     private EditorService running(CommandActor actor) {
         EditorService editor = service.get();
-        if (editor == null) actor.tell(Palette.error("Editor not running"));
+        if (editor == null) actor.tell(Palette.error("Editor not running; set [editor] enabled = true in config.toml, which applies when the file is saved"));
         return editor;
     }
 

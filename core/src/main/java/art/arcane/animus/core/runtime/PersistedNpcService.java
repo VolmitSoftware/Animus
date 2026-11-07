@@ -408,11 +408,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         owner();
         NpcDefinition definition = runtime.npcs().snapshot().get(id);
         if (definition == null) return "Runtime " + id + ": unknown";
-        if (!DefinitionSpec.spawned(definition)) return "Runtime " + id + ": dormant";
+        if (!DefinitionSpec.spawned(definition)) return "Runtime " + id + ": despawned; /animus spawn " + id + " shows it";
         Entry entry = entries.get(id);
-        if (entry == null) return "Runtime " + id + ": activation pending (active capacity " + MAX_ACTIVE + ")";
+        if (entry == null) return "Runtime " + id + ": spawned, waiting to become active (at most " + MAX_ACTIVE + " active)";
         String state = entry.value == null ? (entry.task == null ? "unavailable" : "loading skin")
-                : entry.value.state.snapshot().active() ? "active" : entry.value.state.snapshot().health() == 0 ? "dead" : "inactive";
+                : entry.value.state.snapshot().active() ? "active" : entry.value.state.snapshot().health() == 0 ? "dead" : "spawned, not active";
         int visible = showing.count(definition.uuid());
         return "Runtime " + id + ": " + state + "; uuid=" + definition.uuid() + "; revision="
                 + (entry.value == null ? definition.revision() : entry.value.spec.definition().revision()) + "; viewers=" + visible
@@ -457,7 +457,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (!available()) throw new IllegalStateException("NPC runtime " + (closed ? "closed" : unavailable));
         owner();
         if (!runtime.npcs().snapshot().containsKey(id)) throw new IllegalArgumentException("Unknown NPC: " + id);
-        if (!selections.containsKey(viewer) && selections.size() >= settings.maximumViewers()) throw new IllegalStateException("Selection capacity reached");
+        if (!selections.containsKey(viewer) && selections.size() >= settings.maximumViewers()) throw new IllegalStateException("Selection capacity reached; raise [npcs] maximumViewers in config.toml");
         selections.put(viewer, id);
     }
     @Override public void refresh() { refresh.set(true); }
@@ -500,7 +500,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     @Override public String navigationStatus(String id) {
         if (!available()) return "Navigation " + id + ": " + (closed ? "closed" : unavailable);
         owner(); Entry entry = entries.get(id); Value value = entry == null ? null : entry.value;
-        return "Navigation " + id + ": " + (value == null ? "inactive" : value.navigationStatus + "; position="
+        return "Navigation " + id + ": " + (value == null ? "not active" : value.navigationStatus + "; position="
                 + value.state.snapshot().position().point() + "; tick=" + tickNumber + "; arrivals=" + value.arrivals
                 + (value.routeSource == null ? "" : "; route-source=" + value.routeSource)
                 + (value.routeError == null ? "" : "; route-error=" + value.routeError) + recordingStatus(value));
@@ -1010,7 +1010,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private Value rigged(String id) {
         if (!available()) throw new IllegalStateException("NPC runtime " + (closed ? "closed" : unavailable));
         owner(); Entry entry = entries.get(id); Value value = entry == null ? null : entry.value;
-        if (value == null || !value.state.snapshot().active()) throw new IllegalStateException("NPC must be active");
+        if (value == null || !value.state.snapshot().active()) throw new IllegalStateException("The NPC is not active; it becomes active once its chunk loads or a player comes near");
         if (value.rig == null) throw new IllegalStateException(value.rigId == null ? "NPC " + id + " has no rig" : "Rig " + value.rigId + " is unavailable: " + value.rigProblem);
         return value;
     }
@@ -1236,7 +1236,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (!available()) throw new IllegalStateException("NPC runtime " + (closed ? "closed" : unavailable));
         owner(); Entry entry = entries.get(id); Value value = entry == null ? null : entry.value;
         if (value == null || !value.state.snapshot().active() || !value.authority.accepts(runtime.npcs().snapshot().get(id)))
-            throw new IllegalStateException("NPC must be active with its current definition applied");
+            throw new IllegalStateException("The NPC is not active; it becomes active once its chunk loads or a player comes near, then retry");
         if (mountRuntime.vehicleOf(id) != null) throw new IllegalStateException("NPC is riding " + mountRuntime.vehicleOf(id) + "; it moves with its vehicle");
         if (riders.riderOf(value.spec.definition().uuid()) != null) throw new IllegalStateException("A player is riding this NPC");
         return value;

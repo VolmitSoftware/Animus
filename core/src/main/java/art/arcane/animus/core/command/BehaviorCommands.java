@@ -24,6 +24,7 @@ import art.arcane.animus.core.extension.MutationLane;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
+import art.arcane.animus.core.text.ChatLine;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.*;
@@ -37,7 +38,9 @@ import java.util.function.*;
  */
 public final class BehaviorCommands implements AutoCloseable {
     public enum State { DISABLED, WAITING_MODULES, LOADING, READY, FAILED, CLOSED }
-    private static final int PAGE_SIZE=20,MAX_LINES=24,MAX_LINE_CHARS=2048;
+    /** Rows per page of a behavior listing, so a page with its banner and arrows fits in six chat lines. */
+    static final int PAGE_SIZE=4;
+    private static final int MAX_LINE_CHARS=2048,LISTED=1000;
     private static final BehaviorCatalog.Snapshot EMPTY_CATALOG=new BehaviorCatalog.Snapshot(0,Map.of(),Map.of(),List.of());
     private final Path dataDirectory;
     private volatile BehaviorSettings settings;
@@ -121,33 +124,50 @@ public final class BehaviorCommands implements AutoCloseable {
         if(!initializationSeen.compareAndSet(false,true)||!settings.enabled()||!publishState(State.LOADING))return;
         submitCatalog(null,false,true,Optional.empty());
     }
-    public void status(CommandActor sender){reply(sender,statusLines());}
-    public void list(CommandActor sender,int page){guarded(sender,()->reply(sender,listLines(page)));}
+    /** A player gets one line with the counts and [Details]; the console gets every status line. */
+    public void status(CommandActor sender){
+        List<String> lines=statusLines();String summary=statusSummary();
+        if(!sender.reply(()->{
+            if(closed.get()||!sender.permitted("animus.admin"))return;
+            if(sender.player().isEmpty())lines.stream().map(BehaviorCommands::boundedLine).forEach(sender::tell);
+            else sender.rich(ChatLine.reply(summary).details("Details",lines));
+        }))unavailableReplies.incrementAndGet();
+    }
+    /** {@code Behaviors READY: 12 documents, 11 available, 2 running; triggers on}. */
+    String statusSummary(){
+        BehaviorCatalog current=catalog;BehaviorCatalog.Snapshot snapshot=current==null?null:current.snapshot();BehaviorRuntime runtime=coordinator;
+        long running=runtime==null?0:runtime.status().engine().activeExecutions();
+        return "Behaviors "+state+": "+(snapshot==null?0:snapshot.entries().size())+" documents, "+(snapshot==null?0:available(snapshot))+" available, "+running+" running; triggers "
+                +(triggers.snapshot().available()?"on":"off")+("none".equals(failure)?"":"; failure "+failure);
+    }
+    public void list(CommandActor sender,int page){guarded(sender,()->{pageCheck(page);listed(sender,"Behaviors","list",listRows(),page,"No behavior documents; save one under behaviors/, then /animus behaviors reload",id->"/animus behaviors validate behavior="+id);});}
     /** Validates every behavior, or only the named one. */
     public void validate(CommandActor sender,Optional<String> only){
         guarded(sender,()->{only.ifPresent(BehaviorPath::forId);if(catalogAdmission(sender,"validate"))submitCatalog(sender,true,false,only);});
     }
     public void reload(CommandActor sender){if(catalogAdmission(sender,"reload"))submitCatalog(sender,false,false,Optional.empty());}
     public void schemaCommand(CommandActor sender){if(catalogAdmission(sender,"schema"))schema(sender);}
-    public void packs(CommandActor sender,int page){guarded(sender,()->reply(sender,packLines(page)));}
+    public void packs(CommandActor sender,int page){guarded(sender,()->{pageCheck(page);listed(sender,"Behavior packs","packs",packRows(),page,"No behavior packs; a folder under behaviors/ with pack.json is one",null);});}
     public void run(CommandActor sender,String npc,String behavior){
         BehaviorRuntime runtime=ready(sender,"run",false);if(runtime==null)return;Optional<UUID> player=sender.player();
         runtime.run(npc,behavior,player).whenComplete((outcome,error)->{
-            if(error!=null)reply(sender,List.of("Behavior run: FAILED | result-delivery"));
+            if(error!=null)reply(sender,List.of("Behavior run: FAILED | result-delivery; the server log has the cause"));
             else reply(sender,outcomeLines("Behavior run",outcome,outcome.value().map(id->"execution="+id+" | npc="+npc+" | behavior="+behavior).orElse("")));
         });
     }
-    public void trace(CommandActor sender,String npc){
+    public void trace(CommandActor sender,String npc,int page){
         BehaviorRuntime runtime=ready(sender,"trace",true);if(runtime==null)return;
+        if(page<1||page>LISTED){reply(sender,List.of("Behaviors: Page must be 1.."+LISTED));return;}
         runtime.observeNpc(npc).whenComplete((outcome,error)->{
-            if(error!=null)reply(sender,List.of("Behavior trace: FAILED | result-delivery"));
+            if(error!=null)reply(sender,List.of("Behavior trace: FAILED | result-delivery; the server log has the cause"));
             else if(outcome.value().isEmpty())reply(sender,outcomeLines("Behavior trace",outcome,"npc="+npc));
-            else reply(sender,traceLines(npc,outcome.value().orElseThrow()));
+            else{List<String> rows=traceLines(npc,outcome.value().orElseThrow());
+                listed(sender,rows.getFirst(),"trace "+npc,rows.subList(1,rows.size()),page,"Nothing running or recent; /animus behaviors run "+npc+" <behavior> starts one",id->"/animus behaviors inspect "+id);}
         });
     }
     public void inspect(CommandActor sender,UUID id){
         BehaviorRuntime runtime=coordinator;
-        if(runtime==null){reply(sender,List.of("Behavior inspect: UNAVAILABLE | state="+state));return;}
+        if(runtime==null){reply(sender,List.of("Behavior inspect: UNAVAILABLE | state="+state+"; "+nextStep(state)));return;}
         runtime.observe(id).whenComplete((outcome,error)->{
             if(error!=null)reply(sender,List.of("Behavior inspect: FAILED | result-delivery"));
             else reply(sender,outcome.value().map(BehaviorCommands::executionLines).orElse(List.of("Behavior inspect: "+outcome.status()+" | execution="+id)));
@@ -160,7 +180,18 @@ public final class BehaviorCommands implements AutoCloseable {
             else reply(sender,outcomeLines("Behavior cancel",outcome,"execution="+id+outcome.value().map(value->" | cancelled="+value).orElse("")));
         });
     }
-    public void triggers(CommandActor sender,int page){guarded(sender,()->reply(sender,triggerLines(page)));}
+    public void triggers(CommandActor sender,int page){guarded(sender,()->{pageCheck(page);listed(sender,"Trigger bindings","triggers",triggerRows(),page,"No trigger bindings; an NPC's behaviors list with triggers adds them",null);});}
+    private static void pageCheck(int page){if(page<1||page>LISTED)throw new IllegalArgumentException("Page must be 1.."+LISTED);}
+    /**
+     * A paged behavior listing in the help look on the sender's owner; the console gets every row. {@code verb} is the
+     * {@code /animus behaviors} command that shows it, for the page arrows.
+     */
+    private void listed(CommandActor sender,String title,String verb,List<String> rows,int page,String empty,Function<String,String> click){
+        if(sender==null||closed.get())return;
+        List<String> bounded=rows.stream().map(BehaviorCommands::boundedLine).toList();
+        if(!sender.reply(()->{if(!closed.get()&&sender.permitted("animus.admin"))CommandGroup.paged(sender,title,"/animus behaviors "+verb,bounded,page,empty,click,PAGE_SIZE);}))
+            unavailableReplies.incrementAndGet();
+    }
     public void stateStatus(CommandActor sender){reply(sender,stateLines());}
     /** The stored variables of one behavior, one NPC (id or UUID), one player, one NPC and player pair, or everything. */
     public void purgeBehavior(CommandActor sender,String behavior){guarded(sender,()->{BehaviorPath.forId(behavior);purge(sender,BehaviorStateStore.Purge.behavior(behavior));});}
@@ -192,10 +223,10 @@ public final class BehaviorCommands implements AutoCloseable {
         public void run(){
             try{
                 BehaviorStateStore.PurgeResult result=behaviorState.purge(selector);
-                reply(sender,List.of("Behavior state purge: OK | documents="+result.documents()+" | keys="+result.keys()));
+                reply(sender,List.of("Behavior state delete: OK | documents="+result.documents()+" | keys="+result.keys()));
             }catch(IOException | RuntimeException error){failed(error.getClass().getSimpleName()+": "+error.getMessage());}
         }
-        void failed(String reason){reply(sender,List.of("Behavior state purge: FAILED | "+reason));}
+        void failed(String reason){reply(sender,List.of("Behavior state delete: FAILED | "+reason));}
     }
     List<String> stateLines(){
         BehaviorStateStore.Status status=behaviorState.status();
@@ -210,15 +241,15 @@ public final class BehaviorCommands implements AutoCloseable {
     private static String origin(BehaviorRuntime.Execution execution){return execution.trigger().map(trigger->" | trigger="+trigger).orElse(" | trigger=manual");}
     static List<String> traceLines(String npc,BehaviorRuntime.NpcTrace trace){
         List<String> rows=new ArrayList<>();
-        rows.add("Behavior trace: npc="+npc+" | npc-uuid="+trace.npc()+" | active="+trace.active().size()+" | recent="+trace.recent().size());
+        rows.add("Trace "+npc+" ("+trace.active().size()+" running, "+trace.recent().size()+" recent)");
         for(BehaviorRuntime.Execution execution:trace.active()){
             BehaviorEngine.Report report=execution.report();
             String step=report.trace().isEmpty()?"none":report.trace().getLast().path()+" "+report.trace().getLast().event();
-            rows.add("Behavior active: execution="+report.id()+" | behavior="+execution.behaviorId()+origin(execution)+" | steps="+report.steps()+" | waits="+report.waits()+" | last-step="+step);
+            rows.add(report.id()+" | active | behavior="+execution.behaviorId()+origin(execution)+" | steps="+report.steps()+" | waits="+report.waits()+" | last-step="+step);
         }
         for(BehaviorRuntime.Execution execution:trace.recent()){
             BehaviorEngine.Report report=execution.report();
-            rows.add("Behavior recent: execution="+report.id()+" | behavior="+execution.behaviorId()+origin(execution)+" | state="+report.state()+" | steps="+report.steps()+" | reason="+report.reason());
+            rows.add(report.id()+" | recent | behavior="+execution.behaviorId()+origin(execution)+" | state="+report.state()+" | steps="+report.steps()+" | reason="+report.reason());
         }
         return rows;
     }
@@ -230,15 +261,25 @@ public final class BehaviorCommands implements AutoCloseable {
     }
     private boolean catalogAdmission(CommandActor sender,String operation){
         if(closed.get()||!settings.enabled()||!initializationSeen.get()){
-            reply(sender,List.of("Behaviors "+operation+": UNAVAILABLE | state="+state));return false;
+            reply(sender,List.of("Behaviors "+operation+": UNAVAILABLE | state="+state+"; "+nextStep(state)));return false;
         }
         return true;
     }
     /** Trace and cancel stay open while disabled, so executions still running can be watched or stopped. */
     private BehaviorRuntime ready(CommandActor sender,String operation,boolean whileDisabled){
         BehaviorRuntime runtime=coordinator;State current=state;
-        if(closed.get()||runtime==null||current!=State.READY&&!(whileDisabled&&current==State.DISABLED)){reply(sender,List.of("Behavior "+operation+": UNAVAILABLE | state="+state));return null;}
+        if(closed.get()||runtime==null||current!=State.READY&&!(whileDisabled&&current==State.DISABLED)){reply(sender,List.of("Behavior "+operation+": UNAVAILABLE | state="+state+"; "+nextStep(state)));return null;}
         return runtime;
+    }
+    /** What to do when behaviors cannot take a command in {@code current}. */
+    static String nextStep(State current){
+        return switch(current){
+            case DISABLED->"set [behaviors] enabled = true in config.toml";
+            case WAITING_MODULES,LOADING->"try again in a moment";
+            case FAILED->"/animus behaviors status shows why";
+            case READY->"try again";
+            case CLOSED->"the server is stopping";
+        };
     }
     /**
      * The reload after a committed change. {@code removed} names behaviors whose sources the change deleted on purpose: their
@@ -374,11 +415,9 @@ public final class BehaviorCommands implements AutoCloseable {
         }
         void failed(String reason){reply(sender,List.of("Behavior schemas: FAILED | "+reason));}
     }
-    private List<String> packLines(int page){
-        if(page<1||page>1000)throw new IllegalArgumentException("Page must be 1..1000");
+    private List<String> packRows(){
         BehaviorCatalog.Snapshot snapshot=catalogSnapshot();List<String> lines=new ArrayList<>();
-        lines.add("Behavior packs: "+snapshot.packs().size()+" | page="+page);
-        for(BehaviorCatalog.PackStatus pack:snapshot.packs().values().stream().skip((page-1L)*PAGE_SIZE).limit(PAGE_SIZE).toList()){
+        for(BehaviorCatalog.PackStatus pack:snapshot.packs().values().stream().limit(LISTED).toList()){
             long behaviors=0,available=0;
             for(BehaviorCatalog.Entry entry:snapshot.entries().values()){
                 if(!BehaviorPath.pack(entry.path()).map(pack.id()::equals).orElse(false))continue;
@@ -389,7 +428,7 @@ public final class BehaviorCommands implements AutoCloseable {
             boolean missing=pack.diagnostics().stream().anyMatch(problem->problem.code().equals("pack-manifest-missing"));
             boolean invalid=pack.diagnostics().stream().anyMatch(problem->problem.code().equals("pack-manifest-invalid"));
             String manifest=missing?"missing":invalid?(pack.manifest().isPresent()?"invalid-retained":"invalid"):"valid";
-            lines.add("Behavior pack "+pack.id()+" | manifest="+manifest+pack.manifest().flatMap(PackManifest::name).map(name->" | name="+name).orElse("")
+            lines.add(pack.id()+" | manifest="+manifest+pack.manifest().flatMap(PackManifest::name).map(name->" | name="+name).orElse("")
                     +pack.manifest().flatMap(PackManifest::version).map(version->" | version="+version).orElse("")+" | behaviors="+behaviors+" | available="+available
                     +" | missing-modules="+(pack.missingModules().isEmpty()?"none":String.join(",",pack.missingModules())));
         }
@@ -411,26 +450,20 @@ public final class BehaviorCommands implements AutoCloseable {
         long dropped=view.dropped().values().stream().mapToLong(Long::longValue).sum();
         return "Server triggers: "+(view.available()?"AVAILABLE":"UNAVAILABLE | reason="+view.reason())+" | behaviors="+view.behaviors()+" | bindings="+view.bindings()+" | timers="+view.timers()+" | commands="+view.commands()+" | active="+view.active()+" | queued="+view.queued()+" | events="+view.events()+" | started="+view.started()+" | suppressed="+view.suppressed()+" | dropped="+dropped;
     }
-    private List<String> triggerLines(int page){
-        if(page<1||page>1000)throw new IllegalArgumentException("Page must be 1..1000");
-        TriggerDispatcher.Snapshot view=triggers.snapshot();List<String> lines=new ArrayList<>();lines.add(triggerSummary(view)+" | page="+page);
-        if(!view.dropped().isEmpty())lines.add("Trigger drops: "+new TreeMap<>(view.dropped()));
-        view.diagnostics().stream().limit(2).forEach(diagnostic->lines.add(diagnosticLine("triggers",diagnostic)));
-        if(view.diagnostics().size()>2)lines.add("Trigger diagnostics: "+(view.diagnostics().size()-2)+" more");
-        List<TriggerDispatcher.Row> npcRows=triggers.rows((page-1)*PAGE_SIZE,PAGE_SIZE);
+    /** The dispatcher summaries and problems, then one row per NPC binding and per server binding. */
+    private List<String> triggerRows(){
+        TriggerDispatcher.Snapshot view=triggers.snapshot();List<String> lines=new ArrayList<>();lines.add("NPC triggers | "+triggerSummary(view).substring("Behavior triggers: ".length()));
+        if(!view.dropped().isEmpty())lines.add("NPC trigger drops | "+new TreeMap<>(view.dropped()));
+        view.diagnostics().forEach(diagnostic->lines.add("NPC trigger problem | "+diagnosticLine("triggers",diagnostic)));
+        List<TriggerDispatcher.Row> npcRows=triggers.rows(0,LISTED);
         for(TriggerDispatcher.Row row:npcRows)
-            lines.add("Trigger npc="+row.npcId()+" | behavior="+row.behavior()+" | trigger="+row.trigger()+" | event="+row.event()+" | routine="+row.routine()+" | last-fired="+(row.lastFiredTicksAgo().isPresent()?row.lastFiredTicksAgo().getAsLong()+"t-ago":"never")+" | fired="+row.fired()+" | active="+row.active()+" | queued="+row.queued()+" | suppressed="+row.suppressed()+" | dropped="+row.dropped());
-        // Server rows follow the NPC rows on later pages: page numbering continues across both lists.
+            lines.add(row.npcId()+" | behavior="+row.behavior()+" | trigger="+row.trigger()+" | event="+row.event()+" | routine="+row.routine()+" | last-fired="+(row.lastFiredTicksAgo().isPresent()?row.lastFiredTicksAgo().getAsLong()+"t-ago":"never")+" | fired="+row.fired()+" | active="+row.active()+" | queued="+row.queued()+" | suppressed="+row.suppressed()+" | dropped="+row.dropped());
         ServerTriggerDispatcher.Snapshot server=servers.snapshot();
-        int npcTotal=view.bindings(),skip=Math.max(0,(page-1)*PAGE_SIZE-npcTotal),room=PAGE_SIZE-npcRows.size();
-        if(page==1||room>0){
-            lines.add(serverSummary(server));
-            if(!server.dropped().isEmpty())lines.add("Server trigger drops: "+new TreeMap<>(server.dropped()));
-            server.diagnostics().stream().limit(2).forEach(diagnostic->lines.add(diagnosticLine("server-triggers",diagnostic)));
-            if(server.diagnostics().size()>2)lines.add("Server trigger diagnostics: "+(server.diagnostics().size()-2)+" more");
-        }
-        if(room>0)for(ServerTriggerDispatcher.Row row:servers.rows(skip,room))
-            lines.add("Trigger server | behavior="+row.behavior()+" | trigger="+row.trigger()+" | event="+row.event()+" | routine="+row.routine()+" | last-fired="+(row.lastFiredTicksAgo().isPresent()?row.lastFiredTicksAgo().getAsLong()+"t-ago":"never")+" | fired="+row.fired()+" | active="+row.active()+" | queued="+row.queued()+" | suppressed="+row.suppressed()+" | dropped="+row.dropped());
+        lines.add("Server triggers | "+serverSummary(server).substring("Server triggers: ".length()));
+        if(!server.dropped().isEmpty())lines.add("Server trigger drops | "+new TreeMap<>(server.dropped()));
+        server.diagnostics().forEach(diagnostic->lines.add("Server trigger problem | "+diagnosticLine("server-triggers",diagnostic)));
+        for(ServerTriggerDispatcher.Row row:servers.rows(0,LISTED))
+            lines.add("server | behavior="+row.behavior()+" | trigger="+row.trigger()+" | event="+row.event()+" | routine="+row.routine()+" | last-fired="+(row.lastFiredTicksAgo().isPresent()?row.lastFiredTicksAgo().getAsLong()+"t-ago":"never")+" | fired="+row.fired()+" | active="+row.active()+" | queued="+row.queued()+" | suppressed="+row.suppressed()+" | dropped="+row.dropped());
         return lines;
     }
     /** The dispatcher the platform bridge connects to. While behaviors are disabled it refuses every event. */
@@ -441,12 +474,12 @@ public final class BehaviorCommands implements AutoCloseable {
     public void facts(art.arcane.animus.core.behavior.BehaviorFacts provider){coordinator.facts(provider);}
     /** Engine diagnostics only. Owned from construction, enabled or not. */
     public BehaviorRuntime diagnosticRuntime(){return coordinator;}
-    private List<String> listLines(int page){
-        if(page<1||page>1000)throw new IllegalArgumentException("Page must be 1..1000");BehaviorCatalog current=catalog;BehaviorCatalog.Snapshot snapshot=current==null?null:current.snapshot();List<String> lines=new ArrayList<>();
-        lines.add("Behaviors: "+(snapshot==null?0:snapshot.entries().size())+" documents; page "+page);if(snapshot==null)return lines;
-        snapshot.entries().values().stream().skip((page-1L)*PAGE_SIZE).limit(PAGE_SIZE).forEach(entry->{
+    private List<String> listRows(){
+        BehaviorCatalog current=catalog;BehaviorCatalog.Snapshot snapshot=current==null?null:current.snapshot();List<String> lines=new ArrayList<>();
+        if(snapshot==null)return lines;
+        snapshot.entries().values().stream().limit(LISTED).forEach(entry->{
             String id=entry.declaredId().orElseGet(()->entry.accepted().map(value->value.program().id()).orElse("<unidentified>"));boolean available=snapshot.find(id).map(BehaviorCatalog.Resolution::available).orElse(false);
-            lines.add("Behavior "+id+" | path="+entry.path()+" | state="+entry.state()+" | available="+available+" | accepted-revision="+entry.accepted().map(BehaviorCatalog.Accepted::revision).orElse(0L)+" | observed-revision="+(entry.observedRevision().isPresent()?entry.observedRevision().getAsLong():0)+" | source-hash="+entry.accepted().map(BehaviorCatalog.Accepted::sourceHash).orElse("none"));
+            lines.add(id+" | path="+entry.path()+" | state="+entry.state()+" | available="+available+" | accepted-revision="+entry.accepted().map(BehaviorCatalog.Accepted::revision).orElse(0L)+" | observed-revision="+(entry.observedRevision().isPresent()?entry.observedRevision().getAsLong():0)+" | source-hash="+entry.accepted().map(BehaviorCatalog.Accepted::sourceHash).orElse("none"));
         });return lines;
     }
     static List<String> reloadLines(BehaviorCatalog.Reload result){
@@ -490,9 +523,15 @@ public final class BehaviorCommands implements AutoCloseable {
     static String boundedLine(String text){
         String safe=text.replace('\n',' ').replace('\r',' ');if(safe.length()<=MAX_LINE_CHARS)return safe;int end=MAX_LINE_CHARS-2;if(Character.isHighSurrogate(safe.charAt(end-1)))end--;return safe.substring(0,end)+" …";
     }
+    /** A player gets the first line with every line behind [Details]; the console gets every line. */
     private void reply(CommandActor sender,List<String> lines){
-        if(sender==null||closed.get())return;List<String> bounded=lines.stream().limit(MAX_LINES).map(BehaviorCommands::boundedLine).toList();
-        if(!sender.reply(()->{if(!closed.get()&&sender.permitted("animus.admin"))bounded.forEach(sender::tell);}))unavailableReplies.incrementAndGet();
+        if(sender==null||closed.get())return;List<String> bounded=lines.stream().map(BehaviorCommands::boundedLine).toList();
+        if(!sender.reply(()->{if(!closed.get()&&sender.permitted("animus.admin"))answer(sender,bounded);}))unavailableReplies.incrementAndGet();
+    }
+    static void answer(CommandActor sender,List<String> lines){
+        if(lines.isEmpty())return;
+        if(sender.player().isPresent()&&lines.size()>1){sender.rich(ChatLine.reply(lines.getFirst()).details("Details",lines));return;}
+        lines.forEach(sender::tell);
     }
     private boolean publishState(State next){synchronized(lifecycle){if(closed.get())return false;state=settings.enabled()?next:State.DISABLED;return true;}}
     /** Module triggers reach the NPC they name and every enabled server behavior listening for their key. */

@@ -122,7 +122,7 @@ def target(args, source):
                 report['checks'].append(console(session, log, 'animus combat status', r'.*Combat unavailable: .*Folia.*'))
                 report['checks'].append(console(session, log, f'animus navigation status {npc_id}', r'.*Navigation .*unavailable on Folia.*'))
             if cycle == 0:
-                report['checks'].append(console(session, log, f'animus create {npc_id} minecraft:player world 0 64 0 qa "Managed Runtime"', rf'.*Created dormant {npc_id};.*'))
+                report['checks'].append(console(session, log, f'animus create {npc_id} type=minecraft:player world=world x=0 y=64 z=0 folder=qa name="Managed Runtime"', rf'.*Created dormant {npc_id};.*'))
                 saved = json.loads(definition.read_text())
                 report['persistedUuid'] = saved['uuid']
                 if project == 'folia':

@@ -325,7 +325,7 @@ public final class RecordingSessions<P, I> implements RecordingControl, AutoClos
         preview.task = host.everyTick(player, () -> tickPreview(preview), () -> endPreview(preview, null));
         RecordingDocument.Origin origin = document.origin();
         actor.tell("Previewing " + document.id() + " (" + document.durationTicks() + " ticks) at " + Math.round(origin.x()) + " " + Math.round(origin.y()) + " "
-                + Math.round(origin.z()) + "; action=stop ends it");
+                + Math.round(origin.z()) + "; /animus record clear ends it");
     }
 
     private void tickPreview(Preview<P, I> preview) {

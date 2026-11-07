@@ -88,7 +88,7 @@ try {
   await owner.command('animus status', 'NPC runtime ready');
   passed('production runtime and exact native protocol ready', { version, protocol: toolchain.protocol, phase });
   if (phase === 'prepare') {
-    await owner.command(`animus create ${state.id} minecraft:player world 0 61 3 ${state.group} "Town Guard"`, `Created dormant ${state.id}`);
+    await owner.command(`animus create ${state.id} type=minecraft:player world=world x=0 y=61 z=3 folder=${state.group} name="Town Guard"`, `Created dormant ${state.id}`);
     const before = await owner.inspect();
     state.uuid = before.document.uuid;
     assert.equal(before.document.spawned, false);
@@ -215,7 +215,7 @@ try {
     }
     for (const [suffix, type, world, name] of [['world', 'minecraft:player', 'animus_missing_world', 'Missing World'], ['type', 'minecraft:not_a_type', 'world', 'Missing Type']]) {
       const id = `${state.id}-${suffix}`;
-      await owner.command(`animus create ${id} ${type} ${world} 0 61 3 ${state.group} "${name}"`, `Created dormant ${id}`);
+      await owner.command(`animus create ${id} type=${type} world=${world} x=0 y=61 z=3 folder=${state.group} name="${name}"`, `Created dormant ${id}`);
       const before = (await owner.inspect(id)).document;
       await owner.command(`animus spawn ${id}`, 'Cannot spawn ');
       const after = (await owner.inspect(id)).document;
@@ -225,7 +225,7 @@ try {
     passed('missing world and unsupported type reject before activation commit');
     // Names longer than a player profile name are presentation text, so they activate.
     const longId = `${state.id}-name`;
-    await owner.command(`animus create ${longId} minecraft:player world 0 61 3 ${state.group} "Name Longer Than Sixteen"`, `Created dormant ${longId}`);
+    await owner.command(`animus create ${longId} type=minecraft:player world=world x=0 y=61 z=3 folder=${state.group} name="Name Longer Than Sixteen"`, `Created dormant ${longId}`);
     const longBefore = (await owner.inspect(longId)).document;
     await owner.command(`animus spawn ${longId}`, `Spawning ${longId}`);
     const longAfter = (await owner.inspect(longId)).document;

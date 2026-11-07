@@ -241,12 +241,12 @@ class ImportAuditor(base.Auditor):
         b, u = state['baselineImport'], state['updatedImport']; app = state['baseApplication']; cp = state['copyApplication']; stale = state['staleApplication']; fresh = state['replacementApplication']
         transaction = lambda i: 'already-applied' if 'Already installed; nothing changed' in rows[i]['receipt'] else re.search(r'\btx ([a-f0-9-]{36})\b', rows[i]['receipt'])[1]
         expected = ['animus status', *[f"animus import preview {state['inputFiles']['baseline']} worlds=qa_legacy:world"] * 2,
-            *[f'animus import stage {b} mode=reject'] * 2, *[f'animus import apply-plan {b} {app}'] * 2,
-            *[f'animus import stage {b} mode=duplicate copy=qa'] * 2, *[f'animus import apply-plan {b} {cp}'] * 2,
+            *[f'animus import stage {b} mode=reject'] * 2, *[f'animus import plan {b} {app}'] * 2,
+            *[f'animus import stage {b} mode=duplicate copy=qa'] * 2, *[f'animus import plan {b} {cp}'] * 2,
             f"animus import preview {state['inputFiles']['updated']} worlds=qa_legacy:world", f'animus import stage {u}', f'animus import stage {u} mode=replace',
-            'animus edit citizens-900001 {"name":"QAConcurrent"}', f'animus import apply-plan {u} {stale}', f'animus import stage {u} mode=replace',
-            *[f'animus import apply-plan {u} {fresh}'] * 2, 'animus status', f"animus rollback {state['replacementTransaction']}",
-            f'animus import apply-plan {u} {fresh}', f'animus rollback {transaction(21)}', f"animus rollback {state['copyTransaction']}",
+            'animus edit citizens-900001 {"name":"QAConcurrent"}', f'animus import plan {u} {stale}', f'animus import stage {u} mode=replace',
+            *[f'animus import plan {u} {fresh}'] * 2, 'animus status', f"animus rollback {state['replacementTransaction']}",
+            f'animus import plan {u} {fresh}', f'animus rollback {transaction(21)}', f"animus rollback {state['copyTransaction']}",
             f"animus rollback {state['editTransaction']}", f"animus rollback {state['baseTransaction']}",
             *[f'animus import apply {b}'] * 2, f'animus rollback {transaction(26)}', 'animus validate', 'animus status', 'animus status']
         require([r.get('command') for r in rows] == expected, 'Command order/identity differs from frozen scenario')
@@ -261,7 +261,7 @@ class ImportAuditor(base.Auditor):
         for i, key in [(5, 'baseTransaction'), (9, 'copyTransaction'), (14, 'editTransaction'), (17, 'replacementTransaction')]:
             require(transaction(i) == state[key], 'State transaction differs from command receipt')
         require('NPC collision:' in rows[12]['receipt'] and ('Conflict:' in rows[15]['receipt'] or 'Application no longer matches' in rows[15]['receipt']), 'Collision/conflict receipt absent')
-        require('All definitions valid; 0 active' in rows[29]['receipt'] and 'NPC definitions: 0' in rows[31]['receipt'], 'Empty final registry receipt missing')
+        require('All definitions valid; 0 saved' in rows[29]['receipt'] and 'NPC definitions: 0' in rows[31]['receipt'], 'Empty final registry receipt missing')
         for i in [20, 22, 23, 24, 25, 28]:
             old = self.journal(data, rows[i]['command'].split()[-1]); inverse = self.journal(data, transaction(i))
             for path, (before, after) in old.items(): require(inverse.get(path) == (after, before), 'Rollback journal is not the exact inverse')
