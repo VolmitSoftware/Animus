@@ -702,7 +702,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         return value.routeSource != null;
     }
     /** Replaces the current route with a recording read from {@code recordings/<id>.json}; the read and any failure show in navigation status. */
-    @Override public void playRecording(String id, String recording, Playback playback) {
+    @Override public void playRecording(String id, String recording, Optional<Playback> playback) {
         Value value = navigable(id); Objects.requireNonNull(playback);
         if (recording == null || !recording.matches(RecordingDocument.ID)) throw new IllegalArgumentException("Invalid recording identifier");
         if (!recordingSettings.enabled()) throw new IllegalStateException(RECORDINGS_DISABLED);
@@ -789,7 +789,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             return;
         }
         run.blocked();
-        if (run.source().playback() == Playback.ONCE) { endRecording(value, run, "blocked: " + reason); return; }
+        if (run.playback().mode() == Playback.ONCE) { endRecording(value, run, "blocked: " + reason); return; }
         beginRecordingPlay(value, run, RecordingRun.BLOCKED_RETRY_TICKS);
         if (value.route != null) routeStatus(value.route, "blocked", reason + "; retrying in " + RecordingRun.BLOCKED_RETRY_TICKS + " ticks");
     }
@@ -1836,7 +1836,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         }
         value.routeError = null;
         RecordingDocument document = completion.recording;
-        if (value.routeWatch != null && task.recording.playback() != Playback.ONCE) {
+        if (value.routeWatch != null && task.recording.mode(document) != Playback.ONCE) {
             value.navigationStatus = "invalid: a looping recording never finishes"; failWatch(value, value.navigationStatus); return;
         }
         boolean same = current != null && current.source().equals(task.recording) && current.document().equals(document);

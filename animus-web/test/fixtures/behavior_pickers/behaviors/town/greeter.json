@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:greeter",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Morning."
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "tick",
+      "event": "timer",
+      "intervalTicks": 200
+    }
+  ]
+}

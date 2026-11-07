@@ -10,6 +10,8 @@ import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/behavior_edit.dart';
+import '../../logic/inspect/behavior_kept.dart';
+import '../../logic/inspect/typed_values.dart';
 import '../../logic/inspect/behavior_operands.dart';
 import '../../logic/inspect/completion_catalog.dart';
 import '../../logic/inspect/schema_fields.dart';
@@ -21,6 +23,7 @@ import 'behavior_inputs.dart';
 import 'behavior_nodes.dart';
 import 'behavior_operand.dart';
 import 'inspect_fields.dart';
+import 'typed_values_editor.dart' show KeyValueEditor;
 import '../select/suggest_input.dart';
 import '../../model/document_kind.dart';
 
@@ -44,7 +47,7 @@ class CapabilityFields extends StatelessWidget {
     final CapabilitySpec? spec = context.catalog.capability(id);
     final List<CapabilitySpec> choices = context.catalog.capabilitiesFor(kind, server: context.server);
     final JsonMap arguments = asMap(node['arguments']);
-    final Set<String> declared = <String>{for (final FieldSpec field in spec?.arguments ?? const <FieldSpec>[]) field.key};
+    final Set<String> declared = argumentKnownKeys(spec);
     final Set<String> topPointers = <String>{for (final String key in declared) argumentPointer(key)};
     return dom.div(classes: 'animus-capability', <Widget>[
       GuiRow(
@@ -106,15 +109,23 @@ class CapabilityFields extends StatelessWidget {
               onChanged: (Object? next) => context.write(<JsonStep>[...steps, 'arguments', argument.key], next),
             ),
           ),
-      for (final MapEntry<String, Object?> entry in arguments.entries)
-        if (!declared.contains(entry.key))
-          GuiRow(
-            key: ValueKey<String>('kept-argument:${entry.key}'),
-            label: entry.key,
-            help: spec == null ? 'Module argument' : 'Unknown argument, kept as written',
-            problems: diagnosticsAt(context.diagnostics, _at(<JsonStep>['arguments', entry.key]), nested: true),
-            child: KeptJsonEditor(value: entry.value, label: entry.key, onChanged: (Object? next) => context.write(<JsonStep>[...steps, 'arguments', entry.key], next)),
+      if (unknownEntries(arguments, declared) case final JsonMap other when (spec == null && (id ?? '').isNotEmpty) || other.isNotEmpty)
+        GuiRow(
+          key: const ValueKey<String>('other-arguments'),
+          label: spec == null ? 'Arguments' : 'Other arguments',
+          tip: spec == null ? 'Arguments of a module capability, checked on install.' : 'Arguments this capability does not declare. They are kept as written.',
+          problems: <Diagnostic>[for (final String key in other.keys) ...diagnosticsAt(context.diagnostics, _at(<JsonStep>['arguments', key]), nested: true)],
+          child: KeyValueEditor(
+            value: other,
+            label: spec == null ? 'Arguments' : 'Other arguments',
+            addLabel: 'Add argument',
+            profileFor: (String key) {
+              final FieldProfile known = argumentProfile(id, key);
+              return known.isNone ? FieldProfile.behaviorTemplate : known;
+            },
+            onChanged: (JsonMap next) => context.write(<JsonStep>[...steps, 'arguments'], withUnknownEntries(arguments, declared, next)),
           ),
+        ),
       _otherSlots(topPointers, declared),
     ]);
   }

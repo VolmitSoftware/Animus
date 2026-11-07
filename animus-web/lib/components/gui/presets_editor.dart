@@ -10,11 +10,15 @@ import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_presets.dart';
+import '../../logic/inspect/schema_fields.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../../config/docs_links.dart';
 import '../info_tip.dart';
+import '../inspect/inspect_fields.dart';
+import '../inspect/typed_values_editor.dart';
 import 'gui_fields.dart';
+import '../../logic/suggest/field_profile.dart';
 
 /// The `preset` refusal with the fix: copy the preset's fields in.
 class PresetFix extends StatelessWidget {
@@ -115,19 +119,13 @@ class _PresetsEditorState extends State<PresetsEditor> {
           ),
         ),
         GuiSection(title: 'Defaults for $_kind', open: asMap(doc['defaults']).containsKey(_kind), children: <Widget>[
-          GuiRow(
-            label: 'Values',
-            forId: guiPathId(defaultsPath),
-            help: 'Base fields for every $_kind',
-            problems: diagnosticsAt(_diagnostics, defaultsPath, nested: true),
-            child: GuiJsonObjectInput(
-              key: ValueKey<String>('defaults-$_kind'),
-              id: guiPathId(defaultsPath),
-              value: asMap(asMap(doc['defaults'])[_kind]).isEmpty ? null : asMap(asMap(doc['defaults'])[_kind]),
-              multiline: true,
-              label: 'Defaults for $_kind',
-              onChanged: (JsonMap? v) => _write(<JsonStep>['defaults', _kind], v, coalesce: 'defaults.$_kind'),
-            ),
+          _values(
+            key: ValueKey<String>('defaults-$_kind'),
+            values: asMap(asMap(doc['defaults'])[_kind]),
+            path: defaultsPath,
+            label: 'Defaults for $_kind',
+            tip: 'Base fields for every $_kind document Gloss loads.',
+            onChanged: (JsonMap v) => component.onJson(writeAt(_doc, const <JsonStep>[], withPresetDefaults(_doc, _kind, v)), coalesce: 'defaults.$_kind'),
           ),
         ]),
         GuiSection(title: 'Presets for $_kind', count: named.length, children: <Widget>[
@@ -149,11 +147,28 @@ class _PresetsEditorState extends State<PresetsEditor> {
     ]);
   }
 
+  /// A preset kind's values: the form of the document it fills when Animus
+  /// has a schema for it, else typed keys and values.
+  Widget _values({required Key key, required JsonMap values, required String path, required String label, required String tip, required void Function(JsonMap values) onChanged}) {
+    final SchemaView? schema = presetSchema(_kind);
+    return GuiRow(
+      key: key,
+      label: 'Values',
+      tip: '$tip Never schemaVersion, revision, id, uuid or preset.',
+      problems: schema == null ? diagnosticsAt(_diagnostics, path, nested: true) : const <Diagnostic>[],
+      child: dom.div(classes: 'animus-gui-preset-values', attributes: <String, String>{'role': 'group', 'aria-label': label}, <Widget>[
+        if (schema != null)
+          InspectObject(schema: schema, node: presetFormNode(schema.root), value: values, path: path, diagnostics: _diagnostics, onChanged: onChanged)
+        else
+          KeyValueEditor(value: values, label: label, profileFor: (String _) => FieldProfile.guiText, onChanged: onChanged),
+      ]),
+    );
+  }
+
   Widget _preset(JsonMap named, String name, JsonMap preset) {
     final String path = childPath(childPath(r'$.presets', _kind), name);
     final String nameId = guiPathId('$path-name');
     final String extendsId = guiPathId('$path.extends');
-    final String valuesId = guiPathId('$path.values');
     return GuiSection(title: name, open: false, children: <Widget>[
       GuiRow(
         label: 'Name',
@@ -195,19 +210,13 @@ class _PresetsEditorState extends State<PresetsEditor> {
           onChanged: (String? v) => _write(<JsonStep>['presets', _kind, name], <String, Object?>{...preset, 'extends': v}),
         ),
       ),
-      GuiRow(
-        label: 'Values',
-        forId: valuesId,
-        help: 'JSON object. No schemaVersion, revision, id, uuid or preset.',
-        problems: diagnosticsAt(_diagnostics, '$path.values', nested: true),
-        child: GuiJsonObjectInput(
-          key: ValueKey<String>('$path.values'),
-          id: valuesId,
-          value: asMap(preset['values']),
-          multiline: true,
-          label: 'Values of $name',
-          onChanged: (JsonMap? v) => _write(<JsonStep>['presets', _kind, name, 'values'], v ?? <String, Object?>{}, coalesce: '$path.values'),
-        ),
+      _values(
+        key: ValueKey<String>('$path.values'),
+        values: asMap(preset['values']),
+        path: '$path.values',
+        label: 'Values of $name',
+        tip: 'Fields this preset sets over what it extends.',
+        onChanged: (JsonMap v) => component.onJson(writeAt(_doc, const <JsonStep>[], withPresetValues(_doc, _kind, name, v)), coalesce: '$path.values'),
       ),
     ]);
   }

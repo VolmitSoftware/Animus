@@ -26,6 +26,10 @@
     },
     "sampleTicks": {"type": "integer", "minimum": 1, "maximum": 20, "description": "Ticks between two captured frames."},
     "durationTicks": {"type": "integer", "minimum": 1, "maximum": 72000, "description": "The tick of the last frame."},
+    "description": {"type": "string", "maxLength": 256, "description": "What the recording is for. Empty is not stored."},
+    "tags": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"}},
+    "playback": {"enum": ["once", "loop", "pingpong"], "description": "The mode a navigation module or play-recording action uses when it names none. Unset means loop."},
+    "speed": {"type": "number", "minimum": 0.25, "maximum": 4, "description": "Recorded ticks played per game tick. Unset means 1."},
     "frames": {
       "type": "array",
       "minItems": 2,

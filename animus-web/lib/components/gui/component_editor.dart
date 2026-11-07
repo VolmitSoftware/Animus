@@ -13,6 +13,7 @@ import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_validation.dart';
 import '../../model/animus_document.dart';
+import '../mc/item_picker.dart';
 import 'actions_editor.dart';
 import 'gui_fields.dart';
 import 'style_editor.dart';
@@ -139,7 +140,13 @@ class IconEditor extends StatelessWidget {
         )
       else ...<Widget>[
         if (type == 'item') ...<Widget>[
-          text('item', 'Item', help: 'Item id or expression'),
+          guiFieldRow(
+            'Item',
+            childPath(path, 'item'),
+            diagnostics,
+            help: 'Item id or expression',
+            (String id) => ItemPicker(id: id, value: asString(icon['item']) ?? '', label: 'Item', onChanged: (String value) => onChanged(withField(icon, 'item', value))),
+          ),
           number('count', 'Count', help: '1 to 99'),
           number('customModelValue', 'Custom model'),
         ],
@@ -200,6 +207,7 @@ class ComponentEditor extends StatelessWidget {
     required this.chest,
     this.names = ExpressionNames.standard,
     this.namedLists = const <String>[],
+    this.lists = const <String>[],
     super.key,
   });
 
@@ -210,6 +218,9 @@ class ComponentEditor extends StatelessWidget {
   final bool chest;
   final ExpressionNames names;
   final List<String> namedLists;
+
+  /// Ids of the menu's list components, for `navigate.list`.
+  final List<String> lists;
 
   @override
   Widget build(BuildContext context) {
@@ -228,6 +239,7 @@ class ComponentEditor extends StatelessWidget {
               diagnostics: diagnostics,
               names: names,
               namedLists: namedLists,
+              lists: lists,
               onChanged: (JsonList next) => onChanged(<String, Object?>{...data, key: next}),
             ),
           ],
@@ -336,6 +348,7 @@ class ComponentEditor extends StatelessWidget {
                 chest: chest,
                 names: names.withLocal(asString(data['var']) ?? 'entry'),
                 namedLists: namedLists,
+                lists: lists,
                 onChanged: (JsonMap next) => onChanged(<String, Object?>{...data, 'template': next}),
               ),
             ],

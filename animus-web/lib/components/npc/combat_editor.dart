@@ -1,7 +1,8 @@
-/// The typed editor for an NPC's `modules["animus:combat"]`: rule lists,
-/// every settings section with its range, and the server's checks shown
-/// beside each field. Edits report the whole module; keys the editor does
-/// not know are kept and edited as JSON, and a section left empty is removed.
+/// The typed editor for an NPC's `modules["animus:combat"]`: rule lists
+/// (advanced rules typed from the NPC schema), every settings section with
+/// its range, locations on a grid, and the server's checks shown beside each
+/// field. Edits report the whole module; keys the editor does not know are
+/// kept under "Other fields", and a section left empty is removed.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -9,7 +10,10 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
+import '../../logic/inspect/inspect_schemas.dart';
 import '../../logic/inspect/schema_fields.dart';
+import '../../logic/inspect/typed_values.dart';
+import '../../logic/npc/combat_forms.dart';
 import '../../logic/suggest/completion_sources.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../logic/suggest/field_profiles.dart';
@@ -17,7 +21,10 @@ import '../../logic/npc/combat_settings.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
 import '../inspect/inspect_fields.dart';
+import '../inspect/typed_values_editor.dart';
+import '../mc/item_picker.dart';
 import '../select/suggest_input.dart';
+import 'combat_locations.dart';
 
 class CombatEditor extends StatefulWidget {
   const CombatEditor({
@@ -27,6 +34,8 @@ class CombatEditor extends StatefulWidget {
     this.npcIds = const <String>[],
     this.squads = const <String>[],
     this.imported = false,
+    this.origin,
+    this.schema,
     super.key,
   });
 
@@ -48,6 +57,12 @@ class CombatEditor extends StatefulWidget {
   /// Whether the NPC was imported, so combat also needs `reviewAccepted`.
   final bool imported;
 
+  /// The NPC's x, y and z, drawn on the location grids.
+  final (double, double, double)? origin;
+
+  /// The NPC schema the advanced rules are typed from; the embedded one when null.
+  final SchemaView? schema;
+
   @override
   State<CombatEditor> createState() => _CombatEditorState();
 }
@@ -65,7 +80,6 @@ const Map<String, String> _advancedHelp = <String, String>{
   'chat': 'Chat text that targets the speaker.',
 };
 
-const List<String> _advancedRules = <String>['patterns', 'items', 'permissions', 'groups', 'effects', 'all', 'together', 'events', 'chat'];
 
 const Map<String, String> _ruleHelp = <String, String>{
   'targets': 'Any matching rule makes a target.',
@@ -118,6 +132,7 @@ class _CombatEditorState extends State<CombatEditor> {
   final Map<String, String> _drafts = <String, String>{};
 
   JsonMap get _module => asMap(component.value);
+  SchemaView get _schema => component.schema ?? InspectSchemas.embedded.npc;
   List<Diagnostic> get _problems => combatDiagnostics(component.diagnostics);
 
   Object? _read(List<JsonStep> steps) => readIn(component.value, steps);
@@ -158,7 +173,7 @@ class _CombatEditorState extends State<CombatEditor> {
             label: combatModule,
             help: 'The combat module must be an object.',
             problems: _at(const <JsonStep>[]),
-            child: KeptJsonEditor(value: value, label: combatModule, onChanged: component.onChanged),
+            child: TypedValueEditor(value: value, label: combatModule, onChanged: component.onChanged),
           )
         else ...<Widget>[
           _enabled(),
@@ -236,7 +251,8 @@ class _CombatEditorState extends State<CombatEditor> {
             ),
         ]),
         for (final MapEntry<String, Object?> entry in module.entries)
-          if (!edited.contains(entry.key)) _keptRow(<JsonStep>[entry.key], entry.key, known: combatRootKeys.contains(entry.key)),
+          if (!edited.contains(entry.key) && combatRootKeys.contains(entry.key)) _keptRow(<JsonStep>[entry.key], entry.key, known: true),
+        _others(const <JsonStep>[], module, combatRootKeys.toSet()),
         dom.div(classes: 'animus-row', <Widget>[Button.ghost(label: 'Remove combat', size: ButtonSize.small, onPressed: () => component.onChanged(null))]),
       ],
     );
@@ -257,8 +273,7 @@ class _CombatEditorState extends State<CombatEditor> {
         else ...<Widget>[
           _problemList(_at(<JsonStep>[name])),
           ...children,
-          for (final String key in fields.keys)
-            if (!(combatSectionKeys[name] ?? const <String>[]).contains(key)) _keptRow(<JsonStep>[name, key], '$name.$key'),
+          _others(<JsonStep>[name], fields, (combatSectionKeys[name] ?? const <String>[]).toSet()),
         ],
       ],
     );
@@ -267,13 +282,9 @@ class _CombatEditorState extends State<CombatEditor> {
   Widget _rules(String name) {
     final Object? value = _module[name];
     final JsonMap rules = asMap(value);
-    final bool seeking = name != 'ignores';
-    final List<String> advanced = <String>[
-      for (final String key in _advancedRules)
-        if (seeking || !combatScanRules.contains(key)) key,
-    ];
-    final Set<String> typed = <String>{...combatPlainRules, ...advanced};
-    final int advancedCount = advanced.where(rules.containsKey).length;
+    final List<FieldSpec> advanced = combatAdvancedRuleFields(_schema, name);
+    final Set<String> typed = <String>{...combatPlainRules, for (final FieldSpec field in advanced) field.key};
+    final int advancedCount = advanced.where((FieldSpec field) => rules.containsKey(field.key)).length;
     final String title = '${name[0].toUpperCase()}${name.substring(1)}';
     return GuiSection(
       key: ValueKey<String>('combat:$name'),
@@ -336,21 +347,10 @@ class _CombatEditorState extends State<CombatEditor> {
             count: advancedCount == 0 ? null : advancedCount,
             open: advancedCount > 0,
             children: <Widget>[
-              const dom.p(classes: 'animus-gui-help', <Widget>[
-                Component.text('Edited as JSON. null removes a rule.'),
-              ]),
-              for (final String key in advanced)
-                GuiRow(
-                  key: ValueKey<String>('combat:$name:$key'),
-                  label: key,
-                  help: _advancedHelp[key],
-                  problems: _at(<JsonStep>[name, key], nested: true),
-                  child: KeptJsonEditor(value: rules[key], label: '$name.$key', onChanged: (Object? next) => _put(<JsonStep>[name, key], next)),
-                ),
+              for (final FieldSpec field in advanced) _advancedRule(name, field, rules[field.key]),
             ],
           ),
-          for (final String key in rules.keys)
-            if (!typed.contains(key)) _keptRow(<JsonStep>[name, key], '$name.$key'),
+          _others(<JsonStep>[name], rules, typed),
         ],
       ],
     );
@@ -372,7 +372,7 @@ class _CombatEditorState extends State<CombatEditor> {
                 'required',
                 (String? next) => _put(const <JsonStep>['targeting', 'lineOfSight'], next),
               )
-            : KeptJsonEditor(
+            : TypedValueEditor(
                 value: rule,
                 label: 'targeting.lineOfSight',
                 onChanged: (Object? next) => _put(const <JsonStep>['targeting', 'lineOfSight'], next),
@@ -383,25 +383,26 @@ class _CombatEditorState extends State<CombatEditor> {
   }
 
   Widget _avoidance() {
-    final Object? point = _read(const <JsonStep>['avoidance', 'returnPoint']);
     const List<JsonStep> at = <JsonStep>['avoidance', 'returnPoint'];
+    final Object? point = _read(at);
     return _section('avoidance', 'Avoidance', 'Runs toward returnPoint when set.', <Widget>[
       _number('avoidance', 'range'),
       GuiRow(
         label: 'returnPoint',
-        help: 'Where the NPC flees to.',
-        problems: _at(at, nested: true),
-        child: point == null
-            ? dom.div(classes: 'animus-row', <Widget>[
-                Button.ghost(
-                  label: 'Set return point',
-                  size: ButtonSize.small,
-                  onPressed: () => _put(at, <String, Object?>{'world': 'world', 'x': 0, 'y': 64, 'z': 0}),
-                ),
-              ])
-            : point is Map<String, Object?>
-            ? _location(at, 'avoidance.returnPoint', onRemove: () => _put(at, null))
-            : KeptJsonEditor(value: point, label: 'avoidance.returnPoint', onChanged: (Object? next) => _put(at, next)),
+        tip: 'Where the NPC flees to. Click the grid or drag the point; arrows nudge it.',
+        problems: _at(at),
+        child: point != null && point is! Map<String, Object?>
+            ? TypedValueEditor(value: point, label: 'avoidance.returnPoint', onChanged: (Object? next) => _put(at, next))
+            : CombatLocationsEditor(
+                points: <Object?>[?point],
+                maximum: 1,
+                label: 'Return point',
+                noun: 'Return point',
+                path: combatPath(at),
+                origin: component.origin,
+                diagnostics: _problems,
+                onChanged: (List<Object?> next) => _put(at, next.isEmpty ? null : next.first),
+              ),
       ),
       _switches('avoidance'),
     ]);
@@ -422,16 +423,15 @@ class _CombatEditorState extends State<CombatEditor> {
         help: 'Damage per held item, 0-100. Overrides melee and ranged damage.',
         problems: _at(at),
         child: raw != null && raw is! Map<String, Object?>
-            ? KeptJsonEditor(value: raw, label: addLabel, onChanged: (Object? next) => _put(at, next))
+            ? TypedValueEditor(value: raw, label: addLabel, onChanged: (Object? next) => _put(at, next))
             : dom.div(classes: 'animus-combat-list', <Widget>[
                 for (int index = 0; index < items.length; index++)
                   dom.div(key: ValueKey<String>('weapon-$index'), classes: 'animus-combat-item', <Widget>[
                     dom.div(classes: 'animus-combat-fields', <Widget>[
-                      SuggestInput(
+                      ItemPicker(
                         value: items[index],
                         label: 'melee.weaponDamage item ${index + 1}',
-                        profile: idProfile(const ValueRef.registry(RegistryKind.item)),
-                        suggestions: <FieldOption>[for (final String item in _commonItems) FieldOption(item)],
+                        preferred: _commonItems,
                         onChanged: (String next) {
                           if (next.isEmpty || (next != items[index] && map.containsKey(next))) return;
                           _put(at, renameKey(map, items[index], next));
@@ -447,13 +447,13 @@ class _CombatEditorState extends State<CombatEditor> {
                     _problemList(_at(<JsonStep>[...at, items[index]])),
                   ]),
                 dom.div(classes: 'animus-combat-fields', <Widget>[
-                  SuggestInput(
+                  ItemPicker(
                     value: draft,
                     label: addLabel,
                     placeholder: 'minecraft:iron_sword',
-                    suggestions: <FieldOption>[
+                    preferred: <String>[
                       for (final String item in _commonItems)
-                        if (!map.containsKey(item)) FieldOption(item),
+                        if (!map.containsKey(item)) item,
                     ],
                     onChanged: (String next) => _draft(addLabel, next.trim()),
                   ),
@@ -473,59 +473,51 @@ class _CombatEditorState extends State<CombatEditor> {
   }
 
   Widget _ranged() {
-    final Object? weapon = _read(const <JsonStep>['ranged', 'weapon']);
-    final Object? effect = _read(const <JsonStep>['ranged', 'effect']);
+    const List<JsonStep> weaponAt = <JsonStep>['ranged', 'weapon'];
+    const List<JsonStep> effectAt = <JsonStep>['ranged', 'effect'];
+    final Object? weapon = _read(weaponAt);
+    final Object? effect = _read(effectAt);
     final bool potion = weapon == 'potion';
-    void choose(String? next) {
-      JsonMap ranged = asMap(writeIn(asMap(_module['ranged']), <JsonStep>['weapon'], next));
-      if (next == 'potion' && !ranged.containsKey('effect')) {
-        ranged = <String, Object?>{
-          ...ranged,
-          'effect': <String, Object?>{'id': 'minecraft:instant_health'},
-        };
-      } else if (next != 'potion') {
-        ranged = asMap(writeIn(ranged, <JsonStep>['effect'], null));
-      }
-      _put(const <JsonStep>['ranged'], ranged);
-    }
-
+    JsonMap ranged() => asMap(_module['ranged']);
     return _section('ranged', 'Ranged', 'Shots use the configured damage only.', <Widget>[
       GuiRow(
         label: 'weapon',
         help: 'Default arrow.',
-        problems: _at(const <JsonStep>['ranged', 'weapon']),
+        problems: _at(weaponAt),
         child: weapon == null || weapon is String
-            ? _choice('ranged.weapon', weapon as String?, combatWeapons, 'arrow', choose)
-            : KeptJsonEditor(value: weapon, label: 'ranged.weapon', onChanged: (Object? next) => _put(const <JsonStep>['ranged', 'weapon'], next)),
+            ? _choice('ranged.weapon', weapon as String?, combatWeapons, 'arrow', (String? next) => _put(const <JsonStep>['ranged'], withRangedWeapon(ranged(), next)))
+            : TypedValueEditor(value: weapon, label: 'ranged.weapon', onChanged: (Object? next) => _put(weaponAt, next)),
       ),
-      if (potion || effect != null)
+      if (effect is Map<String, Object?>) ...<Widget>[
         GuiRow(
           label: 'effect',
-          help: potion ? 'Applied once on hit.' : 'Only a potion has an effect.',
-          problems: _at(const <JsonStep>['ranged', 'effect']),
-          child: effect is Map<String, Object?> && potion
-              ? dom.div(classes: 'animus-combat-fields', <Widget>[
-                  SuggestInput(
-                    value: asString(effect['id']) ?? '',
-                    label: 'ranged.effect.id',
-                    profile: idProfile(const ValueRef.registry(RegistryKind.effect)),
-                    placeholder: 'minecraft:instant_health',
-                    suggestions: <FieldOption>[
-                      for (final String id in _commonEffects)
-                        FieldOption(id, description: combatHelpfulEffects.contains(id) ? 'helpful, never an attack' : 'an attack'),
-                    ],
-                    onChanged: (String next) => _put(const <JsonStep>['ranged', 'effect', 'id'], next.isEmpty ? null : next),
-                  ),
-                ])
-              : KeptJsonEditor(value: effect, label: 'ranged.effect', onChanged: (Object? next) => _put(const <JsonStep>['ranged', 'effect'], next)),
+          help: potion ? 'Applied once on hit.' : null,
+          tip: 'The potion effect a thrown potion applies.',
+          problems: _at(effectAt),
+          child: dom.div(classes: 'animus-combat-fields', <Widget>[
+            if (effect['id'] == null || effect['id'] is String)
+              SuggestInput(
+                value: asString(effect['id']) ?? '',
+                label: 'ranged.effect.id',
+                profile: idProfile(const ValueRef.registry(RegistryKind.effect)),
+                placeholder: 'minecraft:instant_health',
+                suggestions: <FieldOption>[
+                  for (final String id in _commonEffects)
+                    FieldOption(id, description: combatHelpfulEffects.contains(id) ? 'helpful, never an attack' : 'an attack'),
+                ],
+                onChanged: (String next) => _put(const <JsonStep>['ranged'], withRangedEffect(ranged(), 'id', next.trim().isEmpty ? null : next.trim())),
+              )
+            else
+              TypedValueEditor(value: effect['id'], label: 'ranged.effect.id', onChanged: (Object? next) => _put(const <JsonStep>['ranged', 'effect', 'id'], next)),
+            if (!potion) Button.ghost(label: 'Remove effect', size: ButtonSize.small, onPressed: () => _put(effectAt, null)),
+          ]),
         ),
-      if (potion && effect is Map<String, Object?>) ...<Widget>[
         _problemList(_at(const <JsonStep>['ranged', 'effect', 'id'])),
         _number('effect', 'amplifier', steps: const <JsonStep>['ranged', 'effect', 'amplifier'], label: 'ranged.effect.amplifier'),
         _number('effect', 'durationTicks', steps: const <JsonStep>['ranged', 'effect', 'durationTicks'], label: 'ranged.effect.durationTicks'),
-        for (final String key in effect.keys)
-          if (!const <String>['id', 'amplifier', 'durationTicks'].contains(key)) _keptRow(<JsonStep>['ranged', 'effect', key], 'ranged.effect.$key'),
-      ],
+        _others(effectAt, effect, const <String>{'id', 'amplifier', 'durationTicks'}),
+      ] else if (effect != null)
+        _keptRow(effectAt, 'ranged.effect'),
       for (final String key in const <String>['damage', 'range', 'minimumRange', 'cooldownTicks', 'velocity', 'inaccuracy', 'knockback'])
         _number('ranged', key),
       _switches('ranged'),
@@ -536,47 +528,50 @@ class _CombatEditorState extends State<CombatEditor> {
     const List<JsonStep> at = <JsonStep>['death', 'drops'];
     final Object? raw = _read(at);
     final List<Object?> drops = asList(raw);
+    void write(List<Object?> next) => _put(at, next);
     return _section('death', 'Death', 'Each drop rolls its own chance.', <Widget>[
       GuiRow(
         label: 'drops',
         help: 'Amount 1-64, chance 0-1.',
         problems: _at(at),
         child: raw != null && raw is! List<Object?>
-            ? KeptJsonEditor(value: raw, label: 'death.drops', onChanged: (Object? next) => _put(at, next))
+            ? TypedValueEditor(value: raw, label: 'death.drops', onChanged: (Object? next) => _put(at, next))
             : dom.div(classes: 'animus-combat-list', <Widget>[
                 for (int index = 0; index < drops.length; index++)
-                  dom.div(key: ValueKey<String>('drop-$index'), classes: 'animus-combat-item', <Widget>[
-                    if (drops[index] is Map<String, Object?>)
-                      dom.div(classes: 'animus-combat-fields', <Widget>[
-                        SuggestInput(
-                          value: asString(asMap(drops[index])['item']) ?? '',
-                          label: 'death.drops[$index].item',
-                          profile: idProfile(const ValueRef.registry(RegistryKind.item)),
-                          placeholder: 'minecraft:iron_ingot',
-                          suggestions: <FieldOption>[for (final String item in _commonItems) FieldOption(item)],
-                          onChanged: (String next) => _put(<JsonStep>[...at, index, 'item'], next.isEmpty ? null : next),
-                        ),
-                        _numberField(<JsonStep>[...at, index, 'amount'], 'death.drops[$index].amount', integer: true, placeholder: 'amount 1'),
-                        _numberField(<JsonStep>[...at, index, 'chance'], 'death.drops[$index].chance', integer: false, placeholder: 'chance 1'),
-                        GuiIconButton(
-                          icon: ArcaneIcon.x(size: IconSize.sm),
-                          label: 'Remove drop ${index + 1}',
-                          onPressed: () => _put(<JsonStep>[...at, index], null),
-                        ),
-                      ])
-                    else
-                      KeptJsonEditor(value: drops[index], label: 'death.drops[$index]', onChanged: (Object? next) => _put(<JsonStep>[...at, index], next)),
-                    _problemList(_at(<JsonStep>[...at, index], nested: true)),
-                  ]),
+                  dom.div(
+                    key: ValueKey<String>('drop-$index'),
+                    classes: 'animus-combat-item',
+                    attributes: <String, String>{'role': 'group', 'aria-label': 'Drop ${index + 1}'},
+                    <Widget>[
+                      if (drops[index] case final Map<String, Object?> drop) ...<Widget>[
+                        dom.div(classes: 'animus-combat-fields', <Widget>[
+                          ItemPicker(
+                            value: asString(drop['item']) ?? '',
+                            label: 'death.drops[$index].item',
+                            placeholder: 'minecraft:iron_ingot',
+                            preferred: _commonItems,
+                            onChanged: (String next) => write(withDropField(drops, index, 'item', next.trim())),
+                          ),
+                          _numberField(<JsonStep>[...at, index, 'amount'], 'death.drops[$index].amount', integer: true, placeholder: 'amount 1'),
+                          _numberField(<JsonStep>[...at, index, 'chance'], 'death.drops[$index].chance', integer: false, placeholder: 'chance 1'),
+                          GuiIconButton(
+                            icon: ArcaneIcon.x(size: IconSize.sm),
+                            label: 'Remove drop ${index + 1}',
+                            onPressed: () => write(<Object?>[...drops]..removeAt(index)),
+                          ),
+                        ]),
+                        _others(<JsonStep>[...at, index], drop, const <String>{'item', 'amount', 'chance'}),
+                      ] else
+                        TypedValueEditor(value: drops[index], label: 'death.drops[$index]', onChanged: (Object? next) => _put(<JsonStep>[...at, index], next)),
+                      _problemList(_at(<JsonStep>[...at, index], nested: true)),
+                    ],
+                  ),
                 dom.div(classes: 'animus-row', <Widget>[
                   Button.ghost(
                     label: 'Add drop',
                     size: ButtonSize.small,
                     disabled: drops.length >= 32,
-                    onPressed: () => _put(at, <Object?>[
-                      ...drops,
-                      <String, Object?>{'item': 'minecraft:iron_ingot', 'amount': 1, 'chance': 1},
-                    ]),
+                    onPressed: () => write(<Object?>[...drops, newCombatDrop()]),
                   ),
                 ]),
               ]),
@@ -589,7 +584,6 @@ class _CombatEditorState extends State<CombatEditor> {
   Widget _respawn() {
     const List<JsonStep> at = <JsonStep>['respawn', 'locations'];
     final Object? raw = _read(at);
-    final List<Object?> locations = asList(raw);
     final Object? delay = _read(const <JsonStep>['respawn', 'delayTicks']);
     final bool deleting = _read(const <JsonStep>['respawn', 'deleteOnDeath']) == true;
     return _section(
@@ -601,34 +595,19 @@ class _CombatEditorState extends State<CombatEditor> {
         GuiRow(
           label: 'locations',
           help: 'Up to 16.',
+          tip: 'One is picked at random on each respawn. Click the grid to move the picked location.',
           problems: _at(at),
           child: raw != null && raw is! List<Object?>
-              ? KeptJsonEditor(value: raw, label: 'respawn.locations', onChanged: (Object? next) => _put(at, next))
-              : dom.div(classes: 'animus-combat-list', <Widget>[
-                  for (int index = 0; index < locations.length; index++)
-                    dom.div(key: ValueKey<String>('location-$index'), classes: 'animus-combat-item', <Widget>[
-                      if (locations[index] is Map<String, Object?>)
-                        _location(<JsonStep>[...at, index], 'respawn.locations[$index]', onRemove: () => _put(<JsonStep>[...at, index], null))
-                      else
-                        KeptJsonEditor(
-                          value: locations[index],
-                          label: 'respawn.locations[$index]',
-                          onChanged: (Object? next) => _put(<JsonStep>[...at, index], next),
-                        ),
-                      _problemList(_at(<JsonStep>[...at, index], nested: true)),
-                    ]),
-                  dom.div(classes: 'animus-row', <Widget>[
-                    Button.ghost(
-                      label: 'Add location',
-                      size: ButtonSize.small,
-                      disabled: locations.length >= 16,
-                      onPressed: () => _put(at, <Object?>[
-                        ...locations,
-                        <String, Object?>{'world': 'world', 'x': 0, 'y': 64, 'z': 0},
-                      ]),
-                    ),
-                  ]),
-                ]),
+              ? TypedValueEditor(value: raw, label: 'respawn.locations', onChanged: (Object? next) => _put(at, next))
+              : CombatLocationsEditor(
+                  points: asList(raw),
+                  label: 'Respawn locations',
+                  noun: 'Location',
+                  path: combatPath(at),
+                  origin: component.origin,
+                  diagnostics: _problems,
+                  onChanged: (List<Object?> next) => _put(at, next),
+                ),
         ),
         _switches(
           'respawn',
@@ -656,7 +635,7 @@ class _CombatEditorState extends State<CombatEditor> {
   Widget _numberField(List<JsonStep> at, String label, {required bool integer, String? placeholder}) {
     final Object? value = _read(at);
     if (value != null && value is! num) {
-      return KeptJsonEditor(value: value, label: label, onChanged: (Object? next) => _put(at, next));
+      return TypedValueEditor(value: value, label: label, onChanged: (Object? next) => _put(at, next));
     }
     return GuiNumberInput(value: value as num?, integer: integer, label: label, placeholder: placeholder, onChanged: (num? next) => _put(at, next));
   }
@@ -677,7 +656,7 @@ class _CombatEditorState extends State<CombatEditor> {
               suggestions: suggestions,
               onChanged: (String next) => _put(at, next.isEmpty ? null : next),
             )
-          : KeptJsonEditor(value: value, label: '$section.$key', onChanged: (Object? next) => _put(at, next)),
+          : TypedValueEditor(value: value, label: '$section.$key', onChanged: (Object? next) => _put(at, next)),
     );
   }
 
@@ -730,7 +709,7 @@ class _CombatEditorState extends State<CombatEditor> {
       help: 'A mob is in mobs plus monsters or animals.',
       problems: _at(at, nested: true),
       child: raw != null && (raw is! List<Object?> || raw.any((Object? item) => item is! String))
-          ? KeptJsonEditor(value: raw, label: '$name.categories', onChanged: (Object? next) => _put(at, next))
+          ? TypedValueEditor(value: raw, label: '$name.categories', onChanged: (Object? next) => _put(at, next))
           : dom.div(
               classes: 'animus-combat-chips',
               attributes: <String, String>{'role': 'group', 'aria-label': '$name.categories'},
@@ -770,7 +749,7 @@ class _CombatEditorState extends State<CombatEditor> {
       help: help,
       problems: _at(at, nested: true),
       child: kept
-          ? KeptJsonEditor(value: raw, label: label, onChanged: (Object? next) => _put(at, next))
+          ? TypedValueEditor(value: raw, label: label, onChanged: (Object? next) => _put(at, next))
           : dom.div(classes: 'animus-combat-list', <Widget>[
               for (int index = 0; index < items.length; index++)
                 dom.div(key: ValueKey<String>('$label-$index'), classes: 'animus-combat-fields', <Widget>[
@@ -811,39 +790,66 @@ class _CombatEditorState extends State<CombatEditor> {
     );
   }
 
-  Widget _location(List<JsonStep> at, String label, {required void Function() onRemove}) {
-    final JsonMap point = asMap(_read(at));
-    final Object? world = point['world'];
-    return dom.div(classes: 'animus-combat-fields animus-combat-location', <Widget>[
-      if (world == null || world is String)
-        SuggestInput(
-          value: world as String? ?? '',
-          label: '$label.world',
-          profile: idProfile(const ValueRef.registry(RegistryKind.world)),
-          placeholder: 'world',
-          onChanged: (String next) => _put(<JsonStep>[...at, 'world'], next.isEmpty ? null : next),
-        )
-      else
-        KeptJsonEditor(value: world, label: '$label.world', onChanged: (Object? next) => _put(<JsonStep>[...at, 'world'], next)),
-      for (final String axis in const <String>['x', 'y', 'z']) _numberField(<JsonStep>[...at, axis], '$label.$axis', integer: false, placeholder: axis),
-      GuiIconButton(
-        icon: ArcaneIcon.x(size: IconSize.sm),
-        label: 'Remove $label',
-        onPressed: onRemove,
+  /// One advanced rule, typed from the NPC schema: nested rule sets, pattern
+  /// and item lists, fight events.
+  Widget _advancedRule(String name, FieldSpec field, Object? value) {
+    final List<JsonStep> at = <JsonStep>[name, field.key];
+    final String path = combatPath(at);
+    return InspectRow(
+      key: ValueKey<String>('combat:$name:${field.key}'),
+      label: field.key,
+      labelFor: InspectControl.focusable(field, value) ? controlId(path) : null,
+      tip: _advancedHelp[field.key],
+      problems: fieldProblems(field, value, path, _problems, nested: true),
+      child: InspectControl(
+        field: field,
+        value: value,
+        path: path,
+        schema: _schema,
+        diagnostics: _problems,
+        onChanged: (Object? next) => _put(<JsonStep>[name], withCombatRule(asMap(_read(<JsonStep>[name])), field.key, next)),
       ),
-      for (final MapEntry<String, Object?> entry in point.entries)
-        if (!const <String>['world', 'x', 'y', 'z'].contains(entry.key)) _keptRow(<JsonStep>[...at, entry.key], '$label.${entry.key}'),
-    ]);
+    );
   }
 
-  /// A key the editor has no field for, kept and edited as JSON.
+  /// A known key whose value the editor has no field for: an imported record,
+  /// or a setting of the wrong type, edited by kind.
   Widget _keptRow(List<JsonStep> at, String label, {bool known = false}) => GuiRow(
     key: ValueKey<String>('kept:${at.join('.')}'),
     label: '${at.last}',
-    help: known ? 'Kept from the import as written.' : 'Not a combat setting; kept as written. Remove it with null.',
+    tip: known ? 'Kept from the import as written.' : 'The server expects another type here.',
     problems: _at(at, nested: true),
-    child: KeptJsonEditor(value: _read(at), label: label, onChanged: (Object? next) => _put(at, next)),
+    child: dom.div(classes: 'animus-combat-fields', <Widget>[
+      TypedValueEditor(value: _read(at), label: label, onChanged: (Object? next) => _put(at, next)),
+      GuiIconButton(icon: ArcaneIcon.x(size: IconSize.sm), label: 'Remove $label', onPressed: () => _put(at, null)),
+    ]),
   );
+
+  /// Keys of [object] (at [at]) outside [known]: the server refuses them, so
+  /// they are listed apart where they can be renamed, edited or removed.
+  Widget _others(List<JsonStep> at, JsonMap object, Set<String> known) {
+    final JsonMap unknown = unknownEntries(object, known);
+    if (unknown.isEmpty) return const dom.span(<Widget>[]);
+    final String label = at.isEmpty ? 'Other combat fields' : 'Other ${at.join('.')} fields';
+    return GuiRow(
+      key: ValueKey<String>('others:${at.join('.')}'),
+      label: 'Other fields',
+      tip: 'Not combat settings. The server refuses them; rename or remove them.',
+      problems: <Diagnostic>[for (final String key in unknown.keys) ..._at(<JsonStep>[...at, key], nested: true)],
+      child: KeyValueEditor(
+        value: unknown,
+        label: label,
+        onChanged: (JsonMap next) {
+          final JsonMap merged = withUnknownEntries(object, known, next);
+          if (at.isEmpty) {
+            component.onChanged(merged);
+          } else {
+            _put(at, merged);
+          }
+        },
+      ),
+    );
+  }
 
   Widget _problemList(List<Diagnostic> problems) => problems.isEmpty
       ? const dom.span(<Widget>[])

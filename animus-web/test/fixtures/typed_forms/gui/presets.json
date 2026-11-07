@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "defaults": {
+    "inventories": {
+      "title": "&8Shop",
+      "closeOnTeleport": true
+    }
+  },
+  "presets": {
+    "menus": {
+      "wide": {
+        "extends": null,
+        "values": {
+          "maxDistance": 8
+        }
+      }
+    }
+  }
+}

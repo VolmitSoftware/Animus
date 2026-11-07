@@ -7,7 +7,7 @@ import java.util.Optional;
 public enum Playback {
     ONCE, LOOP, PINGPONG;
 
-    /** The mode a navigation module or action gets when it names none. */
+    /** The mode a navigation module or action gets when neither it nor the recording names one. */
     public static final Playback DEFAULT = LOOP;
 
     /** The lowercase key documents use. */

@@ -1020,7 +1020,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "const": "animus:play-recording",
-          "description": "Replaces the NPC's route with a recording it walks to and plays once, in a loop (the default) or back and forth. With wait, a once playback completes when it ends."
+          "description": "Replaces the NPC's route with a recording it walks to and plays once, in a loop or back and forth; without playback, the recording's own playback, else loop. With wait, a once playback completes when it ends."
         },
         {
           "const": "animus:play-sound",
@@ -3084,7 +3084,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                   "required": [
                     "recording"
                   ],
-                  "description": "Replaces the NPC's route with a recording it walks to and plays once, in a loop (the default) or back and forth. With wait, a once playback completes when it ends."
+                  "description": "Replaces the NPC's route with a recording it walks to and plays once, in a loop or back and forth; without playback, the recording's own playback, else loop. With wait, a once playback completes when it ends."
                 }
               },
               "required": [
@@ -7914,7 +7914,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:play-recording",
       "kind": "action",
-      "description": "Replaces the NPC's route with a recording it walks to and plays once, in a loop (the default) or back and forth. With wait, a once playback completes when it ends.",
+      "description": "Replaces the NPC's route with a recording it walks to and plays once, in a loop or back and forth; without playback, the recording's own playback, else loop. With wait, a once playback completes when it ends.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -11718,7 +11718,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 "loop",
                 "pingpong"
               ],
-              "description": "Recording only: once, loop (the default) or pingpong."
+              "description": "Recording only: once, loop or pingpong. Unset plays the recording's own playback, else loop."
             },
             "mode": {
               "enum": [
@@ -21168,6 +21168,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "sampleTicks": {"type": "integer", "minimum": 1, "maximum": 20, "description": "Ticks between two captured frames."},
     "durationTicks": {"type": "integer", "minimum": 1, "maximum": 72000, "description": "The tick of the last frame."},
+    "description": {"type": "string", "maxLength": 256, "description": "What the recording is for. Empty is not stored."},
+    "tags": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"}},
+    "playback": {"enum": ["once", "loop", "pingpong"], "description": "The mode a navigation module or play-recording action uses when it names none. Unset means loop."},
+    "speed": {"type": "number", "minimum": 0.25, "maximum": 4, "description": "Recorded ticks played per game tick. Unset means 1."},
     "frames": {
       "type": "array",
       "minItems": 2,

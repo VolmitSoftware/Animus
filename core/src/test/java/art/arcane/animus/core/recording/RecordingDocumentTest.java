@@ -167,6 +167,46 @@ class RecordingDocumentTest {
         assertTrue(text.endsWith("  ],\n  \"events\": []\n}\n"), text);
     }
 
+    @Test void detailsParseSerializeAndRoundTrip() throws IOException {
+        String text = minimal("[[0,0,0,0,0,0,0],[4,0,0,0,0,0,0]]", "[]").replace("\"sampleTicks\":2,",
+                "\"sampleTicks\":2,\"description\":\"Market \\\"loop\\\"\",\"tags\":[\"market\",\"day-1\"],\"playback\":\"pingpong\",\"speed\":1.5,");
+        RecordingDocument document = RecordingDocument.parse(text, CAP);
+        assertEquals(new RecordingDocument.Details("Market \"loop\"", List.of("market", "day-1"), Optional.of(Playback.PINGPONG), 1.5), document.details());
+        String stored = document.serialize();
+        assertTrue(stored.contains("  \"durationTicks\": 4,\n  \"description\": \"Market \\\"loop\\\"\",\n  \"tags\": [\"market\", \"day-1\"],\n  \"playback\": \"pingpong\",\n  \"speed\": 1.5,\n  \"frames\""), stored);
+        assertEquals(document, RecordingDocument.parse(stored, CAP));
+        assertEquals(stored, RecordingDocument.parse(stored, CAP).serialize());
+    }
+
+    @Test void absentDetailsAreDefaultsAndStayOutOfTheStoredForm() throws IOException {
+        RecordingDocument document = RecordingDocument.parse(minimal("[[0,0,0,0,0,0,0],[4,0,0,0,0,0,0]]", "[]"), CAP);
+        assertEquals(RecordingDocument.Details.NONE, document.details());
+        assertEquals(1, document.details().speed());
+        String stored = document.serialize();
+        for (String key : List.of("description", "tags", "playback", "speed")) assertFalse(stored.contains("\"" + key + "\""), stored);
+        String plain = minimal("[[0,0,0,0,0,0,0],[4,0,0,0,0,0,0]]", "[]").replace("\"sampleTicks\":2,", "\"sampleTicks\":2,\"description\":\"\",\"tags\":[],\"speed\":1,");
+        assertEquals(stored, RecordingDocument.parse(plain, CAP).serialize(), "empty and default details are not stored");
+    }
+
+    @Test void detailsFollowTheirBounds() {
+        String valid = minimal("[[0,0,0,0,0,0,0],[4,0,0,0,0,0,0]]", "[]");
+        java.util.function.Function<String, String> with = (String fields) -> refusal(valid.replace("\"sampleTicks\":2,", "\"sampleTicks\":2," + fields + ","));
+        assertTrue(with.apply("\"description\":\"" + "x".repeat(257) + "\"").contains("$.description: expected text of at most 256 characters"));
+        assertTrue(with.apply("\"description\":3").contains("$.description: expected text of at most 256 characters"));
+        assertTrue(with.apply("\"tags\":[\"Market\"]").contains("$.tags[0]: expected 1-32 lowercase letters, digits, _ or -"));
+        assertTrue(with.apply("\"tags\":[\"a\",\"a\"]").contains("$.tags[1]: duplicate tag a"));
+        assertTrue(with.apply("\"tags\":\"a\"").contains("$.tags: expected array"));
+        StringBuilder many = new StringBuilder("\"tags\":[");
+        for (int i = 0; i < 33; i++) many.append(i == 0 ? "" : ",").append("\"t").append(i).append('"');
+        assertTrue(with.apply(many.append(']').toString()).contains("$.tags: expected at most 32 tags"));
+        assertTrue(with.apply("\"playback\":\"LOOP\"").contains("$.playback: expected once, loop or pingpong"));
+        assertTrue(with.apply("\"speed\":0.2").contains("$.speed: expected a number 0.25..4"));
+        assertTrue(with.apply("\"speed\":4.5").contains("$.speed: expected a number 0.25..4"));
+        assertTrue(with.apply("\"speed\":\"fast\"").contains("$.speed: expected a number 0.25..4"));
+        assertThrows(IllegalArgumentException.class, () -> new RecordingDocument.Details("", List.of(), Optional.empty(), 8));
+        assertThrows(IllegalArgumentException.class, () -> new RecordingDocument.Details("", List.of("BAD"), Optional.empty(), 1));
+    }
+
     @Test void fromJsonChecksTheSerializedSize() throws IOException {
         com.google.gson.JsonObject source = art.arcane.animus.core.storage.JsonDocuments.object(fixture("market-loop.json"));
         assertEquals("market-loop", RecordingDocument.from(source, CAP).id());

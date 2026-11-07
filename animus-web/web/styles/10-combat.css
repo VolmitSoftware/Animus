@@ -61,6 +61,20 @@
   overflow-wrap: anywhere;
 }
 
+.animus-combat-locations {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.animus-combat-location-item.is-picked {
+  border-color: var(--primary, #ff5fa8);
+}
+
+.animus-combat-location > .animus-typed-value {
+  flex: 1 1 10rem;
+}
+
 @media (max-width: 520px) {
   .animus-combat-fields > .animus-gui-input.is-number {
     flex: 1 1 4.5rem;

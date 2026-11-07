@@ -176,7 +176,7 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         return active.isPresent() && PlatformRefusals.mapped(() -> living.stopNavigation(active.get().id()));
     }
 
-    @Override public void playRecording(NpcHandle npc, String recording, Playback playback) {
+    @Override public void playRecording(NpcHandle npc, String recording, Optional<Playback> playback) {
         NpcRuntime.ActiveNpc active = require(npc);
         PlatformRefusals.mapped(() -> { living.playRecording(active.id(), recording, playback); return true; });
     }

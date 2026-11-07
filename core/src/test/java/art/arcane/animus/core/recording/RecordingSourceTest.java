@@ -22,14 +22,14 @@ class RecordingSourceTest {
         return refused.getMessage();
     }
 
-    @Test void parsesRecordingWithDefaultLoopPlayback() {
+    @Test void parsesRecordingWithoutPlaybackAsTheDocumentDefault() {
         Optional<RecordingSource> source = RecordingSource.parse(definition("{\"enabled\":true,\"recording\":\"market-loop\"}"));
-        assertEquals(Optional.of(new RecordingSource("market-loop", Playback.LOOP)), source);
+        assertEquals(Optional.of(new RecordingSource("market-loop", Optional.empty())), source);
     }
 
     @Test void parsesEveryPlaybackMode() {
         for (Playback mode : Playback.values())
-            assertEquals(mode, RecordingSource.parse(definition("{\"enabled\":true,\"recording\":\"walk\",\"playback\":\"" + mode.key() + "\"}")).orElseThrow().playback());
+            assertEquals(mode, RecordingSource.parse(definition("{\"enabled\":true,\"recording\":\"walk\",\"playback\":\"" + mode.key() + "\"}")).orElseThrow().playback().orElseThrow());
     }
 
     @Test void disabledOrRouteNavigationHasNoRecording() {

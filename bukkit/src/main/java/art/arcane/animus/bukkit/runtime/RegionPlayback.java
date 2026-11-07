@@ -131,7 +131,7 @@ final class RegionPlayback {
             return;
         }
         target.blocked();
-        if (target.source().playback() == Playback.ONCE) { end("blocked: " + reason); return; }
+        if (target.playback().mode() == Playback.ONCE) { end("blocked: " + reason); return; }
         actor.play(target, RecordingRun.BLOCKED_RETRY_TICKS);
         actor.status("blocked", reason + "; retrying in " + RecordingRun.BLOCKED_RETRY_TICKS + " ticks");
     }

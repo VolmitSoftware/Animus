@@ -254,6 +254,13 @@
 - Web editor: names, placeholders, tags and ids the server would refuse are underlined, with the reason on hover.
 - `GET /v1/lookups` (read scope) lists the server's registry ids, command names and PlaceholderAPI identifiers for completion.
 - The Minecraft asset extractor writes `registries.json`, the ids the editor completes offline.
+- Recordings take optional `description`, `tags`, `playback` and `speed`. `playback` is the mode used when an NPC or action names none, and `speed` scales playback.
+- Web editor: every document kind has a Visual form. A kind without its own editor, such as an animation whose rig is not in the workspace, gets a form from its schema, and values no schema describes are edited as typed key/value rows with JSON behind Advanced.
+- Web editor: recordings are editable: id, description, tags, default playback, speed, trimming the start and end on the scrub, and Code Apply checked against the server's recording rules.
+- Web editor: skins can be picked from workspace skins with their faces, removed, switched between slim and classic arms, and made from a PNG file or address. A changed skin gets a new hash and its wearers move with it in one undo step.
+- Web editor: changing a skinned NPC's body away from a player asks to remove the skin, also from the groups that give it, in one undo step.
+- Web editor: typed forms replace JSON boxes for combat rules, return and respawn locations (placed on a grid), drops, ranged effects, pack module configuration, presets and GUI action fields. Item ids, call targets, menu lists and document ids are picked from lists.
+- Web editor: a reusable route on an NPC has Edit route and Make a copy for this NPC.
 
 ### Changed
 
@@ -361,6 +368,12 @@
 - Shop and GUI lists page with `page=`; long build, hotload and import reports are clipped with a count of the rest.
 - Startup logs one `Enabled` line with the time taken, plus warnings only for parts that are down. A repeated failure logs its stack trace once, then one line.
 - Web editor: the separate completion lists of GUI text, behavior expressions and the Code view became the shared autocomplete.
+- Web editor: NPC modules without a schema, unknown behavior and trigger fields, and module capability arguments are edited as typed key/value rows; JSON sits behind Advanced.
+- Web editor: `dialogue_choice` triggers pick their prompt and option from the behavior's own prompts.
+- Web editor: NPC behaviors and the shop are picked from the workspace, and behaviors also from the connected server, with "+ New" and "Manage". "Add by id" is gone.
+- Navigation and `play-recording` without `playback` use the recording's own playback, then loop.
+- Recording again under an existing id keeps its description, tags, playback and speed.
+- Web editor: the autocomplete also covers typed key/value text, recording descriptions and tags, skin hashes and addresses, combat respawn worlds and route and recording ids. Item fields use the item picker with search.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
@@ -400,6 +413,8 @@
 - GUI editor: refusal messages for presets, icons and components use the server's wording.
 - Web editor: groups and recordings are listed in the sidebar; a renamed recording or group rewrites its `id`.
 - The startup banner.
+- Web editor: the read-only conversation section in a behavior's Visual view; a button opens the Conversation tab instead.
+- Web editor: the plain field summary table for kinds without an editor.
 
 ### Fixed
 
@@ -532,6 +547,9 @@
 - Nested settings such as movement and stuck lay out as full-width groups instead of squeezed columns.
 - The editor NPC list hides its type and world columns when its own column is narrow.
 - Clicking an NPC inspector label focuses its text or number field.
+- The web editor reports `$.skin: textures require a player body`, also for a skin that comes from a group, and more of the server's checks on NPC and group documents.
+- Opening a data folder in the web editor keeps the skin PNGs under `editor/skins/`.
+- Web editor: a delete confirmation that draws late still takes focus, so Escape cancels it.
 
 ### Notes
 

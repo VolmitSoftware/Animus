@@ -475,7 +475,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     @Override public void pose(String id, String pose) { navigable(id).pose(Objects.requireNonNull(pose)); }
     @Override public void followRoute(String id, String route) { navigable(id).followRoute(route); }
     @Override public CompletableFuture<Void> awaitRoute(String id) { return navigable(id).awaitRoute(); }
-    @Override public void playRecording(String id, String recording, art.arcane.animus.core.recording.Playback playback) { navigable(id).playRecording(recording, playback); }
+    @Override public void playRecording(String id, String recording, Optional<art.arcane.animus.core.recording.Playback> playback) { navigable(id).playRecording(recording, playback); }
     @Override public boolean resumePatrol(String id) { return navigable(id).resumePatrol(); }
     @Override public void setAppearance(String id, Optional<String> name, Optional<String> skin, boolean reset) { navigable(id).setAppearance(name, skin, reset); }
     @Override public void setEquipment(String id, EquipmentSlot slot, ItemStack item) { navigable(id).setEquipment(slot, item); }

@@ -343,13 +343,13 @@ class RecordingPlaybackRuntimeTest {
         String inspect = harness.service.inspect(NPC);
         assertTrue(inspect.contains("route-error=recordings are disabled in config.toml") && inspect.contains("state=stopped"), inspect);
         assertTrue(harness.service.status().contains("recordings=0"), harness.service.status());
-        assertThrows(IllegalStateException.class, () -> harness.service.playRecording(NPC, "walk", Playback.ONCE));
+        assertThrows(IllegalStateException.class, () -> harness.service.playRecording(NPC, "walk", Optional.of(Playback.ONCE)));
     }
 
     @Test void aWaitedOncePlaybackCompletesWhenItEnds() throws IOException {
         ViewerWatchRaceTest.Harness harness = harness(line(40), "{\"enabled\": false}", "");
         harness.tick(2);
-        harness.service.playRecording(NPC, "walk", Playback.ONCE);
+        harness.service.playRecording(NPC, "walk", Optional.of(Playback.ONCE));
         CompletableFuture<Void> finished = harness.service.awaitRoute(NPC);
         until(harness, 800, (ViewerWatchRaceTest.Harness h) -> finished.isDone(), "finished");
         assertFalse(finished.isCompletedExceptionally(), harness.service.navigationStatus(NPC));
@@ -359,7 +359,7 @@ class RecordingPlaybackRuntimeTest {
     @Test void stoppingAWaitedPlaybackFailsTheWait() throws IOException {
         ViewerWatchRaceTest.Harness harness = harness(line(200), "{\"enabled\": false}", "");
         harness.tick(2);
-        harness.service.playRecording(NPC, "walk", Playback.ONCE);
+        harness.service.playRecording(NPC, "walk", Optional.of(Playback.ONCE));
         CompletableFuture<Void> finished = harness.service.awaitRoute(NPC);
         harness.tick(5);
         harness.service.stopNavigation(NPC);
@@ -369,7 +369,7 @@ class RecordingPlaybackRuntimeTest {
     @Test void waitingOnALoopingPlaybackIsRefused() throws IOException {
         ViewerWatchRaceTest.Harness harness = harness(line(200), "{\"enabled\": false}", "");
         harness.tick(2);
-        harness.service.playRecording(NPC, "walk", Playback.LOOP);
+        harness.service.playRecording(NPC, "walk", Optional.of(Playback.LOOP));
         CompletableFuture<Void> finished = harness.service.awaitRoute(NPC);
         harness.tick(3);
         assertTrue(finished.isCompletedExceptionally());

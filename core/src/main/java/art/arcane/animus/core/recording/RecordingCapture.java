@@ -44,8 +44,10 @@ public final class RecordingCapture {
                        List<RecordingFrame> frames, List<RecordingEvent> events) {
         public Take { frames = List.copyOf(frames); events = List.copyOf(events); }
 
-        public RecordingDocument document(long revision) {
-            return new RecordingDocument(revision, id, recordedBy, world, origin, sampleTicks, durationTicks, frames, events);
+        public RecordingDocument document(long revision) { return document(revision, RecordingDocument.Details.NONE); }
+
+        public RecordingDocument document(long revision, RecordingDocument.Details details) {
+            return new RecordingDocument(revision, id, recordedBy, world, origin, sampleTicks, durationTicks, frames, events, details);
         }
     }
 

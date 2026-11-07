@@ -118,7 +118,7 @@ class RegionRecordingHandoffTest {
         Performer body = new Performer(regions, budget(regions));
         RegionOwner owner = new RegionOwner(UUID.randomUUID(), regions, body.budget, 8, 8, body);
         List<Boolean> woke = new ArrayList<>();
-        regions.execute(A, () -> { woke.add(owner.wake()); body.playback.start(new RecordingRun(new RecordingSource("walk", Playback.LOOP), LINE)); });
+        regions.execute(A, () -> { woke.add(owner.wake()); body.playback.start(new RecordingRun(new RecordingSource("walk", java.util.Optional.of(Playback.LOOP)), LINE)); });
         regions.tick(1);
         assertEquals(List.of(true), woke);
         assertEquals(RecordingRun.Phase.WALKING_IN, body.playback.run.phase(), "the NPC walks to the first frame first");
@@ -167,7 +167,7 @@ class RegionRecordingHandoffTest {
         FakeRegions regions = new FakeRegions().assign(1, A, B);
         Performer body = new Performer(regions, budget(regions));
         RegionOwner owner = new RegionOwner(UUID.randomUUID(), regions, body.budget, 8, 8, body);
-        regions.execute(A, () -> { owner.wake(); body.playback.start(new RecordingRun(new RecordingSource("walk", Playback.ONCE), LINE)); });
+        regions.execute(A, () -> { owner.wake(); body.playback.start(new RecordingRun(new RecordingSource("walk", java.util.Optional.of(Playback.ONCE)), LINE)); });
         tick(regions, 1, 20);
         assertEquals(RecordingRun.Phase.PLAYING, body.playback.run.phase());
         body.ground = (int x, int y, int z) -> y < 64 || (x == 12 && y < 70) ? Cell.SOLID : Cell.AIR;

@@ -1160,7 +1160,7 @@
                 "loop",
                 "pingpong"
               ],
-              "description": "Recording only: once, loop (the default) or pingpong."
+              "description": "Recording only: once, loop or pingpong. Unset plays the recording's own playback, else loop."
             },
             "mode": {
               "enum": [

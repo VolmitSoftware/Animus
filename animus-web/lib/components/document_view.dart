@@ -12,21 +12,25 @@ import '../logic/gui/gui_presets.dart';
 import '../logic/gui/text_animation.dart';
 import '../logic/inspect/inspect_schemas.dart';
 import '../logic/inspect/json_completion.dart';
+import '../logic/inspect/schema_fields.dart';
 import '../logic/inspect/server_behaviors.dart';
 import '../logic/suggest/completion_sources.dart';
 import '../logic/npc/group_model.dart';
 import '../logic/npc/npc_catalog.dart';
 import '../logic/npc/route_model.dart';
+import '../logic/npc/skin_edits.dart';
 import '../logic/offline/document_fixes.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import '../services/browser.dart';
 import '../state/workspace_route.dart';
 import 'gui/gui_fields.dart';
+import 'gui/gui_targets.dart';
 import 'tab_strip.dart';
 import 'offline/dry_run_panel.dart';
 import 'offline/offline_fields.dart';
 import 'recording/recording_view.dart';
+import '../logic/recording/recording_edit.dart' show recordingProblems, recordingTags;
 import 'gui/gui_data_editors.dart';
 import 'gui/hologram_editor.dart';
 import 'gui/inventory_editor.dart';
@@ -36,7 +40,9 @@ import 'conversation/conversation_attach.dart';
 import 'conversation/conversation_view.dart';
 import 'inspect/behavior_editor.dart';
 import 'inspect/json_code_editor.dart';
+import 'inspect/inspect_fields.dart';
 import 'inspect/npc_inspector.dart';
+import 'inspect/typed_values_editor.dart';
 import 'inspect/server_behaviors_editor.dart';
 import 'npc/pack_editor.dart';
 import 'npc/route_editor.dart';
@@ -56,7 +62,7 @@ class DocumentPane extends StatefulWidget {
     required this.view,
     required this.onView,
     required this.onSource,
-    this.onJson,
+    required this.onJson,
     this.onRename,
     this.onDelete,
     this.onDuplicate,
@@ -71,6 +77,8 @@ class DocumentPane extends StatefulWidget {
     this.onCommit,
     this.onServerPreview,
     this.newConversationHref,
+    this.skinEditing,
+    this.serverBehaviors = const <String>[],
     super.key,
   });
 
@@ -83,6 +91,12 @@ class DocumentPane extends StatefulWidget {
 
   /// Where a new conversation is made.
   final String? newConversationHref;
+
+  /// Skin edits that write several documents and the kept PNGs.
+  final SkinEditing? skinEditing;
+
+  /// Behavior ids in the connected server's catalog, for an NPC's picker.
+  final List<String> serverBehaviors;
 
   /// Opens another document of the workspace (a behavior, route or shop an
   /// NPC names).
@@ -105,8 +119,8 @@ class DocumentPane extends StatefulWidget {
   /// identifiers for completion; null offline.
   final ServerLookups? liveLookups;
 
-  /// Visual editor edits; null keeps the document read-only in Visual.
-  final JsonEdit? onJson;
+  /// Visual editor edits.
+  final JsonEdit onJson;
 
   /// Moves the document to a new id; returns a problem to show, or null.
   final Future<String?> Function(String id)? onRename;
@@ -139,6 +153,9 @@ class DocumentPane extends StatefulWidget {
 class _DocumentPaneState extends State<DocumentPane> {
   String? _draft;
   String? _draftError;
+
+  /// The first RecordingDocument rule a recording's Code draft breaks.
+  String? _recordingRefusal;
   String? _renaming;
   String? _renameProblem;
   void Function()? _stopGuard;
@@ -219,20 +236,23 @@ class _DocumentPaneState extends State<DocumentPane> {
 
   void _edit(String value) {
     String? error;
+    String? refusal;
     try {
-      jsonDecode(value);
+      final Object? decoded = jsonDecode(value);
+      if (component.document.kind == DocumentKind.recording) refusal = recordingProblems(decoded, id: component.document.id).firstOrNull;
     } on FormatException catch (invalid) {
       error = invalid.message;
     }
     setState(() {
       _draft = value;
       _draftError = error;
+      _recordingRefusal = refusal;
     });
   }
 
   Future<void> _apply() async {
     final String? draft = _draft;
-    if (draft == null || _draftError != null) return;
+    if (draft == null || _draftError != null || _recordingRefusal != null) return;
     await component.onSource(draft);
     if (mounted) setState(() => _draft = null);
   }
@@ -287,7 +307,7 @@ class _DocumentPaneState extends State<DocumentPane> {
     if (_confirmDelete && component.onDelete != null) {
       return ConfirmRow(
         question: 'Delete ${document.id}?',
-        detail: 'Undo brings it back.',
+        detail: document.kind == DocumentKind.skin ? skinDeleteWarning(component.workspaceDocuments, document.id) : 'Undo brings it back.',
         confirmLabel: 'Delete ${document.kind == DocumentKind.npc ? 'NPC' : 'document'}',
         onConfirm: () {
           setState(() => _confirmDelete = false);
@@ -391,19 +411,32 @@ class _DocumentPaneState extends State<DocumentPane> {
 
   Widget _visual(AnimusDocument document) {
     final Object? json = document.json;
-    final JsonEdit? onJson = component.onJson;
+    final JsonEdit onJson = component.onJson;
     if (json is! Map<String, Object?>) {
       return const dom.section(classes: 'animus-panel', <Widget>[
         Component.text('Not a JSON object. Fix it in Code.'),
       ]);
     }
-    if (document.kind == DocumentKind.recording) return RecordingView(key: ValueKey<String>('recording:${document.id}'), document: document);
-    if (document.kind == DocumentKind.skin) {
-      return SkinSummary(document: document, workspaceDocuments: component.workspaceDocuments, onOpen: component.onOpen, onLoaded: () => setState(() {}));
+    if (document.kind == DocumentKind.recording) {
+      return RecordingView(
+        key: ValueKey<String>('recording:${document.id}'),
+        document: document,
+        onJson: onJson,
+        onRename: component.onRename,
+        knownTags: recordingTags(component.workspaceDocuments),
+      );
     }
-    if (onJson == null) return _fields(json);
+    if (document.kind == DocumentKind.skin) {
+      return SkinSummary(
+        document: document,
+        workspaceDocuments: component.workspaceDocuments,
+        onOpen: component.onOpen,
+        onLoaded: () => setState(() {}),
+        editing: component.skinEditing,
+      );
+    }
     final List<AnimusDocument> workspace = component.workspaceDocuments;
-    return switch (document.kind) {
+    return GuiTargets(documents: workspace, kind: document.kind, child: switch (document.kind) {
       DocumentKind.npc => dom.div(classes: 'animus-npc-visual', <Widget>[
           NpcInspector(
             document: document,
@@ -412,11 +445,20 @@ class _DocumentPaneState extends State<DocumentPane> {
             diagnostics: _allDiagnostics(document),
             workspaceDocuments: workspace,
             onSkinLoaded: () => setState(() {}),
+            skinEditing: component.skinEditing,
             onOpen: component.onOpen,
+            onCommit: component.onCommit,
+            serverBehaviors: component.serverBehaviors,
           ),
           _preview(document),
         ]),
-      DocumentKind.behavior => BehaviorEditor(document: document, onJson: onJson, schemas: _schemas, diagnostics: _allDiagnostics(document)),
+      DocumentKind.behavior => BehaviorEditor(
+          document: document,
+          onJson: onJson,
+          schemas: _schemas,
+          diagnostics: _allDiagnostics(document),
+          onConversation: () => component.onView(ViewMode.conversation),
+        ),
       DocumentKind.route => dom.section(classes: 'animus-panel animus-inspector', attributes: const <String, String>{'aria-label': 'Route'}, <Widget>[
           RouteEditor(
             value: json,
@@ -433,7 +475,10 @@ class _DocumentPaneState extends State<DocumentPane> {
           diagnostics: _allDiagnostics(document),
           workspaceDocuments: workspace,
           onSkinLoaded: () => setState(() {}),
+            skinEditing: component.skinEditing,
           onOpen: component.onOpen,
+          onCommit: component.onCommit,
+          serverBehaviors: component.serverBehaviors,
         ),
       DocumentKind.pack => PackEditor(document: document, schema: _schemas.pack, onJson: onJson, diagnostics: _allDiagnostics(document)),
       DocumentKind.serverBehaviors => ServerBehaviorsEditor(
@@ -447,14 +492,14 @@ class _DocumentPaneState extends State<DocumentPane> {
       DocumentKind.shop => ShopEditor(document: document, onJson: onJson, layouts: _ids(DocumentKind.inventory)),
       DocumentKind.menu => MenuEditor(document: document, onJson: onJson, animations: workspaceAnimations(workspace)),
       DocumentKind.hologram => HologramEditor(document: document, onJson: onJson, animations: workspaceAnimations(workspace), presets: workspacePresets(workspace)),
-      DocumentKind.textAnimation || DocumentKind.presets => guiDataEditor(document, onJson, workspace) ?? _fields(json),
-      _ => _fields(json),
-    };
+      DocumentKind.textAnimation || DocumentKind.presets => guiDataEditor(document, onJson, workspace) ?? _form(document, json),
+      _ => _form(document, json),
+    });
   }
 
   Widget _conversation(AnimusDocument document) {
-    final JsonEdit? onJson = component.onJson;
-    if (onJson == null || document.json is! Map<String, Object?>) {
+    final JsonEdit onJson = component.onJson;
+    if (document.json is! Map<String, Object?>) {
       return const dom.section(classes: 'animus-panel', <Widget>[Component.text('Not a JSON object. Fix it in Code.')]);
     }
     return ConversationView(
@@ -470,19 +515,27 @@ class _DocumentPaneState extends State<DocumentPane> {
     );
   }
 
-  /// Every top-level field with a one-line summary, for kinds with no editor.
-  Widget _fields(JsonMap json) {
-    return dom.section(classes: 'animus-panel animus-fields', <Widget>[
-      dom.table(<Widget>[
-        dom.tbody(<Widget>[
-          for (final MapEntry<String, Object?> field in json.entries)
-            dom.tr(<Widget>[
-              dom.th(attributes: const <String, String>{'scope': 'row'}, <Widget>[Component.text(field.key)]),
-              dom.td(<Widget>[Component.text(summarize(field.value))]),
-            ]),
-        ]),
-      ]),
-    ]);
+  /// A form generated from the kind's schema, for kinds without their own
+  /// editor (an animation whose rig is not here); without a schema, a typed
+  /// key/value editor.
+  Widget _form(AnimusDocument document, JsonMap json) {
+    final SchemaView? schema = _schemas.forKind(document.kind);
+    void put(JsonMap next) => component.onJson(writeAt(json, const <JsonStep>[], next), coalesce: 'form');
+    final String? missingRig = document.kind == DocumentKind.animation ? asString(json['rig']) : null;
+    return dom.section(
+      classes: 'animus-panel animus-inspector animus-document-form',
+      attributes: <String, String>{'aria-label': '${document.kind.label} fields', 'data-form': document.kind.wireName},
+      <Widget>[
+        if (missingRig != null)
+          dom.p(classes: 'animus-muted animus-form-note', attributes: const <String, String>{'data-form': 'rig-missing'}, <Widget>[
+            withTip(Component.text('Rig $missingRig is not in this workspace.'), 'The timeline needs the rig. Add or import it, and this animation opens in the rig editor.'),
+          ]),
+        if (schema != null)
+          InspectObject(schema: schema, node: schema.root, value: json, path: r'$', diagnostics: _allDiagnostics(document), onChanged: put)
+        else
+          KeyValueEditor(value: json, label: '${document.kind.label} fields', onChanged: put),
+      ],
+    );
   }
 
   /// The route an NPC follows: its inline navigation fields, or the route
@@ -584,28 +637,33 @@ class _DocumentPaneState extends State<DocumentPane> {
     return dom.section(classes: 'animus-panel animus-code', <Widget>[
       JsonCodeEditor(
         text: text,
-        onChanged: document.kind == DocumentKind.recording ? (String _) {} : _edit,
+        onChanged: _edit,
         schema: schemas.forKind(document.kind),
         catalog: document.kind == DocumentKind.behavior ? schemas.catalog : null,
         hints: hints,
         diagnostics: document.diagnostics,
         serverDiagnostics: component.serverDiagnostics,
-        readOnly: document.kind == DocumentKind.recording,
       ),
-      if (document.kind == DocumentKind.recording)
-        const dom.p(classes: 'animus-muted', attributes: <String, String>{'data-recording': 'code-note'}, <Widget>[
-          Component.text('Read-only. Recordings are made in game with /animus record.'),
-        ])
-      else
-        dom.div(classes: 'animus-row', <Widget>[
+      dom.div(classes: 'animus-row', <Widget>[
         Button.primary(
           label: 'Apply to draft',
           size: ButtonSize.small,
-          disabled: _draft == null || _draftError != null,
+          disabled: _draft == null || _draftError != null || _recordingRefusal != null,
           onPressed: _apply,
         ),
         if (_draft != null)
-          Button.ghost(label: 'Discard', size: ButtonSize.small, onPressed: () => setState(() => _draft = null)),
+          Button.ghost(
+            label: 'Discard',
+            size: ButtonSize.small,
+            onPressed: () => setState(() {
+              _draft = null;
+              _recordingRefusal = null;
+            }),
+          ),
+        if (_recordingRefusal != null && _draftError == null)
+          dom.span(classes: 'animus-error', attributes: const <String, String>{'data-recording': 'code-refusal', 'role': 'alert'}, <Widget>[
+            Component.text('Not applied: $_recordingRefusal'),
+          ]),
         if (_draftError != null)
           dom.span(classes: 'animus-error', <Widget>[
             Component.text('Not valid JSON: $_draftError. Fix it or Discard.'),
