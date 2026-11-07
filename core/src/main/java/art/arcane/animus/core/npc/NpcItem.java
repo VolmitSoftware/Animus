@@ -1,5 +1,6 @@
 package art.arcane.animus.core.npc;
 
+import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -16,7 +17,6 @@ import java.util.Set;
 public record NpcItem(String id, int count, Optional<String> components, Optional<JsonObject> imported) {
     public static final int MAX_COUNT = 99, MAX_COMPONENTS = 4096, MAX_IMPORTED_BYTES = 16384;
     private static final Set<String> FIELDS = Set.of("id", "count", "components", "imported");
-    private static final String ID = "[a-z0-9_.-]+:[a-z0-9_./-]+";
 
     public NpcItem {
         Objects.requireNonNull(id); Objects.requireNonNull(components); Objects.requireNonNull(imported);
@@ -24,7 +24,8 @@ public record NpcItem(String id, int count, Optional<String> components, Optiona
     }
     @Override public Optional<JsonObject> imported() { return imported.map(JsonObject::deepCopy); }
 
-    public static boolean validId(String id) { return id != null && id.length() <= 128 && id.matches(ID); }
+    /** A bare id means {@code minecraft:<id>}; see {@link MinecraftIds}. */
+    public static boolean validId(String id) { return MinecraftIds.valid(id); }
 
     /** Appends exact field errors and returns empty when the value is invalid. */
     public static Optional<NpcItem> parse(JsonElement value, String path, List<String> errors) {
@@ -60,7 +61,7 @@ public record NpcItem(String id, int count, Optional<String> components, Optiona
             else imported = Optional.of(data.getAsJsonObject());
         }
         if (errors.size() != before) return Optional.empty();
-        return Optional.of(new NpcItem(itemId, count, components, imported));
+        return Optional.of(new NpcItem(MinecraftIds.normalize(itemId), count, components, imported));
     }
 
     public JsonObject toJson() {

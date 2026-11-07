@@ -1,5 +1,6 @@
 package art.arcane.animus.core.recording;
 
+import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.config.RecordingSettings;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcItem;
@@ -267,7 +268,7 @@ public record RecordingDocument(long revision, String id, UUID recordedBy, Strin
         JsonElement blockValue = event.get("block");
         String block = blockValue != null && blockValue.isJsonPrimitive() && blockValue.getAsJsonPrimitive().isString() ? blockValue.getAsString() : null;
         if (!NpcItem.validId(block)) errors.add(at + ".block: expected namespace:block");
-        return errors.size() == before ? new RecordingEvent.Use(tick, position[0], position[1], position[2], block) : null;
+        return errors.size() == before ? new RecordingEvent.Use(tick, position[0], position[1], position[2], MinecraftIds.normalize(block)) : null;
     }
 
     private static List<String> invariants(long revision, String id, String world, int sampleTicks, int durationTicks, List<RecordingFrame> frames,

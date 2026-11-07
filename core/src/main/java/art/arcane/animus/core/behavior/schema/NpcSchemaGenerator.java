@@ -1,5 +1,6 @@
 package art.arcane.animus.core.behavior.schema;
 
+import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.combat.FightKind;
 import art.arcane.animus.core.combat.RangedWeapon;
 import art.arcane.animus.core.combat.TargetCategory;
@@ -40,7 +41,8 @@ import java.util.List;
 public final class NpcSchemaGenerator {
     private static final String IDENTIFIER = "^[a-z0-9][a-z0-9_-]{0,63}$";
     private static final String UUID = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
-    private static final String NAMESPACED = "^[a-z0-9_.-]+:[a-z0-9_./-]+$";
+    /** A Minecraft registry id; a bare id means {@code minecraft:<id>}. */
+    private static final String NAMESPACED = "^" + MinecraftIds.PATTERN + "$";
     private static final String NONBLANK = "\\S";
     private static final String COMBAT = "animus:combat";
     private NpcSchemaGenerator() {}
@@ -60,7 +62,7 @@ public final class NpcSchemaGenerator {
         properties.add("id", described(pattern(IDENTIFIER), "Matches the file name."));
         properties.add("group", described(pattern("^" + NpcPaths.FOLDER + "$"), "The folder under npcs/, empty for npcs/ itself. Animus sets it from where the file is."));
         properties.add("name", described(text(NpcAppearance.MAX_TEXT), "The displayed name."));
-        JsonObject type = described(pattern("^[a-z0-9_]+:[a-z0-9_/]+$"), "An entity type such as minecraft:player. The examples are the bodies every transport draws.");
+        JsonObject type = described(pattern("^([a-z0-9_]+:)?[a-z0-9_/]+$"), "An entity type such as minecraft:player or player. The examples are the bodies every transport draws.");
         type.add("examples", strings(BodyRules.TYPES.stream().sorted().toArray(String[]::new)));
         properties.add("type", type);
         properties.add("spawned", described(type("boolean"), "Whether the NPC is presented."));
@@ -162,7 +164,7 @@ public final class NpcSchemaGenerator {
         JsonObject item = described(closed(), "An item: its id, a count and the component text of a give command.");
         item.add("required", strings("id"));
         JsonObject fields = new JsonObject();
-        JsonObject id = described(pattern(NAMESPACED), "namespace:item, such as minecraft:iron_sword.");
+        JsonObject id = described(pattern(NAMESPACED), "An item id such as minecraft:iron_sword; a bare iron_sword means the same.");
         id.addProperty("maxLength", 128);
         fields.add("id", id);
         fields.add("count", described(range("integer", 1, NpcItem.MAX_COUNT), "1 by default."));
@@ -309,7 +311,7 @@ public final class NpcSchemaGenerator {
         fields.add("style", described(choices(List.of("native", "chest")), "The window for this NPC: native (villager trading screen) or chest. The shop's own style by default."));
         JsonObject villager = described(closed(), "A villager body's profession and level, shown in the trading screen title. Other bodies ignore it.");
         JsonObject villagerFields = new JsonObject();
-        villagerFields.add("profession", described(pattern("^[a-z0-9_.-]+:[a-z0-9_/.-]+$"), "Such as minecraft:farmer. minecraft:none by default."));
+        villagerFields.add("profession", described(pattern(NAMESPACED), "Such as minecraft:farmer. minecraft:none by default."));
         villagerFields.add("level", described(range("integer", 1, 5), "1 (novice) to 5 (master). 1 by default."));
         villager.add("properties", villagerFields);
         fields.add("villager", villager);

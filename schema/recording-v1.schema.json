@@ -89,7 +89,7 @@
         "x": {"$ref": "#/$defs/block"},
         "y": {"$ref": "#/$defs/block"},
         "z": {"$ref": "#/$defs/block"},
-        "block": {"type": "string", "maxLength": 128, "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"}
+        "block": {"type": "string", "maxLength": 128, "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"}
       }
     },
     "item": {
@@ -97,7 +97,7 @@
       "additionalProperties": false,
       "required": ["id"],
       "properties": {
-        "id": {"type": "string", "maxLength": 128, "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"},
+        "id": {"type": "string", "maxLength": 128, "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"},
         "count": {"type": "integer", "minimum": 1, "maximum": 99},
         "components": {"type": "string", "maxLength": 4096, "pattern": "^\\[[\\s\\S]*\\]$"}
       }

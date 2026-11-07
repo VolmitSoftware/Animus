@@ -239,6 +239,14 @@ class BuiltinCapabilitiesTest {
                 "animation:town:golem/wave:2.0:pingpong:2", "stop-animation:2:10"), platform.calls);
     }
 
+    @Test void bareRegistryIdsReachThePlatformNamespaced() throws Exception {
+        start();
+        assertEquals(Outcome.Status.OK, action("set-equipment", "{\"slot\":\"main_hand\",\"item\":\"netherite_axe\"}").status());
+        assertEquals(Outcome.Status.OK, action("play-sound", "{\"sound\":\"entity.villager.yes\"}").status());
+        assertEquals(Outcome.Status.OK, action("spawn-particle", "{\"particle\":\"flame\",\"count\":2}").status());
+        assertEquals(List.of("equipment:MAIN_HAND:minecraft:netherite_axe", "sound:minecraft:entity.villager.yes", "particle:minecraft:flame:2"), platform.calls);
+    }
+
     @Test void setAttributeSetsOrResetsOneAttributeAndChecksItsRange() throws Exception {
         start();
         assertEquals(Outcome.Status.OK, action("set-attribute", "{\"attribute\":\"minecraft:scale\",\"value\":2}").status());
