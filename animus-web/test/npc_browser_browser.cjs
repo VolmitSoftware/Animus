@@ -519,6 +519,13 @@ async function local(browser, viewport, tag, theme) {
   await offHand.scrollIntoViewIfNeeded();
   await offHand.fill('minecraft:shield');
   await offHand.blur();
+  // A bare id is a minecraft item: kept as written, not flagged.
+  const head = look.getByLabel('equipment.head', {exact: true});
+  await head.scrollIntoViewIfNeeded();
+  await head.fill('netherite_helmet');
+  await head.blur();
+  await settle(page);
+  assert.equal(await page.locator('.animus-diagnostics li', {hasText: 'equipment.head'}).count(), 0, `${tag}: a bare item id validates`);
   await choose(look.locator('#animus-skin-pick'), skinHash);
   await settle(page);
   json = await codeOf(page);

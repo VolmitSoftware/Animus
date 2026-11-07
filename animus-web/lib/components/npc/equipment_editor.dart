@@ -8,6 +8,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
+import '../../logic/minecraft_ids.dart';
 import '../../mc/npc/npc_look.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
