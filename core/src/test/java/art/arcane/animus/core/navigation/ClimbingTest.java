@@ -125,4 +125,27 @@ class ClimbingTest {
         assertTrue(plan(snapshot, new BlockPos(1, 1, 2), new BlockPos(8, 5, 2), opener).status() != PathPlanner.Status.FOUND, "the ladder stops a body that does not climb");
         assertTrue(door.openable() && !door.climbable() && LADDER.climbable() && !LADDER.openable());
     }
+    /**
+     * A ledge six blocks up with a vine down its side and no other way down a body with a fall of 1 may take: the body
+     * steps off the ledge onto the vine, holding it, and climbs down, as a player does.
+     */
+    @Test void aBodyStepsOffALedgeOntoAVineAndClimbsDown() {
+        VoxelSnapshot.Builder builder = new VoxelSnapshot.Builder("world", 0, 0, 0, 6, 12, 5).fill(Cell.AIR).availableChunk(0, 0);
+        for (int x = 0; x < 6; x++) for (int z = 0; z < 5; z++) builder.set(x, 0, z, Cell.SOLID);
+        for (int x = 0; x < 2; x++) for (int y = 1; y < 6; y++) for (int z = 0; z < 5; z++) builder.set(x, y, z, Cell.SOLID);
+        Cell vine = CollisionCells.classify("VINE", List.of(), false);
+        for (int y = 1; y <= 6; y++) builder.set(2, y, 2, vine);
+        MovementProfile fallOfOne = new MovementProfile(Set.of(MovementProfile.Mode.WALK), 0.6, 1.8, 0.6, 1.25, 1, true, true, false);
+        VoxelSnapshot snapshot = builder.build();
+        PathPlanner.Result result = plan(snapshot, new BlockPos(0, 6, 2), new BlockPos(3, 1, 2), fallOfOne);
+        assertEquals(PathPlanner.Status.FOUND, result.status(), result.toString());
+        PathExecution execution = new PathExecution(new Vec3(.5, 6, 2.5), result.path(), new Vec3(3.5, 1, 2.5), fallOfOne);
+        MotionValidator.Sampler cells = snapshot::cell;
+        for (int i = 0; i < 2000 && !execution.finished(); i++) {
+            PathExecution.Proposal step = execution.next(.05).orElseThrow();
+            assertTrue(MotionValidator.check(step.from(), step.to(), .6, 1.8, step.medium(), step.requireSupport(), 512, cells).clear(), step.toString());
+            execution.commit(step);
+        }
+        assertTrue(execution.finished());
+    }
 }

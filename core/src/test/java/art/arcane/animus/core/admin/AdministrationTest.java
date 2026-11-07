@@ -66,6 +66,14 @@ class AdministrationTest {
         com.google.gson.JsonObject rename = com.google.gson.JsonParser.parseString("{\"name\":\"\"}").getAsJsonObject();
         assertEquals("Cannot save steed: $.name: expected text", Administration.refusal("steed", rename, "$.name: expected text"));
     }
+    @Test void anEmptyGroupCreatesTheNpcDirectlyInNpcs() throws Exception {
+        try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            List.of(admin.create("loose", "minecraft:player", "world", 1, 64, 2, "", "Loose"));
+            assertEquals("npcs/loose.json", runtime.npcs().find("loose").orElseThrow().path());
+            assertEquals("", runtime.npcs().find("loose").orElseThrow().group());
+        }
+    }
     @Test void desiredSpawnStatePersistsAndClonesRemainDormant() throws Exception {
         RuntimeEnvironment environment = new RuntimeEnvironment(Platform.BUKKIT, "26.3", root);
         try (AnimusRuntime runtime = new AnimusRuntime(environment)) {

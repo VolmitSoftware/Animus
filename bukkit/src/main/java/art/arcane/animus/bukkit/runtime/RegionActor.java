@@ -1012,15 +1012,16 @@ final class RegionActor implements RegionOwner.Body {
         current.execution = null; current.segment = false;
         routeStatus(current, "replanning", reason);
     }
-    /** Terrain blocks the leg for good: logged once per NPC with the leg, then the route fails as any failed leg does. */
+    /** Terrain blocks the leg for good, or no plan found a way: logged once per NPC with the leg, then the route fails as any failed leg does. */
     private void blockLeg(Route current, String reason) {
         if (current.recording != null) { failLeg(current, reason); return; }
         if (exactPoint(current, reason)) return;
         boolean once = AnimusLog.shared().debug();
         if (!once || !blockedWarned) {
             if (once) blockedWarned = true;
-            AnimusLog.shared().routine(PersistedNpcService.BLOCKED_LEGS, id, PersistedNpcService.blockedLeg(id, current.waypoint, current.origin, current.goal, reason,
-                    current.leg != null && movement.teleportsWhenStuck()), host.plugin.getLogger()::warning);
+            boolean terrain = current.longLeg.terrainBlocks();
+            AnimusLog.shared().routine(PersistedNpcService.blockedLegs(terrain), id, PersistedNpcService.blockedLeg(id, current.waypoint, current.origin, current.goal, reason,
+                    current.leg != null && movement.teleportsWhenStuck(), terrain), host.plugin.getLogger()::warning);
         }
         failLeg(current, reason);
     }

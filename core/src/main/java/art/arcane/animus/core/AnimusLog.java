@@ -51,7 +51,7 @@ public final class AnimusLog {
     }
 
     /**
-     * One routine diagnostic. {@code kind} reads after a count, such as {@code "NPCs hit blocked route legs"}, and
+     * One routine diagnostic. {@code kind} reads after a count, such as {@code "NPCs hit route legs blocked by terrain"}, and
      * {@code subject} is what it is about, counted once per window.
      */
     public void routine(String kind, String subject, String message, Consumer<String> sink) {

@@ -395,6 +395,9 @@
 - Web editor: the shop editor's slot inspector became the offers board; slots are picked from the chest window preview or set per offer.
 - Web editor: attributes are added from a grouped, searchable dropdown ordered for the body type, with ranges, vanilla defaults and a note on attributes the body does not have.
 - Web editor: the Body and Appearance parts show only the pose, traits, skin and equipment slots the body type can show.
+- A route leg that gets no closer because its plan reached the edge of the terrain it read is planned again over four, then sixteen times the area, holding both ends of a short leg.
+- Blocked route legs are logged and summarized as blocked by terrain or as legs the planner could not path.
+- A stuck route teleport lifts a waypoint buried by later building to the first place the NPC fits up to 10 blocks above it, as Citizens does.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
@@ -579,6 +582,12 @@
 - Web editor: the 3D stage drew a horse with no coat setting as brown; it now shows the white coat the client shows.
 - `/animus edit` removes a field set to `null`, so a skinned or seated player NPC can become a horse in one edit; before, the skin could not be dropped without editing the file.
 - A refused `/animus edit` says `Cannot save` instead of `Cannot spawn` or a bare field error, and a refused type change shows the `null` that removes the field in the same edit.
+- NPC definitions with `"group": ""`, which sit directly in `npcs/`, are accepted, so `/animus create ... group=` works.
+- Walking NPCs cross a gap in their footing narrower than a quarter block, such as the open front of a shelf beside a slab, instead of stopping mid-step.
+- A walking NPC hanging on a vine or ladder steps off it onto a ledge beside it.
+- Fall limits count a surface lower than half a block, such as a closed trapdoor, as part of the block under it, so a step off a trapdoor is one level, as the way up was.
+- An NPC placed at a whole height on a closed trapdoor or other low surface rises out of it onto its top instead of being blocked inside it.
+- A climbing NPC steps off a ledge onto a vine, ladder or scaffolding beside it and climbs down.
 
 ### Notes
 

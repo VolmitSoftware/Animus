@@ -74,7 +74,8 @@ public final class NpcDefinition {
         catch (IllegalArgumentException e) { errors.add("$.uuid: expected canonical UUID"); }
         if (!string(object, "id", errors).matches(NpcPaths.SEGMENT))
             errors.add("$.id: expected 1–64 lowercase letters, digits, _ or -");
-        if (!string(object, "group", errors).matches(NpcPaths.FOLDER))
+        JsonElement folder = object.get("group");
+        if (folder == null || !folder.isJsonPrimitive() || !folder.getAsJsonPrimitive().isString() || !folder.getAsString().matches(NpcPaths.FOLDER))
             errors.add("$.group: expected the folder under npcs/: empty, or up to " + NpcPaths.MAX_FOLDERS + " names of 1–64 lowercase letters, digits, _ or - joined by /");
         if (!NpcAppearance.displayText(string(object, "name", errors)))
             errors.add("$.name: expected at most " + NpcAppearance.MAX_TEXT + " characters without control characters");

@@ -8,8 +8,10 @@ import java.util.Objects;
 /**
  * Bounded swept clearance against real collision boxes. The swept volume is the box spanning the body at both ends of
  * one segment of at most two blocks. Support means a collision surface exactly at the feet under any part of the body,
- * as with a vanilla entity. A body may not move into a hazard it was not already touching. Climbable cells hold a body up
- * but never obstruct it.
+ * as with a vanilla entity. A moving body also counts a surface within {@link #BRIDGE} of its sides, so it walks across a
+ * strip without boxes narrower than the planner's quarter-block samples, such as the open front of a shelf beside a slab,
+ * as a vanilla entity does with a dip too small to see. A body may not move into a hazard it was not already touching.
+ * Climbable cells hold a body up but never obstruct it.
  */
 public final class MotionValidator {
     /**
@@ -23,19 +25,21 @@ public final class MotionValidator {
         public boolean clear() { return status == Status.CLEAR; }
     }
     public static final double MAX_SEGMENT = 2;
+    /** How far beside a moving body a surface still holds it up: half the planner's quarter-block sample spacing. */
+    public static final double BRIDGE = 0.125;
     static final double EPSILON = 0.000001;
     private static final double TOUCH = 0.01;
     private MotionValidator() {}
 
     /**
      * The most cells {@link #check} can read for this body moving at most {@code distance}, so a caller can size a budget
-     * for a large body instead of failing it. It is at most 588 for the largest hull and longest segment.
+     * for a large body instead of failing it. It is at most 768 for the largest hull and longest segment.
      */
     public static int cellBudget(double width, double height, double distance) {
         if (!(width > 0 && width <= MovementProfile.MAX_WIDTH) || !(height > 0 && height <= MovementProfile.MAX_HEIGHT)
                 || !(distance >= 0 && distance <= MAX_SEGMENT + EPSILON))
             throw new IllegalArgumentException("Requires width<=4, height<=8 and a segment of at most 2 blocks");
-        int across = (int) Math.ceil(width + distance) + 1, up = (int) Math.ceil(height + distance) + 2;
+        int across = (int) Math.ceil(width + distance + (distance > 0 ? 2 * BRIDGE : 0)) + 1, up = (int) Math.ceil(height + distance) + 2;
         return across * across * up;
     }
 
@@ -50,7 +54,8 @@ public final class MotionValidator {
         double lowX = Math.min(from.x(), to.x()) - half, highX = Math.max(from.x(), to.x()) + half;
         double lowZ = Math.min(from.z(), to.z()) - half, highZ = Math.max(from.z(), to.z()) + half;
         double lowY = Math.min(from.y(), to.y()), highY = Math.max(from.y(), to.y()) + height;
-        int minX = floor(lowX + EPSILON), maxX = floor(highX - EPSILON), minZ = floor(lowZ + EPSILON), maxZ = floor(highZ - EPSILON);
+        double reach = from.distance(to) > EPSILON ? BRIDGE : 0;
+        int minX = floor(lowX - reach + EPSILON), maxX = floor(highX + reach - EPSILON), minZ = floor(lowZ - reach + EPSILON), maxZ = floor(highZ + reach - EPSILON);
         // The layer under the feet holds support, and its boxes may overhang upwards by half a block.
         int minY = floor(lowY + EPSILON) - 1, maxY = floor(highY - EPSILON);
         int sizeX = maxX - minX + 1, sizeY = maxY - minY + 1, sizeZ = maxZ - minZ + 1;
@@ -70,7 +75,8 @@ public final class MotionValidator {
             Cell cell = region.at(x, y, z);
             if (!cell.climbable()) for (Cell.Box box : cell.boxes())
                 if (overlaps(x + box.minX(), x + box.maxX(), lowX, highX) && overlaps(z + box.minZ(), z + box.maxZ(), lowZ, highZ)
-                        && overlaps(y + box.minY(), y + box.maxY(), lowY, highY))
+                        && overlaps(y + box.minY(), y + box.maxY(), lowY, highY)
+                        && !(depth(x, y, z, box, to, half, height) < depth(x, y, z, box, from, half, height) - EPSILON))
                     return new Result(Status.BLOCKED, count, "Swept body is obstructed");
             if (medium == Medium.AIR && cell.water() && overlaps(y, y + 1, lowY, highY))
                 return new Result(Status.BLOCKED, count, "Water in the way of an airborne body");
@@ -80,8 +86,10 @@ public final class MotionValidator {
             return new Result(Status.HAZARD, count, "Lava, fire or another hazard in the way");
         if ((medium == Medium.GROUND || medium == Medium.CLIMB) && region.water(to, half, floor(to.y() + height - EPSILON)))
             return new Result(Status.BLOCKED, count, "Water too deep to wade");
-        boolean supported = region.supported(to, half);
-        if (requireSupport && !supported) return new Result(Status.BLOCKED, count, "No ground under the body");
+        boolean supported = region.supported(to, half + reach);
+        // A climbable cell at the feet holds a walking body too, so one hanging on a vine steps off it onto a ledge.
+        if (requireSupport && !supported && !(medium == Medium.GROUND && region.holds(to, half)))
+            return new Result(Status.BLOCKED, count, "No ground under the body");
         if (medium == Medium.CLIMB && !supported && !region.holds(to, half)) return new Result(Status.BLOCKED, count, "Nothing to climb");
         if (medium == Medium.WATER && !supported && !region.water(to, half, floor(to.y() + EPSILON)))
             return new Result(Status.BLOCKED, count, "No swimming fluid or support");
@@ -126,6 +134,15 @@ public final class MotionValidator {
                                 return true;
             return false;
         }
+    }
+    /**
+     * How deep, up and down, the body at {@code feet} is inside this box; 0 when apart. A box the body already stands
+     * inside, such as a closed trapdoor under an NPC placed at a whole height, does not stop a move that goes less deep.
+     */
+    private static double depth(int x, int y, int z, Cell.Box box, Vec3 feet, double half, double height) {
+        if (!overlaps(x + box.minX(), x + box.maxX(), feet.x() - half, feet.x() + half) || !overlaps(z + box.minZ(), z + box.maxZ(), feet.z() - half, feet.z() + half))
+            return 0;
+        return Math.max(0, Math.min(y + box.maxY(), feet.y() + height) - Math.max(y + box.minY(), feet.y()));
     }
     private static boolean subset(BitSet inner, BitSet outer) {
         BitSet extra = (BitSet) inner.clone(); extra.andNot(outer); return extra.isEmpty();

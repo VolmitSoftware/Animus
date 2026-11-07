@@ -2,7 +2,7 @@
  * Bounded experimental navigation capture for Bukkit/Paper. Construct the bridge on the main server
  * thread; request planning using a world UUID and primitive capture bounds. The bridge samples at most
  * 256 work units per tick across at most eight total capturing/queued/running jobs, and captures at most
- * 8192 voxels per job. Loaded-chunk checks precede every block read. Unavailable cells remain unknown.
+ * 131072 voxels per job. Loaded-chunk checks precede every block read. Unavailable cells remain unknown.
  * The worker receives only an immutable voxel snapshot. Folia is rejected until region-aware capture
  * and ownership transfer exist.
  *

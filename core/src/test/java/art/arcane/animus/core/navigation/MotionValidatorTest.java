@@ -23,6 +23,16 @@ class MotionValidatorTest {
         assertTrue(check(START, next, .6, 1.8, Medium.GROUND, true, 128, clear).clear());
         assertEquals(Status.BLOCKED, check(START, next, .6, 1.8, Medium.GROUND, true, 128, (x, y, z) -> x == 1 && y == 1 ? SOLID : clear.sample(x, y, z)).status());
     }
+    /**
+     * An NPC placed at a whole height on a closed trapdoor stands inside it. It may rise out onto its top, but not move
+     * on through it while still inside.
+     */
+    @Test void aBodyInsideALowSurfaceRisesOutOfItButCannotMoveThroughIt() {
+        Sampler trapdoor = (x, y, z) -> y == 0 ? SOLID : y == 1 ? Cell.layer(0.1875) : AIR;
+        assertTrue(check(START, new Vec3(.5, 1.1875, .5), .6, 1.8, Medium.GROUND, true, 128, trapdoor).clear());
+        assertTrue(check(START, new Vec3(.5, 1.0625, .5), .6, 1.8, Medium.GROUND, false, 128, trapdoor).clear(), "a step part of the way out");
+        assertEquals(Status.BLOCKED, check(START, new Vec3(.75, 1, .5), .6, 1.8, Medium.GROUND, true, 128, trapdoor).status());
+    }
     @Test void unavailableTerrainIsNotAirOrARequestToSampleFurtherCells() {
         AtomicInteger calls = new AtomicInteger();
         MotionValidator.Result result = check(START, new Vec3(.75, 1, .5), .6, 1.8, Medium.GROUND, true, 128, (x, y, z) -> { calls.incrementAndGet(); return UNAVAILABLE; });
