@@ -3,6 +3,7 @@ import 'package:animus_editor/logic/citizens/java_json.dart';
 import 'package:animus_editor/logic/inspect/inspect_schemas.dart';
 import 'package:animus_editor/logic/inspect/schema_fields.dart';
 import 'package:animus_editor/logic/npc/npc_attributes.dart';
+import 'package:animus_editor/logic/select/select_model.dart';
 import 'package:animus_editor/mc/npc/npc_look.dart';
 import 'package:test/test.dart';
 
@@ -21,6 +22,35 @@ void main() {
       expect(scale.range, '0.0625..16');
       expect(scale.description, contains('Body size'));
       expect(attributeTable(npc).keys, containsAll(<String>['gravity', 'movement_speed', 'max_health']));
+    });
+
+    test('knows which bodies carry each attribute', () {
+      expect(attributeTable(npc)['scale']!.bodies, contains('minecraft:horse'));
+      expect(attributeTable(npc)['attack_damage']!.bodies, <String>{'minecraft:frog', 'minecraft:player'});
+      expect(attributeTable(npc)['scale']!.carriedBy('minecraft:horse'), isTrue);
+      expect(attributeTable(npc)['luck']!.carriedBy('minecraft:horse'), isFalse);
+      expect(attributeTable(npc)['luck']!.carriedBy(null), isTrue);
+    });
+
+    test('the add dropdown groups every attribute and orders it for the body', () {
+      final List<SelectOption> horse = attributeOptions(attributeSpecs(npc), <String, Object?>{'scale': 2}, 'minecraft:horse');
+      expect(horse.length, attributeSpecs(npc).length);
+      expect(<String?>{for (final SelectOption option in horse) option.group}.toList(),
+          <String>['Size and movement', 'Combat', 'Senses', 'Other', 'Player only']);
+      final SelectOption scale = horse.firstWhere((SelectOption option) => option.value == 'scale');
+      expect(scale.disabled, isTrue);
+      expect(scale.description, '0.0625..16, vanilla 1');
+      expect(horse.first.value, 'scale');
+      final SelectOption damage = horse.firstWhere((SelectOption option) => option.value == 'attack_damage');
+      expect(damage.disabled, isFalse);
+      expect(damage.description, endsWith('no effect on this body'));
+      final List<String> combat = <String>[for (final SelectOption option in horse) if (option.group == 'Combat') option.value];
+      expect(combat.indexOf('max_health'), lessThan(combat.indexOf('attack_damage')), reason: 'carried attributes come first');
+      expect(horse.where((SelectOption option) => option.group == 'Player only').map((SelectOption option) => option.value), containsAll(<String>['luck', 'attack_speed']));
+      final List<SelectOption> player = attributeOptions(attributeSpecs(npc), const <String, Object?>{}, 'minecraft:player');
+      expect(<String?>{for (final SelectOption option in player) option.group}.toList(),
+          <String>['Size and movement', 'Combat', 'Senses', 'Player only', 'Other']);
+      expect(player.where((SelectOption option) => option.description!.contains('no effect')).map((SelectOption option) => option.value), containsAll(<String>['flying_speed', 'spawn_reinforcements']));
     });
 
     test('a schema without attributes lists none', () {

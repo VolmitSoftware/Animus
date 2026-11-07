@@ -5,6 +5,7 @@
 library;
 
 import '../../logic/minecraft_ids.dart';
+import '../../logic/npc/npc_appearance.dart';
 import '../../logic/npc/npc_attributes.dart';
 
 /// `NpcPose`.
@@ -45,6 +46,18 @@ enum NpcSlot {
     return null;
   }
 }
+
+/// The equipment slots the client draws on each body, in slot order. Other
+/// bodies (types Animus does not present) keep every slot.
+List<NpcSlot> mcDrawnSlots(String type) => switch (type) {
+      'minecraft:player' || 'minecraft:armor_stand' => const <NpcSlot>[
+          NpcSlot.mainHand, NpcSlot.offHand, NpcSlot.head, NpcSlot.chest, NpcSlot.legs, NpcSlot.feet, //
+        ],
+      'minecraft:horse' => const <NpcSlot>[NpcSlot.body, NpcSlot.saddle],
+      'minecraft:llama' => const <NpcSlot>[NpcSlot.body],
+      'minecraft:turtle' || 'minecraft:frog' || 'minecraft:armadillo' || 'minecraft:ender_dragon' => const <NpcSlot>[],
+      _ => NpcSlot.values,
+    };
 
 /// One equipped item: its bare id (`diamond_sword`) and the `components`
 /// text, of which the preview reads the few parts it can show.
@@ -206,6 +219,7 @@ final class NpcLook {
     this.skin,
     this.yawDeg = 0,
     this.scale = 1,
+    this.settings = const <String, Object?>{},
   });
 
   static const String player = 'minecraft:player';
@@ -250,6 +264,10 @@ final class NpcLook {
       skin: skin is String && _skin.hasMatch(skin) ? skin : null,
       yawDeg: yaw is num && yaw.isFinite ? yaw.toDouble() : 0,
       scale: definitionScale(json),
+      settings: switch (json[bodySettingsField(type) ?? '']) {
+        final Map<String, Object?> own => own,
+        _ => const <String, Object?>{},
+      },
     );
   }
 
@@ -268,6 +286,10 @@ final class NpcLook {
   /// The `scale` attribute: the body and everything it wears, and the text
   /// over it, grow with it.
   final double scale;
+
+  /// The body type's own settings (`horse`, `llama`, ...) as written;
+  /// settings of another body are ignored, as the server refuses them.
+  final Map<String, Object?> settings;
 
   bool get isPlayer => type == player;
 

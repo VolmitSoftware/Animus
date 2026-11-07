@@ -378,7 +378,8 @@ final class RegionActor implements RegionOwner.Body {
         tickRig();
         if (sampled) mark = metrics.sampledLap(Subsystem.RIGS, mark);
         look();
-        if (spec.type().equals(DragonBody.TYPE)) dragonPhase = dragonMotion.observe(turns, state.snapshot().position().point(), grounded());
+        if (spec.type().equals(DragonBody.TYPE)) dragonPhase = dragonMotion.observe(turns, state.snapshot().position().point(), grounded(),
+                DragonBody.restingPhase(spec.appearance().traits().variant()));
         ChunkPosition now = anchor();
         if (!now.equals(anchored)) { host.anchor(this, anchored, now); anchored = now; }
         publish(true);

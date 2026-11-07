@@ -41,6 +41,7 @@ import '../npc/appearance_editor.dart';
 import '../npc/attributes_editor.dart';
 import '../npc/behavior_list.dart';
 import '../npc/body_type_field.dart';
+import '../npc/body_type_parts.dart';
 import '../npc/combat_editor.dart';
 import '../npc/equipment_editor.dart';
 import '../npc/group_parts.dart';
@@ -74,6 +75,11 @@ const Set<String> _laidOut = <String>{
   'rig',
   'pose',
   'armorStand',
+  'horse',
+  'llama',
+  'frog',
+  'armadillo',
+  'dragon',
   'hologram',
   'nameplate',
   'inventory',
@@ -185,9 +191,16 @@ class _NpcInspectorState extends State<NpcInspector> {
   List<Diagnostic> get _diagnostics =>
       _group ? _valuesDiagnostics(component.diagnostics) : <Diagnostic>[...component.diagnostics, ...effectiveActivationDiagnostics(_file, _groups)];
 
-  /// A group has no body type; armor stand values imply one, as the server's
-  /// check assumes.
-  String get _type => _group ? (_doc.containsKey('armorStand') ? 'minecraft:armor_stand' : 'minecraft:player') : asString(_doc['type']) ?? 'minecraft:player';
+  /// A group has no body type; armor stand values or one body's own settings
+  /// imply one, as the server's check assumes.
+  String get _type {
+    if (!_group) return asString(_doc['type']) ?? 'minecraft:player';
+    if (_doc.containsKey('armorStand')) return 'minecraft:armor_stand';
+    for (final MapEntry<String, String> settings in bodySettingsTypes.entries) {
+      if (_doc.containsKey(settings.key)) return settings.value;
+    }
+    return 'minecraft:player';
+  }
 
   /// Writes [value] at [steps] of the definition fields, which sit under
   /// `values` when editing a group.
@@ -479,6 +492,7 @@ class _NpcInspectorState extends State<NpcInspector> {
     final String? rig = asString(asMap(doc['rig'])['id']);
     final List<String> rigs = _ids(DocumentKind.rig);
     final List<String> poses = posesFor(type);
+    final List<MisplacedField> misplaced = _group ? const <MisplacedField>[] : misplacedBodyFields(doc, type);
     final String summary = <String>[
       if (!_group) type.startsWith('minecraft:') ? type.substring(10).replaceAll('_', ' ') : type,
       if (!_group) doc['spawned'] == true ? 'spawned' : 'despawned',
@@ -500,6 +514,12 @@ class _NpcInspectorState extends State<NpcInspector> {
           problems: fieldProblems(_spec('type'), doc['type'], r'$.type', _diagnostics),
           child: _bodyType(doc),
         ),
+        if (misplaced.isNotEmpty)
+          MisplacedFields(
+            fields: misplaced,
+            onRemove: (String field) => _write(<JsonStep>[field], null),
+            onRemoveAll: () => component.onJson((Object? latest) => withoutMisplacedBodyFields(asMap(latest), type), coalesce: 'npc:misplaced'),
+          ),
         if (!_group) _field('spawned'),
         InspectRow(
           label: 'Rig',
@@ -524,10 +544,10 @@ class _NpcInspectorState extends State<NpcInspector> {
         ),
         if (rig != null && !rigs.contains(rig))
           const dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('Not in this workspace; may be on the server.')]),
-        InspectRow(
+        if (_group || type == 'minecraft:player') InspectRow(
           label: 'Pose',
           labelFor: poseId,
-          help: type == 'minecraft:player' ? '' : 'Player bodies only.',
+          help: _group ? 'Player bodies only.' : '',
           problems: diagnosticsAt(_diagnostics, r'$.pose'),
           child: GuiSelect(
             id: poseId,
@@ -546,13 +566,19 @@ class _NpcInspectorState extends State<NpcInspector> {
             diagnostics: _diagnostics,
             onChanged: (Object? value) => _write(<JsonStep>['armorStand'], value),
           ),
-        ] else if (doc.containsKey('armorStand') && !_group)
-          dom.div(classes: 'animus-row', <Widget>[
-            const dom.span(classes: 'animus-gui-problem is-error', <Widget>[Component.text('Only for minecraft:armor_stand bodies.')]),
-            Button.ghost(label: 'Remove armorStand', size: ButtonSize.small, onPressed: () => _write(<JsonStep>['armorStand'], null)),
-          ]),
+        ],
+        BodySettingsEditor(
+          type: type,
+          doc: doc,
+          schema: _schema,
+          diagnostics: _diagnostics,
+          onChanged: (String field, Object? value) => _write(<JsonStep>[field], value),
+        ),
         const NpcSubhead('Traits'),
-        for (final String trait in _traits) _field(trait),
+        for (final String trait in _group ? _traits : traitsFor(type)) _field(trait),
+        if (!_group)
+          for (final String trait in _traits)
+            if (!traitsFor(type).contains(trait) && doc.containsKey(trait)) _field(trait),
       ],
     );
   }
@@ -600,6 +626,7 @@ class _NpcInspectorState extends State<NpcInspector> {
         AttributesEditor(
           value: doc[attributesField],
           specs: attributeSpecs(_schema),
+          bodyType: _group ? null : _type,
           diagnostics: _diagnostics,
           onChanged: (JsonMap? attributes) => _write(const <JsonStep>[attributesField], attributes),
         ),
@@ -661,17 +688,20 @@ class _NpcInspectorState extends State<NpcInspector> {
       onToggle: (bool open) => setState(() => _opened['appearance'] = open),
       children: <Widget>[
         const NpcSubhead('Skin'),
-        SkinPicker(
-          npcId: component.document.id,
-          target: SkinTarget(_group ? DocumentKind.group : DocumentKind.npc, component.document.id),
-          value: skin,
-          workspaceDocuments: component.workspaceDocuments,
-          resources: component.skinEditing?.resources ?? const <String, Uint8List>{},
-          onCommit: component.skinEditing?.commit,
-          diagnostics: _diagnostics,
-          onChanged: (String? value) => _write(<JsonStep>['skin'], value),
-          onLoaded: component.onSkinLoaded,
-        ),
+        if (_group || _type == 'minecraft:player')
+          SkinPicker(
+            npcId: component.document.id,
+            target: SkinTarget(_group ? DocumentKind.group : DocumentKind.npc, component.document.id),
+            value: skin,
+            workspaceDocuments: component.workspaceDocuments,
+            resources: component.skinEditing?.resources ?? const <String, Uint8List>{},
+            onCommit: component.skinEditing?.commit,
+            diagnostics: _diagnostics,
+            onChanged: (String? value) => _write(<JsonStep>['skin'], value),
+            onLoaded: component.onSkinLoaded,
+          )
+        else
+          NoSkinNote(diagnostics: _diagnostics),
         if (_group) _skinPool(doc),
         const NpcSubhead('Equipment'),
         EquipmentEditor(

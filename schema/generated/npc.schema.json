@@ -114,7 +114,7 @@
     "skin": {
       "type": "string",
       "pattern": "^[a-f0-9]{64}$",
-      "description": "SHA-256 of a skin document under skins/."
+      "description": "minecraft:player bodies only: SHA-256 of a skin document under skins/."
     },
     "equipment": {
       "type": "object",
@@ -348,6 +348,100 @@
         }
       }
     },
+    "horse": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:horse bodies only: the coat. The saddle and armour are the saddle and body equipment slots.",
+      "properties": {
+        "color": {
+          "enum": [
+            "white",
+            "creamy",
+            "chestnut",
+            "brown",
+            "black",
+            "gray",
+            "dark_brown"
+          ],
+          "description": "The coat colour. white by default."
+        },
+        "markings": {
+          "enum": [
+            "none",
+            "white",
+            "white_field",
+            "white_dots",
+            "black_dots"
+          ],
+          "description": "White or black patterns on the coat. none by default."
+        }
+      }
+    },
+    "llama": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:llama bodies only. The carpet it wears is the body equipment slot.",
+      "properties": {
+        "variant": {
+          "enum": [
+            "creamy",
+            "white",
+            "brown",
+            "gray"
+          ],
+          "description": "The wool colour. creamy by default."
+        },
+        "chest": {
+          "type": "boolean",
+          "description": "Carry a chest on its back."
+        }
+      }
+    },
+    "frog": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:frog bodies only.",
+      "properties": {
+        "variant": {
+          "enum": [
+            "temperate",
+            "warm",
+            "cold"
+          ],
+          "description": "temperate (orange) by default, warm (white) or cold (green)."
+        }
+      }
+    },
+    "armadillo": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:armadillo bodies only.",
+      "properties": {
+        "state": {
+          "enum": [
+            "idle",
+            "rolling",
+            "scared",
+            "unrolling"
+          ],
+          "description": "scared shows it rolled up. idle by default."
+        }
+      }
+    },
+    "dragon": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:ender_dragon bodies only. A moving dragon always flaps.",
+      "properties": {
+        "phase": {
+          "enum": [
+            "hovering",
+            "sitting"
+          ],
+          "description": "How it rests when it is not moving: hovering in the air or sitting with folded wings. By default it sits when something is under it and hovers otherwise."
+        }
+      }
+    },
     "glowing": {
       "type": "boolean",
       "description": "An outline glow in the team colour."
@@ -399,560 +493,1176 @@
           "minimum": 0.0,
           "maximum": 2048.0,
           "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
-          "default": 1.0
+          "default": 1.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:air_drag_modifier": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 2048.0,
           "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
-          "default": 1.0
+          "default": 1.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "armor": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 30.0,
           "description": "Vanilla default 0. Combat armor points with vanilla damage reduction, unless the combat module sets defense.armor or defense.armorFromEquipment.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:armor": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 30.0,
           "description": "Vanilla default 0. Combat armor points with vanilla damage reduction, unless the combat module sets defense.armor or defense.armorFromEquipment.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "armor_toughness": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 20.0,
           "description": "Vanilla default 0. Combat armor toughness, used with armor.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:armor_toughness": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 20.0,
           "description": "Vanilla default 0. Combat armor toughness, used with armor.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "attack_damage": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 2048.0,
           "description": "Vanilla default 2. Melee damage unless the combat module sets melee.damage or melee.fromEquipment.",
-          "default": 2.0
+          "default": 2.0,
+          "x-bodies": [
+            "minecraft:frog",
+            "minecraft:player"
+          ]
         },
         "minecraft:attack_damage": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 2048.0,
           "description": "Vanilla default 2. Melee damage unless the combat module sets melee.damage or melee.fromEquipment.",
-          "default": 2.0
+          "default": 2.0,
+          "x-bodies": [
+            "minecraft:frog",
+            "minecraft:player"
+          ]
         },
         "attack_knockback": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 5.0,
           "description": "Vanilla default 0. Adds half its value to the 0.4 base melee knockback unless the combat module sets melee.knockback.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:attack_knockback": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 5.0,
           "description": "Vanilla default 0. Adds half its value to the 0.4 base melee knockback unless the combat module sets melee.knockback.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "attack_speed": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1024.0,
           "description": "Vanilla default 4. Melee hits per second unless the combat module sets melee.cooldownTicks.",
-          "default": 4.0
+          "default": 4.0,
+          "x-bodies": [
+            "minecraft:player"
+          ]
         },
         "minecraft:attack_speed": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1024.0,
           "description": "Vanilla default 4. Melee hits per second unless the combat module sets melee.cooldownTicks.",
-          "default": 4.0
+          "default": 4.0,
+          "x-bodies": [
+            "minecraft:player"
+          ]
         },
         "below_name_distance": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 512.0,
           "description": "Vanilla default 10. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
-          "default": 10.0
+          "default": 10.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:below_name_distance": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 512.0,
           "description": "Vanilla default 10. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
-          "default": 10.0
+          "default": 10.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "block_break_speed": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1024.0,
           "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 1.0
+          "default": 1.0,
+          "x-bodies": [
+            "minecraft:player"
+          ]
         },
         "minecraft:block_break_speed": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1024.0,
           "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 1.0
+          "default": 1.0,
+          "x-bodies": [
+            "minecraft:player"
+          ]
         },
         "block_interaction_range": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 64.0,
           "description": "Vanilla default 4.5. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 4.5
+          "default": 4.5,
+          "x-bodies": [
+            "minecraft:player"
+          ]
         },
         "minecraft:block_interaction_range": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 64.0,
           "description": "Vanilla default 4.5. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 4.5
+          "default": 4.5,
+          "x-bodies": [
+            "minecraft:player"
+          ]
         },
         "bounciness": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:bounciness": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "burning_time": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1024.0,
           "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 1.0
+          "default": 1.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:burning_time": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1024.0,
           "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 1.0
+          "default": 1.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "camera_distance": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 32.0,
           "description": "Vanilla default 4. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 4.0
+          "default": 4.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:camera_distance": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 32.0,
           "description": "Vanilla default 4. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 4.0
+          "default": 4.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "entity_interaction_range": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 64.0,
           "description": "Vanilla default 3. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 3.0
+          "default": 3.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:entity_interaction_range": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 64.0,
           "description": "Vanilla default 3. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 3.0
+          "default": 3.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "explosion_knockback_resistance": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:explosion_knockback_resistance": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "fall_damage_multiplier": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 100.0,
           "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 1.0
+          "default": 1.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:fall_damage_multiplier": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 100.0,
           "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 1.0
+          "default": 1.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "flying_speed": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1024.0,
           "description": "Vanilla default 0.4. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.4
+          "default": 0.4,
+          "x-bodies": []
         },
         "minecraft:flying_speed": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1024.0,
           "description": "Vanilla default 0.4. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.4
+          "default": 0.4,
+          "x-bodies": []
         },
         "follow_range": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 2048.0,
           "description": "Vanilla default 32. Combat scan range, at most 256, unless the combat module sets targeting.scanRange.",
-          "default": 32.0
+          "default": 32.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:follow_range": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 2048.0,
           "description": "Vanilla default 32. Combat scan range, at most 256, unless the combat module sets targeting.scanRange.",
-          "default": 32.0
+          "default": 32.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:turtle"
+          ]
         },
         "friction_modifier": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 2048.0,
           "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
-          "default": 1.0
+          "default": 1.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:friction_modifier": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 2048.0,
           "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
-          "default": 1.0
+          "default": 1.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "gravity": {
           "type": "number",
           "minimum": -1.0,
           "maximum": 1.0,
           "description": "Vanilla default 0.08. Fall acceleration in blocks per tick squared; 0 or less hovers. The gravity field set to false hovers whatever this says.",
-          "default": 0.08
+          "default": 0.08,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:gravity": {
           "type": "number",
           "minimum": -1.0,
           "maximum": 1.0,
           "description": "Vanilla default 0.08. Fall acceleration in blocks per tick squared; 0 or less hovers. The gravity field set to false hovers whatever this says.",
-          "default": 0.08
+          "default": 0.08,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "jump_strength": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 32.0,
           "description": "Vanilla default 0.41999998688697815. Jump height on paths, worked out with gravity, at most 3 blocks.",
-          "default": 0.41999998688697815
+          "default": 0.41999998688697815,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:jump_strength": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 32.0,
           "description": "Vanilla default 0.41999998688697815. Jump height on paths, worked out with gravity, at most 3 blocks.",
-          "default": 0.41999998688697815
+          "default": 0.41999998688697815,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "knockback_resistance": {
           "type": "number",
           "minimum": -2.0,
           "maximum": 1.0,
           "description": "Vanilla default 0. The share of combat knockback the NPC ignores; below 0 it takes more.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:knockback_resistance": {
           "type": "number",
           "minimum": -2.0,
           "maximum": 1.0,
           "description": "Vanilla default 0. The share of combat knockback the NPC ignores; below 0 it takes more.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "luck": {
           "type": "number",
           "minimum": -1024.0,
           "maximum": 1024.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:player"
+          ]
         },
         "minecraft:luck": {
           "type": "number",
           "minimum": -1024.0,
           "maximum": 1024.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:player"
+          ]
         },
         "max_absorption": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 2048.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:max_absorption": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 2048.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "max_health": {
           "type": "number",
           "minimum": 1.0,
           "maximum": 1024.0,
           "description": "Vanilla default 20. Combat maximum health unless the combat module sets defense.maximumHealth.",
-          "default": 20.0
+          "default": 20.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:max_health": {
           "type": "number",
           "minimum": 1.0,
           "maximum": 1024.0,
           "description": "Vanilla default 20. Combat maximum health unless the combat module sets defense.maximumHealth.",
-          "default": 20.0
+          "default": 20.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "mining_efficiency": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1024.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:player"
+          ]
         },
         "minecraft:mining_efficiency": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1024.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:player"
+          ]
         },
         "movement_efficiency": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:movement_efficiency": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "movement_speed": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1024.0,
           "description": "Vanilla default 0.7. Walking speed when neither the route nor movement.speed sets one: a player body walks 43.17 times this in blocks per second, other bodies 44.05 times its square, kept within 1..10.",
-          "default": 0.7
+          "default": 0.7,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:movement_speed": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1024.0,
           "description": "Vanilla default 0.7. Walking speed when neither the route nor movement.speed sets one: a player body walks 43.17 times this in blocks per second, other bodies 44.05 times its square, kept within 1..10.",
-          "default": 0.7
+          "default": 0.7,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "name_tag_distance": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 512.0,
           "description": "Vanilla default 64. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
-          "default": 64.0
+          "default": 64.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:name_tag_distance": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 512.0,
           "description": "Vanilla default 64. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
-          "default": 64.0
+          "default": 64.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "oxygen_bonus": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1024.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:oxygen_bonus": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1024.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "safe_fall_distance": {
           "type": "number",
           "minimum": -1024.0,
           "maximum": 1024.0,
           "description": "Vanilla default 3. Blocks a path may drop, 0..16, unless movement.maximumFall is set.",
-          "default": 3.0
+          "default": 3.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:safe_fall_distance": {
           "type": "number",
           "minimum": -1024.0,
           "maximum": 1024.0,
           "description": "Vanilla default 3. Blocks a path may drop, 0..16, unless movement.maximumFall is set.",
-          "default": 3.0
+          "default": 3.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "scale": {
           "type": "number",
           "minimum": 0.0625,
           "maximum": 16.0,
           "description": "Vanilla default 1. Body size: hitbox, click reach, path clearance, rig bones and text height grow with it.",
-          "default": 1.0
+          "default": 1.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:scale": {
           "type": "number",
           "minimum": 0.0625,
           "maximum": 16.0,
           "description": "Vanilla default 1. Body size: hitbox, click reach, path clearance, rig bones and text height grow with it.",
-          "default": 1.0
+          "default": 1.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "sneaking_speed": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0,
           "description": "Vanilla default 0.3. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.3
+          "default": 0.3,
+          "x-bodies": [
+            "minecraft:player"
+          ]
         },
         "minecraft:sneaking_speed": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0,
           "description": "Vanilla default 0.3. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.3
+          "default": 0.3,
+          "x-bodies": [
+            "minecraft:player"
+          ]
         },
         "spawn_reinforcements": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": []
         },
         "minecraft:spawn_reinforcements": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": []
         },
         "step_height": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 10.0,
           "description": "Vanilla default 0.6. Blocks climbed without a jump, at most 1.5, unless movement.stepHeight is set.",
-          "default": 0.6
+          "default": 0.6,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:step_height": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 10.0,
           "description": "Vanilla default 0.6. Blocks climbed without a jump, at most 1.5, unless movement.stepHeight is set.",
-          "default": 0.6
+          "default": 0.6,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "submerged_mining_speed": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 20.0,
           "description": "Vanilla default 0.2. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.2
+          "default": 0.2,
+          "x-bodies": [
+            "minecraft:player"
+          ]
         },
         "minecraft:submerged_mining_speed": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 20.0,
           "description": "Vanilla default 0.2. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.2
+          "default": 0.2,
+          "x-bodies": [
+            "minecraft:player"
+          ]
         },
         "sweeping_damage_ratio": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:player"
+          ]
         },
         "minecraft:sweeping_damage_ratio": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:player"
+          ]
         },
         "tempt_range": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 2048.0,
           "description": "Vanilla default 10. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 10.0
+          "default": 10.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:tempt_range": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 2048.0,
           "description": "Vanilla default 10. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 10.0
+          "default": 10.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:turtle"
+          ]
         },
         "water_movement_efficiency": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:water_movement_efficiency": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 1.0,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "waypoint_receive_range": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 6.0E7,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:player"
+          ]
         },
         "minecraft:waypoint_receive_range": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 6.0E7,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:player"
+          ]
         },
         "waypoint_transmit_range": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 6.0E7,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         },
         "minecraft:waypoint_transmit_range": {
           "type": "number",
           "minimum": 0.0,
           "maximum": 6.0E7,
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
-          "default": 0.0
+          "default": 0.0,
+          "x-bodies": [
+            "minecraft:armadillo",
+            "minecraft:armor_stand",
+            "minecraft:ender_dragon",
+            "minecraft:frog",
+            "minecraft:horse",
+            "minecraft:llama",
+            "minecraft:player",
+            "minecraft:turtle"
+          ]
         }
       }
     },
@@ -3514,6 +4224,102 @@
         "not": {
           "required": [
             "armorStand"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:player"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "skin"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:horse"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "horse"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:llama"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "llama"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:frog"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "frog"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:armadillo"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "armadillo"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:ender_dragon"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "dragon"
           ]
         }
       }

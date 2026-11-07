@@ -93,7 +93,8 @@ class SchemaRegistry {
     }
     for (final MapEntry<String, Object?> entry in schema.entries) {
       final String key = entry.key;
-      if (!assertionKeywords.contains(key) && !annotationKeywords.contains(key)) {
+      // x- keys are vendor extensions: annotations the editor reads, never assertions.
+      if (!assertionKeywords.contains(key) && !annotationKeywords.contains(key) && !key.startsWith('x-')) {
         throw SchemaCompileException('$location: unsupported keyword "$key"');
       }
       final Object? value = entry.value;

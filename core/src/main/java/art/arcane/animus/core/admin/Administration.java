@@ -108,12 +108,37 @@ public final class Administration {
         return "Created dormant " + definition.id() + "; tx " + tx;
     }
 
-    /** Merges the top-level fields of a JSON object into the definition. */
+    /** Merges the top-level fields of a JSON object into the definition; see {@link #merge}. */
     public String edit(String id, String patch) throws IOException {
         NpcRepository.Draft draft = runtime.npcs().draft(id);
-        JsonObject fields = JsonDocuments.object(patch);
-        JsonObject edited = draft.document(); fields.entrySet().forEach(e -> edited.add(e.getKey(), e.getValue()));
+        JsonObject edited = draft.document();
+        merge(edited, JsonDocuments.object(patch));
         return "Saved " + id + "; tx " + runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), edited));
+    }
+
+    /**
+     * Puts each top-level field of {@code patch} into {@code document}; a null value removes the field, so one edit can
+     * change the body type and drop the skin or pose the new body cannot show.
+     */
+    public static void merge(JsonObject document, JsonObject patch) {
+        for (Map.Entry<String, JsonElement> entry : patch.entrySet()) {
+            if (entry.getValue().isJsonNull()) document.remove(entry.getKey());
+            else document.add(entry.getKey(), entry.getValue());
+        }
+    }
+
+    /**
+     * The reply to an edit the definition rules refuse. When the edit changes the body type, it shows how to drop the
+     * refused field in the same edit, since fields such as a skin or pose stay behind otherwise.
+     */
+    public static String refusal(String id, JsonObject patch, String message) {
+        String line = "Cannot save " + id + ": " + message;
+        int colon = message.indexOf(':');
+        if (!patch.has("type") || !message.startsWith("$.") || colon < 0) return line;
+        JsonObject example = new JsonObject();
+        example.add("type", patch.get("type"));
+        example.add(message.substring(2, colon).split("[.\\[]")[0], JsonNull.INSTANCE);
+        return line + ". Set a field to null in the same edit to remove it, such as " + example;
     }
 
     public String spawned(String id, boolean spawn) throws IOException {

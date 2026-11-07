@@ -27,6 +27,16 @@ class NpcAttributesTest {
         assertEquals(List.of("$.attributes: expected an object of attribute ids and numbers"), NpcDefinition.validate(json("\"attributes\":[1]")));
     }
 
+    @Test void theSchemaNamesTheBodiesThatCarryEachAttribute() {
+        com.google.gson.JsonObject properties = art.arcane.animus.core.behavior.schema.NpcSchemaGenerator.schema().getAsJsonObject("properties")
+                .getAsJsonObject("attributes").getAsJsonObject("properties");
+        java.util.List<String> scale = properties.getAsJsonObject("scale").getAsJsonArray("x-bodies").asList().stream().map(com.google.gson.JsonElement::getAsString).toList();
+        assertEquals(art.arcane.animus.core.presentation.BodyRules.TYPES.stream().sorted().toList(), scale);
+        java.util.List<String> damage = properties.getAsJsonObject("minecraft:attack_damage").getAsJsonArray("x-bodies").asList().stream().map(com.google.gson.JsonElement::getAsString).toList();
+        assertEquals(java.util.List.of("minecraft:frog", "minecraft:player"), damage);
+        assertEquals(java.util.List.of("minecraft:player"), properties.getAsJsonObject("luck").getAsJsonArray("x-bodies").asList().stream().map(com.google.gson.JsonElement::getAsString).toList());
+    }
+
     @Test void theSameAttributeTwiceIsRefused() {
         List<String> errors = NpcDefinition.validate(json("\"attributes\":{\"scale\":2,\"minecraft:scale\":3}"));
         assertEquals(List.of("$.attributes.minecraft:scale: scale is set twice"), errors);

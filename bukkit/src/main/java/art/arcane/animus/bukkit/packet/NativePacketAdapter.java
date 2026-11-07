@@ -795,6 +795,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         private final NativePresentation presentation;
         private final NativeBones bones;
         private final NativeAttributes attributes;
+        private final NativeBodyVariants variants;
         private final Object textDisplayType, seatType;
         private final NativeEntityIds ids;
         private final Object entityRegistry, zeroVelocity, survival, playerSkinAccessor;
@@ -904,6 +905,10 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             try { boundAttributes = new NativeAttributes(identifierParse); }
             catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC attributes unavailable: " + missing.getClass().getSimpleName()); }
             attributes = boundAttributes;
+            NativeBodyVariants boundVariants = null;
+            try { boundVariants = new NativeBodyVariants(dataValueCreate, plugin.getServer().getClass().getMethod("getServer").invoke(plugin.getServer())); }
+            catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC horse, llama, frog and armadillo looks unavailable: " + missing.getClass().getSimpleName()); }
+            variants = boundVariants;
             playerConnection = type("net.minecraft.server.level.ServerPlayer").getField("connection");
             networkConnection = field(type("net.minecraft.server.network.ServerCommonPacketListenerImpl"), "connection");
             channel = field(type("net.minecraft.network.Connection"), "channel");
@@ -1006,6 +1011,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             List<Object> values = new ArrayList<>();
             if (body.playerInfo != null) values.add(dataValueCreate.invoke(null, playerSkinAccessor, (byte) 0x7f));
             if (presentation != null) values.addAll(presentation.bodyValues(look, body.typeKey));
+            if (variants != null) values.addAll(variants.values(body.typeKey, look.traits().variant()));
             if (!values.isEmpty()) packets.add(metadataPacket.newInstance(body.entityId, values));
             Object attributed = attributes == null ? null : attributes.packet(body.entityId, body.nativeType, look.traits().attributes());
             if (attributed != null) packets.add(attributed);

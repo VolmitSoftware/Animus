@@ -9,6 +9,7 @@ import '../citizens/java_json.dart' show javaDoubleToString;
 import '../gui/gui_json.dart';
 import '../inspect/inspect_schemas.dart';
 import '../inspect/schema_fields.dart';
+import '../select/select_model.dart';
 
 const String attributesField = 'attributes';
 const String attributeNamespace = 'minecraft:';
@@ -25,7 +26,7 @@ String formatAttribute(double value) {
 
 /// One attribute the server knows.
 class AttributeSpec {
-  const AttributeSpec({required this.id, required this.minimum, required this.maximum, required this.defaultValue, this.description});
+  const AttributeSpec({required this.id, required this.minimum, required this.maximum, required this.defaultValue, this.description, this.bodies = const <String>{}});
 
   /// The bare id, such as `scale`.
   final String id;
@@ -37,6 +38,12 @@ class AttributeSpec {
 
   /// What the attribute does to an NPC.
   final String? description;
+
+  /// The body types whose viewers are sent this attribute (`x-bodies`).
+  final Set<String> bodies;
+
+  /// Whether a body of [type] carries it; any body when [type] is unknown.
+  bool carriedBy(String? type) => type == null || bodies.contains(type);
 
   /// `0.0625..16`.
   String get range => '${formatAttribute(minimum)}..${formatAttribute(maximum)}';
@@ -68,6 +75,7 @@ List<AttributeSpec> _read(SchemaView schema) {
       maximum: maximum is num ? maximum.toDouble() : double.maxFinite,
       defaultValue: fallback is num ? fallback.toDouble() : 0,
       description: asString(node['description']),
+      bodies: <String>{for (final Object? body in asList(node['x-bodies'])) ?asString(body)},
     ));
   }
   return List<AttributeSpec>.unmodifiable(specs);
@@ -83,6 +91,80 @@ Map<String, AttributeSpec> attributeTable(SchemaView schema) => <String, Attribu
 JsonMap bareAttributes(Object? attributes) => <String, Object?>{
       for (final MapEntry<String, Object?> entry in asMap(attributes).entries) bareAttributeId(entry.key): entry.value,
     };
+
+/// The add dropdown's headings, each with its attributes in the order they
+/// matter most to an NPC; attributes only players carry go under
+/// [_playerOnly] whatever their kind.
+const Map<String, List<String>> _attributeGroups = <String, List<String>>{
+  'Size and movement': <String>[
+    'scale', 'movement_speed', 'step_height', 'jump_strength', 'gravity', 'safe_fall_distance', 'fall_damage_multiplier', //
+    'flying_speed', 'water_movement_efficiency', 'movement_efficiency', 'sneaking_speed', 'friction_modifier', 'air_drag_modifier', 'bounciness',
+  ],
+  'Combat': <String>[
+    'max_health', 'armor', 'armor_toughness', 'attack_damage', 'attack_knockback', 'attack_speed', 'knockback_resistance', //
+    'explosion_knockback_resistance', 'max_absorption', 'burning_time', 'sweeping_damage_ratio',
+  ],
+  'Senses': <String>[
+    'follow_range', 'tempt_range', 'entity_interaction_range', 'block_interaction_range', 'camera_distance', 'name_tag_distance', //
+    'below_name_distance', 'waypoint_transmit_range', 'waypoint_receive_range',
+  ],
+};
+const String _playerOnly = 'Player only';
+const String _other = 'Other';
+
+/// The add dropdown's rows: every attribute, grouped, those already [set]
+/// disabled, each described by its range and vanilla default. For a body of
+/// [bodyType] the attributes it carries come first in each group, and the
+/// rest say they have no effect on it; player-only attributes sink below
+/// Other for every other body.
+List<SelectOption> attributeOptions(List<AttributeSpec> specs, JsonMap set, String? bodyType) {
+  final Map<String, AttributeSpec> table = <String, AttributeSpec>{for (final AttributeSpec spec in specs) spec.id: spec};
+  String groupOf(AttributeSpec spec) {
+    if (spec.bodies.length == 1 && spec.bodies.single == 'minecraft:player') return _playerOnly;
+    for (final MapEntry<String, List<String>> group in _attributeGroups.entries) {
+      if (group.value.contains(spec.id)) return group.key;
+    }
+    return _other;
+  }
+
+  int rank(AttributeSpec spec) {
+    for (final List<String> ids in _attributeGroups.values) {
+      if (ids.contains(spec.id)) return ids.indexOf(spec.id);
+    }
+    return 1 << 20;
+  }
+
+  final List<String> groups = <String>[
+    ..._attributeGroups.keys,
+    if (bodyType == null || bodyType == 'minecraft:player') ...<String>[_playerOnly, _other] else ...<String>[_other, _playerOnly],
+  ];
+  final List<SelectOption> options = <SelectOption>[];
+  for (final String group in groups) {
+    final List<AttributeSpec> members = <AttributeSpec>[
+      for (final AttributeSpec spec in table.values)
+        if (groupOf(spec) == group) spec,
+    ]..sort((AttributeSpec a, AttributeSpec b) {
+        final int carried = (a.carriedBy(bodyType) ? 0 : 1) - (b.carriedBy(bodyType) ? 0 : 1);
+        if (carried != 0) return carried;
+        final int ranked = rank(a) - rank(b);
+        return ranked != 0 ? ranked : a.id.compareTo(b.id);
+      });
+    for (final AttributeSpec spec in members) {
+      options.add(SelectOption(
+        value: spec.id,
+        label: spec.id,
+        group: group,
+        disabled: set.containsKey(spec.id),
+        keywords: <String>['$attributeNamespace${spec.id}', ...spec.id.split('_')],
+        description: <String>[
+          '${spec.range}, vanilla ${formatAttribute(spec.defaultValue)}',
+          if (!spec.carriedBy(bodyType)) 'no effect on this body',
+        ].join('; '),
+      ));
+    }
+  }
+  return options;
+}
 
 /// [attributes] with [id] set to [value], or returned to its default when
 /// [value] is null; every id comes back bare. Null when none is left, so the

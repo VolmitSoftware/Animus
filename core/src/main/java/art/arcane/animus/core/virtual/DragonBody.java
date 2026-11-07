@@ -1,5 +1,6 @@
 package art.arcane.animus.core.virtual;
 
+import art.arcane.animus.core.npc.BodyVariant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -35,6 +36,17 @@ public final class DragonBody {
         if (wrapped > 180) wrapped -= 360;
         if (wrapped < -180) wrapped += 360;
         return wrapped;
+    }
+    /** A resting phase picked from the ground under the dragon rather than from its definition. */
+    public static final int AUTOMATIC = -1;
+
+    /** The phase a still dragon shows by its definition's {@code dragon.phase}, or {@link #AUTOMATIC}. */
+    public static int restingPhase(BodyVariant variant) {
+        return switch (variant.choices().getOrDefault("phase", "")) {
+            case "hovering" -> PHASE_HOVERING;
+            case "sitting" -> PHASE_SITTING_SCANNING;
+            default -> AUTOMATIC;
+        };
     }
     public static int phase(boolean moving, boolean supported) {
         if (moving) return PHASE_HOLDING_PATTERN;

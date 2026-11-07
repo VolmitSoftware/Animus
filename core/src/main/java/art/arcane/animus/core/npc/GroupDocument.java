@@ -86,8 +86,9 @@ public final class GroupDocument {
         probe.addProperty("id", "group-probe");
         probe.addProperty("group", "groups");
         probe.addProperty("name", "Group");
-        // Armor stand settings are only valid on armor stand bodies; every other field accepts the player body.
-        probe.addProperty("type", values.has("armorStand") ? "minecraft:armor_stand" : "minecraft:player");
+        // Settings of one body type are checked against that body; every other field accepts the player body.
+        probe.addProperty("type", values.has("armorStand") ? "minecraft:armor_stand" : BodyVariant.FIELDS.values().stream()
+                .filter((BodyVariant.Field field) -> values.has(field.field())).map(BodyVariant.Field::type).findFirst().orElse("minecraft:player"));
         probe.addProperty("spawned", false);
         JsonObject position = new JsonObject();
         position.addProperty("world", "world");

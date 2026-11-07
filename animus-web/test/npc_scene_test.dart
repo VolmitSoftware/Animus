@@ -162,6 +162,39 @@ void main() {
       expect((nodes['equipment:body']! as McRigNode).textureId, 'entity/equipment/horse_body/diamond');
     });
 
+    test('body settings pick the coat, wool and skin the client draws', () {
+      NpcScene of(String type, Map<String, Object?> extra) => npcScene(NpcLook.fromDefinition(<String, Object?>{'type': type, 'name': 'Body', ...extra}));
+      String texture(NpcScene scene, [String key = 'body']) => (byKey(scene)[key]! as McRigNode).textureId;
+      final NpcScene plain = of('minecraft:horse', const <String, Object?>{});
+      expect(texture(plain), 'entity/horse/horse_white');
+      expect(byKey(plain).keys, isNot(contains('markings')));
+      final NpcScene coat = of('minecraft:horse', <String, Object?>{
+        'horse': <String, Object?>{'color': 'dark_brown', 'markings': 'white_dots'},
+      });
+      expect(texture(coat), 'entity/horse/horse_darkbrown');
+      expect(texture(coat, 'markings'), 'entity/horse/horse_markings_whitedots');
+      expect(texture(of('minecraft:llama', <String, Object?>{'llama': <String, Object?>{'variant': 'gray'}})), 'entity/llama/llama_gray');
+      expect(texture(of('minecraft:frog', <String, Object?>{'frog': <String, Object?>{'variant': 'cold'}})), 'entity/frog/frog_cold');
+      expect(texture(of('minecraft:frog', <String, Object?>{'frog': <String, Object?>{'variant': 'purple'}})), 'entity/frog/frog_temperate');
+      expect(of('minecraft:llama', <String, Object?>{'llama': <String, Object?>{'chest': true}}).notes.single, contains('chest'));
+      expect(of('minecraft:armadillo', <String, Object?>{'armadillo': <String, Object?>{'state': 'scared'}}).notes.single, contains('scared'));
+      expect(of('minecraft:horse', <String, Object?>{'llama': <String, Object?>{'variant': 'gray'}}).notes, isEmpty);
+      for (final String id in <String>['entity/horse/horse_darkbrown', 'entity/horse/horse_markings_whitefield', 'entity/llama/llama_white', 'entity/frog/frog_warm']) {
+        expect(mcEntityTextureIds, contains(id));
+      }
+    });
+
+    test('each body names the equipment slots it draws', () {
+      expect(mcDrawnSlots('minecraft:player'), <NpcSlot>[NpcSlot.mainHand, NpcSlot.offHand, NpcSlot.head, NpcSlot.chest, NpcSlot.legs, NpcSlot.feet]);
+      expect(mcDrawnSlots('minecraft:armor_stand'), mcDrawnSlots('minecraft:player'));
+      expect(mcDrawnSlots('minecraft:horse'), <NpcSlot>[NpcSlot.body, NpcSlot.saddle]);
+      expect(mcDrawnSlots('minecraft:llama'), <NpcSlot>[NpcSlot.body]);
+      for (final String type in <String>['minecraft:turtle', 'minecraft:frog', 'minecraft:armadillo', 'minecraft:ender_dragon']) {
+        expect(mcDrawnSlots(type), isEmpty, reason: type);
+      }
+      expect(mcDrawnSlots('minecraft:zombie'), NpcSlot.values);
+    });
+
     test('the llama wears its carpet; the armadillo shows nothing it cannot', () {
       expect((byKey(sceneOf('npcs/animals/llama.json'))['equipment:body']! as McRigNode).textureId, 'entity/equipment/llama_body/red');
       final NpcScene armadillo = npcScene(NpcLook.fromDefinition(<String, Object?>{

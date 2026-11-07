@@ -3,6 +3,7 @@ package art.arcane.animus.bukkit.recording;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.core.config.RecordingSettings;
 import art.arcane.animus.core.npc.BodyTraits;
+import art.arcane.animus.core.npc.BodyVariant;
 import art.arcane.animus.core.npc.NpcAttributes;
 import art.arcane.animus.core.npc.HologramStyle;
 import art.arcane.animus.core.npc.NpcAppearance;
@@ -81,7 +82,7 @@ final class GhostBodies implements AutoCloseable {
         watch.ghosts++;
         String world = viewer.getWorld().getUID().toString();
         BodyTraits traits = new BodyTraits(settings.ghostGlow(), settings.ghostGlow() ? Optional.of(settings.ghostColor()) : Optional.empty(),
-                false, false, false, true, NpcAttributes.NONE);
+                false, false, false, true, NpcAttributes.NONE, BodyVariant.NONE);
         BodySkin textures = skin.orElse(null);
         GhostReplay.Bodies<ItemStack> bodies = new GhostReplay.Bodies<>() {
             @Override public BodyTransport.Body create(NpcPose pose) {

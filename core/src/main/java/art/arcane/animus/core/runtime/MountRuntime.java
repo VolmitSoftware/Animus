@@ -136,7 +136,8 @@ final class MountRuntime<P, I> implements AutoCloseable {
     }
     void tickDragons() {
         for (PersistedNpcService<P, I>.Value dragon : dragons)
-            dragon.dragonPhase = dragon.dragonMotion.observe(host.tickNumber, dragon.state.snapshot().position().point(), grounded(dragon));
+            dragon.dragonPhase = dragon.dragonMotion.observe(host.tickNumber, dragon.state.snapshot().position().point(), grounded(dragon),
+                    DragonBody.restingPhase(dragon.spec.appearance().traits().variant()));
     }
     private boolean grounded(PersistedNpcService<P, I>.Value value) {
         WorldPosition position = value.state.snapshot().position();

@@ -100,10 +100,12 @@ class _EquipmentEditorState extends State<EquipmentEditor> {
   @override
   Widget build(BuildContext context) {
     final JsonMap equipment = asMap(component.value);
-    final bool humanoid = component.bodyType == 'minecraft:player' || component.bodyType == 'minecraft:armor_stand';
+    final List<NpcSlot> drawn = mcDrawnSlots(component.bodyType);
     return dom.div(classes: 'animus-equipment', attributes: const <String, String>{'role': 'group', 'aria-label': 'Equipment'}, <Widget>[
+      if (drawn.isEmpty && !NpcSlot.values.any((NpcSlot slot) => equipment.containsKey(slot.key)))
+        dom.p(classes: 'animus-gui-help', <Widget>[Component.text('${component.bodyType} bodies show no equipment.')]),
       for (final NpcSlot slot in NpcSlot.values)
-        if (humanoid ? slot != NpcSlot.body && slot != NpcSlot.saddle || equipment.containsKey(slot.key) : true) _slot(slot, asMap(equipment[slot.key])),
+        if (drawn.contains(slot) || equipment.containsKey(slot.key)) _slot(slot, asMap(equipment[slot.key]), drawn: drawn.contains(slot)),
       for (final MapEntry<String, Object?> entry in equipment.entries)
         if (NpcSlot.parse(entry.key) == null)
           GuiRow(
@@ -119,7 +121,7 @@ class _EquipmentEditorState extends State<EquipmentEditor> {
     ]);
   }
 
-  Widget _slot(NpcSlot slot, JsonMap item) {
+  Widget _slot(NpcSlot slot, JsonMap item, {required bool drawn}) {
     final String id = asString(item['id']) ?? '';
     final String? key = McItemIcons.keyOf(id);
     final String? icon = key == null ? null : McItemIcons.url(key);
@@ -169,6 +171,10 @@ class _EquipmentEditorState extends State<EquipmentEditor> {
                 placeholder: '[enchantment_glint_override=true]',
                 onChanged: (String value) => field('components', value.trim().isEmpty ? null : value.trim()),
               ),
+            ]),
+          if (!drawn)
+            dom.span(classes: 'animus-gui-problem is-warning', <Widget>[
+              Component.text('${component.bodyType} bodies do not show this slot. Clear it or change the body type.'),
             ]),
           if (badId) const dom.span(classes: 'animus-gui-problem is-error', <Widget>[Component.text('Use an item id such as iron_sword or minecraft:iron_sword.')]),
           for (final Diagnostic problem in problems)

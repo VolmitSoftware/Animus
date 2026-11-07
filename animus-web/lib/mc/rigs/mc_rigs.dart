@@ -42,7 +42,7 @@ McRig? mcBodyRig(String type, {bool slim = false, bool small = false}) => switch
 String? mcBodyTexture(String type, {bool slim = false}) => switch (type) {
   'minecraft:player' => slim ? mcAlexTexture : mcSteveTexture,
   'minecraft:armor_stand' => 'entity/armorstand/armorstand',
-  'minecraft:horse' => 'entity/horse/horse_brown',
+  'minecraft:horse' => 'entity/horse/horse_white',
   'minecraft:turtle' => 'entity/turtle/turtle',
   'minecraft:frog' => 'entity/frog/frog_temperate',
   'minecraft:llama' => 'entity/llama/llama_creamy',
@@ -50,6 +50,33 @@ String? mcBodyTexture(String type, {bool slim = false}) => switch (type) {
   'minecraft:ender_dragon' => 'entity/enderdragon/dragon',
   _ => null,
 };
+
+/// The client's coat, wool and skin choices in `BodyVariant` order; the
+/// first is what a body shows with the setting left out.
+const List<String> mcHorseColors = <String>['white', 'creamy', 'chestnut', 'brown', 'black', 'gray', 'dark_brown'];
+const List<String> mcHorseMarkings = <String>['none', 'white', 'white_field', 'white_dots', 'black_dots'];
+const List<String> mcLlamaVariants = <String>['creamy', 'white', 'brown', 'gray'];
+const List<String> mcFrogVariants = <String>['temperate', 'warm', 'cold'];
+
+String _choice(Map<String, Object?> settings, String key, List<String> values) => switch (settings[key]) {
+      final String value when values.contains(value) => value,
+      _ => values.first,
+    };
+
+/// The texture a body wears for its own settings (`horse.color`,
+/// `llama.variant`, `frog.variant`), else [mcBodyTexture].
+String? mcSettingsTexture(String type, Map<String, Object?> settings) => switch (type) {
+      'minecraft:horse' => 'entity/horse/horse_${_choice(settings, 'color', mcHorseColors).replaceAll('_', '')}',
+      'minecraft:llama' => 'entity/llama/llama_${_choice(settings, 'variant', mcLlamaVariants)}',
+      'minecraft:frog' => 'entity/frog/frog_${_choice(settings, 'variant', mcFrogVariants)}',
+      _ => mcBodyTexture(type),
+    };
+
+/// The markings layer over a horse's coat, or null for none.
+String? mcHorseMarkingsTexture(Map<String, Object?> settings) {
+  final String markings = _choice(settings, 'markings', mcHorseMarkings);
+  return markings == 'none' ? null : 'entity/horse/horse_markings_${markings.replaceAll('_', '')}';
+}
 
 /// Armour materials by item id prefix, as `assets/minecraft/equipment/*.json`
 /// names their layer textures.
@@ -71,6 +98,10 @@ const List<String> mcDyeColors = <String>[
 /// Every texture the preview may bind, for the extraction tool.
 final List<String> mcEntityTextureIds = <String>[
   for (final String type in mcBodyTypes) mcBodyTexture(type)!,
+  for (final String color in mcHorseColors.skip(1)) 'entity/horse/horse_${color.replaceAll('_', '')}',
+  for (final String markings in mcHorseMarkings.skip(1)) 'entity/horse/horse_markings_${markings.replaceAll('_', '')}',
+  for (final String variant in mcLlamaVariants.skip(1)) 'entity/llama/llama_$variant',
+  for (final String variant in mcFrogVariants.skip(1)) 'entity/frog/frog_$variant',
   mcAlexTexture,
   for (final String material in mcArmorMaterials.values) ...<String>[
     'entity/equipment/humanoid/$material',

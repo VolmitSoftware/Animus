@@ -55,6 +55,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 import java.util.stream.IntStream;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.Rotations;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.FriendlyByteBuf;
@@ -305,7 +306,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (session.visible.values().stream().anyMatch((Body other) -> other.uuid.equals(body.uuid))) return failed("A body with this UUID is already presented to the viewer");
         if (session.visible.containsKey(body.entityId)) return failed("Body is already visible");
         if (!connected(session)) return unwatched(CONNECTION_CLOSED);
-        send(session, body, PacketKind.SPAWN, spawnPackets(body, pose));
+        send(session, body, PacketKind.SPAWN, spawnPackets(body, pose, viewer.registryAccess()));
         for (int id : body.entityIds()) session.visible.put(id, body);
         return CompletableFuture.completedFuture(null);
     }
@@ -613,7 +614,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (control != null && control.inbox.active()) control.inbox.heartbeat(System.nanoTime());
     }
 
-    private List<Packet<ClientGamePacketListener>> spawnPackets(Body body, BodyPose pose) {
+    private List<Packet<ClientGamePacketListener>> spawnPackets(Body body, BodyPose pose, HolderLookup.Provider registries) {
         List<Packet<ClientGamePacketListener>> packets = new ArrayList<>();
         BodyLook look = body.look;
         if (body.playerInfo != null) packets.add(body.playerInfo);
@@ -628,6 +629,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         List<SynchedEntityData.DataValue<?>> values = new ArrayList<>();
         if (body.playerInfo != null) values.add(SynchedEntityData.DataValue.create(AvatarDataAccess.animus$skinLayers(), (byte) 0x7f));
         values.addAll(bodyValues(look, body.typeKey));
+        values.addAll(ModBodyVariants.values(body.typeKey, look.traits().variant(), registries));
         if (!values.isEmpty()) packets.add(new ClientboundSetEntityDataPacket(body.entityId, values));
         ClientboundUpdateAttributesPacket attributes = ModAttributes.packet(body.entityId, body.type, look.traits().attributes());
         if (attributes != null) packets.add(attributes);
