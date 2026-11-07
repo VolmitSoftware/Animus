@@ -127,6 +127,13 @@ class ServerCapabilitiesTest {
         assertEquals("teleport-player:Point", platform.calls.getLast());
     }
 
+    @Test void bareItemIdsGiveAndTakeMinecraftItems() throws Exception {
+        assertEquals(Optional.of("{\"given\":2}"), server("give-item", "{\"item\":\"bread\",\"amount\":2}").value());
+        assertEquals("give:minecraft:bread:2::0", platform.calls.getLast());
+        assertEquals(Optional.of("{\"taken\":1}"), server("take-item", "{\"item\":\"bread\",\"amount\":1}").value());
+        assertEquals("take:minecraft:bread:1", platform.calls.getLast());
+    }
+
     @Test void npcRunsKeepTheirOwnerAndPreviewRules() throws Exception {
         assertEquals(Outcome.Status.OK, npc("teleport", "{\"target\":\"npc\",\"to\":\"player\"}", false).status());
         assertEquals("teleport-npc:ToPlayer", platform.calls.getLast());

@@ -26,6 +26,14 @@ class RecordingDocumentTest {
         return assertThrows(IOException.class, () -> RecordingDocument.parse(text, CAP)).getMessage();
     }
 
+    @Test void bareBlockAndItemIdsAreMinecraftIds() throws IOException {
+        RecordingDocument document = RecordingDocument.parse(minimal("[[0,0,0,0,0,0,0],[2,0,0,0,0,0,0],[4,0,0,0,0,0,0]]",
+                "[{\"tick\":0,\"type\":\"use\",\"x\":1,\"y\":64,\"z\":2,\"block\":\"oak_door\"},"
+                        + "{\"tick\":2,\"type\":\"equipment\",\"slot\":\"main_hand\",\"item\":{\"id\":\"netherite_axe\"}}]"), CAP);
+        assertEquals(new RecordingEvent.Use(0, 1, 64, 2, "minecraft:oak_door"), document.events().get(0));
+        assertTrue(document.events().get(1).toString().contains("minecraft:netherite_axe"), document.events().get(1).toString());
+    }
+
     @Test void goldenFixtureParsesIntoTypedValues() throws IOException {
         RecordingDocument document = RecordingDocument.parse(fixture("market-loop.json"), CAP);
         assertEquals("market-loop", document.id());
@@ -102,13 +110,13 @@ class RecordingDocumentTest {
         assertTrue(refusal(minimal(frames, "[{\"tick\":1,\"type\":\"equipment\",\"slot\":\"saddle\",\"item\":null}]"))
                 .contains("$.events[0].slot: expected main_hand, off_hand, head, chest, legs or feet"));
         assertTrue(refusal(minimal(frames, "[{\"tick\":1,\"type\":\"equipment\",\"slot\":\"head\"}]")).contains("$.events[0].item: expected item object or null"));
-        assertTrue(refusal(minimal(frames, "[{\"tick\":1,\"type\":\"equipment\",\"slot\":\"head\",\"item\":{\"id\":\"stone\"}}]"))
+        assertTrue(refusal(minimal(frames, "[{\"tick\":1,\"type\":\"equipment\",\"slot\":\"head\",\"item\":{\"id\":\":stone\"}}]"))
                 .contains("$.events[0].item.id: expected namespace:item"));
         assertTrue(refusal(minimal(frames, "[{\"tick\":1,\"type\":\"equipment\",\"slot\":\"head\",\"item\":{\"id\":\"minecraft:stone\",\"imported\":{}}}]"))
                 .contains("$.events[0].item.imported: not allowed in a recording"));
         assertTrue(refusal(minimal(frames, "[{\"tick\":1,\"type\":\"use\",\"x\":1.5,\"y\":64,\"z\":0,\"block\":\"minecraft:oak_door\"}]"))
                 .contains("$.events[0].x: expected integer coordinate within ±30000000"));
-        assertTrue(refusal(minimal(frames, "[{\"tick\":1,\"type\":\"use\",\"x\":1,\"y\":64,\"z\":0,\"block\":\"door\"}]"))
+        assertTrue(refusal(minimal(frames, "[{\"tick\":1,\"type\":\"use\",\"x\":1,\"y\":64,\"z\":0,\"block\":\":door\"}]"))
                 .contains("$.events[0].block: expected namespace:block"));
         assertTrue(refusal(minimal(frames, "[{\"tick\":2,\"type\":\"swing\"},{\"tick\":1,\"type\":\"swing\"}]"))
                 .contains("$.events[1]: expected events sorted by tick then type"));

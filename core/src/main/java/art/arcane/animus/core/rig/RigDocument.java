@@ -1,5 +1,6 @@
 package art.arcane.animus.core.rig;
 
+import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonElement;
@@ -197,7 +198,7 @@ public record RigDocument(String id, long revision, Body body, List<Bone> bones,
                         "firstperson_lefthand", "firstperson_righthand", "head", "gui", "ground", "fixed"), problems).orElse("none");
             }
             case BLOCK -> {
-                block = RigFields.string(visual, "block", path, problems);
+                block = RigFields.string(visual, "block", path, problems).map(RigDocument::blockState);
                 if (block.isPresent() && (block.get().length() > 1024 || !block.get().matches("[a-z0-9_.-]+:[a-z0-9_./-]+(\\[[^\\]]*\\])?"))) {
                     problems.add(path + ".block: expected a block state such as minecraft:oak_log[axis=y]");
                     block = Optional.empty();
@@ -221,5 +222,12 @@ public record RigDocument(String id, long revision, Body body, List<Bone> bones,
             case NONE -> { }
         }
         return new Visual(type, translation, rotation, scale, item, itemDisplay, block, text, billboard, background, shadow, lineWidth);
+    }
+
+    /** {@code oak_log[axis=y]} reads as {@code minecraft:oak_log[axis=y]}; the state text after the name is kept. */
+    private static String blockState(String text) {
+        int bracket = text.indexOf('[');
+        String name = bracket < 0 ? text : text.substring(0, bracket);
+        return MinecraftIds.valid(name) ? MinecraftIds.normalize(name) + text.substring(name.length()) : text;
     }
 }

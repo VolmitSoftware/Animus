@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.presentation.DisplayEntity;
 import com.google.gson.JsonArray;
@@ -107,8 +108,8 @@ public final class HoloParts {
         return Optional.of(out);
     }
 
-    static boolean entityType(String type) { return type.matches("([a-z0-9_.-]+:)?[a-z0-9_./-]+"); }
-    static String key(String id) { String lowered = id.trim().toLowerCase(Locale.ROOT); return lowered.contains(":") ? lowered : "minecraft:" + lowered; }
+    static boolean entityType(String type) { return type.matches(MinecraftIds.PATTERN); }
+    static String key(String id) { return MinecraftIds.normalize(id); }
 
     /** Plain characters of the widest line, for the automatic width of a text click area. */
     static int widest(List<String> lines) {

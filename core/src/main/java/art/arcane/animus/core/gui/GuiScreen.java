@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.gui.GuiModel.Action;
 import art.arcane.animus.core.gui.GuiModel.Click;
@@ -137,8 +138,7 @@ public final class GuiScreen<P, S> implements Screen {
         for (GuiTemplate line : icon.lore()) lore.add(RichText.colorize(line.render(scope)));
         if (icon.kind() == GuiModel.IconKind.PLAYER_HEAD)
             return new ScreenFrame.Item(new NpcItem("minecraft:player_head", 1, Optional.empty(), Optional.empty()), name, lore, Optional.of(icon.item().render(scope)));
-        String id = icon.item().render(scope).trim().toLowerCase(java.util.Locale.ROOT);
-        if (!id.contains(":")) id = "minecraft:" + id;
+        String id = MinecraftIds.normalize(icon.item().render(scope));
         if (!NpcItem.validId(id)) id = "minecraft:barrier";
         Optional<String> components = icon.customModelValue().map((Integer value) -> "[custom_model_data={floats:[" + value + "f]}]");
         return new ScreenFrame.Item(new NpcItem(id, Math.clamp(icon.count(), 1, NpcItem.MAX_COUNT), components, Optional.empty()), name, lore, Optional.empty());

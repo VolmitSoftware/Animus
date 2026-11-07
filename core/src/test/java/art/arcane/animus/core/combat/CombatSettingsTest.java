@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -55,6 +56,19 @@ class CombatSettingsTest {
         assertEquals(40, settings.defense().maximumHealth());
         assertEquals(List.of(new CombatSettings.DropRule("minecraft:iron_ingot", 2, .5)), settings.death().drops());
         assertEquals(new UUID(0, 1), settings.guard().player().orElseThrow());
+    }
+    @Test void bareRegistryIdsAreMinecraftIds() {
+        CombatSettings settings = CombatSettings.parseModule(module("""
+                {"enabled":true,"targets":{"entityTypes":["pillager"],"effects":["glowing"]},
+                 "melee":{"weaponDamage":{"netherite_axe":9,"minecraft:iron_sword":6}},
+                 "ranged":{"enabled":true,"weapon":"potion","effect":{"id":"poison"}},
+                 "death":{"drops":[{"item":"iron_ingot"}]}}"""));
+        assertEquals(Set.of("minecraft:pillager"), settings.targets().entityTypes());
+        assertEquals(Set.of("minecraft:glowing"), settings.targets().effects());
+        assertEquals(Map.of("minecraft:netherite_axe", 9.0, "minecraft:iron_sword", 6.0), settings.melee().weaponDamage());
+        assertEquals("minecraft:poison", settings.ranged().effect().orElseThrow().id());
+        assertEquals(List.of(new CombatSettings.DropRule("minecraft:iron_ingot", 1, 1)), settings.death().drops());
+        assertField("{\"death\":{\"drops\":[{\"item\":\":iron\"}]}}", "$.modules.animus:combat.death.drops[0].item");
     }
     @Test void invalidValuesNameTheirField() {
         assertField("{\"melee\":{\"reach\":7}}", "$.modules.animus:combat.melee.reach");

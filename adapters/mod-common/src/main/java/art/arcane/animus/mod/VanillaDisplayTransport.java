@@ -1,5 +1,6 @@
 package art.arcane.animus.mod;
 
+import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.Load;
@@ -215,7 +216,7 @@ final class VanillaDisplayTransport implements DisplayTransport<ServerPlayer> {
     }
 
     private static BlockState state(String key) {
-        Identifier id = Identifier.tryParse(key.contains(":") ? key : "minecraft:" + key);
+        Identifier id = Identifier.tryParse(MinecraftIds.normalize(key));
         if (id == null || !BuiltInRegistries.BLOCK.containsKey(id)) return Blocks.BARRIER.defaultBlockState();
         return BuiltInRegistries.BLOCK.getValue(id).defaultBlockState();
     }

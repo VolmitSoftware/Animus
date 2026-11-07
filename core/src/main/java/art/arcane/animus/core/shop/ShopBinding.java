@@ -1,5 +1,6 @@
 package art.arcane.animus.core.shop;
 
+import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.npc.NpcDefinition;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -71,9 +72,9 @@ public record ShopBinding(String shop, OpenOn openOn, Optional<ShopDocument.Styl
         String profession = "minecraft:none";
         if (object.has("profession")) {
             JsonElement text = object.get("profession");
-            if (!text.isJsonPrimitive() || !text.getAsJsonPrimitive().isString() || !text.getAsString().matches("[a-z0-9_.-]+:[a-z0-9_/.-]+"))
+            if (!text.isJsonPrimitive() || !text.getAsJsonPrimitive().isString() || !MinecraftIds.valid(text.getAsString()))
                 throw new IllegalArgumentException(path + ".profession: expected a profession id such as minecraft:farmer");
-            profession = text.getAsString();
+            profession = MinecraftIds.normalize(text.getAsString());
         }
         int level = 1;
         if (object.has("level")) {

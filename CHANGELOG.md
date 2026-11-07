@@ -550,6 +550,7 @@
 - The web editor reports `$.skin: textures require a player body`, also for a skin that comes from a group, and more of the server's checks on NPC and group documents.
 - Opening a data folder in the web editor keeps the skin PNGs under `editor/skins/`.
 - Web editor: a delete confirmation that draws late still takes focus, so Escape cancels it.
+- A Minecraft id without a namespace, such as `netherite_axe` in equipment, a shop offer, combat drops or a `give-item` action, now means the `minecraft:` id instead of being refused. Entity types, villager professions, rig and recording blocks, effects, sounds, particles and Bukkit dimension keys follow the same rule, and the schemas and editor accept both forms.
 
 ### Notes
 

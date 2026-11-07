@@ -19,9 +19,10 @@ public final class BukkitWorlds {
     public static Optional<String> resolve(String reference, List<Loaded> loaded) {
         if (reference == null || reference.isBlank() || loaded.isEmpty()) return Optional.empty();
         for (Loaded world : loaded) if (world.name().equalsIgnoreCase(reference)) return Optional.of(world.name());
-        for (Loaded world : loaded) if (world.key().equals(reference) || world.uid().toString().equalsIgnoreCase(reference)) return Optional.of(world.name());
+        String key = MinecraftIds.normalize(reference);
+        for (Loaded world : loaded) if (world.key().equals(key) || world.uid().toString().equalsIgnoreCase(reference)) return Optional.of(world.name());
         String main = loaded.getFirst().name();
-        String folder = switch (reference) {
+        String folder = switch (key) {
             case ModWorlds.OVERWORLD -> main;
             case ModWorlds.NETHER -> main + "_nether";
             case ModWorlds.END -> main + "_the_end";

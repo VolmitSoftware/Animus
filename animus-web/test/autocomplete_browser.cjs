@@ -107,6 +107,10 @@ async function run(browser, viewport, theme) {
   assert.match(await page.locator(`[id="${described.split(' ').pop()}"]`).textContent(), /Unknown item/);
   await retype(item, 'diamond_sword');
   await page.keyboard.press('Escape');
+  await hint.waitFor({state: 'detached'});
+  await retype(item, 'minecraft:diamond_sword');
+  await page.keyboard.press('Escape');
+  assert.equal(await hint.count(), 0, `${where}: a namespaced id is not underlined`);
 
   // A MiniMessage colour in say text, with a swatch.
   const say = editor.getByLabel('text', {exact: true});

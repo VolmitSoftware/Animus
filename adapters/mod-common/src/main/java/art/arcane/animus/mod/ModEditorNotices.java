@@ -1,5 +1,6 @@
 package art.arcane.animus.mod;
 
+import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.config.EditorNotifySettings;
 import art.arcane.animus.core.editor.EditorNotice;
 import art.arcane.animus.core.editor.EditorNoticeChannel;
@@ -61,7 +62,7 @@ final class ModEditorNotices implements EditorNoticeChannel {
     }
 
     private static Holder<SoundEvent> event(String sound) {
-        Identifier id = Identifier.parse(sound.contains(":") ? sound : "minecraft:" + sound);
+        Identifier id = Identifier.parse(MinecraftIds.normalize(sound));
         return BuiltInRegistries.SOUND_EVENT.get(id).<Holder<SoundEvent>>map((Holder.Reference<SoundEvent> reference) -> reference)
                 .orElseGet(() -> Holder.direct(SoundEvent.createVariableRangeEvent(id)));
     }

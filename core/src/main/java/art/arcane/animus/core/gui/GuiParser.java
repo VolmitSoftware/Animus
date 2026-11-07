@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.gui.GuiModel.Action;
 import art.arcane.animus.core.gui.GuiModel.Click;
 import art.arcane.animus.core.gui.GuiModel.Common;
@@ -120,7 +121,7 @@ final class GuiParser {
         switch (type) {
             case "item" -> {
                 GuiTemplate item = template(object, "item", path, scopeRoots).orElse(GuiTemplate.literal("minecraft:barrier"));
-                if (item.constant() && !item.source().matches("(minecraft:)?[a-z0-9_.-]+|[a-z0-9_.-]+:[a-z0-9_./-]+"))
+                if (item.constant() && !item.source().matches(MinecraftIds.PATTERN))
                     problem(path + ".item", "expected an item id such as minecraft:stone");
                 int count = object.has("count") ? integer(object, "count", path, 1, 99).orElse(1) : 1;
                 Optional<Integer> model = object.has("customModelValue") ? integer(object, "customModelValue", path, Integer.MIN_VALUE, Integer.MAX_VALUE) : Optional.empty();
@@ -171,7 +172,7 @@ final class GuiParser {
             }
             case "sound" -> {
                 Optional<String> sound = string(object, "sound", path);
-                if (sound.isPresent() && !sound.get().matches("[a-z0-9_.-]+(:[a-z0-9_./-]+)?")) problem(path + ".sound", "expected a sound key such as minecraft:ui.button.click");
+                if (sound.isPresent() && !sound.get().matches(MinecraftIds.PATTERN)) problem(path + ".sound", "expected a sound key such as minecraft:ui.button.click");
                 String source = object.has("source") ? choice(object, "source", path, Set.of("master", "music", "record", "weather", "block", "hostile", "neutral", "player", "ambient", "voice")).orElse("master") : "master";
                 float volume = (float) (object.has("volume") ? decimal(object, "volume", path, 0, 4).orElse(1.0) : 1.0);
                 float pitch = (float) (object.has("pitch") ? decimal(object, "pitch", path, 0, 2).orElse(1.0) : 1.0);
@@ -274,7 +275,7 @@ final class GuiParser {
             }
             case "teleport" -> {
                 Optional<String> world = string(object, "world", path);
-                if (world.isPresent() && !world.get().matches("[a-z0-9._-]+:[a-z0-9/._-]+")) problem(path + ".world", "expected a world key such as minecraft:overworld");
+                if (world.isPresent() && !world.get().matches(MinecraftIds.PATTERN)) problem(path + ".world", "expected a world key such as minecraft:overworld");
                 Optional<Double> x = decimal(object, "x", path, -3.0E7, 3.0E7), y = decimal(object, "y", path, -2048, 4096), z = decimal(object, "z", path, -3.0E7, 3.0E7);
                 Optional<Double> yaw = decimal(object, "yaw", path, -360, 360), pitch = decimal(object, "pitch", path, -90, 90);
                 yield world.isPresent() && x.isPresent() && y.isPresent() && z.isPresent() && yaw.isPresent() && pitch.isPresent()
@@ -307,7 +308,7 @@ final class GuiParser {
             }
             case "effect" -> {
                 Optional<String> effect = string(object, "effect", path);
-                if (effect.isPresent() && !effect.get().matches("([a-z0-9_.-]+:)?[a-z0-9_./-]+")) problem(path + ".effect", "expected an effect key such as minecraft:speed");
+                if (effect.isPresent() && !effect.get().matches(MinecraftIds.PATTERN)) problem(path + ".effect", "expected an effect key such as minecraft:speed");
                 Optional<Integer> ticks = integer(object, "ticks", path, 1, 1_728_000);
                 int amplifier = object.has("amplifier") ? integer(object, "amplifier", path, 0, 255).orElse(0) : 0;
                 if (object.has("target")) choice(object, "target", path, Set.of("viewer", "subject", "source"))
@@ -317,7 +318,7 @@ final class GuiParser {
             }
             case "particle" -> {
                 Optional<String> particle = string(object, "particle", path);
-                if (particle.isPresent() && !particle.get().matches("([a-z0-9_.-]+:)?[a-z0-9_./-]+")) problem(path + ".particle", "expected a particle key such as minecraft:flame");
+                if (particle.isPresent() && !particle.get().matches(MinecraftIds.PATTERN)) problem(path + ".particle", "expected a particle key such as minecraft:flame");
                 int count = object.has("count") ? integer(object, "count", path, 1, 1000).orElse(1) : 1;
                 double offset = object.has("offset") ? decimal(object, "offset", path, 0, 64).orElse(0.0) : 0;
                 String at = object.has("at") ? choice(object, "at", path, Set.of("viewer", "subject", "source", "location")).orElse("viewer") : "viewer";

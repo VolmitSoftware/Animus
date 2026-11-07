@@ -145,7 +145,7 @@ void main() {
       _errors(<String, Object?>{
         'ranged': <String, Object?>{
           'weapon': 'potion',
-          'effect': <String, Object?>{'id': 'speed', 'amplifier': 10, 'durationTicks': 0},
+          'effect': <String, Object?>{'id': ':speed', 'amplifier': 10, 'durationTicks': 0},
         },
       }),
       unorderedEquals(<String>[
@@ -286,7 +286,7 @@ void main() {
       'greetings': <String, Object?>{'friendly': 'hi\u0007', 'hostile': ''},
       'targets': <String, Object?>{
         'permissions': <Object?>['animus.admin', 'bad node'],
-        'effects': <Object?>['strength'],
+        'effects': <Object?>[':strength'],
         'owner': 'yes',
       },
     };

@@ -523,6 +523,7 @@ async function local(browser, viewport, tag, theme) {
   await settle(page);
   json = await codeOf(page);
   assert.deepEqual(json.equipment.off_hand, {id: 'minecraft:shield'});
+  assert.deepEqual(json.equipment.head, {id: 'netherite_helmet'});
   assert.equal(json.equipment.main_hand.id, 'minecraft:iron_sword');
   assert.equal(json.skin, skinHash);
   await page.locator('.animus-npc-visual canvas').first().waitFor();
