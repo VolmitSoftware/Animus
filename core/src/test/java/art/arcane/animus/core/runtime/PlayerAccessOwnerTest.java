@@ -71,7 +71,7 @@ class PlayerAccessOwnerTest {
     void theEditorAdminRecheckFromItsTimerThreadAnswersOnTheOwner() throws IOException {
         ViewerWatchRaceTest.Harness harness = harness();
         RuntimeEditorHost<ViewerWatchRaceTest.Player> host = new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(harness.runtime, Runnable::run, harness.service, null,
-                "test", "", Map::of, (ViewerWatchRaceTest.Player player) -> false, new EditorNoticeChannel() {
+                "test", "", Map::of, () -> EditorHost.Lookups.NONE, (ViewerWatchRaceTest.Player player) -> false, new EditorNoticeChannel() {
                     @Override public Optional<String> name(UUID player) { return Optional.empty(); }
                     @Override public void deliver(EditorNotice notice) {}
                 }, (String line) -> {}));

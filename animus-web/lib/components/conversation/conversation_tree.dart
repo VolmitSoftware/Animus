@@ -14,6 +14,8 @@ import '../../logic/conversation/conversation_edit.dart';
 import '../../logic/conversation/conversation_json.dart';
 import '../../logic/conversation/conversation_model.dart';
 import '../../logic/inspect/completion_catalog.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../../logic/suggest/field_profiles.dart';
 import '../info_tip.dart';
 import 'conversation_fields.dart';
 import 'conversation_input.dart';
@@ -298,6 +300,7 @@ class _TreeBuilder {
               value: text,
               label: 'NPC line ${at.index + 1} in ${at.block}',
               placeholder: 'Line, or Question? [Yes] [No]',
+              profile: argumentProfile(sayCapability, 'text'),
               onChanged: (String value) => edit((Conversation c) {
                 final ConversationStep? line = stepAt(c, at);
                 if (line is ConversationLine) line.text = value;
@@ -312,6 +315,7 @@ class _TreeBuilder {
               value: prompt,
               label: 'Question in ${at.block}',
               placeholder: 'Question',
+              profile: argumentProfile(choicesCapability, 'prompt'),
               onChanged: (String value) => edit((Conversation c) {
                 final ConversationStep? choices = stepAt(c, at);
                 if (choices is ConversationChoices) choices.prompt = value;
@@ -436,6 +440,7 @@ class _TreeBuilder {
             value: option.text,
             label: 'Answer ${index + 1} of ${choices.dialogue}',
             placeholder: 'Answer',
+            profile: FieldProfile.richText,
             onChanged: (String value) => edit((Conversation c) {
               final ConversationStep? step = stepAt(c, at);
               if (step is! ConversationChoices || index >= step.options.length) return;

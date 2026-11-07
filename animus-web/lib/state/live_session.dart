@@ -3,6 +3,7 @@ import 'dart:async';
 import '../logic/change_sets.dart';
 import '../logic/gui/gui_json.dart';
 import '../logic/json_merge.dart';
+import '../logic/suggest/completion_sources.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import '../model/server_binding.dart';
@@ -118,6 +119,10 @@ class LiveSession {
   /// `GET /v1/schemas` from the server (generated schemas with its loaded
   /// modules), once connected.
   Map<String, Object?>? schemas;
+
+  /// `GET /v1/lookups` (registries, commands, PlaceholderAPI) for
+  /// completion; null until loaded or from a server without it.
+  ServerLookups? lookups;
 
   /// What is running now, for the UI to disable buttons and say so.
   String? busy;
@@ -270,6 +275,7 @@ class LiveSession {
           schemas = body['schemas']! as Map<String, Object?>;
         }
       }
+      if (lookups == null) await _loadLookups();
       await recoverPending();
       await loadCatalog();
       final ServerBinding? server = binding;
@@ -289,6 +295,19 @@ class LiveSession {
         busy = null;
         _changed();
       }
+    }
+  }
+
+  /// Quiet: completion falls back to the bundled lists without it.
+  Future<void> _loadLookups() async {
+    try {
+      final ApiResponse response = await connection.request(const ApiRequest('GET', '/v1/lookups'));
+      if (response.ok && response.body is Map<String, Object?>) {
+        lookups = ServerLookups.fromJson(response.body);
+        _changed();
+      }
+    } on Object {
+      // An older server or a dropped connection; keep the bundled lists.
     }
   }
 

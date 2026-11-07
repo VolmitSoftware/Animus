@@ -15,6 +15,8 @@ import '../../logic/inspect/typed_values.dart';
 import '../../logic/inspect/behavior_operands.dart';
 import '../../logic/inspect/completion_catalog.dart';
 import '../../logic/inspect/schema_fields.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../../logic/suggest/field_profiles.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
 import 'behavior_inputs.dart';
@@ -72,7 +74,12 @@ class CapabilityFields extends StatelessWidget {
               if (next != null) _put(changeCapability(node, next, context.catalog));
             },
           ),
-          if (spec == null) SuggestInput(value: id ?? '', label: 'Module capability, namespace:name', onChanged: (String next) => context.write(<JsonStep>[...steps, 'capability'], next)),
+          if (spec == null)
+            SuggestInput(
+              value: id ?? '',
+              label: 'Module capability, namespace:name',
+              profile: FieldProfile(values: <ValueRef>[ValueRef.capabilities(kind)]),
+              onChanged: (String next) => context.write(<JsonStep>[...steps, 'capability'], next)),
         ]),
       ),
       if (spec != null && spec.oneOfRequired.isNotEmpty)
@@ -98,6 +105,7 @@ class CapabilityFields extends StatelessWidget {
               value: arguments[argument.key],
               references: argumentReference(id, argument.key, arguments),
               path: _at(<JsonStep>['arguments', argument.key]),
+              profile: argumentProfile(id, argument.key),
               onChanged: (Object? next) => context.write(<JsonStep>[...steps, 'arguments', argument.key], next),
             ),
           ),
@@ -111,6 +119,10 @@ class CapabilityFields extends StatelessWidget {
             value: other,
             label: spec == null ? 'Arguments' : 'Other arguments',
             addLabel: 'Add argument',
+            profileFor: (String key) {
+              final FieldProfile known = argumentProfile(id, key);
+              return known.isNone ? FieldProfile.behaviorTemplate : known;
+            },
             onChanged: (JsonMap next) => context.write(<JsonStep>[...steps, 'arguments'], withUnknownEntries(arguments, declared, next)),
           ),
         ),

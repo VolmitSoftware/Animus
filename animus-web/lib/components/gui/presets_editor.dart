@@ -18,6 +18,7 @@ import '../info_tip.dart';
 import '../inspect/inspect_fields.dart';
 import '../inspect/typed_values_editor.dart';
 import 'gui_fields.dart';
+import '../../logic/suggest/field_profile.dart';
 
 /// The `preset` refusal with the fix: copy the preset's fields in.
 class PresetFix extends StatelessWidget {
@@ -159,7 +160,7 @@ class _PresetsEditorState extends State<PresetsEditor> {
         if (schema != null)
           InspectObject(schema: schema, node: presetFormNode(schema.root), value: values, path: path, diagnostics: _diagnostics, onChanged: onChanged)
         else
-          KeyValueEditor(value: values, label: label, onChanged: onChanged),
+          KeyValueEditor(value: values, label: label, profileFor: (String _) => FieldProfile.guiText, onChanged: onChanged),
       ]),
     );
   }

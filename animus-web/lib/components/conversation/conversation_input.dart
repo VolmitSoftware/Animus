@@ -8,8 +8,10 @@ library;
 import 'dart:js_interop';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
-import 'package:jaspr/dom.dart' as dom;
 import 'package:web/web.dart' as web;
+
+import '../../logic/suggest/field_profile.dart';
+import '../suggest/autocomplete_input.dart';
 
 /// Handles a key in a conversation field; returns true when it used it.
 typedef ConversationKey = bool Function(web.KeyboardEvent event, web.HTMLInputElement input);
@@ -23,8 +25,12 @@ class ConversationInput extends StatefulWidget {
     this.onKey,
     this.placeholder,
     this.code = false,
+    this.profile = FieldProfile.none,
     super.key,
   });
+
+  /// What the field completes (placeholders, tags, ids).
+  final FieldProfile profile;
 
   final String id;
   final String value;
@@ -61,30 +67,22 @@ class _ConversationInputState extends State<ConversationInput> {
 
   @override
   Widget build(BuildContext context) {
-    return dom.input(
+    final ConversationKey? handle = component.onKey;
+    return AutocompleteInput(
       id: component.id,
       classes: 'animus-gui-input animus-conv-input${component.code ? ' is-code' : ''}',
       value: _typed ?? component.value,
-      attributes: <String, String>{
-        'autocomplete': 'off',
-        'spellcheck': component.code ? 'false' : 'true',
-        'aria-label': component.label,
-        'data-conv-input': '',
-        'placeholder': ?component.placeholder,
+      profile: component.profile,
+      label: component.label,
+      placeholder: component.placeholder,
+      attributes: <String, String>{'spellcheck': component.code ? 'false' : 'true', 'data-conv-input': ''},
+      onChanged: (String text) {
+        if (_typed == null) _sent.add(component.value);
+        _typed = text;
+        _sent.add(text);
+        component.onChanged(text);
       },
-      events: <String, void Function(web.Event)>{
-        'input': (web.Event event) {
-          final String text = (event.target! as web.HTMLInputElement).value;
-          if (_typed == null) _sent.add(component.value);
-          _typed = text;
-          _sent.add(text);
-          component.onChanged(text);
-        },
-        'keydown': (web.Event event) {
-          final ConversationKey? handle = component.onKey;
-          if (handle != null && handle(event as web.KeyboardEvent, event.target! as web.HTMLInputElement)) event.preventDefault();
-        },
-      },
+      onKey: handle == null ? null : (web.KeyboardEvent event) => handle(event, event.target! as web.HTMLInputElement),
     );
   }
 }

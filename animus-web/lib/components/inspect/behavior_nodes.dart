@@ -20,6 +20,7 @@ import '../../logic/inspect/behavior_operands.dart';
 import '../../logic/inspect/behavior_summary.dart';
 import '../../logic/inspect/completion_catalog.dart';
 import '../../logic/inspect/schema_fields.dart';
+import '../../logic/suggest/field_profile.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
 import '../info_tip.dart';
@@ -294,6 +295,7 @@ class BehaviorNodeView extends StatelessWidget {
           value: value[field.key],
           path: formatPath(<JsonStep>[...steps, field.key]),
           diagnostics: context.diagnostics,
+          profile: kind == 'expression' ? FieldProfile.behaviorExpression : FieldProfile.none,
           onChanged: (Object? next) => context.write(<JsonStep>[...steps, field.key], next),
         ));
       }

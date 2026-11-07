@@ -14,6 +14,8 @@ import '../inspect/inspect_fields.dart';
 import '../../logic/npc/route_model.dart';
 import 'npc_section.dart';
 import 'route_editor.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../../logic/suggest/field_profiles.dart';
 
 const String shopModule = 'animus:shop';
 const String mountModule = 'animus:mount';
@@ -287,7 +289,7 @@ class NavigationEditor extends StatelessWidget {
               help: 'Edit it in routes/<id>.json.',
               problems: diagnosticsAt(diagnostics, childPath(path, 'route')),
               child: routeIds.isEmpty
-                  ? GuiTextInput(id: routeId, value: reference ?? '', label: 'Route id', placeholder: 'town-patrol', onChanged: (String id) => onChanged(<String, Object?>{...module, 'route': id.trim()}))
+                  ? GuiTextInput(id: routeId, value: reference ?? '', label: 'Route id', profile: idProfile(const ValueRef.document(DocumentKind.route)), placeholder: 'town-patrol', onChanged: (String id) => onChanged(<String, Object?>{...module, 'route': id.trim()}))
                   : GuiSelect(references: DocumentKind.route, id: routeId, value: reference, options: routeIds, onChanged: (String? id) => onChanged(<String, Object?>{...module, 'route': id ?? ''})),
             ),
             if (routeDocument != null && (onOpen != null || onCopyRoute != null))
@@ -336,7 +338,7 @@ class NavigationEditor extends StatelessWidget {
             : (duration == null ? '' : '$duration ticks, ${(duration / 20).toStringAsFixed(1)} seconds.'),
         problems: at('recording'),
         child: recordings.isEmpty
-            ? GuiTextInput(id: recordingId, value: recording, label: 'Recording id', placeholder: 'market-loop', onChanged: (String id) => onChanged(<String, Object?>{...module, 'recording': id.trim()}))
+            ? GuiTextInput(id: recordingId, value: recording, label: 'Recording id', profile: idProfile(const ValueRef.document(DocumentKind.recording)), placeholder: 'market-loop', onChanged: (String id) => onChanged(<String, Object?>{...module, 'recording': id.trim()}))
             : GuiSelect(
                 references: DocumentKind.recording,
                 id: recordingId,

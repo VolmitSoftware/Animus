@@ -17,6 +17,8 @@ import 'package:web/web.dart' as web;
 
 import '../../logic/npc/placeholder_skins.dart';
 import '../../logic/npc/skin_edits.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../../logic/suggest/field_profiles.dart';
 import '../../mc/npc/npc_skin.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
@@ -180,6 +182,7 @@ class _SkinPickerState extends State<SkinPicker> {
         child: GuiTextInput(
           value: value ?? '',
           label: 'Skin hash',
+          profile: idProfile(const ValueRef.document(DocumentKind.skin)),
           placeholder: '64 hex characters',
           onChanged: (String text) => component.onChanged(text.trim().isEmpty ? null : text.trim()),
         ),
@@ -215,7 +218,7 @@ class _SkinPickerState extends State<SkinPicker> {
             Button.secondary(label: 'From PNG file', size: ButtonSize.small, disabled: _loading, onPressed: () => _create(SkinImages.pickFile)),
           ]),
           dom.div(classes: 'animus-gui-line animus-npc-skin-url', <Widget>[
-            GuiTextInput(value: _url, label: 'Skin PNG address', placeholder: 'https://textures.minecraft.net/texture/...', onChanged: (String text) => setState(() => _url = text)),
+            GuiTextInput(value: _url, label: 'Skin PNG address', profile: skinAddressProfile, placeholder: 'https://textures.minecraft.net/texture/...', onChanged: (String text) => setState(() => _url = text)),
             Button.ghost(
               label: 'From address',
               size: ButtonSize.small,

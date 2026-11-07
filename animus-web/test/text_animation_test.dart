@@ -1,5 +1,8 @@
 import 'package:animus_editor/logic/gui/gui_expression.dart';
 import 'package:animus_editor/logic/gui/text_animation.dart';
+import 'package:animus_editor/logic/suggest/completion_item.dart';
+import 'package:animus_editor/logic/suggest/field_profile.dart';
+import 'package:animus_editor/logic/suggest/text_completion.dart';
 import 'package:animus_editor/mc/gui/gui_scene.dart';
 import 'package:test/test.dart';
 
@@ -39,11 +42,14 @@ void main() {
     final Set<String> ids = animationCompletionIds('shop:sign', <String>['shop:sparkle', 'fx:rainbow']);
     expect(ids, <String>{'sparkle', 'fx:rainbow'});
     final ExpressionNames names = ExpressionNames(animations: ids);
-    final List<ExpressionCompletion> offered = completeExpression('&6|animation.sp', 15, template: true, names: names);
-    expect(offered.map((ExpressionCompletion c) => c.label), <String>['sparkle']);
-    expect(offered.single.applyTo('&6|animation.sp').$1, '&6|animation.sparkle|');
-    expect(completeExpression('|animation.', 11, template: true, names: names).map((ExpressionCompletion c) => c.label), <String>['fx:rainbow', 'sparkle']);
-    expect(completeExpression('|animation.sp|x', 13, template: true, names: names).single.applyTo('|animation.sp|x').$1, '|animation.sparkle|x');
+    final CompletionEnv env = CompletionEnv(gui: names);
+    List<String> labels(CompletionResult result) => <String>[for (final CompletionItem item in result.items) item.label];
+    final CompletionResult offered = completeText('&6|animation.sp', 15, FieldProfile.guiText, env);
+    expect(labels(offered), <String>['sparkle']);
+    expect(offered.apply('&6|animation.sp', offered.items.single).text, '&6|animation.sparkle|');
+    expect(labels(completeText('|animation.', 11, FieldProfile.guiText, env)), unorderedEquals(<String>['fx:rainbow', 'sparkle']));
+    final CompletionResult inside = completeText('|animation.sp|x', 13, FieldProfile.guiText, env);
+    expect(inside.apply('|animation.sp|x', inside.items.single).text, '|animation.sparkle|x');
   });
 
   test('should play animation tokens in the hologram preview and note missing animations', () {

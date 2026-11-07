@@ -20,7 +20,10 @@ import '../../logic/inspect/typed_values.dart';
 import '../../logic/conversation/conversation_json.dart';
 import '../../logic/npc/dialogue_prompts.dart';
 import '../../logic/npc/reference_options.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../../logic/suggest/field_profiles.dart';
 import '../../model/animus_document.dart';
+import '../suggest/suggest_scope.dart';
 import '../gui/gui_fields.dart';
 import '../info_tip.dart';
 import 'behavior_inputs.dart';
@@ -68,6 +71,17 @@ class BehaviorEditor extends StatelessWidget {
       writeDocument: (JsonMap next) => onJson(writeAt(doc, const <JsonStep>[], next), coalesce: 'behavior:document'),
     );
     final bool server = behavior.server;
+    final BehaviorNames names = BehaviorNames(
+      scope: behavior.scope,
+      variableScopes: <String, String>{
+        for (final MapEntry<String, Object?> entry in behavior.variables.entries)
+          if (asString(asMap(entry.value)['scope']) case final String scope) entry.key: scope,
+      },
+    );
+    return SuggestScope.withBehavior(context, names, _editor(doc, behavior, server));
+  }
+
+  Widget _editor(JsonMap doc, BehaviorContext behavior, bool server) {
     return dom.section(classes: 'animus-panel animus-inspector animus-behavior-editor', attributes: const <String, String>{'aria-label': 'Behavior editor'}, <Widget>[
       if (schemas.live) const dom.p(classes: 'animus-muted', <Widget>[Component.text('Capabilities and triggers from the server.')]),
       GuiSection(title: 'Document', children: <Widget>[
@@ -110,11 +124,18 @@ class BehaviorEditor extends StatelessWidget {
   }
 
   /// Keys no control here lays out, as a typed key/value editor.
+  /// What an unknown field's text completes: a trigger filter's known id
+  /// source, else behavior `{{ }}` holes.
+  static FieldProfile _otherProfile(String key) {
+    final FieldProfile known = triggerFieldProfile(key, type: 'string');
+    return known.isNone ? FieldProfile.behaviorTemplate : known;
+  }
+
   Widget _otherFields(JsonMap other, String path, void Function(JsonMap next) put) => GuiRow(
         label: 'Other fields',
         tip: 'Keys this editor does not know. They are kept as written and the server reads them.',
         problems: <Diagnostic>[for (final String key in other.keys) ...diagnosticsAt(diagnostics, childPath(path, key), nested: true)],
-        child: KeyValueEditor(value: other, label: path == r'$' ? 'Other fields' : 'Other fields of ${path.substring(2)}', onChanged: put),
+        child: KeyValueEditor(value: other, label: path == r'$' ? 'Other fields' : 'Other fields of ${path.substring(2)}', profileFor: _otherProfile, onChanged: put),
       );
 
   Widget _variables(JsonMap doc, bool server) {
@@ -378,6 +399,7 @@ class BehaviorEditor extends StatelessWidget {
                 InspectField(
                   key: ValueKey<String>('$path.${raw.key}'),
                   field: behavior.server && event == 'timer' && raw.key == 'intervalTicks' ? _serverInterval(raw) : raw,
+                  profile: triggerFieldProfile(raw.key, type: fieldType(raw)),
                   value: trigger[raw.key],
                   path: childPath(path, raw.key),
                   diagnostics: diagnostics,

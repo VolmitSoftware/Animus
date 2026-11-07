@@ -16,6 +16,9 @@ import '../gui/gui_fields.dart';
 import '../inspect/typed_values_editor.dart';
 import '../select/suggest_input.dart';
 import 'position_grid.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../../logic/suggest/field_profiles.dart';
+import '../../logic/suggest/completion_sources.dart';
 
 const Set<String> _locationKeys = <String>{'world', 'x', 'y', 'z'};
 
@@ -143,6 +146,7 @@ class _CombatLocationsEditorState extends State<CombatLocationsEditor> {
               SuggestInput(
                 value: asString(raw['world']) ?? '',
                 label: '$name world',
+                profile: idProfile(const ValueRef.registry(RegistryKind.world)),
                 placeholder: 'world',
                 suggestions: <FieldOption>[for (final String world in worlds) FieldOption(world)],
                 onChanged: (String next) => _set(index, withLocationField(raw, 'world', next.trim())),

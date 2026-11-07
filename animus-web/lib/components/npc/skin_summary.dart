@@ -12,6 +12,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_text.dart';
 import '../../logic/npc/skin_edits.dart';
+import '../../logic/suggest/field_profiles.dart';
 import '../../logic/offline/new_documents.dart' show skinImagePath;
 import '../../mc/npc/npc_skin.dart';
 import '../../model/animus_document.dart';
@@ -124,7 +125,7 @@ class _SkinSummaryState extends State<SkinSummary> {
               Button.secondary(label: 'Load skin PNG', size: ButtonSize.small, disabled: _loading, onPressed: () => _load(SkinImages.pickFile)),
             ]),
             dom.div(classes: 'animus-gui-line', <Widget>[
-              GuiTextInput(value: _url, label: 'Skin PNG URL', placeholder: 'https://.../skin.png', onChanged: (String text) => setState(() => _url = text)),
+              GuiTextInput(value: _url, label: 'Skin PNG URL', profile: skinAddressProfile, placeholder: 'https://.../skin.png', onChanged: (String text) => setState(() => _url = text)),
               Button.ghost(
                 label: 'Load URL',
                 size: ButtonSize.small,

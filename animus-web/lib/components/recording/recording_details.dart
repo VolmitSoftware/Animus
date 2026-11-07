@@ -8,8 +8,8 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
-import '../../logic/inspect/schema_fields.dart' show FieldOption;
 import '../../logic/recording/recording_edit.dart';
+import '../../logic/suggest/field_profile.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
 import '../select/suggest_input.dart';
@@ -107,6 +107,7 @@ class _RecordingDetailsFormState extends State<RecordingDetailsForm> {
           child: GuiTextInput(
             id: recordingDescriptionId,
             value: details.description,
+            profile: FieldProfile.richText,
             placeholder: 'What the NPC acts out',
             onChanged: (String value) {
               if (value.length <= recordingDescriptionLimit) _write(details.copyWith(description: value), 'description');
@@ -143,10 +144,10 @@ class _RecordingDetailsFormState extends State<RecordingDetailsForm> {
                 value: adding,
                 label: 'New tag',
                 placeholder: 'market',
-                suggestions: <FieldOption>[
+                profile: FieldProfile(options: <ValueOption>[
                   for (final String tag in component.knownTags)
-                    if (!details.tags.contains(tag)) FieldOption(tag),
-                ],
+                    if (!details.tags.contains(tag)) ValueOption(tag, detail: 'tag'),
+                ]),
                 onChanged: (String value) => setState(() => _newTag = value.trim().toLowerCase()),
                 onSubmit: tagValid ? addTag : null,
               ),

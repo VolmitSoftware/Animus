@@ -227,6 +227,7 @@ class FakeApi {
         return switch (s.first) {
           'capabilities' when n == 1 => _Route('read', false, _capabilities),
           'schemas' when n == 1 => _Route('read', false, _schemasEndpoint),
+          'lookups' when n == 1 => _Route('read', false, _lookups),
           'catalog' when n == 1 => _Route('read', false, _catalog),
           'documents' when n >= 3 => _Route('read', false, _document),
           'skins' when n == 3 && s[2] == 'texture.png' => _Route('read', false, _skin),
@@ -295,6 +296,18 @@ class FakeApi {
       'counter': token.counter,
     });
   }
+
+  /// A small Paper server with PlaceholderAPI: a few ids of each registry.
+  FakeResponse _lookups(FakeRequest request, FakeToken token, List<String> segments) => const FakeResponse(200, body: <String, Object?>{
+        'registries': <String, Object?>{
+          'items': <String>['minecraft:bread', 'minecraft:diamond', 'minecraft:diamond_sword', 'minecraft:emerald'],
+          'sounds': <String>['minecraft:entity.villager.ambient', 'minecraft:entity.villager.yes'],
+          'particles': <String>['minecraft:happy_villager', 'minecraft:heart'],
+          'worlds': <String>['world', 'world_nether'],
+        },
+        'commands': <String>['animus', 'give', 'spawn', 'tp'],
+        'papi': <String>['player', 'server'],
+      });
 
   FakeResponse _capabilities(FakeRequest request, FakeToken token, List<String> segments) {
     Map<String, Object?> no(String reason) => <String, Object?>{'available': false, 'reason': reason};

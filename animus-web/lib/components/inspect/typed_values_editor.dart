@@ -9,9 +9,9 @@ import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
 import '../../logic/gui/gui_json.dart';
-import '../../logic/inspect/schema_fields.dart';
 import '../../logic/inspect/typed_values.dart';
 import '../../logic/select/select_model.dart';
+import '../../logic/suggest/field_profile.dart';
 import '../gui/gui_fields.dart';
 import '../select/animus_select.dart';
 import '../select/suggest_input.dart';
@@ -20,13 +20,17 @@ import 'inspect_fields.dart' show KeptJsonEditor;
 /// Object and list nesting the typed editors draw before showing JSON.
 const int typedEditorDepth = 4;
 
+/// Text of an unknown key: MiniMessage tags complete on `<`, plain words are
+/// left alone.
+FieldProfile typedTextProfile(String key) => FieldProfile.richText;
+
 final List<SelectOption> _kindOptions = <SelectOption>[
   for (final TypedKind kind in TypedKind.values) SelectOption(label: kind.label, value: kind.name),
 ];
 
 /// One value of any kind: the kind picker, then the control for that kind.
 class TypedValueEditor extends StatelessWidget {
-  const TypedValueEditor({required this.value, required this.onChanged, required this.label, this.depth = 0, this.suggestions = const <FieldOption>[], super.key});
+  const TypedValueEditor({required this.value, required this.onChanged, required this.label, this.depth = 0, this.profileFor = typedTextProfile, super.key});
 
   final Object? value;
   final void Function(Object? value) onChanged;
@@ -35,8 +39,9 @@ class TypedValueEditor extends StatelessWidget {
   final String label;
   final int depth;
 
-  /// Values offered while typing text.
-  final List<FieldOption> suggestions;
+  /// What text completes, by the key it sits under (a list item uses its
+  /// list's key); nested objects and lists pass it on.
+  final FieldProfile Function(String key) profileFor;
 
   @override
   Widget build(BuildContext context) {
@@ -61,11 +66,11 @@ class TypedValueEditor extends StatelessWidget {
       return KeptJsonEditor(value: current, label: label, onChanged: onChanged);
     }
     return switch (kind) {
-      TypedKind.text => SuggestInput(value: current! as String, label: label, suggestions: suggestions, onChanged: onChanged),
+      TypedKind.text => SuggestInput(value: current! as String, label: label, profile: profileFor(label), onChanged: onChanged),
       TypedKind.number => GuiNumberInput(value: current! as num, integer: false, label: label, onChanged: (num? next) => onChanged(next ?? 0)),
       TypedKind.boolean => GuiSwitch(value: current! as bool, label: label, onChanged: onChanged),
-      TypedKind.list => TypedListEditor(items: current! as List<Object?>, label: label, depth: depth + 1, onChanged: onChanged),
-      TypedKind.object => KeyValueEditor(value: current! as JsonMap, label: label, depth: depth + 1, onChanged: onChanged),
+      TypedKind.list => TypedListEditor(items: current! as List<Object?>, label: label, depth: depth + 1, profile: profileFor(label), onChanged: onChanged),
+      TypedKind.object => KeyValueEditor(value: current! as JsonMap, label: label, depth: depth + 1, profileFor: profileFor, onChanged: onChanged),
       TypedKind.empty => const dom.span(classes: 'animus-muted animus-typed-empty', <Widget>[Component.text('null')]),
     };
   }
@@ -73,12 +78,15 @@ class TypedValueEditor extends StatelessWidget {
 
 /// A list whose items each have their own kind.
 class TypedListEditor extends StatelessWidget {
-  const TypedListEditor({required this.items, required this.onChanged, required this.label, this.depth = 0, super.key});
+  const TypedListEditor({required this.items, required this.onChanged, required this.label, this.depth = 0, this.profile = FieldProfile.richText, super.key});
 
   final List<Object?> items;
   final void Function(List<Object?> items) onChanged;
   final String label;
   final int depth;
+
+  /// What the items' text completes.
+  final FieldProfile profile;
 
   @override
   Widget build(BuildContext context) {
@@ -90,6 +98,7 @@ class TypedListEditor extends StatelessWidget {
             value: items[index],
             label: '$label item ${index + 1}',
             depth: depth,
+            profileFor: (String _) => profile,
             onChanged: (Object? next) => onChanged(<Object?>[...items]..[index] = next),
           ),
           dom.div(classes: 'animus-typed-actions', <Widget>[
@@ -132,6 +141,7 @@ class KeyValueEditor extends StatefulWidget {
     this.depth = 0,
     this.valueControl,
     this.addLabel = 'Add field',
+    this.profileFor = typedTextProfile,
     super.key,
   });
 
@@ -144,6 +154,9 @@ class KeyValueEditor extends StatefulWidget {
   /// whose values share a schema.
   final Widget Function(String key, Object? value, void Function(Object? value) onChanged)? valueControl;
   final String addLabel;
+
+  /// What an entry's text completes, by its key.
+  final FieldProfile Function(String key) profileFor;
 
   @override
   State<KeyValueEditor> createState() => _KeyValueEditorState();
@@ -178,6 +191,7 @@ class _KeyValueEditorState extends State<KeyValueEditor> {
                     value: value[keys[index]],
                     label: keys[index],
                     depth: component.depth,
+                    profileFor: component.profileFor,
                     onChanged: (Object? next) => _put(keys[index], next),
                   ),
             ]),
