@@ -356,7 +356,8 @@ public final class NativeProtocolClient {
         } else if (packet instanceof ClientboundContainerSetSlotPacket p) {
             if (p.getContainerId() == windowId) windowState = p.getStateId();
             event("container_slot", "container", p.getContainerId(), "state", p.getStateId(), "slot", p.getSlot(),
-                    "item", p.getItem().isEmpty() ? "empty" : BuiltInRegistries.ITEM.getKey(p.getItem().getItem()).toString(), "count", p.getItem().getCount());
+                    "item", p.getItem().isEmpty() ? "empty" : BuiltInRegistries.ITEM.getKey(p.getItem().getItem()).toString(), "count", p.getItem().getCount(),
+                    "name", p.getItem().isEmpty() ? "" : p.getItem().getHoverName().getString());
         } else if (packet instanceof ClientboundContainerClosePacket p) {
             if (p.getContainerId() == windowId) { windowId = 0; windowState = 0; }
             event("container_closed", "container", p.getContainerId());
@@ -368,6 +369,8 @@ public final class NativeProtocolClient {
         item.put("slot", slot);
         item.put("item", BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
         item.put("count", stack.getCount());
+        // The display name, so a QA scenario finds a GUI button by what the player reads rather than by its slot.
+        item.put("name", stack.getHoverName().getString());
         return item;
     }
 
@@ -511,6 +514,13 @@ public final class NativeProtocolClient {
                 if (offer < 0 || offer > 1023) throw new IllegalArgumentException("QA trade offer 0..1023 required");
                 send(new ServerboundSelectTradePacket(offer));
                 event("select_trade_sent", "offer", offer);
+            }
+            case "rename_item" -> {
+                // The anvil's text field, as the vanilla client sends it on every edit.
+                String text = command.get("text").getAsString();
+                if (text.length() > 50) throw new IllegalArgumentException("QA anvil names are at most 50 characters");
+                send(new ServerboundRenameItemPacket(text));
+                event("rename_item_sent", "text", text);
             }
             case "close_container" -> {
                 int container = command.has("container") ? command.get("container").getAsInt() : windowId;

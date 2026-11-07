@@ -57,10 +57,13 @@ public abstract class GamePacketHooks {
         if (ModHooks.owner(player)) ModHooks.tickEnd(player);
     }
 
-    /** A chat message that passed validation, on the server thread just before it is broadcast. Optional so a loader patch cannot stop the server. */
-    @Inject(method = "broadcastChatMessage", at = @At("HEAD"), require = 0)
+    /**
+     * A chat message that passed validation, on the server thread just before it is broadcast. A line that answers a
+     * text prompt is not broadcast. Optional so a loader patch cannot stop the server.
+     */
+    @Inject(method = "broadcastChatMessage", at = @At("HEAD"), cancellable = true, require = 0)
     private void animus$chat(PlayerChatMessage message, CallbackInfo callback) {
-        if (ModHooks.owner(player)) ModHooks.chat(player, message.signedContent());
+        if (ModHooks.owner(player) && ModHooks.chat(player, message.signedContent())) callback.cancel();
     }
 
     /** A click on an open menu, on the server thread pass; a cancelled click is undone by resending the whole menu. */

@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:talk",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "I am {{ npc.name }}, {player_name}."
+          }
+        },
+        {
+          "type": "wait",
+          "ticks": 10
+        },
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Nice weather."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:play-sound",
+          "arguments": {
+            "sound": "minecraft:entity.villager.yes"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:choices",
+          "arguments": {
+            "id": "ask",
+            "options": [
+              {
+                "id": "just-looking",
+                "text": "Just looking"
+              },
+              {
+                "id": "goodbye",
+                "text": "Goodbye"
+              }
+            ],
+            "prompt": null
+          },
+          "templates": {
+            "/prompt": "Well, {{ player.name }}?"
+          }
+        }
+      ]
+    },
+    "just-looking": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Take your time."
+          }
+        }
+      ]
+    },
+    "goodbye": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Safe travels."
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "start",
+      "event": "proximity",
+      "cooldownTicks": 40,
+      "phase": "enter",
+      "radius": 7
+    },
+    {
+      "id": "ask-just-looking",
+      "event": "dialogue_choice",
+      "dialogue": "ask",
+      "choice": "just-looking",
+      "routine": "just-looking"
+    },
+    {
+      "id": "ask-goodbye",
+      "event": "dialogue_choice",
+      "dialogue": "ask",
+      "choice": "goodbye",
+      "routine": "goodbye"
+    }
+  ]
+}

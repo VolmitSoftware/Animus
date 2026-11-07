@@ -127,14 +127,14 @@ final class ModRecordings implements RecordingHost<ServerPlayer, ItemStack>, Aut
                 ItemStack before = stacks.get(slot);
                 if (before != null && ItemStack.matches(before, stack)) continue;
                 stacks.put(slot, stack.copy());
-                items.put(slot, item(stack));
+                items.put(slot, item(server, stack));
             }
             return new RecordingCapture.Sample(ModWorldKeys.key(player.level()), player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot(),
                     player.onGround(), player.isShiftKeyDown(), player.isSprinting(), player.isSwimming(), player.isFallFlying(), items);
         };
     }
 
-    private static net.minecraft.world.entity.EquipmentSlot vanilla(EquipmentSlot slot) {
+    static net.minecraft.world.entity.EquipmentSlot vanilla(EquipmentSlot slot) {
         return switch (slot) {
             case MAIN_HAND -> net.minecraft.world.entity.EquipmentSlot.MAINHAND;
             case OFF_HAND -> net.minecraft.world.entity.EquipmentSlot.OFFHAND;
@@ -147,7 +147,7 @@ final class ModRecordings implements RecordingHost<ServerPlayer, ItemStack>, Aut
     }
 
     /** A stack in the definition item shape, its component patch written like the text after {@code /give}. Empty for air. */
-    private Optional<NpcItem> item(ItemStack stack) {
+    static Optional<NpcItem> item(MinecraftServer server, ItemStack stack) {
         if (stack.isEmpty()) return Optional.empty();
         String id = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
         if (!NpcItem.validId(id)) return Optional.empty();

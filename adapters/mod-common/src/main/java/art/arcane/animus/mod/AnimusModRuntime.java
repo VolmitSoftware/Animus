@@ -369,6 +369,7 @@ public final class AnimusModRuntime {
     void quit(ServerPlayer player) {
         Running active = running;
         if (active == null) return;
+        if (active.screens != null) active.screens.forget(player);
         if (active.shops != null) active.shops.screens().quit(player);
         if (active.toolkit != null) active.toolkit.quit(player);
         if (active.guis != null) active.guis.quit(player);
@@ -394,17 +395,20 @@ public final class AnimusModRuntime {
     void died(ServerPlayer player) {
         Running active = running;
         if (active == null) return;
+        if (active.screens != null) active.screens.forget(player);
         if (active.shops != null) active.shops.screens().died(player);
         if (active.guis != null) active.guis.died(player);
         active.living.died(player);
         if (active.serverBehaviors != null) active.serverBehaviors.died(player);
     }
     void realDamaged(LivingEntity victim, DamageSource source) { Running active = running; if (active != null) active.combat.realDamaged(victim, source); }
-    void chat(ServerPlayer player, String message) {
+    boolean chat(ServerPlayer player, String message) {
         Running active = running;
-        if (active == null) return;
+        if (active == null) return false;
+        if (active.screens != null && active.screens.typed(player, message)) return true;
         active.combat.chat(player, message);
         if (active.serverBehaviors != null) active.serverBehaviors.chat(player, message);
+        return false;
     }
     boolean helperHit(Projectile projectile, HitResult hit) { Running active = running; return active != null && active.combat.helperHit(projectile, hit); }
     boolean suppressesDrops(LivingEntity entity) { Running active = running; return active != null && active.combat.suppressesDrops(entity); }

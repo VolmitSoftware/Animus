@@ -17,7 +17,7 @@ import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
 
 /** Reads what a recording keeps about the recorder's look: the signed skin and the six equipment slots. Owner thread. */
-final class RecorderLook {
+public final class RecorderLook {
     private RecorderLook() {}
 
     /**
@@ -72,7 +72,7 @@ final class RecorderLook {
     }
 
     /** The stack in one of the six player slots. */
-    static ItemStack stack(PlayerInventory inventory, EquipmentSlot slot) {
+    public static ItemStack stack(PlayerInventory inventory, EquipmentSlot slot) {
         return switch (slot) {
             case MAIN_HAND -> inventory.getItemInMainHand();
             case OFF_HAND -> inventory.getItemInOffHand();
@@ -85,7 +85,7 @@ final class RecorderLook {
     }
 
     /** A stack in the definition item shape; components the item shape cannot hold are left out. Empty for air. */
-    static Optional<NpcItem> item(ItemStack stack) {
+    public static Optional<NpcItem> item(ItemStack stack) {
         if (stack == null || stack.getType().isAir() || stack.getAmount() < 1) return Optional.empty();
         String id = stack.getType().getKey().toString();
         if (!NpcItem.validId(id)) return Optional.empty();

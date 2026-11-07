@@ -33,6 +33,12 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
         public final List<String> effects = new ArrayList<>();
         public int opened, closed;
         public boolean wand;
+        /** The text prompt waiting for an answer, or null. Tests answer it through {@code prompt.answer()}. */
+        public ScreenHost.Prompt prompt;
+        /** True makes the host refuse prompts, as a platform without text input does. */
+        public boolean noPrompt;
+        /** What the player holds and wears, read by {@code worn}. */
+        public final Map<art.arcane.animus.core.npc.EquipmentSlot, NpcItem> worn = new java.util.EnumMap<>(art.arcane.animus.core.npc.EquipmentSlot.class);
         public Player(String name) { this.name = name; this.id = UUID.nameUUIDFromBytes(name.getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
     }
 
@@ -97,8 +103,23 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
     }
     @Override public void drop(Player player, Stack stack) { player.dropped.add(stack); }
     @Override public Economy economy() { return economy; }
+    @Override public Optional<NpcItem> worn(Player player, art.arcane.animus.core.npc.EquipmentSlot slot) { return Optional.ofNullable(player.worn.get(slot)); }
     @Override public boolean holdsWand(Player player) { return player.wand; }
     @Override public boolean giveWand(Player player) { player.wand = true; return true; }
+    @Override public boolean prompt(Player player, ScreenHost.Prompt prompt) {
+        if (player.noPrompt) return false;
+        player.prompt = prompt;
+        player.messages.add("prompt:" + prompt.label());
+        return true;
+    }
+
+    /** Types the answer into the waiting prompt, or cancels it with empty. */
+    public static void answer(Player player, Optional<String> text) {
+        ScreenHost.Prompt waiting = player.prompt;
+        if (waiting == null) throw new AssertionError("no prompt is waiting for " + player.name);
+        player.prompt = null;
+        waiting.answer().accept(text);
+    }
 
     /** The slot of the first item whose plain name contains the text. */
     public static int slot(Player player, String name) {

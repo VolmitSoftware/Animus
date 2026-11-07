@@ -135,7 +135,7 @@ class ToolkitScreensTest {
             assertTrue(text.contains("Left ") && text.contains("Right ") && text.contains("Sneak "), item.name() + " lacks click hints: " + text);
             buttons++;
         }
-        assertEquals(9, buttons);
+        assertEquals(18, buttons);
         click("Trait groups", Click.LEFT);
         assertEquals("Trait groups", RichText.plain(alex.frame.title()));
         click("Back", Click.LEFT);
@@ -162,7 +162,7 @@ class ToolkitScreensTest {
         String tx = line.substring(line.indexOf("tx ") + 3, line.indexOf("tx ") + 39);
         assertEquals(List.of("npcs/town/baker.json", "npcs/town/guard.json"), store.paths(tx).stream().filter((String path) -> path.startsWith("npcs/")).sorted().toList());
         assertTrue(lore("g149").contains("In the selection 2 of 2"), lore("g149"));
-        click("g149", Click.SHIFT_LEFT);
+        click("g149", Click.RIGHT);
         drain();
         assertTrue(alex.messages.getLast().contains("Unassigned g149 from 2 NPCs"), alex.messages.getLast());
         assertTrue(npcs.find("guard").orElseThrow().groups().isEmpty());
@@ -175,7 +175,7 @@ class ToolkitScreensTest {
         click("Delete", Click.LEFT);
         drain();
         assertTrue(npcs.find("guard").isPresent(), "the first click only arms");
-        assertTrue(lore("Click again to delete").contains("1 NPC will be deleted"));
+        assertTrue(lore("Click again to delete").contains("1 NPC affected"), lore("Click again to delete"));
         click("Despawn", Click.LEFT);
         drain();
         assertTrue(lore("Delete").contains("Asks once more"), "another button disarms");
@@ -205,6 +205,34 @@ class ToolkitScreensTest {
         toolkit.open(alex.id, Toolkit.Tool.MANAGE, commands);
         click("Open in editor", Click.LEFT);
         assertEquals(List.of("inspect guard", "pair"), calls);
+    }
+
+    @Test void newNpcAsksForAnIdThenSavesSelectsAndSpawnsItWhereThePlayerStands() {
+        alex.pose = new ScreenHost.Pose(Set.of("world", "minecraft:overworld"), 12.3, 64, -7.8, 65.62, 90, 0, false);
+        toolkit.open(alex.id, Toolkit.Tool.PALETTE, commands);
+        click("New NPC", Click.LEFT);
+        assertEquals("New NPC id", alex.prompt.label());
+        MockScreenHost.answer(alex, Optional.of("miller"));
+        drain();
+        assertTrue(npcs.find("miller").isPresent(), "the NPC is saved");
+        assertEquals(List.of("miller"), toolkit.selected(alex.id));
+        com.google.gson.JsonObject position = npcs.find("miller").orElseThrow().json().getAsJsonObject("position");
+        assertEquals("world", position.get("world").getAsString(), "the world NPC positions already use");
+        assertEquals(12.3, position.get("x").getAsDouble());
+        assertEquals(90f, position.get("yaw").getAsFloat());
+        assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("Created dormant miller; tx ")), alex.messages.toString());
+        drain();
+        assertTrue(alex.messages.getLast().contains("Spawning 1 NPC; tx "), alex.messages.getLast());
+        click("New NPC", Click.LEFT);
+        MockScreenHost.answer(alex, Optional.of("miller"));
+        drain();
+        assertTrue(alex.messages.getLast().contains("already exists"), alex.messages.getLast());
+        click("New NPC", Click.RIGHT);
+        assertEquals("Body type, such as minecraft:villager", alex.prompt.label());
+        MockScreenHost.answer(alex, Optional.of("minecraft:villager"));
+        MockScreenHost.answer(alex, Optional.of("trader"));
+        drain();
+        assertEquals("minecraft:villager", npcs.find("trader").orElseThrow().json().get("type").getAsString());
     }
 
     @Test void theOutlineDrawsWhileSomethingIsSelectedAndStopsWhenCleared() {

@@ -29,8 +29,11 @@ abstract class ToolScreen<P, S> implements Screen {
     final Toolkit<P, S> toolkit;
     final ScreenManager<P, S>.Viewer viewer;
     final Toolkit.Commands commands;
+    /** Changes to more NPCs than this ask twice, as deletes always do. */
+    static final int BULK = 20;
     private final Map<Integer, ScreenFrame.Item> items = new LinkedHashMap<>();
     private final Map<Integer, Handler> handlers = new HashMap<>();
+    private int armed = -1;
     int page;
 
     ToolScreen(Toolkit<P, S> toolkit, ScreenManager<P, S>.Viewer viewer, Toolkit.Commands commands) {
@@ -51,8 +54,49 @@ abstract class ToolScreen<P, S> implements Screen {
     }
 
     @Override public final void click(int slot, GuiModel.Click click) {
+        if (slot != armed) armed = -1;
         Handler handler = handlers.get(slot);
         if (handler != null) handler.click(click);
+    }
+
+    /**
+     * A button that asks twice when it destroys something or touches more than {@link #BULK} NPCs: the first click arms
+     * it and the lore turns red, the second click on the same button runs it, any other click disarms it. A button
+     * that needs no confirmation runs at once.
+     */
+    void guarded(int slot, String icon, String name, String detail, int affected, boolean destructive, Runnable run) {
+        boolean asks = destructive || affected > BULK;
+        boolean ready = asks && armed == slot;
+        String shown = ready ? "&cClick again to " + name.toLowerCase(java.util.Locale.ROOT) : name;
+        List<String> lines = ready ? List.of("&c" + ToolkitFiles.count(affected) + " affected", "&7Any other click cancels") : List.of("&7" + detail, asks ? "&7Asks once more" : "&7Right away");
+        button(slot, icon, title(shown), lore(lines, any(ready ? "do it" : asks ? "arm it" : name.toLowerCase(java.util.Locale.ROOT))), (GuiModel.Click click) -> {
+            if (asks && armed != slot) { armed = slot; return; }
+            armed = -1;
+            run.run();
+        });
+    }
+
+    /** Asks the player for a line of text; the window hides meanwhile and comes back before {@code answer} runs. */
+    void prompt(String label, String initial, java.util.function.Consumer<String> answer) { toolkit.prompt(viewer, label, initial, answer); }
+
+    /** The next wand click on an NPC answers {@code chosen}; the window hides meanwhile. */
+    void pick(String label, java.util.function.Consumer<String> chosen) { toolkit.pick(viewer, label, chosen); }
+
+    /**
+     * A number changed by clicking: left adds {@code step}, right subtracts it, sneak makes it ten steps. The result
+     * stays within the bounds and loses floating-point noise past six decimals.
+     */
+    static double step(GuiModel.Click click, double value, double step, double minimum, double maximum) {
+        double delta = (click == GuiModel.Click.RIGHT || click == GuiModel.Click.SHIFT_RIGHT ? -step : step) * (sneak(click) ? 10 : 1);
+        double next = Math.round((value + delta) * 1_000_000d) / 1_000_000d;
+        return Math.clamp(next, minimum, maximum);
+    }
+
+    /** The next entry after {@code current} in a fixed list, wrapping; right clicks go backwards. */
+    static <T> T cycle(GuiModel.Click click, List<T> options, T current) {
+        int at = Math.max(0, options.indexOf(current));
+        int next = right(click) || click == GuiModel.Click.SHIFT_RIGHT ? (at - 1 + options.size()) % options.size() : (at + 1) % options.size();
+        return options.get(next);
     }
 
     /** A clickable item. {@code lore} is {@code &}-coded. */
@@ -99,9 +143,9 @@ abstract class ToolScreen<P, S> implements Screen {
 
     static String title(String text) { return Palette.PINK + text; }
 
-    /** The Back button; the toolkit's first screen closes instead. */
+    /** The Back button, at the start of the bottom row; the toolkit's first screen closes instead. */
     void back() {
-        button(BACK, "minecraft:oak_door", title("Back"), any("previous screen"), (GuiModel.Click click) -> viewer.back());
+        button((rows() - 1) * WIDTH, "minecraft:oak_door", title("Back"), any("previous screen"), (GuiModel.Click click) -> viewer.back());
     }
 
     /** One page of entries in the top five rows, with page arrows when there is more than one page. */

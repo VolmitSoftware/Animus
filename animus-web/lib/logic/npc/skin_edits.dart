@@ -50,6 +50,13 @@ class SkinTarget {
   bool matches(AnimusDocument document) => document.kind == kind && document.id == id;
 }
 
+/// The optional `label` of a skin document, a name shown in pickers (set in
+/// game from the Skins screen); null when it has none. The hash stays the id.
+String? skinDocumentLabel(Object? skin) {
+  final Object? label = asMap(skin)['label'];
+  return label is String && label.trim().isNotEmpty ? label.trim() : null;
+}
+
 /// Why the content of [skin] cannot be edited, or null when it can.
 String? skinEditBlock(Object? skin) {
   final JsonMap json = asMap(skin);

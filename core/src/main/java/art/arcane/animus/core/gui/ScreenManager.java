@@ -79,6 +79,17 @@ public final class ScreenManager<P, S> {
         public void home() { if (closed) return; if (history.isEmpty()) return; screen = history.getLast(); history.clear(); render(true); }
         public void close() { if (!closed) { Object open = window; forget(this); host.close(player, open); } }
         public void refresh() { if (!closed) render(false); }
+        /** Hides the window while the player types somewhere else; the screen and its history stay for {@link #resume}. */
+        public void suspend() {
+            if (closed || window == null) return;
+            Object open = window;
+            window = null;
+            frame = null;
+            host.close(player, open);
+        }
+        /** Shows the screen again after {@link #suspend}; nothing happens while the window is still showing. */
+        public void resume() { if (!closed && window == null) render(true); }
+        public boolean suspended() { return !closed && window == null; }
 
         /** Runs the work after the given number of owner ticks while the window stays open. */
         public boolean schedule(int ticks, Runnable work) {
@@ -100,6 +111,7 @@ public final class ScreenManager<P, S> {
         }
 
         private void render(boolean reopen) {
+            if (window == null && !reopen) return;
             ScreenFrame next;
             try { next = screen.render(); }
             catch (RuntimeException failure) { warn.accept("Screen failed to render for " + id + ": " + failure); close(); return; }

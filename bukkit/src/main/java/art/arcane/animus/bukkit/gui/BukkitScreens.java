@@ -7,6 +7,7 @@ import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.PacketKind;
 import art.arcane.animus.bukkit.protection.RegionContainerAccess;
 import art.arcane.animus.bukkit.protection.RegionFlags;
+import art.arcane.animus.bukkit.recording.RecorderLook;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenFrame;
 import art.arcane.animus.core.gui.ScreenHost;
@@ -14,6 +15,7 @@ import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.inventory.Economy;
 import art.arcane.animus.core.inventory.ItemOps;
 import art.arcane.animus.core.inventory.TradeInventory;
+import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.bukkit.toolkit.BukkitWand;
 import art.arcane.animus.core.text.ChatLine;
@@ -94,6 +96,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     private final Method teleportAsync, entityScheduler, entityExecute;
     private final BukkitShopStock stocks;
     private final BukkitMerchants merchants;
+    private final BukkitPrompts prompts;
 
     /**
      * @param later runs work on the player's owner on a later tick; false when it cannot be scheduled
@@ -117,6 +120,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         RegionFlags.Binding regions = RegionFlags.bind(server);
         if (regions != null && regions.failure().isPresent()) logger.warning(regions.describe("container shops stay closed"));
         merchants = new BukkitMerchants(server, later, () -> manager);
+        prompts = new BukkitPrompts(later);
         stocks = new BukkitShopStock(server, regions == null ? (UUID owner, Location at) -> true : new RegionContainerAccess(regions.flags()));
     }
 
@@ -130,6 +134,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         this.manager = Objects.requireNonNull(manager);
         server.getPluginManager().registerEvents(this, plugin);
         server.getPluginManager().registerEvents(merchants, plugin);
+        prompts.register(plugin);
     }
 
     @Override public UUID id(Player player) { return player.getUniqueId(); }
@@ -320,12 +325,14 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     @Override public void drop(Player player, ItemStack stack) { player.getWorld().dropItemNaturally(player.getLocation(), stack); }
     @Override public Economy economy() { return economy.get(); }
     @Override public art.arcane.animus.core.shop.ShopStock<ItemStack> stock(art.arcane.animus.core.shop.ShopDocument shop) { return stocks.open(shop); }
+    @Override public Optional<NpcItem> worn(Player player, EquipmentSlot slot) { return RecorderLook.item(RecorderLook.stack(player.getInventory(), slot)); }
     @Override public boolean holdsWand(Player player) { return BukkitWand.held(player); }
     @Override public boolean giveWand(Player player) {
         Optional<ItemStack> wand = stack(Toolkit.WAND_ITEM, Optional.of(Toolkit.WAND_NAME), Toolkit.WAND_LORE, new ArrayList<>());
         wand.ifPresent((ItemStack stack) -> BukkitWand.give(player, stack));
         return wand.isPresent();
     }
+    @Override public boolean prompt(Player player, Prompt prompt) { return prompts.open(player, prompt); }
     @Override public void chat(Player player, ChatLine line) {
         if (line.interactive()) ComponentMessenger.send(player, ComponentText.component(line.component()));
         else player.sendMessage(line.console());
@@ -337,6 +344,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void click(InventoryClickEvent event) {
+        if (prompts.click(event)) return;
         Optional<Window> window = window(event.getView());
         if (window.isEmpty()) return;
         event.setCancelled(true);
@@ -357,11 +365,13 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void drag(InventoryDragEvent event) {
+        if (prompts.drag(event)) return;
         if (window(event.getView()).isPresent()) event.setCancelled(true);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void closed(InventoryCloseEvent event) {
+        if (prompts.closed(event)) return;
         Optional<Window> window = window(event.getView());
         ScreenManager<Player, ItemStack> current = manager;
         if (window.isEmpty() || window.get().replaced || current == null || !(event.getPlayer() instanceof Player player)) return;
@@ -373,12 +383,17 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         Map<String, Lane> lanes = bars.remove(event.getPlayer().getUniqueId());
         if (lanes != null) for (Lane lane : lanes.values()) lane.bar().removeAll();
         merchants.forget(event.getPlayer().getUniqueId());
+        prompts.forget(event.getPlayer());
         ScreenManager<Player, ItemStack> current = manager;
         if (current != null) current.quit(event.getPlayer());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
-    public void died(PlayerDeathEvent event) { ScreenManager<Player, ItemStack> current = manager; if (current != null) current.died(event.getEntity()); }
+    public void died(PlayerDeathEvent event) {
+        prompts.forget(event.getEntity());
+        ScreenManager<Player, ItemStack> current = manager;
+        if (current != null) current.died(event.getEntity());
+    }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void worldChanged(PlayerChangedWorldEvent event) { ScreenManager<Player, ItemStack> current = manager; if (current != null) current.worldChanged(event.getPlayer()); }
@@ -388,6 +403,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
 
     /** Plugin shutdown: every Animus window closes now, so no display item stays clickable once events stop. */
     public void closeAll() {
+        prompts.closeAll(server::getPlayer);
         ScreenManager<Player, ItemStack> current = manager;
         if (current == null) return;
         for (UUID id : current.clear()) {

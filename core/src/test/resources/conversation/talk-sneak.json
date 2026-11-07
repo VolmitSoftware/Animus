@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:talk",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Hello, {player_name}."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:choices",
+          "arguments": {
+            "id": "ask",
+            "options": [
+              {
+                "id": "just-looking",
+                "text": "Just looking"
+              },
+              {
+                "id": "goodbye",
+                "text": "Goodbye"
+              }
+            ],
+            "prompt": "What brings you here?"
+          }
+        }
+      ]
+    },
+    "just-looking": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Take your time."
+          }
+        }
+      ]
+    },
+    "goodbye": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Safe travels."
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "start",
+      "event": "interaction",
+      "action": "sneak_interact",
+      "cooldownTicks": 40,
+      "consume": "true"
+    },
+    {
+      "id": "ask-just-looking",
+      "event": "dialogue_choice",
+      "dialogue": "ask",
+      "choice": "just-looking",
+      "routine": "just-looking"
+    },
+    {
+      "id": "ask-goodbye",
+      "event": "dialogue_choice",
+      "dialogue": "ask",
+      "choice": "goodbye",
+      "routine": "goodbye"
+    }
+  ]
+}

@@ -6,7 +6,6 @@ import art.arcane.animus.core.npc.DefinitionBatch;
 import art.arcane.animus.core.npc.GroupDocument;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
-import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.storage.NpcPaths;
@@ -130,16 +129,6 @@ final class ToolkitFiles {
         return drafts.isEmpty() ? head : head + "; tx " + npcs.applyAll(drafts);
     }
 
-    /** Writes the skin file when it is new; returns its hash. */
-    String saveSkin(BodySkin skin) throws IOException {
-        JsonObject document = new JsonObject();
-        document.addProperty("textureRaw", skin.textureValue());
-        if (skin.signature() != null) document.addProperty("signature", skin.signature());
-        String text = JsonDocuments.write(document), hash = JsonDocuments.hash(text), path = "skins/" + hash + ".json";
-        if (store.read(path) == null) store.commit(List.of(new DocumentStore.Change(path, "missing", text)));
-        return hash;
-    }
-
     /** Saves a captured route as {@code wp-<player>}, or the first free {@code wp-<player>-<n>}; returns the id. */
     String saveRoute(String player, String document) throws IOException {
         String base = "wp-" + player.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]", "");
@@ -177,6 +166,29 @@ final class ToolkitFiles {
     String apply(Batch batch, boolean spawn) throws IOException {
         if (batch.drafts().isEmpty()) return spawn ? "Already spawned" : "Already despawned";
         return (spawn ? "Spawning " : "Despawned ") + count(batch.drafts().size()) + "; tx " + npcs.applyAll(batch.drafts());
+    }
+
+    /**
+     * Saves a new dormant NPC where the player stands, as {@code /animus create} does: {@code npcs/<id>.json} with the
+     * id as its name. Refused when the id is taken or malformed.
+     */
+    String create(String id, String type, String world, Vec3 at, float yaw) throws IOException {
+        if (!id.matches(NpcPaths.SEGMENT)) throw new IOException("An id is 1 to 64 lowercase letters, digits, _ or -");
+        if (npcs.stored().stream().anyMatch((NpcDefinition existing) -> existing.id().equals(id))) throw new IOException("An NPC named " + id + " already exists");
+        JsonObject document = new JsonObject();
+        document.addProperty("schemaVersion", 1); document.addProperty("revision", 1);
+        document.addProperty("uuid", UUID.randomUUID().toString()); document.addProperty("id", id);
+        document.addProperty("type", type); document.addProperty("group", "");
+        document.addProperty("name", id);
+        document.addProperty("spawned", false);
+        JsonObject position = new JsonObject();
+        position.addProperty("world", world);
+        position.addProperty("x", Math.round(at.x() * 100) / 100.0); position.addProperty("y", Math.round(at.y() * 100) / 100.0); position.addProperty("z", Math.round(at.z() * 100) / 100.0);
+        position.addProperty("yaw", yaw); position.addProperty("pitch", 0);
+        document.add("position", position);
+        NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(document));
+        String tx = npcs.apply(new NpcRepository.Draft(definition.path(), "missing", 0, document));
+        return "Created dormant " + id + "; tx " + tx;
     }
 
     /** Deletes every listed NPC in one transaction; rollback restores them all. */

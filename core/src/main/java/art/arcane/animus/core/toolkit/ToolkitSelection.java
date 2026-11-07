@@ -28,6 +28,14 @@ public final class ToolkitSelection {
         chosen.put(player, ids);
     }
 
+    /** Replaces the selection with these NPCs in order, keeping the first {@link #MAXIMUM}; returns how many are selected. */
+    public synchronized int set(UUID player, List<String> ids) {
+        LinkedHashSet<String> next = new LinkedHashSet<>();
+        for (String id : ids) if (next.size() < MAXIMUM) next.add(id);
+        if (next.isEmpty()) chosen.remove(player); else chosen.put(player, next);
+        return next.size();
+    }
+
     /** Adds the NPC, or removes it when it is already selected. True when it is selected afterwards. */
     public synchronized boolean toggle(UUID player, String id) {
         LinkedHashSet<String> ids = chosen.computeIfAbsent(player, (UUID ignored) -> new LinkedHashSet<>());

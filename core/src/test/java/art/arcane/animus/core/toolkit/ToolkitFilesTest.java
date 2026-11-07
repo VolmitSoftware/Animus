@@ -95,9 +95,9 @@ class ToolkitFilesTest {
         assertEquals(List.of("looks"), skins.getFirst().groups());
 
         String texture = Base64.getEncoder().encodeToString("{\"textures\":{}}".getBytes(StandardCharsets.UTF_8));
-        String hash = files.saveSkin(new BodySkin(texture, Base64.getEncoder().encodeToString(new byte[]{1, 2, 3})));
+        String hash = new SkinFiles(npcs, store).save(new BodySkin(texture, Base64.getEncoder().encodeToString(new byte[]{1, 2, 3})), "Alex");
         assertTrue(hash.matches("[a-f0-9]{64}"));
-        assertEquals(hash, files.saveSkin(new BodySkin(texture, Base64.getEncoder().encodeToString(new byte[]{1, 2, 3}))), "saving the same skin again is a no-op");
+        assertEquals(hash, new SkinFiles(npcs, store).save(new BodySkin(texture, Base64.getEncoder().encodeToString(new byte[]{1, 2, 3})), "Alex"), "saving the same skin again is a no-op");
         String applied = files.skin(Optional.of(hash), List.of("guard", "cow"));
         assertTrue(applied.startsWith("Skin " + hash + " on 1 NPC, 1 skipped (not a player body); tx "), applied);
         assertEquals(hash, npcs.find("guard").orElseThrow().json().get("skin").getAsString());

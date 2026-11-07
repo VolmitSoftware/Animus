@@ -11,6 +11,7 @@ import art.arcane.animus.core.inventory.Economy;
 import art.arcane.animus.core.inventory.ItemOps;
 import art.arcane.animus.core.inventory.MatchRule;
 import art.arcane.animus.core.inventory.TradeInventory;
+import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.platform.ModWorlds;
 import art.arcane.animus.core.text.ChatLine;
@@ -70,12 +71,14 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
     /** Boss bar lanes by player; only the server thread touches them. */
     private final Map<UUID, Map<String, Lane>> bars = new HashMap<>();
     private long tick;
+    private final ModPrompts prompts;
 
     ModScreens(MinecraftServer server, ModTicks ticks, Economy economy) {
         this.server = Objects.requireNonNull(server);
         this.ticks = Objects.requireNonNull(ticks);
         this.economy = Objects.requireNonNull(economy);
         ticks.every(this::expireBars);
+        this.prompts = new ModPrompts(ticks);
     }
 
     void bind(ScreenManager<ServerPlayer, ItemStack> manager) { this.manager = manager; }
@@ -203,6 +206,14 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
         }
     }
 
+    @Override public boolean prompt(ServerPlayer player, Prompt prompt) { return prompts.open(player, prompt); }
+
+    /** A chat line; true when it answered a text prompt and must not be broadcast. */
+    boolean typed(ServerPlayer player, String line) { return prompts.chatted(player, line); }
+
+    /** The player left or died: a waiting text prompt is cancelled. */
+    void forget(ServerPlayer player) { prompts.forget(player); }
+
     @Override public void message(ServerPlayer player, String text) { player.sendSystemMessage(ModText.component(text)); }
     @Override public void actionBar(ServerPlayer player, String text) { player.sendSystemMessage(ModText.component(text), true); }
     @Override public void title(ServerPlayer player, String title, String subtitle, int fadeIn, int stay, int fadeOut) {
@@ -328,6 +339,10 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
 
     @Override public Economy economy() { return economy; }
 
+    @Override public Optional<NpcItem> worn(ServerPlayer player, EquipmentSlot slot) {
+        if (slot == EquipmentSlot.BODY || slot == EquipmentSlot.SADDLE) return Optional.empty();
+        return ModRecordings.item(server, player.getItemBySlot(ModRecordings.vanilla(slot)));
+    }
     @Override public boolean holdsWand(ServerPlayer player) { return ModWand.is(player.getMainHandItem()); }
     @Override public boolean giveWand(ServerPlayer player) {
         Optional<ItemStack> wand = stack(Toolkit.WAND_ITEM, Optional.of(Toolkit.WAND_NAME), Toolkit.WAND_LORE, new ArrayList<>());
@@ -342,6 +357,7 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
 
     /** Server shutdown: closes every Animus window on the server thread. */
     void closeAll() {
+        prompts.closeAll(server.getPlayerList()::getPlayer);
         ScreenManager<ServerPlayer, ItemStack> current = manager;
         if (current == null) return;
         for (UUID id : current.clear()) {

@@ -59,9 +59,20 @@ class ToolkitOutlineTest {
         WaypointCapture capture = new WaypointCapture(Set.of("world"));
         for (int i = 0; i < WaypointSettings.MAXIMUM_POINTS; i++) capture.add(pose(i % 40, i < 200 ? 0 : 500, false));
         assertThrows(IllegalStateException.class, () -> capture.add(pose(0, 0, false)));
-        List<Vec3> shown = ToolkitOutline.waypoints(pose(0, 0, false), capture);
+        capture.select(0);
+        List<ToolkitOutline.Marker> shown = ToolkitOutline.waypoints(pose(0, 0, false), capture);
         assertEquals(ToolkitOutline.WAYPOINTS, shown.size());
-        assertTrue(shown.stream().allMatch((Vec3 point) -> point.z() < ToolkitOutline.RANGE), "far points are left out");
+        assertTrue(shown.stream().allMatch((ToolkitOutline.Marker marker) -> marker.point().z() < ToolkitOutline.RANGE), "far points are left out");
+    }
+
+    @Test void theCurrentPointIsMarkedAndShownEvenPastTheBudget() {
+        WaypointCapture capture = new WaypointCapture(Set.of("world"));
+        for (int i = 0; i < ToolkitOutline.WAYPOINTS + 5; i++) capture.add(pose(i % 40 == 0 ? 0 : i % 40, 0, false));
+        capture.select(39);
+        List<ToolkitOutline.Marker> shown = ToolkitOutline.waypoints(pose(0, 0, false), capture);
+        assertEquals(ToolkitOutline.WAYPOINTS, shown.size());
+        assertEquals(new ToolkitOutline.Marker(capture.points().get(39), true), shown.getFirst());
+        assertEquals(1, shown.stream().filter(ToolkitOutline.Marker::current).count());
     }
 
     @Test void anEmptyCaptureCannotBeSaved() {

@@ -83,11 +83,17 @@ public final class Toolkit<P, S> implements AutoCloseable {
 
     @FunctionalInterface interface FileWork { String run(ToolkitFiles files) throws IOException; }
     @FunctionalInterface interface Load<T> { T run(ToolkitFiles files) throws IOException; }
+    /** Builds a tool screen for a viewer; what {@link #open(UUID, Commands, ScreenFactory)} takes. */
+    @FunctionalInterface interface ScreenFactory<P, S> { ToolScreen<P, S> create(Toolkit<P, S> toolkit, ScreenManager<P, S>.Viewer viewer, Commands commands); }
+
+    /** The next wand click on an NPC answers this instead of selecting; {@code label} is shown above the hotbar. */
+    private record Picker(String label, Consumer<String> chosen) {}
 
     private final Parts<P, S> parts;
     private final ToolkitSelection selection = new ToolkitSelection();
     private final Map<UUID, WaypointCapture> captures = new ConcurrentHashMap<>();
     private final Map<UUID, PlayerState> players = new ConcurrentHashMap<>();
+    private final Map<UUID, Picker> pickers = new ConcurrentHashMap<>();
 
     private Toolkit(Parts<P, S> parts) { this.parts = parts; }
 
@@ -104,11 +110,14 @@ public final class Toolkit<P, S> implements AutoCloseable {
         INSTALLED.remove(parts.screens(), this);
         captures.clear();
         players.clear();
+        pickers.clear();
     }
 
     ScreenHost<P, S> host() { return parts.screens().host(); }
     NpcRuntime<P, ?> living() { return parts.living(); }
     NpcRepository npcs() { return parts.npcs().get(); }
+    /** The document store, for file classes beside {@link ToolkitFiles}; read and write it on the file lane only. */
+    DocumentStore documents() { return parts.documents().get(); }
     ToolkitSelection selection() { return selection; }
     Optional<WaypointCapture> capture(UUID player) { return Optional.ofNullable(captures.get(player)); }
     Optional<Relocator> relocator() { return parts.relocator(); }
@@ -155,6 +164,8 @@ public final class Toolkit<P, S> implements AutoCloseable {
         state.clicked = now;
         boolean sneak = attack ? host.pose(player).map(ScreenHost.Pose::sneaking).orElse(false) : sneaking;
         String target = active.get().id();
+        Picker picker = pickers.remove(id);
+        if (picker != null) { picker.chosen().accept(target); return true; }
         if (!sneak) { only(player, target); return true; }
         seed(id);
         boolean added;
@@ -197,28 +208,77 @@ public final class Toolkit<P, S> implements AutoCloseable {
         for (String selected : selection.of(id)) npcs.find(selected).flatMap((NpcDefinition definition) -> living().state(definition.uuid())).ifPresent(shown::add);
         for (Vec3 corner : ToolkitOutline.outline(pose.get(), shown)) host.particle(player, ToolkitOutline.OUTLINE_PARTICLE, 1, 0, corner.x(), corner.y(), corner.z());
         if (capture != null)
-            for (Vec3 point : ToolkitOutline.waypoints(pose.get(), capture)) host.particle(player, ToolkitOutline.WAYPOINT_PARTICLE, 2, 0.1, point.x(), point.y() + 0.2, point.z());
+            for (ToolkitOutline.Marker marker : ToolkitOutline.waypoints(pose.get(), capture))
+                host.particle(player, marker.current() ? ToolkitOutline.CURRENT_PARTICLE : ToolkitOutline.WAYPOINT_PARTICLE, marker.current() ? 4 : 2, 0.1, marker.point().x(), marker.point().y() + 0.2, marker.point().z());
     }
 
-    /** The player left: selection, capture and click state go. */
+    /** The player left: selection, capture, pick and click state go. */
     public void quit(UUID player) {
         selection.clear(player);
         captures.remove(player);
         players.remove(player);
+        pickers.remove(player);
     }
 
     /** From a command: opens a tool screen on the player's owner. */
     public void open(UUID player, Tool tool, Commands commands) {
-        living().players().deliver(player, (P online) -> show(online, tool, commands));
+        open(player, commands, switch (tool) {
+            case PALETTE -> PaletteScreen::new;
+            case MANAGE -> ManageScreen::new;
+        });
     }
 
-    void show(P player, Tool tool, Commands commands) {
-        seed(host().id(player));
-        parts.screens().open(player, Optional.empty(), (ScreenManager<P, S>.Viewer viewer) -> Optional.of(switch (tool) {
-            case PALETTE -> new PaletteScreen<>(this, viewer, commands);
-            case MANAGE -> new ManageScreen<>(this, viewer, commands);
-        }));
+    /** Opens any tool screen on the player's owner, replacing the window they have open. */
+    public void open(UUID player, Commands commands, ScreenFactory<P, S> factory) {
+        living().players().deliver(player, (P online) -> show(online, commands, factory));
     }
+
+    void show(P player, Commands commands, ScreenFactory<P, S> factory) {
+        seed(host().id(player));
+        parts.screens().open(player, Optional.empty(), (ScreenManager<P, S>.Viewer viewer) -> Optional.of(factory.create(this, viewer, commands)));
+    }
+
+    /**
+     * Hides the viewer's window and asks for a line of text. The window comes back on the player's owner before
+     * {@code answer} runs with the text; a cancelled prompt brings the window back and says so. A platform without
+     * text input keeps the window open and says what to type instead.
+     */
+    void prompt(ScreenManager<P, S>.Viewer viewer, String label, String initial, Consumer<String> answer) {
+        UUID id = viewer.id();
+        ScreenHost.Prompt prompt = new ScreenHost.Prompt(label, initial, (Optional<String> typed) -> living().players().deliver(id, (P online) -> {
+            if (!viewer.open()) return;
+            viewer.resume();
+            if (typed.isPresent()) answer.accept(typed.get());
+            else say(online, ChatLine.reply("Cancelled; nothing changed"));
+        }));
+        viewer.suspend();
+        if (host().prompt(viewer.player(), prompt)) return;
+        viewer.resume();
+        say(viewer.player(), ChatLine.error("This server has no text input for " + label + "; use the matching /animus command"));
+    }
+
+    /**
+     * The next wand click on an NPC answers {@code chosen} instead of selecting. The window is hidden while the player
+     * looks for the NPC and comes back once they have clicked one; a second call replaces the first.
+     */
+    void pick(ScreenManager<P, S>.Viewer viewer, String label, Consumer<String> chosen) {
+        UUID id = viewer.id();
+        P player = viewer.player();
+        if (!host().holdsWand(player) && !host().giveWand(player)) { say(player, ChatLine.error("This platform has no selection wand")); return; }
+        viewer.suspend();
+        pickers.put(id, new Picker(label, (String npc) -> {
+            if (!viewer.open()) return;
+            viewer.resume();
+            chosen.accept(npc);
+        }));
+        bar(player, label + ": click an NPC with the wand");
+    }
+
+    /** The pick the player is in the middle of, for the screens' hints. */
+    Optional<String> picking(UUID player) { return Optional.ofNullable(pickers.get(player)).map(Picker::label); }
+
+    /** Forgets a pending pick, for example when the window is closed another way. */
+    void cancelPick(UUID player) { pickers.remove(player); }
 
     /** From a command: gives the wand on the player's owner. */
     public void wand(UUID player) { living().players().deliver(player, this::giveWand); }
@@ -250,6 +310,9 @@ public final class Toolkit<P, S> implements AutoCloseable {
         } catch (IllegalStateException refused) { bar(player, "&c" + refused.getMessage()); }
     }
 
+    /** Replaces the player's capture with a saved route opened for editing. */
+    void edit(UUID player, WaypointCapture capture) { captures.put(player, capture); }
+
     void undoPoint(P player) {
         WaypointCapture capture = captures.get(host().id(player));
         boolean removed = capture != null && capture.removeLast();
@@ -260,7 +323,7 @@ public final class Toolkit<P, S> implements AutoCloseable {
         if (captures.remove(host().id(player)) != null) say(player, ChatLine.reply("Route capture discarded"));
     }
 
-    /** Saves the capture as {@code routes/wp-<player>.json}, then, when asked, puts it on the selection. */
+    /** Saves the capture as {@code routes/wp-<player>.json}, or over the route it was loaded from, then, when asked, puts it on the selection. */
     void saveCapture(ScreenManager<P, S>.Viewer viewer, boolean assign) {
         P player = viewer.player();
         UUID id = viewer.id();
@@ -272,10 +335,10 @@ public final class Toolkit<P, S> implements AutoCloseable {
         String name = host().name(player);
         List<String> chosen = selected(id);
         write(viewer, (ToolkitFiles files) -> {
-            String route = files.saveRoute(name, document);
+            RouteFiles.Saved saved = new RouteFiles(npcs(), documents()).save(name, capture, document);
             captures.remove(id, capture);
-            if (!assign || chosen.isEmpty()) return "Saved routes/" + route + ".json with " + capture.points().size() + " points; rename the file to rename the route";
-            return "Saved routes/" + route + ".json; " + files.route(route, chosen);
+            if (!assign || chosen.isEmpty()) return saved.line();
+            return "Saved routes/" + saved.id() + ".json; " + files.route(saved.id(), chosen);
         });
     }
 
@@ -337,11 +400,40 @@ public final class Toolkit<P, S> implements AutoCloseable {
         say(player, ChatLine.reply("Stopped " + ToolkitFiles.count(sent) + (sent == ids.size() ? "" : ", " + (ids.size() - sent) + " not active")));
     }
 
-    /** Saves the player's own signed skin and puts it on the selection. */
+    /**
+     * Saves a new NPC where the player stands, selects it, and when asked spawns it as {@code /animus spawn} would.
+     * The position's world is the one NPC positions name, the first of the pose's names that an existing NPC uses,
+     * else the shortest.
+     */
+    void create(ScreenManager<P, S>.Viewer viewer, String id, String type, boolean spawn) {
+        P player = viewer.player();
+        Optional<ScreenHost.Pose> pose = host().pose(player);
+        if (pose.isEmpty()) { say(player, ChatLine.error("Your position cannot be read right now; try again")); return; }
+        String world = worldName(pose.get());
+        Vec3 at = new Vec3(pose.get().x(), pose.get().y(), pose.get().z());
+        float yaw = pose.get().yaw();
+        later(viewer, (ToolkitFiles files) -> files.create(id, type, world, at, yaw), (String line) -> {
+            living().refresh();
+            only(player, id);
+            say(player, ChatLine.parse(Palette.success(line)));
+            if (spawn) spawned(viewer, List.of(id), true);
+        });
+    }
+
+    private String worldName(ScreenHost.Pose pose) {
+        for (NpcDefinition definition : npcs().stored()) {
+            String world = definition.json().getAsJsonObject("position").get("world").getAsString();
+            if (pose.in(world)) return world;
+        }
+        return pose.worlds().stream().min(java.util.Comparator.comparingInt(String::length).thenComparing(String::compareTo)).orElse("world");
+    }
+
+    /** Saves the player's own signed skin, labelled with their name, and puts it on the selection. */
     void mySkin(ScreenManager<P, S>.Viewer viewer, List<String> ids) {
         Optional<BodySkin> skin = skin(viewer.player());
         if (skin.isEmpty()) { say(viewer.player(), ChatLine.error("Your skin has no signature; offline-mode servers cannot copy it")); return; }
-        write(viewer, (ToolkitFiles files) -> files.skin(Optional.of(files.saveSkin(skin.get())), ids));
+        String label = host().name(viewer.player());
+        write(viewer, (ToolkitFiles files) -> files.skin(Optional.of(new SkinFiles(npcs(), documents()).save(skin.get(), label)), ids));
     }
 
     /** Runs file work, then tells the player its line and redraws the screen. A line with a transaction refreshes the NPCs. */

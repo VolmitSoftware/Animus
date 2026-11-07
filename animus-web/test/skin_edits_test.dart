@@ -49,6 +49,21 @@ void main() {
   final Uint8List png = Uint8List.fromList(List<int>.generate(64, (int i) => i));
   final ({String id, String source}) classic = newSkin(slim: false, image: png);
 
+  group('skin labels', () {
+    test('a label is read trimmed and a blank one is no label', () {
+      expect(skinDocumentLabel(<String, Object?>{'textureRaw': 'e30=', 'label': ' Notch '}), 'Notch');
+      expect(skinDocumentLabel(<String, Object?>{'textureRaw': 'e30=', 'label': '  '}), isNull);
+      expect(skinDocumentLabel(<String, Object?>{'textureRaw': 'e30='}), isNull);
+    });
+
+    test('a model change keeps the label in the new document', () {
+      final JsonMap labelled = <String, Object?>{...asMap(jsonDecode(classic.source)), 'label': 'Town guard'};
+      final ({String id, String source})? slim = skinWithModel(labelled, slim: true);
+      expect(skinDocumentLabel(jsonDecode(slim!.source)), 'Town guard');
+      expect(slim.id, _sha(slim.source));
+    });
+  });
+
   group('skinWithModel', () {
     test('a model change makes a new document whose id is the hash of its text', () {
       final ({String id, String source})? slim = skinWithModel(jsonDecode(classic.source), slim: true);

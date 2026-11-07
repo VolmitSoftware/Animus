@@ -82,10 +82,30 @@ public interface ScreenHost<P, S> {
         return art.arcane.animus.core.shop.ShopStock.refused("this platform has no container shops");
     }
 
+    /**
+     * What the player holds or wears in a hand or armor slot, in the definition item shape with its components. Empty
+     * for an empty slot, for {@code body} and {@code saddle}, and on a platform that cannot read it.
+     */
+    default Optional<NpcItem> worn(P player, art.arcane.animus.core.npc.EquipmentSlot slot) { return Optional.empty(); }
+
     /** Whether the player holds the Animus selection wand in the main hand, found by its item marker, not its name. */
     default boolean holdsWand(P player) { return false; }
     /** Puts a selection wand in the player's inventory, or drops it at their feet when full. False when the platform has none. */
     default boolean giveWand(P player) { return false; }
     /** One chat line with its click chips; a platform without click text sends the console text. */
     default void chat(P player, art.arcane.animus.core.text.ChatLine line) { message(player, line.console()); }
+
+    /**
+     * A line of text asked of the player: an anvil, a sign or a chat capture. {@code answer} runs once on the player's
+     * owner with the typed text, or empty when the player cancelled, closed the input or left; it never runs twice.
+     */
+    record Prompt(String label, String initial, java.util.function.Consumer<Optional<String>> answer) {
+        public Prompt { java.util.Objects.requireNonNull(label); java.util.Objects.requireNonNull(initial); java.util.Objects.requireNonNull(answer); }
+    }
+
+    /**
+     * Asks the player for text. The caller has already hidden its window. False when this platform has no text input,
+     * in which case {@code answer} is never called.
+     */
+    default boolean prompt(P player, Prompt prompt) { return false; }
 }

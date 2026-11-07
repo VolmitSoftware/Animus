@@ -1,5 +1,5 @@
 /// A skin document's Visual view: the face once its PNG is loaded, the
-/// hash, the arm model (switching it writes a new document and moves every
+/// label, the hash, the arm model (switching it writes a new document and moves every
 /// NPC and group wearing it there, see `skin_edits.dart`), the signature, the
 /// NPCs and groups that wear it, and loading the PNG into the preview from a
 /// file or a CORS-enabled URL.
@@ -96,6 +96,8 @@ class _SkinSummaryState extends State<SkinSummary> {
           else
             const dom.span(classes: 'animus-skin-face is-blank is-large', attributes: <String, String>{'aria-hidden': 'true'}, <Widget>[]),
           dom.dl(classes: 'animus-skin-facts', <Widget>[
+            const dom.dt(<Widget>[Component.text('Label')]),
+            dom.dd(<Widget>[Component.text(skinDocumentLabel(component.document.json) ?? 'None')]),
             const dom.dt(<Widget>[Component.text('Hash')]),
             dom.dd(<Widget>[
               dom.code(<Widget>[Component.text(hash)]),

@@ -91,9 +91,10 @@ public final class ModHooks {
         AnimusModRuntime active = runtime;
         if (active != null) active.died(player);
     }
-    public static void chat(ServerPlayer player, String message) {
+    /** A chat line before it is broadcast; true when it answered a text prompt and must not be broadcast. */
+    public static boolean chat(ServerPlayer player, String message) {
         AnimusModRuntime active = runtime;
-        if (active != null) active.chat(player, message);
+        return active != null && active.chat(player, message);
     }
     public static void realDamaged(LivingEntity victim, DamageSource source) {
         AnimusModRuntime active = runtime;

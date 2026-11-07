@@ -28,11 +28,14 @@ import '../select/skin_faces.dart';
 
 final RegExp _hash = RegExp(r'^[a-f0-9]{64}$');
 
-/// A skin's short name in lists: its first 12 hex characters and model.
+/// A skin's short name in lists: its label when it has one, then its first
+/// 12 hex characters and model.
 String skinLabel(AnimusDocument skin) {
   final NpcSkinInfo? info = NpcSkinInfo.fromDocument(skin.json);
   final String model = info == null ? 'unreadable' : '${info.slim ? 'slim' : 'classic'}${info.signed ? ', signed' : ''}';
-  return '${skin.id.substring(0, 12)}, $model';
+  final String facts = '${skin.id.substring(0, 12)}, $model';
+  final String? label = skinDocumentLabel(skin.json);
+  return label == null ? facts : '$label ($facts)';
 }
 
 class SkinPicker extends StatefulWidget {
