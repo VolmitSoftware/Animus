@@ -11,6 +11,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_text.dart';
+import '../../logic/gui/shop_templates.dart';
 import '../../logic/npc/npc_paths.dart';
 import '../../logic/offline/new_documents.dart';
 import '../../mc/rigs/mc_rigs.dart';
@@ -89,6 +90,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
   // Behavior.
   late BehaviorTemplate _template = component.conversation ? BehaviorTemplate.conversation : BehaviorTemplate.greeter;
   String? _shop;
+  ShopTemplate _shopTemplate = ShopTemplate.blank;
   String? _attachTo;
 
   // Route.
@@ -291,6 +293,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
           setState(() => _problem = _recordingNote);
           return;
         case DocumentKind.shop:
+          await _write(<DocumentChange>[_change(kind, id, shopFromTemplate(_shopTemplate, id, title: _title))], kind, id);
         case DocumentKind.inventory:
         case DocumentKind.menu:
         case DocumentKind.hologram:
@@ -445,6 +448,13 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
         ],
       DocumentKind.recording => const <Widget>[dom.p(classes: 'animus-muted', <Widget>[Component.text(_recordingNote)])],
       DocumentKind.shop || DocumentKind.inventory || DocumentKind.menu || DocumentKind.hologram => <Widget>[
+          if (kind == DocumentKind.shop)
+            OptionCards<ShopTemplate>(
+              label: 'Start from',
+              value: _shopTemplate,
+              options: <CardOption<ShopTemplate>>[for (final ShopTemplate template in ShopTemplate.values) CardOption<ShopTemplate>(template, template.label, template.description)],
+              onChanged: (ShopTemplate value) => setState(() => _shopTemplate = value),
+            ),
           OfflineTextField(
             label: kind == DocumentKind.hologram ? 'First line' : 'Title',
             value: _title,

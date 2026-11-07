@@ -21,9 +21,12 @@ class ShopGoods {
 
 /// A merchant offer: [costA] and the optional [costB] buy [result].
 class ShopOffer {
-  const ShopOffer({required this.entryId, required this.costA, required this.result, this.costB});
+  const ShopOffer({required this.entryId, required this.costA, required this.result, this.costB, this.key = ''});
 
   final String entryId;
+
+  /// Where the entry lives, `page:mode:slot`.
+  final String key;
   final ShopGoods costA;
   final ShopGoods? costB;
   final ShopGoods result;
@@ -33,12 +36,13 @@ class ShopOffer {
 List<ShopOffer> nativeShopOffers(JsonMap shop) {
   final List<String> modes = <String>[for (final Object? mode in asList(shop['modes'])) if (mode is String) mode];
   final List<ShopOffer> offers = <ShopOffer>[];
+  final JsonList pages = asList(shop['pages']);
   for (final String mode in modes.isEmpty ? shopModes : modes) {
-    for (final Object? page in asList(shop['pages'])) {
-      final JsonMap grid = asMap(asMap(page)[mode]);
+    for (int page = 0; page < pages.length; page++) {
+      final JsonMap grid = asMap(asMap(pages[page])[mode]);
       final List<int> slots = <int>[for (final String key in grid.keys) if (int.tryParse(key) != null) int.parse(key)]..sort();
       for (final int slot in slots) {
-        final ShopOffer? offer = _offer(asMap(grid['$slot']));
+        final ShopOffer? offer = _offer(asMap(grid['$slot']), '$page:$mode:$slot');
         if (offer != null) offers.add(offer);
       }
     }
@@ -46,7 +50,7 @@ List<ShopOffer> nativeShopOffers(JsonMap shop) {
   return offers;
 }
 
-ShopOffer? _offer(JsonMap entry) {
+ShopOffer? _offer(JsonMap entry, String key) {
   final String id = asString(entry['id']) ?? '';
   final ShopGoods item = _goods(asMap(entry['item']), null);
   final double price = asDouble(entry['price']) ?? 0;
@@ -57,14 +61,15 @@ ShopOffer? _offer(JsonMap entry) {
       if (needs.isEmpty || gives.isEmpty) return null;
       return ShopOffer(
         entryId: id,
+        key: key,
         costA: _goods(asMap(asMap(needs.first)['item']), asInt(asMap(needs.first)['amount'])),
         costB: needs.length > 1 ? _goods(asMap(asMap(needs[1])['item']), asInt(asMap(needs[1])['amount'])) : null,
         result: _goods(asMap(asMap(gives.first)['item']), asInt(asMap(gives.first)['amount'])),
       );
     case 'buy' || 'command':
-      return ShopOffer(entryId: id, costA: ShopGoods(shopMoneyToken, 1, label: price == 0 ? 'Free' : _money(price)), result: item);
+      return ShopOffer(entryId: id, key: key, costA: ShopGoods(shopMoneyToken, 1, label: price == 0 ? 'Free' : _money(price)), result: item);
     case 'sell':
-      return ShopOffer(entryId: id, costA: item, result: ShopGoods(shopMoneyToken, 1, label: 'Pays ${_money(price)}'));
+      return ShopOffer(entryId: id, key: key, costA: item, result: ShopGoods(shopMoneyToken, 1, label: 'Pays ${_money(price)}'));
     default:
       return null;
   }

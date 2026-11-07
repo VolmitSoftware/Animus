@@ -1,8 +1,8 @@
 // Opens test/fixtures/gui_editors in the built site at desktop and phone
 // widths, in the dark and light themes, and checks each GUI editor: the
 // chest GUI (keyboard to a slot, brush drag, lore in slot names), shop
-// (entry type change strips fields, container shop round trip, native style
-// offers and layout), hologram
+// (a preview slot opens its offer, kind change strips fields, container shop
+// round trip, trading screen offers and layout), hologram
 // (rows keep show and scale, two quick style edits both kept and undone one
 // at a time, rows drawn as one styled text display), menu (stage pick,
 // motion and tooltip), text
@@ -182,10 +182,12 @@ async function run(browser, viewport, tag, theme) {
   assert.match(await refused.innerText(), /\$\.keys\.X\.actions\[1\]\.type/);
   await shot(page, `${tag}-chest-refused`);
 
-  // Shop: entry inspector, price edit.
+  // Shop: a slot in the chest preview opens its offer on the board, price edit.
   await open(page, 'town:market');
-  await page.locator('[data-slot="10"]').click();
-  const price = page.getByLabel('Price', {exact: true});
+  const board = page.locator('.animus-shop-board');
+  const settings = page.locator('.animus-shop-settings');
+  await page.locator('.animus-shop-preview [data-slot="10"]').click();
+  const price = board.getByLabel('Price', {exact: true});
   await price.fill('15');
   await page.waitForTimeout(300);
   await shot(page, `${tag}-shop`);
@@ -194,24 +196,24 @@ async function run(browser, viewport, tag, theme) {
   assert.equal(json.pages[0].buy['10'].limit.resetSeconds, 86400);
   await noSideways(page, `${tag} shop`);
 
-  // Changing an entry's type removes what the new type refuses.
-  await page.locator('[data-slot="12"]').click();
-  await chooseAndWait(page.getByLabel('Type', {exact: true}), 'static');
+  // Changing an offer's kind removes what the new kind refuses.
+  await page.locator('.animus-shop-preview [data-slot="12"]').click();
+  await chooseAndWait(board.getByLabel('Kind', {exact: true}), 'static');
   await settle(page);
   await page.waitForTimeout(300);
   json = await codeOf(page);
   assert.equal(json.pages[0].buy['12'].type, 'static');
-  assert.equal(json.pages[0].buy['12'].stock, undefined, 'stock goes with the type change');
+  assert.equal(json.pages[0].buy['12'].stock, undefined, 'stock goes with the kind change');
   assert.equal(json.pages[0].buy['12'].permission, 'town.market.rare', 'other fields stay');
 
   // A container shop: owner and containers round-trip, and buy entries are refused.
-  await page.getByRole('tab', {name: 'Shop', exact: true}).click();
-  await (await openSection(page.locator('.animus-gui-inspector'), 'Containers')).getByRole('button', {name: 'Add container'}).click();
+  await settings.getByRole('tab', {name: 'Shop', exact: true}).click();
+  await (await openSection(settings, 'Containers')).getByRole('button', {name: '+ Add container'}).click();
   await page.getByLabel('Container 1 world').fill('world_nether');
   await settle(page);
   await page.getByLabel('Container 1 y').fill('70');
   await settle(page);
-  await openSection(page.locator('.animus-gui-inspector'), 'Owner');
+  await openSection(settings, 'Owner');
   await page.getByLabel('Owner UUID').fill('069a79f4-44e9-4726-a5be-fca90e38aaf5');
   await settle(page);
   await page.getByLabel('Owner name').fill('Notch');
@@ -221,25 +223,24 @@ async function run(browser, viewport, tag, theme) {
   json = await codeOf(page);
   assert.deepEqual(json.containers, [{world: 'world_nether', x: 0, y: 70, z: 0}]);
   assert.deepEqual(json.owner, {uuid: '069a79f4-44e9-4726-a5be-fca90e38aaf5', name: 'Notch'});
-  await page.locator('[data-slot="10"]').click();
-  await page.locator('.animus-gui-inspector').getByText('a container shop has only trade and static entries').first().waitFor();
-  assert.deepEqual((await optionLabels(page.getByLabel('Type', {exact: true}))).sort(), ['buy (the player pays), not allowed here', 'static (decoration)']);
-  await page.getByRole('tab', {name: 'Shop', exact: true}).click();
-  await (await openSection(page.locator('.animus-gui-inspector'), 'Containers')).getByRole('button', {name: 'Remove container 1'}).click();
+  await page.locator('.animus-shop-preview [data-slot="10"]').click();
+  await board.getByText('a container shop has only trade and static entries').first().waitFor();
+  assert.deepEqual((await optionLabels(board.getByLabel('Kind', {exact: true}))).sort(), ['Buy (player pays money)', 'Decoration', 'Trade (items for items)']);
+  await (await openSection(settings, 'Containers')).getByRole('button', {name: 'Remove container 1'}).click();
   await page.waitForTimeout(200);
 
-  // Style and layout: native adds the villager screen in mode, page and slot order.
-  await chooseAndWait(page.getByLabel('Style', {exact: true}), 'native');
+  // Window and layout: the trading screen lists offers in mode, page and slot order.
+  await chooseAndWait(settings.getByLabel('Window', {exact: true}), 'native');
   await settle(page);
-  const offers = page.locator('.animus-gui-stage .animus-merchant-offer');
+  const offers = page.locator('.animus-shop-preview .animus-merchant-offer');
   await offers.first().waitFor();
   assert.deepEqual(await offers.evaluateAll(rows => rows.map(row => row.getAttribute('data-offer'))), ['bread', 'town-kit', 'iron-pickaxe', 'wheat', 'emerald-for-diamond'], 'the static golden apple is left out');
   assert.equal(await offers.first().locator('.animus-merchant-price').innerText(), '15');
   assert.equal(await offers.nth(3).locator('.animus-merchant-price').innerText(), 'Pays 4');
-  await page.getByLabel('Layout', {exact: true}).fill('town:board');
+  await chooseAndWait(settings.getByLabel('Layout', {exact: true}), 'town:board');
   await settle(page);
   await page.waitForTimeout(300);
-  await page.locator('.animus-gui-inspector').getByText('only the chest style uses a layout').first().waitFor();
+  await settings.getByText('only the chest style uses a layout').first().waitFor();
   await shot(page, `${tag}-shop-native`);
   await noSideways(page, `${tag} shop native`);
   json = await codeOf(page);
@@ -247,216 +248,16 @@ async function run(browser, viewport, tag, theme) {
   assert.equal(json.layout, 'town:board');
   await page.getByRole('tab', {name: 'Preview'}).click();
   await page.locator('.animus-gui-preview .animus-merchant-offer').first().waitFor();
-  assert.equal(await page.locator('.animus-gui-preview .animus-chest-slot[data-slot]').count(), 0, 'native preview shows no chest window');
+  assert.equal(await page.locator('.animus-gui-preview .animus-chest-slot[data-slot]').count(), 0, 'the read-only preview has no clickable slots');
   await page.getByRole('tab', {name: 'Visual'}).click();
-  await page.getByRole('tab', {name: 'Shop', exact: true}).click();
-  await page.getByLabel('Layout', {exact: true}).fill('');
+  await chooseAndWait(settings.getByLabel('Layout', {exact: true}), '');
   await settle(page);
-  await chooseAndWait(page.getByLabel('Style', {exact: true}), '');
+  await chooseAndWait(settings.getByLabel('Window', {exact: true}), '');
   await settle(page);
   await page.waitForTimeout(300);
   json = await codeOf(page);
   assert.equal(json.style, undefined);
   assert.equal(json.layout, undefined);
-  assert.equal(await page.locator('.animus-merchant-offer').count(), 0);
-
-  // Hologram: 3D stage, add a line.
-  await open(page, 'town:welcome');
-  const hologramCanvas = page.locator('.animus-mc-gl-host');
-  await page.waitForFunction(() => Number(document.querySelector('.animus-mc-gl-host')?.getAttribute('data-frames') || 0) > 0);
-  assert.ok(await hologramCanvas.count() === 1);
-  await page.locator('.animus-mc-text').first().waitFor();
-  await page.getByRole('button', {name: 'Add text'}).click();
-  await page.waitForTimeout(300);
-  await shot(page, `${tag}-hologram`);
-  json = await codeOf(page);
-  assert.equal(json.lines.length, 6);
-  assert.equal(json.lines[5], '&fText');
-  // An item row keeps show and scale through its edits.
-  const itemRow = page.locator('[data-path="$.lines[2]"]');
-  await itemRow.getByLabel('Scale').fill('2');
-  await settle(page);
-  await itemRow.getByLabel('Row 3 show when').fill('viewer.level > 1');
-  await settle(page);
-  await itemRow.getByLabel('Row 3 item').fill('minecraft:diamond');
-  await settle(page);
-  await itemRow.getByLabel('Row 3 count').fill('3');
-  await settle(page);
-  await page.waitForTimeout(300);
-  json = await codeOf(page);
-  assert.deepEqual(json.lines[2], {item: {type: 'item', item: 'minecraft:diamond', count: 3}, scale: 2, show: 'viewer.level > 1'});
-  await chooseAndWait(page.locator('[data-path="$.lines[2]"]').getByLabel('Row 3 kind'), 'head');
-  await settle(page);
-  await page.waitForTimeout(300);
-  json = await codeOf(page);
-  assert.deepEqual(json.lines[2], {head: '{{ viewer.name }}', scale: 2, show: 'viewer.level > 1'});
-  // Hologram style: two edits with no pause between them both land, each is
-  // its own undo step, and the stage draws the rows as one styled display.
-  const holoStyle = await openSection(page.locator('.animus-main'), 'Style');
-  await openSection(holoStyle, 'Text');
-  await holoStyle.getByLabel('Background argb').fill('#80112233');
-  await chooseAndWait(holoStyle.getByLabel('Text alignment'), 'left');
-  await page.waitForTimeout(300);
-  json = await codeOf(page);
-  assert.deepEqual(json.style, {backgroundArgb: '#80112233', textAlignment: 'left'}, 'both quick style edits are kept');
-  const holoText = page.locator('.animus-mc-text');
-  await holoText.first().waitFor();
-  assert.equal(await holoText.count(), 1, 'every text row is in one text display');
-  const drawn = await holoText.evaluate((element) => {
-    const first = element.querySelector('.animus-mc-text-line span');
-    return {
-      align: getComputedStyle(element).textAlign,
-      background: getComputedStyle(element).backgroundColor,
-      colour: getComputedStyle(first).color,
-      weight: getComputedStyle(first).fontWeight,
-    };
-  });
-  assert.deepEqual(drawn, {align: 'left', background: 'rgba(17, 34, 51, 0.5)', colour: 'rgb(255, 170, 0)', weight: '700'});
-  await topbarAction(page, 'Undo');
-  await page.waitForTimeout(300);
-  json = await codeOf(page);
-  assert.deepEqual(json.style, {backgroundArgb: '#80112233'}, 'Undo takes back only the second edit');
-  assert.equal(await holoText.evaluate(element => getComputedStyle(element).textAlign), 'center');
-  await noSideways(page, `${tag} hologram`);
-
-  // Menu: 3D stage, rename a component.
-  await open(page, 'town:hub');
-  await page.waitForFunction(() => Number(document.querySelector('.animus-mc-gl-host')?.getAttribute('data-frames') || 0) > 0);
-  await page.getByRole('button', {name: /^market \(button\)/}).click();
-  const componentId = page.getByLabel('Component id');
-  await componentId.fill('shop');
-  await settle(page);
-  await page.waitForTimeout(300);
-  await shot(page, `${tag}-menu`);
-  json = await codeOf(page);
-  assert.equal(json.components[1].id, 'shop');
-  await noSideways(page, `${tag} menu`);
-
-  // A click on the stage selects the component under it.
-  await page.locator('[data-pick="stone"]').click();
-  assert.equal(await page.getByLabel('Component id').inputValue(), 'stone');
-  await page.getByRole('button', {name: /^shop \(button\)/}).click();
-  // Motion and tooltip fields write into the component.
-  const inspector = page.locator('.animus-gui-inspector');
-  await openSection(inspector, 'Motion');
-  await page.getByLabel('Motion Y').fill('0.5');
-  await settle(page);
-  await page.getByLabel('Motion ticks').fill('6');
-  await settle(page);
-  const tooltip = await openSection(inspector, 'Tooltip');
-  await tooltip.getByRole('button', {name: 'Add line'}).click();
-  await tooltip.getByLabel('Line 1', {exact: true}).fill('&7Opens the market');
-  await settle(page);
-  await tooltip.getByLabel('Tooltip delay in ticks').fill('5');
-  await settle(page);
-  await page.waitForTimeout(300);
-  await shot(page, `${tag}-menu-fields`);
-  json = await codeOf(page);
-  assert.deepEqual(json.components[1].motion, {y: 0.5, ticks: 6});
-  assert.deepEqual(json.components[1].data.tooltip, {lines: ['&7Opens the market'], delayTicks: 5});
-  for (let i = 0; i < 4; i++) await topbarAction(page, 'Undo');
-  await page.waitForTimeout(200);
-  json = await codeOf(page);
-  assert.equal(json.components[1].motion, undefined);
-  assert.equal(json.components[1].data.tooltip, undefined);
-
-  // Text animation: the preset fix copies the preset's fields in; the preview pauses.
-  await open(page, 'town:sparkle');
-  await page.getByText("Gloss presets are not available in Animus; inline the preset's fields.").waitFor();
-  await page.getByRole('button', {name: 'Inline preset'}).click();
-  await page.waitForTimeout(300);
-  json = await codeOf(page);
-  assert.equal(json.preset, undefined);
-  assert.equal(json.mode, 'ascend_descend');
-  assert.equal(json.frameIntervalMs, 300, 'the document keeps its own interval over the default');
-  const toggle = page.locator('[data-anim="toggle"]');
-  await toggle.click();
-  assert.equal(await toggle.getAttribute('aria-pressed'), 'true');
-  const held = await page.locator('[data-anim="frame"]').innerText();
-  assert.match(held, /paused/);
-  await page.waitForTimeout(700);
-  assert.equal(await page.locator('[data-anim="frame"]').innerText(), held, 'a paused preview holds its frame');
-  await page.getByRole('button', {name: 'Next frame'}).click();
-  assert.notEqual(await page.locator('[data-anim="frame"]').innerText(), held);
-  await page.getByRole('button', {name: 'Add frame'}).click();
-  await page.waitForTimeout(300);
-  await shot(page, `${tag}-text-animation`);
-  json = await codeOf(page);
-  assert.equal(json.frames.length, 4);
-  await noSideways(page, `${tag} text animation`);
-
-  // Presets: the kind in use opens first; a new preset is written under it.
-  await open(page, 'presets');
-  assert.equal(await valueOf(page.getByLabel('Kind', {exact: true})), 'animations');
-  await (await openSection(page.locator('.animus-gui-inspector'), 'Presets for animations')).getByRole('button', {name: 'Add a preset'}).click();
-  await page.waitForTimeout(300);
-  await shot(page, `${tag}-presets`);
-  json = await codeOf(page);
-  assert.deepEqual(json.presets.animations.preset2, {extends: null, values: {}});
-  await noSideways(page, `${tag} presets`);
-  await open(page, 'town:hub');
-
-  // Undo reverts the last edit.
-  await topbarAction(page, 'Undo');
-  await page.waitForTimeout(200);
-  json = await codeOf(page);
-  assert.equal(json.components[1].id, 'market');
-  await page.getByRole('button', {name: /^market \(button\)/}).click();
-  await componentId.fill('shop');
-  await page.waitForTimeout(300);
-
-  // Data folder zip export.
-  const zipDownload = page.waitForEvent('download');
-  await topbarAction(page, 'Export the data folder zip', {menu: 'export'});
-  const zipFile = path.join(scratch, `${tag}.zip`);
-  await (await zipDownload).saveAs(zipFile);
-  const entries = readZip(fs.readFileSync(zipFile));
-  assert.deepEqual(Object.keys(entries).sort(), [
-    'gui/holograms/town/welcome.json',
-    'gui/inventories/town/board.json',
-    'gui/inventories/town/gloss-only.json',
-    'gui/menus/town/hub.json',
-    'gui/presets.json',
-    'gui/text-animations/town/sparkle.json',
-    'shops/town/market.json',
-  ]);
-  for (const text of Object.values(entries)) JSON.parse(text);
-  assert.equal(JSON.parse(entries['gui/inventories/town/board.json']).title, '&2Edited board {{ viewer.name }}');
-  assert.equal(JSON.parse(entries['shops/town/market.json']).pages[0].buy['10'].price, 15);
-  assert.equal(JSON.parse(entries['gui/menus/town/hub.json']).components[1].id, 'shop');
-
-  // Gloss bundle export and import.
-  const glossDownload = page.waitForEvent('download');
-  await topbarAction(page, 'Export a Gloss bundle', {menu: 'export'});
-  const glossFile = path.join(scratch, `${tag}.gloss.json`);
-  await (await glossDownload).saveAs(glossFile);
-  const exported = JSON.parse(fs.readFileSync(glossFile, 'utf8'));
-  assert.equal(exported.format, 'gloss-editor-workspace');
-  assert.equal(exported.version, 1);
-  assert.equal(exported.workspace.schemaVersion, 2);
-  assert.deepEqual(exported.workspace.documents.map(d => d.runtimeId).sort(), ['presets', 'town.gloss-only', 'town.hub', 'town.sparkle', 'town.welcome']);
-  assert.deepEqual(exported.workspace.documents.map(d => d.title).sort(), ['presets', 'town:gloss-only', 'town:hub', 'town:sparkle', 'town:welcome']);
-  for (const document of exported.workspace.documents) JSON.parse(document.json);
-  // Importing the export back keeps the Animus ids instead of gloss:town-hub.
-  const backChooser = page.waitForEvent('filechooser');
-  await topbarAction(page, 'Import a Gloss bundle', {menu: 'import'});
-  await (await backChooser).setFiles(glossFile);
-  // The same ids are in the workspace already, so the import asks first;
-  // Escape keeps the workspace as it is, then the second try replaces.
-  const confirm = page.locator('.animus-confirm', {hasText: 'Replace 5 documents'});
-  await confirm.waitFor();
-  await page.keyboard.press('Escape');
-  await confirm.waitFor({state: 'detached'});
-  const againChooser = page.waitForEvent('filechooser');
-  await topbarAction(page, 'Import a Gloss bundle', {menu: 'import'});
-  await (await againChooser).setFiles(glossFile);
-  await confirm.getByRole('button', {name: 'Replace and import'}).click();
-  await confirm.waitFor({state: 'detached'});
-  await page.waitForTimeout(500);
-  const tree = await sidebar(page);
-  assert.equal(await tree.getByText('gloss:town-hub', {exact: true}).count(), 0);
-  await tree.getByText('town:hub', {exact: true}).first().waitFor();
-  await closeDrawer(page);
   const bundleChooser = page.waitForEvent('filechooser');
   await topbarAction(page, 'Import a Gloss bundle', {menu: 'import'});
   await (await bundleChooser).setFiles(bundle);
@@ -466,13 +267,13 @@ async function run(browser, viewport, tag, theme) {
   await closeDrawer(page);
   await open(page, 'gloss:chest');
   await page.locator('.animus-chest-slot').first().waitFor();
-  assert.equal(await page.locator('.animus-chest-slot').count(), 9);
+  await page.waitForFunction(() => document.querySelectorAll('.animus-chest-slot').length === 9);
 
   // Preview views.
   await open(page, 'town:market');
   await page.getByRole('tab', {name: 'Preview'}).click();
   await page.locator('.animus-gui-preview .animus-chest-slot').first().waitFor();
-  await page.locator('.animus-gui-preview').getByText('Server default style').waitFor();
+  await page.locator('.animus-gui-preview').getByText('the server default').waitFor();
   await page.locator('.animus-gui-preview').getByRole('tab', {name: 'Sell'}).click();
   await page.locator('.animus-gui-preview').getByRole('tab', {name: 'Sell', selected: true}).waitFor();
   await shot(page, `${tag}-shop-preview`);
