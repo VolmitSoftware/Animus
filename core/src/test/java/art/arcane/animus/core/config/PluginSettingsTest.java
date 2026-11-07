@@ -111,7 +111,7 @@ class PluginSettingsTest {
             navigation = PluginSettings.load(store).navigation();
             assertEquals(96, navigation.planningJobs());
             assertEquals(8192, navigation.captureReadsPerTick());
-            assertEquals(new art.arcane.animus.core.navigation.NavigationLimits(8192, 96, 8192), navigation.limits());
+            assertEquals(new art.arcane.animus.core.navigation.NavigationLimits(8192, 96, art.arcane.animus.core.navigation.CaptureBounds.MAXIMUM_VOXELS), navigation.limits());
             Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[navigation]\nplanningJobs = 257\n");
             error = assertThrows(IOException.class, () -> PluginSettings.load(store));
             assertTrue(error.getMessage().contains("navigation: planningJobs must be within 1..256"), error.getMessage());

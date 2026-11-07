@@ -1269,8 +1269,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         BlockPos.containing(destination.point());
     }
     /**
-     * Terrain blocks this leg for good. Its route fails as any failed leg does, and the server log says so once per NPC,
-     * naming the leg, so an imported patrol that stops is explained.
+     * Terrain blocks this leg for good, or no plan found a way. Its route fails as any failed leg does, and the server log
+     * says so once per NPC, naming the leg and which of the two it was, so an imported patrol that stops is explained.
      */
     private void blockLeg(Route route, String reason) {
         if (route.recording != null) { failLeg(route, reason); return; }
@@ -1280,20 +1280,26 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         boolean once = AnimusLog.shared().debug();
         if (!once || !value.blockedWarned) {
             if (once) value.blockedWarned = true;
-            AnimusLog.shared().routine(BLOCKED_LEGS, id, blockedLeg(id, route.waypoint, route.origin, route.goal, reason,
-                    route.leg != null && value.movement.teleportsWhenStuck()), host::warn);
+            boolean terrain = route.longLeg.terrainBlocks();
+            AnimusLog.shared().routine(blockedLegs(terrain), id, blockedLeg(id, route.waypoint, route.origin, route.goal, reason,
+                    route.leg != null && value.movement.teleportsWhenStuck(), terrain), host::warn);
         }
         failLeg(route, reason);
     }
     /**
-     * The one log line for an NPC whose leg terrain blocks; shared by every runtime. An NPC whose movement teleports when
+     * The routine diagnostic kind of a blocked leg, counted per NPC while debug mode is off: terrain that blocks it, or a
+     * leg no plan found a way for. Shared by every runtime.
+     */
+    public static String blockedLegs(boolean terrain) {
+        return terrain ? "NPCs hit route legs blocked by terrain" : "NPCs hit route legs the planner could not path";
+    }
+    /**
+     * The one log line for an NPC whose leg is blocked; shared by every runtime. An NPC whose movement teleports when
      * stuck goes on from the point instead of stopping.
      */
-    /** The routine diagnostic kind of a blocked leg, counted per NPC while debug mode is off. */
-    public static final String BLOCKED_LEGS = "NPCs hit blocked route legs";
-
-    public static String blockedLeg(String npc, int waypoint, Vec3 from, WorldPosition to, String reason, boolean teleports) {
-        return "NPC " + npc + (teleports ? " teleported" : " stopped") + ": terrain blocks its route leg" + (waypoint < 0 ? "" : " to waypoint " + waypoint)
+    public static String blockedLeg(String npc, int waypoint, Vec3 from, WorldPosition to, String reason, boolean teleports, boolean terrain) {
+        return "NPC " + npc + (teleports ? " teleported" : " stopped") + (terrain ? ": terrain blocks its route leg" : ": the planner found no path for its route leg")
+                + (waypoint < 0 ? "" : " to waypoint " + waypoint)
                 + " from " + block(from) + " to " + block(to.point()) + " in " + to.world() + " (" + reason + "); later blocked legs of this NPC are not logged";
     }
     private static String block(Vec3 point) {
@@ -1468,16 +1474,22 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     }
     /**
      * Where a stuck leg's teleport puts the body; shared by every runtime. A walking or swimming body stands on the footing
-     * of its waypoint's block, on top of it when the waypoint names the ground under the feet. A flyer, or terrain that
-     * cannot be read, keeps the waypoint itself.
+     * of its waypoint's block, on top of it when the waypoint names the ground under the feet. A waypoint buried in terrain
+     * that changed since it was recorded lifts to the first place the body fits up to {@link #STUCK_LIFT} blocks above it,
+     * as Citizens' stuck teleport does. A flyer, or terrain that cannot be read, keeps the waypoint itself.
      */
     public static WorldPosition stuckTarget(WorldPosition goal, MovementProfile.Mode mode, double hullWidth, double hullHeight, MotionValidator.Sampler terrain) {
         if (mode == MovementProfile.Mode.FLY) return goal;
         Vec3 point = goal.point();
-        BodyTerrain.Rest rest = new BodyTerrain(hullWidth, hullHeight, mode == MovementProfile.Mode.SWIM, STUCK_CELLS, terrain)
-                .footing(point.x(), point.z(), (int) Math.floor(point.y()));
+        int block = (int) Math.floor(point.y());
+        BodyTerrain body = new BodyTerrain(hullWidth, hullHeight, mode == MovementProfile.Mode.SWIM, STUCK_CELLS, terrain);
+        BodyTerrain.Rest rest = body.footing(point.x(), point.z(), block);
+        for (int lift = 1; !rest.usable() && rest.kind() != BodyTerrain.Kind.UNAVAILABLE && lift < STUCK_LIFT; lift++)
+            rest = body.onTop(point.x(), point.z(), block + lift);
         return rest.usable() ? new WorldPosition(goal.world(), new Vec3(point.x(), rest.feet(), point.z())) : goal;
     }
+    /** How many blocks above a buried waypoint a stuck teleport looks for room, as Citizens' stuck teleport does. */
+    public static final int STUCK_LIFT = 10;
     private void routeStatus(Route route, String state, String detail) {
         route.value.navigationStatus = state + "; route=" + route.id + "; waypoint=" + route.waypoint + "; goal=" + route.goal.point()
                 + (route.capture == null ? "" : "; capture=" + route.capture.firstTick() + ".." + route.capture.lastTick()

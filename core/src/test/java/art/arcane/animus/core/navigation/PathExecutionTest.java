@@ -53,6 +53,32 @@ class PathExecutionTest {
         }
         assertEquals((int) Math.ceil(6 / perTick), ticks);
     }
+    /**
+     * A shelf holds a body up only along its back, so between the floor and the shelf's back is a strip narrower than the
+     * planner's quarter-block samples where no box lies under the body. The planned walk across it must still execute.
+     */
+    @Test void aWalkBridgesASupportGapNarrowerThanAQuarterBlock() {
+        VoxelSnapshot.Builder builder = ground();
+        Cell shelf = Cell.of(List.of(new Cell.Box(.6875, 0, 0, 1, 1, 1)), Cell.Fluid.NONE, false);
+        for (int z = 0; z < 5; z++) builder.set(4, 0, z, shelf);
+        VoxelSnapshot snapshot = builder.build();
+        PathExecution execution = walk(snapshot, new Vec3(2.5, 1, 2.5), new Vec3(6.5, 1, 2.5));
+        run(execution, snapshot, WALKER, .05);
+        assertEquals(new Vec3(6.5, 1, 2.5), execution.position());
+    }
+    /** A body holding a vine over a drop steps off it onto the ledge beside: the vine holds it up until the ledge does. */
+    @Test void aBodyHoldingAVineWalksOffItOntoTheLedgeBeside() {
+        VoxelSnapshot.Builder builder = new VoxelSnapshot.Builder("world", 0, 0, 0, 8, 8, 5).fill(Cell.AIR).availableChunk(0, 0);
+        for (int x = 0; x < 8; x++) for (int y = 0; y < 3; y++) for (int z = 0; z < 5; z++) builder.set(x, y, z, x == 3 ? Cell.AIR : Cell.SOLID);
+        Cell vine = Cell.of(List.of(), Cell.Fluid.NONE, false, true);
+        builder.set(3, 2, 2, vine).set(3, 3, 2, vine);
+        VoxelSnapshot snapshot = builder.build();
+        MovementProfile climber = new MovementProfile(Set.of(MovementProfile.Mode.WALK), 0.6, 1.8, 0.6, 1.25, 1, true, true, false);
+        Vec3 origin = new Vec3(3.5, 3, 2.5), goal = new Vec3(1.5, 3, 2.5);
+        PathExecution execution = new PathExecution(origin, plan(snapshot, BlockPos.containing(origin), BlockPos.containing(goal), climber), goal, climber);
+        run(execution, snapshot, climber, .05);
+        assertEquals(goal, execution.position());
+    }
     @Test void noOpDestinationDoesNotWiggleThroughTheVoxelCenter() {
         Vec3 position = new Vec3(.1, 1, 2.2);
         PathExecution execution = walk(ground().build(), position, position);
@@ -122,13 +148,14 @@ class PathExecutionTest {
             assertEquals(new Vec3(2.5, 2.25, 2.5), execution.position());
         }
     }
-    private static void run(PathExecution execution, VoxelSnapshot snapshot, MovementProfile profile) {
+    private static void run(PathExecution execution, VoxelSnapshot snapshot, MovementProfile profile) { run(execution, snapshot, profile, .2); }
+    private static void run(PathExecution execution, VoxelSnapshot snapshot, MovementProfile profile, double perTick) {
         MotionValidator.Sampler terrain = snapshot::cell;
         double carried = 0;
-        for (int i = 0; i < 400 && !execution.finished(); i++) {
-            PathExecution.Proposal step = execution.next(.2).orElseThrow();
+        for (int i = 0; i < 2000 && !execution.finished(); i++) {
+            PathExecution.Proposal step = execution.next(perTick).orElseThrow();
             // A step goes the tick's distance plus what the step before had left at its node.
-            assertTrue(step.from().distance(step.to()) <= .200001 + carried);
+            assertTrue(step.from().distance(step.to()) <= perTick + .000001 + carried);
             carried = step.unused();
             assertTrue(MotionValidator.check(step.from(), step.to(), profile.width(), profile.height(), step.medium(), step.requireSupport(), 128, terrain).clear(), step.toString());
             if (step.landing()) assertTrue(MotionValidator.check(step.to(), step.to(), profile.width(), profile.height(), step.landingMedium(),

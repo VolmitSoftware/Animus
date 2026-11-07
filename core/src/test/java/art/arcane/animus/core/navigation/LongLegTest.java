@@ -130,6 +130,21 @@ class LongLegTest {
             return y < 56 ? Cell.SOLID : y < 64 ? Cell.WATER : Cell.AIR;
         };
     }
+    /**
+     * A goal six blocks away behind a wall whose only opening lies thirty blocks along it, behind the start: a room whose
+     * stairs are at the far end, as in an imported village. No capture of the ordinary size holds that way round.
+     */
+    @Test void aShortLegWhoseOnlyWayRoundLeavesTheOrdinaryCaptureStillArrives() {
+        World world = (int x, int y, int z) -> {
+            if (y < 64) return Cell.SOLID;
+            if (y > 66) return Cell.AIR;
+            if (x == 3 && z >= -60 && z <= 60 && z != 30) return Cell.SOLID;
+            if (z == -3 && x >= -60 && x < 3) return Cell.SOLID;
+            return Cell.AIR;
+        };
+        Vec3 start = new Vec3(.5, 64, .5), goal = new Vec3(6.5, 64, .5);
+        arrived(walk(world, start, goal, WALKER), goal);
+    }
     @Test void aSwimmingRouteCrossesALakeThatAWalkingRouteCannot() {
         Vec3 start = new Vec3(.5, 64, .5), goal = new Vec3(140.5, 64, .5);
         arrived(walk(lake(600), start, goal, SWIMMER), goal);
@@ -178,10 +193,29 @@ class LongLegTest {
             boolean ring = Math.max(Math.abs(x - 80), Math.abs(z)) == 6;
             return ring && y < 72 ? Cell.SOLID : Cell.AIR;
         };
-        Run run = walk(world, new Vec3(.5, 64, .5), new Vec3(80.5, 64, .5), WALKER);
+        LongLeg leg = new LongLeg(new Vec3(.5, 64, .5), new Vec3(80.5, 64, .5), WIDTH, HEIGHT);
+        Run run = walk(leg, world, (int x, int z) -> true, new Vec3(.5, 64, .5), new Vec3(80.5, 64, .5), WALKER);
         assertEquals(LongLeg.Next.BLOCKED, run.outcome());
         assertTrue(run.plans() < 40, "bounded: " + run.plans());
         assertTrue(run.at().x() > 60, "it walked as far as the terrain allowed: " + run.at());
+        assertTrue(leg.terrainBlocks(), "the widest capture around both ends holds no way in");
+    }
+    /**
+     * A far goal behind a wall whose only opening lies farther along it than any capture reaches: no plan held both ends,
+     * so the planner gave up rather than the terrain proving the way blocked.
+     */
+    @Test void aWayRoundBeyondEveryCaptureIsReportedAsThePlannersLimit() {
+        World world = (int x, int y, int z) -> {
+            if (y < 64) return Cell.SOLID;
+            if (y > 66) return Cell.AIR;
+            if (x == 40 && z >= -400 && z <= 400 && z != 300) return Cell.SOLID;
+            return Cell.AIR;
+        };
+        Vec3 start = new Vec3(.5, 64, .5), goal = new Vec3(150.5, 64, .5);
+        LongLeg leg = new LongLeg(start, goal, WIDTH, HEIGHT);
+        Run run = walk(leg, world, (int x, int z) -> true, start, goal, WALKER);
+        assertEquals(LongLeg.Next.BLOCKED, run.outcome());
+        assertFalse(leg.terrainBlocks());
     }
     /** A goal no body can stand at, such as the top of a pillar, ends the leg beside it, as Citizens' distance margin does. */
     @Test void anUnreachableGoalBesideReachableGroundEndsTheLegNextToIt() {

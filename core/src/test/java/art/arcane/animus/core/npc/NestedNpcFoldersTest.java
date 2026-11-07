@@ -91,6 +91,19 @@ class NestedNpcFoldersTest {
         }
     }
 
+    @Test void anEmptyGroupNamesAnNpcDirectlyInNpcs() throws Exception {
+        assertEquals(List.of(), NpcDefinition.validate(JsonDocuments.object(definition("loose", ""))));
+        write("npcs/loose.json", definition("loose", ""));
+        try (DocumentStore store = new DocumentStore(root)) {
+            NpcRepository npcs = new NpcRepository(store);
+            assertEquals(List.of(), npcs.loadForStartup());
+            assertEquals("", npcs.find("loose").orElseThrow().group());
+            npcs.apply(new NpcRepository.Draft("npcs/fresh.json", "missing", 0, JsonDocuments.object(definition("fresh", ""))));
+            assertEquals("npcs/fresh.json", npcs.find("fresh").orElseThrow().path());
+            assertEquals(List.of(), npcs.reload());
+        }
+    }
+
     @Test void aFolderDeeperThanEightIsRefused() throws Exception {
         write("npcs/a/b/c/d/e/f/g/h/i/deep.json", definition("deep", "a"));
         try (DocumentStore store = new DocumentStore(root)) {

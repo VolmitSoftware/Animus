@@ -27,14 +27,14 @@ class CollisionCellsTest {
     }
 
     @Test void boundsAndLimitsEnforceHardMemoryAndWorkCeilings() {
-        assertEquals(8192, new CaptureBounds(-16, -64, -16, 16, 32, 16).voxelCount());
-        assertThrows(IllegalArgumentException.class, () -> new CaptureBounds(0, 0, 0, 17, 32, 16));
+        assertEquals(CaptureBounds.MAXIMUM_VOXELS, new CaptureBounds(-16, -64, -16, 64, 32, 64).voxelCount());
+        assertThrows(IllegalArgumentException.class, () -> new CaptureBounds(0, 0, 0, 65, 32, 64));
         assertThrows(IllegalArgumentException.class, () -> new CaptureBounds(0, 0, 0, 0, 1, 1));
         assertThrows(IllegalArgumentException.class, () -> new CaptureBounds(30_000_000, 0, 0, 1, 1, 1));
         assertThrows(IllegalArgumentException.class, () -> new NavigationLimits(65537, 8, 8192));
         assertThrows(IllegalArgumentException.class, () -> new NavigationLimits(256, 257, 8192));
         assertDoesNotThrow(() -> new NavigationLimits(2048, 32, 8192));
-        assertThrows(IllegalArgumentException.class, () -> new NavigationLimits(256, 8, 8193));
+        assertThrows(IllegalArgumentException.class, () -> new NavigationLimits(256, 8, CaptureBounds.MAXIMUM_VOXELS + 1));
         assertThrows(IllegalArgumentException.class, () -> new NavigationLimits(0, 8, 8192));
     }
 }

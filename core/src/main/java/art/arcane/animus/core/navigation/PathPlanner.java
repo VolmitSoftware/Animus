@@ -54,8 +54,6 @@ public final class PathPlanner {
     }
     private static final int CELLS = 4096;
     private static final double EPSILON = MotionValidator.EPSILON, SAMPLE = 0.25;
-    /** Surfaces no thicker than this (carpets, thin snow) count as the level below when falls are counted. */
-    private static final double THIN = 0.125;
     private enum Kind { OPEN, BLOCKED, UNKNOWN }
     private record Place(Kind kind, double y, boolean swimming) {}
     private record Edge(BlockPos target, double y, double peak, Motion motion, boolean swimming) {}
@@ -91,7 +89,7 @@ public final class PathPlanner {
             Node current = frontier.poll();
             if (best.get(current.feet()) != current || closed.contains(current.feet())) continue;
             if (visited == limits.maximumVisitedNodes())
-                return partial ? closest(snapshot, initial, closest, visited, peak) : result(Status.BUDGET_EXHAUSTED, visited, peak, search.unavailable);
+                return partial ? closest(snapshot, initial, closest, visited, peak, true) : result(Status.BUDGET_EXHAUSTED, visited, peak, search.unavailable);
             visited++; closed.add(current.feet());
             if (current.estimate() < closest.estimate() - EPSILON) closest = current;
             if (current.feet().equals(target)) return new Result(Status.FOUND, path(current), visited, peak, search.unavailable);
@@ -106,13 +104,13 @@ public final class PathPlanner {
                 Node prior = best.get(edge.target());
                 if (prior != null && prior.cost() <= cost) continue;
                 if (frontier.size() == limits.maximumFrontier())
-                    return partial ? closest(snapshot, initial, closest, visited, peak) : result(Status.BUDGET_EXHAUSTED, visited, peak, search.unavailable);
+                    return partial ? closest(snapshot, initial, closest, visited, peak, true) : result(Status.BUDGET_EXHAUSTED, visited, peak, search.unavailable);
                 Node next = new Node(edge.target(), edge.y(), edge.peak(), edge.swimming(), current, edge.motion(), cost, edge.target().distance(aim), length);
                 best.put(edge.target(), next); frontier.add(next); peak = Math.max(peak, frontier.size());
             }
         }
         if (cancelled.getAsBoolean()) return result(Status.CANCELLED, visited, peak, search.unavailable);
-        if (partial) return closest(snapshot, initial, closest, visited, peak);
+        if (partial) return closest(snapshot, initial, closest, visited, peak, pathLimited || search.unavailable);
         // The edge of the capture reads as unavailable too; only an unloaded chunk means the answer may change later.
         return result(pathLimited ? Status.BUDGET_EXHAUSTED : search.unavailable && !snapshot.everyChunkAvailable() ? Status.UNAVAILABLE_TERRAIN : Status.UNREACHABLE,
                 visited, peak, search.unavailable);
@@ -120,12 +118,14 @@ public final class PathPlanner {
 
     /**
      * A partial search's answer. The edge of its own capture always reads as unavailable, so only a chunk that was not
-     * loaded makes a search that got nowhere wait for terrain instead of reporting the way blocked.
+     * loaded makes a search that got nowhere wait for terrain instead of reporting the way blocked. {@code open} says the
+     * search stopped at its budget or read past its capture, so a larger plan may still find a way; otherwise the body has
+     * visited every place it can reach.
      */
-    private static Result closest(VoxelSnapshot snapshot, Node initial, Node closest, int visited, int peak) {
+    private static Result closest(VoxelSnapshot snapshot, Node initial, Node closest, int visited, int peak, boolean open) {
         boolean unloaded = !snapshot.everyChunkAvailable();
-        if (closest != initial) return new Result(Status.PARTIAL, path(closest), visited, peak, unloaded);
-        return result(unloaded ? Status.UNAVAILABLE_TERRAIN : Status.UNREACHABLE, visited, peak, unloaded);
+        if (closest != initial) return new Result(Status.PARTIAL, path(closest), visited, peak, open || unloaded);
+        return result(unloaded ? Status.UNAVAILABLE_TERRAIN : Status.UNREACHABLE, visited, peak, open || unloaded);
     }
     private static List<Step> path(Node end) {
         List<Step> path = new ArrayList<>();
@@ -219,6 +219,7 @@ public final class PathPlanner {
                 if (dx != 0 && dz != 0 && !profile.diagonals()) continue;
                 Edge edge = cross(from, dx, dz, false);
                 if (edge == null && profile.jumpHeight() > profile.stepHeight()) edge = cross(from, dx, dz, true);
+                if (edge == null && climbs && !from.swimming() && (dx == 0 || dz == 0)) edge = onto(from, dx, dz);
                 if (edge != null) edges.add(edge);
             }
             if (climbs && !from.swimming()) {
@@ -245,6 +246,21 @@ public final class PathPlanner {
                 previous = leg.target();
             }
             return new Edge(column, target, Math.max(from.y(), target), Motion.CLIMB, false);
+        }
+        /**
+         * Across onto a ladder, vine or scaffolding beside the body, at the layer of its feet, where no ground holds it:
+         * the body steps off a ledge and holds on, then climbs down as a player does.
+         */
+        private Edge onto(Node from, int dx, int dz) {
+            int layer = floor(from.y());
+            BlockPos column = offset(from.feet(), dx, layer - from.feet().y(), dz);
+            if (column == null || !climbable(column.x(), layer, column.z())) return null;
+            Vec3 previous = centre(from.feet(), from.y()), end = centre(column, layer);
+            for (Maneuver.Leg leg : Maneuver.climb(previous, end)) {
+                if (!check(previous, leg.target(), leg.medium(), leg.support()).clear()) return null;
+                previous = leg.target();
+            }
+            return new Edge(column, layer, Math.max(from.y(), layer), Motion.CLIMB, false);
         }
         private boolean climbable(int x, int y, int z) {
             VoxelSnapshot.Cell cell = cells.sample(x, y, z);
@@ -285,12 +301,13 @@ public final class PathPlanner {
         /**
          * A step down is always allowed; a fall may drop {@code maximumFall} levels. A level is the block a body stands
          * on, as the game's pathfinder (and Citizens' fall distance) counts it, so a body lands on a slab, stair or path
-         * one level down even though it drops more than a block; a carpet or thin snow is part of the level below.
+         * one level down even though it drops more than a block. A surface lower than half a block, such as a carpet, a
+         * closed trapdoor or a few snow layers, is part of the level of the block it lies on.
          */
         private boolean fallAllowed(double from, double to) {
             return from - to <= profile.stepHeight() + EPSILON || level(from) - level(to) <= profile.maximumFall();
         }
-        private static int level(double feet) { return (int) Math.ceil(feet - THIN - EPSILON); }
+        private static int level(double feet) { return (int) Math.floor(feet + 0.5 + EPSILON); }
         private boolean scorched(Node node) {
             Vec3 at = centre(node.feet(), node.y());
             return rest(at.x(), at.z(), node.y(), 0, 0, false).kind() == BodyTerrain.Kind.HAZARD;

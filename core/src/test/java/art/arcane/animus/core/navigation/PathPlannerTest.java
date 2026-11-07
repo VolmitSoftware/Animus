@@ -91,6 +91,17 @@ class PathPlannerTest {
         for (int x = 1; x < 6; x++) raisedSlab.set(x, 2, 2, VoxelSnapshot.Cell.layer(0.5));
         assertEquals(UNREACHABLE, plan(raisedSlab.build(), ledge, floor, fallOfOne).status(), "off a raised slab: two levels");
     }
+    /**
+     * A surface lower than half a block, such as a closed trapdoor or a few snow layers, is part of the level of the block
+     * it lies on, so stepping off a trapdoor on a one-block ledge to the floor is a fall of one level, as the way up was.
+     */
+    @Test void aLowSurfaceOnALedgeCountsAsTheLedgesLevel() {
+        var fallOfOne = new MovementProfile(Set.of(WALK), 0.6, 1.8, 0.6, 1.25, 1, false);
+        var builder = room(12, 7, 5);
+        for (int x = 1; x < 11; x++) for (int y = 1; y < 6; y++) { builder.set(x, y, 1, SOLID); builder.set(x, y, 3, SOLID); }
+        for (int x = 1; x < 6; x++) { builder.set(x, 1, 2, SOLID); builder.set(x, 2, 2, VoxelSnapshot.Cell.layer(0.1875)); }
+        assertEquals(FOUND, plan(builder.build(), new BlockPos(3, 2, 2), new BlockPos(9, 1, 2), fallOfOne).status());
+    }
     /** A one-wide corridor along x: a two-block ledge for x 1..5, then the floor. */
     private static VoxelSnapshot.Builder corridor() {
         var builder = room(12, 7, 5);
