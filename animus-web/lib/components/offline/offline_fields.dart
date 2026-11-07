@@ -151,8 +151,18 @@ class _ConfirmRowState extends State<ConfirmRow> {
   @override
   void initState() {
     super.initState();
-    // The question takes focus, so Tab reaches its two buttons next.
-    web.window.setTimeout((() => (web.document.getElementById(_id) as web.HTMLElement?)?.focus()).toJS, 0.toJS);
+    // The question takes focus, so Tab reaches its two buttons next. The
+    // button that asked is removed while this mounts, which can drop focus
+    // to the page after the first try, so it retries while nothing has it.
+    int tries = 0;
+    void take() {
+      final web.HTMLElement? element = web.document.getElementById(_id) as web.HTMLElement?;
+      final web.Element? active = web.document.activeElement;
+      if (element != null && (tries == 0 || active == null || identical(active, web.document.body))) element.focus();
+      if (++tries < 90 && (element == null || !element.contains(web.document.activeElement))) web.window.setTimeout(take.toJS, 16.toJS);
+    }
+
+    web.window.setTimeout(take.toJS, 0.toJS);
   }
 
   /// Escape counts only while focus is inside this confirmation, so one key

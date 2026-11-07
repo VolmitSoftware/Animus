@@ -186,8 +186,8 @@ class _CombatEditorState extends State<CombatEditor> {
             _number('squad', 'alertRange'),
           ]),
           _section('guard', 'Guard', 'Set player or npc, not both.', <Widget>[
-            _text('guard', 'player', placeholder: '00000000-0000-0000-0000-000000000000', help: 'Lowercase UUID.'),
-            _text('guard', 'npc', placeholder: '00000000-0000-0000-0000-000000000000', help: 'Lowercase UUID.'),
+            _text('guard', 'player', help: 'Lowercase UUID.'),
+            _text('guard', 'npc', help: 'Lowercase UUID.'),
             for (final String key in const <String>['followDistance', 'pointRange', 'catchUpDistance', 'replanDistance']) _number('guard', key),
             _switches('guard'),
           ]),
@@ -794,7 +794,7 @@ class _CombatEditorState extends State<CombatEditor> {
     return InspectRow(
       key: ValueKey<String>('combat:$name:${field.key}'),
       label: field.key,
-      labelFor: controlId(path),
+      labelFor: InspectControl.focusable(field, value) ? controlId(path) : null,
       tip: _advancedHelp[field.key],
       problems: fieldProblems(field, value, path, _problems, nested: true),
       child: InspectControl(

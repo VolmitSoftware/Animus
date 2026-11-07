@@ -25,6 +25,15 @@ class AnimusLogTest {
         assertTrue(lines.getFirst().startsWith("NPC guard stopped"));
     }
 
+    @Test void aRepeatedFailurePrintsOneTraceThenOneLine() {
+        List<String> traces = new ArrayList<>();
+        for (int attempt = 0; attempt < 3; attempt++)
+            log.failure("Virtual attack failed", new IllegalStateException("wrapper", new IllegalArgumentException("no target")), lines::add, (String message, Throwable failure) -> traces.add(message));
+        log.failure("Virtual attack failed", new IllegalArgumentException("other target"), lines::add, (String message, Throwable failure) -> traces.add(message));
+        assertEquals(List.of("Virtual attack failed", "Virtual attack failed"), traces, "one trace per distinct cause");
+        assertEquals(List.of("Virtual attack failed: IllegalArgumentException: no target", "Virtual attack failed: IllegalArgumentException: no target"), lines);
+    }
+
     @Test void quietModeSummarizesAtMostOncePerWindow() {
         assertTrue(!log.debug(), "debug mode starts off");
         for (int npc = 0; npc < 12; npc++) log.routine("NPCs hit blocked route legs", "citizens-" + npc, "detail " + npc, lines::add);

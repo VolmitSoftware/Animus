@@ -162,7 +162,7 @@ async function run(browser, viewport, theme, tag) {
   const gridId = async () => (await part(page, 'behaviour')).locator('svg.animus-route-grid').first().getAttribute('id');
   let grid = await gridId();
   assert.equal(await page.locator(`#${grid}-wait-range`).getAttribute('aria-pressed'), 'true');
-  assert.equal(await page.locator(`#${grid}-wait-min`).inputValue(), '20');
+  assert.equal(await page.locator(`#${grid}-wait`).inputValue(), '20');
   assert.equal(await page.locator(`#${grid}-wait-max`).inputValue(), '60');
   await page.locator(`#${grid}-wait-max`).fill('10');
   await page.locator(`#${grid}-wait-max`).blur();

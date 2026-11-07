@@ -22,7 +22,7 @@ import java.util.Optional;
  * {@code denizen} section of the drop-in state. Its transaction joins the drop-in's list, so one rollback undoes it.
  */
 final class DenizenDropIn {
-    static final String RUNNING = "Denizen is still enabled. Animus will not apply or accept the converted Denizen scripts while it is, so no script runs twice. Stop the server, remove Denizen from plugins/ (keep its folder), start it again and rerun this command.";
+    static final String RUNNING = "Denizen is still enabled, so converted scripts stay off to avoid running twice; remove its jar from plugins/ (keep its folder), restart and run this again";
 
     private DenizenDropIn() {}
 
@@ -55,7 +55,7 @@ final class DenizenDropIn {
         List<String> lines = new ArrayList<>();
         JsonObject report = preview.report();
         lines.add("Denizen " + found.label() + ": " + scripts(report) + " scripts; " + preview.behaviors() + " behaviors for " + preview.bindings() + " NPCs; "
-                + preview.flagsImported() + " flag values imported, " + preview.flagsPreserved() + " kept; " + preview.preserved() + " items kept with reasons; report " + part.get("report").getAsString());
+                + preview.flagsImported() + " flag values imported, " + preview.flagsPreserved() + " kept; " + preview.preserved() + " items kept, reasons in " + part.get("report").getAsString());
         commandLine(report, store).ifPresent(lines::add);
         return lines;
     }
@@ -71,8 +71,8 @@ final class DenizenDropIn {
         if (commands == null || commands.isEmpty()) return Optional.empty();
         List<String> ids = new ArrayList<>();
         for (JsonElement id : commands) ids.add(id.getAsString());
-        return Optional.of("Denizen commands: " + commands.size() + " behaviors use animus:command and stay denied until listed in config.toml [behaviors.actions] commandBehaviors (for example "
-                + commands.get(0).getAsString() + "), or commandNamespaces = [\"denizen\"] for all of them; read each one in behaviors/denizen/ first; "
+        return Optional.of("Denizen commands: " + commands.size() + " behaviors stay denied (such as " + commands.get(0).getAsString()
+                + "); review behaviors/denizen/, then list them in commandBehaviors or set commandNamespaces = [\"denizen\"]; "
                 + CommandAllowList.advice(store, CommandAllowList.namespaces(ids)));
     }
 
@@ -94,9 +94,9 @@ final class DenizenDropIn {
         transactions.add(applied.transaction());
         part.addProperty("state", "applied");
         List<String> lines = new ArrayList<>();
-        lines.add("Denizen behaviors installed in behaviors/denizen/; transaction " + applied.transaction() + "; " + applied.states() + " flag state files; "
-                + applied.bound() + " NPCs wait for accept denizen");
-        lines.add("Imported Denizen flag values load at the next restart. After that, Denizen can stay removed.");
+        lines.add("Denizen behaviors installed in behaviors/denizen/; " + applied.states() + " flag state files; "
+                + applied.bound() + " NPCs wait for accept denizen; tx " + applied.transaction());
+        lines.add("Imported flag values load at the next restart; Denizen can stay removed");
         applied.problems().stream().limit(10).forEach((String problem) -> lines.add("Not bound: " + problem));
         return lines;
     }
@@ -104,7 +104,7 @@ final class DenizenDropIn {
     static Optional<String> reviewLine(JsonObject state) {
         if (!applied(state)) return Optional.empty();
         JsonObject part = state.getAsJsonObject("denizen");
-        return Optional.of("Denizen import " + part.get("importId").getAsString().substring(0, 12) + ": behaviors in behaviors/denizen/, kept items with reasons in "
+        return Optional.of("Denizen import " + part.get("importId").getAsString().substring(0, 12) + ": behaviors in behaviors/denizen/, kept items in "
                 + part.get("report").getAsString());
     }
 

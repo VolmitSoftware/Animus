@@ -145,10 +145,10 @@ def run_target(args, version):
             if cycle == 0:
                 report['checks'].append(server.command('animus create platform-smoke minecraft:player world 0 64 0 qa "Platform Smoke"', r'Created dormant platform-smoke;'))
                 report['checks'].append(server.command('animus inspect platform-smoke', r'"name":"Platform Smoke"'))
-                report['checks'].append(server.command('animus validate', r'validate successful;'))
+                report['checks'].append(server.command('animus validate', r'All definitions valid;'))
             else:
                 report['checks'].append(server.command('animus inspect platform-smoke', r'"name":"Platform Smoke"'))
-                report['checks'].append(server.command('animus delete platform-smoke', r'Deleted; rollback transaction'))
+                report['checks'].append(server.command('animus delete platform-smoke', r'Deleted [^;]*; tx '))
             server.close()
             server = None
             report['checks'].append(f'clean shutdown cycle {cycle + 1}')

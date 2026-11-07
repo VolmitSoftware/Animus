@@ -216,6 +216,8 @@ async function run(browser, folder, viewport, theme, tag) {
   await page.locator('#animus-doc-delete').click();
   await page.getByText('Worn by Anna (town/anna) and Bert (town/bert); they would name a missing skin.', {exact: false}).waitFor();
   await shot(page, `${tag}-03-delete`);
+  // The question takes focus once it is drawn; Escape counts only there.
+  await page.waitForFunction(() => document.activeElement && document.activeElement.closest('.animus-confirm'));
   await page.keyboard.press('Escape');
   await page.locator('#animus-doc-delete').waitFor();
 

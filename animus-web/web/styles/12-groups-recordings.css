@@ -146,12 +146,50 @@
     min-width: 0;
   }
 
-  .animus-effective-table th:first-child {
-    width: 38%;
+  /* Phone: each row becomes a block (field, then value and source on one
+     line) instead of three columns too narrow for a group button. */
+  .animus-effective-table,
+  .animus-effective-table tbody,
+  .animus-effective-table tr {
+    display: block;
   }
 
-  .animus-effective-table th:last-child {
-    width: 6.5rem;
+  .animus-effective-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .animus-effective-table tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+    padding: 0.375rem 0.5rem;
+    border: 1px solid var(--animus-border);
+    border-top-width: 0;
+  }
+
+  .animus-effective-table tbody tr:first-child {
+    border-top-width: 1px;
+  }
+
+  .animus-effective-table tbody th,
+  .animus-effective-table tbody td {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+
+  .animus-effective-table tbody th {
+    flex-basis: 100%;
+  }
+
+  .animus-effective-table tbody td:nth-child(2) {
+    flex: 1 1 8rem;
+    min-width: 0;
   }
 }
 
@@ -170,6 +208,13 @@
 .animus-recording.is-preview {
   grid-template-columns: minmax(0, 34rem);
   grid-template-areas: 'stage';
+}
+
+/* Split view gives the recording half the width: one column, as on a
+   narrow screen. */
+.animus-views.is-split .animus-recording:not(.is-preview) {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'facts' 'stage' 'events';
 }
 
 .animus-recording-facts {

@@ -230,13 +230,13 @@ class EditorHotloadTest {
         try (FakeAgent first = new FakeAgent(); FakeAgent second = new FakeAgent()) {
             hotload(config(listener(port).replace("relayEnabled = false", "relayEnabled = true\nrelayUrl = \"" + first.url() + "\"")));
             await(() -> first.accepted() == 1, "the relay connecting");
-            assertTrue(service.status().stream().anyMatch((String line) -> line.startsWith("Editor relay " + first.url())));
+            assertTrue(service.status().stream().anyMatch((String line) -> line.contains(" | relay " + first.url() + " ")));
             hotload(config(listener(port).replace("relayEnabled = false", "relayEnabled = true\nrelayUrl = \"" + second.url() + "\"")));
             await(() -> second.accepted() == 1, "the relay on the new URL");
             await(() -> first.closed(0), "the old relay connection closing");
             hotload(config(listener(port)));
             await(() -> second.closed(0), "the relay stopping");
-            await(() -> service.status().contains("Editor relay off; set [editor] relayEnabled = true"), "relay status off");
+            await(() -> service.status().getFirst().contains(" | relay off | "), "relay status off");
             assertSame(before, service.listener().orElseThrow(), "the listener did not restart");
             assertEquals(200, catalog("http://127.0.0.1:" + port, token));
         }
@@ -249,7 +249,7 @@ class EditorHotloadTest {
         try (ServerSocket taken = new ServerSocket()) {
             taken.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0));
             hotload(config(listener(taken.getLocalPort())));
-            await(() -> service.listener().isEmpty() && service.status().stream().anyMatch((String line) -> line.startsWith("Editor listener off (failed to start: ")),
+            await(() -> service.listener().isEmpty() && service.status().stream().anyMatch((String line) -> line.contains(" | listener failed: ")),
                     "the listener reporting why it is down");
             assertTrue(service.api().isPresent(), "the API keeps running for the relay");
             assertTrue(refused("127.0.0.1", port), "the old listener was closed");
@@ -257,7 +257,7 @@ class EditorHotloadTest {
         int fixed = freePort();
         hotload(config(listener(fixed)));
         await(() -> listenerPort() == fixed, "the listener on the fixed port");
-        assertEquals("Editor: ready", service.status().getFirst());
+        assertTrue(service.status().getFirst().startsWith("Editor ready | listener 127.0.0.1:" + fixed + " (http) "), service.status().getFirst());
         assertEquals(200, catalog("http://127.0.0.1:" + fixed, token));
     }
 
@@ -268,7 +268,7 @@ class EditorHotloadTest {
         hotload(config("enabled = false\n" + listener(port)));
         await(() -> service.api().isEmpty(), "the editor closing");
         await(() -> refused("127.0.0.1", port), "the listener closing");
-        assertTrue(service.status().getFirst().startsWith("Editor: disabled"));
+        assertTrue(service.status().getFirst().startsWith("Editor disabled"));
         hotload(config(listener(port)));
         await(() -> listenerPort() == port, "the editor reopening");
         assertEquals(200, catalog("http://127.0.0.1:" + port, token), "tokens are stored on disk and survive the switch");

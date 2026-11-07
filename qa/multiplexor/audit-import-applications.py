@@ -239,7 +239,7 @@ class ImportAuditor(base.Auditor):
     def commands(self, folder, data, report, state, logs):
         rows = report.get('commands'); require(isinstance(rows, list) and len(rows) == 32, 'Full 32-command scenario required')
         b, u = state['baselineImport'], state['updatedImport']; app = state['baseApplication']; cp = state['copyApplication']; stale = state['staleApplication']; fresh = state['replacementApplication']
-        transaction = lambda i: re.search(r'\btransaction ([a-f0-9-]{36}|already-applied)\b', rows[i]['receipt'])[1]
+        transaction = lambda i: 'already-applied' if 'Already installed; nothing changed' in rows[i]['receipt'] else re.search(r'\btx ([a-f0-9-]{36})\b', rows[i]['receipt'])[1]
         expected = ['animus status', *[f"animus import preview {state['inputFiles']['baseline']} worlds=qa_legacy:world"] * 2,
             *[f'animus import stage {b} mode=reject'] * 2, *[f'animus import apply-plan {b} {app}'] * 2,
             *[f'animus import stage {b} mode=duplicate copy=qa'] * 2, *[f'animus import apply-plan {b} {cp}'] * 2,
@@ -261,7 +261,7 @@ class ImportAuditor(base.Auditor):
         for i, key in [(5, 'baseTransaction'), (9, 'copyTransaction'), (14, 'editTransaction'), (17, 'replacementTransaction')]:
             require(transaction(i) == state[key], 'State transaction differs from command receipt')
         require('NPC collision:' in rows[12]['receipt'] and ('Conflict:' in rows[15]['receipt'] or 'Application no longer matches' in rows[15]['receipt']), 'Collision/conflict receipt absent')
-        require('validate successful; 0 active definitions' in rows[29]['receipt'] and 'NPC definitions: 0' in rows[31]['receipt'], 'Empty final registry receipt missing')
+        require('All definitions valid; 0 active' in rows[29]['receipt'] and 'NPC definitions: 0' in rows[31]['receipt'], 'Empty final registry receipt missing')
         for i in [20, 22, 23, 24, 25, 28]:
             old = self.journal(data, rows[i]['command'].split()[-1]); inverse = self.journal(data, transaction(i))
             for path, (before, after) in old.items(): require(inverse.get(path) == (after, before), 'Rollback journal is not the exact inverse')

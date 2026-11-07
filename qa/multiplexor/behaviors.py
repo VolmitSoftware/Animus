@@ -572,21 +572,21 @@ historyEntries = 64
 
     def definition_changes(self):
         self.action('reset'); before = read(self.source()); execution = self.hold()
-        self.command('animus edit ' + self.npc_id + ' {"name":"Behavior Edited"}', r'.*Saved; transaction .*')
+        self.command('animus edit ' + self.npc_id + ' {"name":"Behavior Edited"}', r'.*Saved[^;]*; tx .*')
         after = read(self.source()); assert after['revision'] == before['revision'] + 1 and after['uuid'] == before['uuid']
         self.cancelled_hold(execution); released = self.release()
         self.snapshot('definition-edit', [self.source(), self.checkpoint(self.npc_id)])
         self.check('definition-revision-cancellation', before=before['revision'], after=after['revision'], release=released)
         after['revision'] += 1; after['spawned'] = True; self.owned_write(self.source(), encode(after))
-        self.command('animus reload', r'.*reload successful.*'); self.action('reset'); execution = self.hold()
+        self.command('animus reload', r'.*Reloaded; .*'); self.action('reset'); execution = self.hold()
         before = read(self.source()); self.snapshot('before-despawn', [self.source(), self.checkpoint(self.npc_id)])
-        self.command('animus despawn ' + self.npc_id, rf'.*Despawn requested for {re.escape(self.npc_id)}; transaction .*')
+        self.command('animus despawn ' + self.npc_id, rf'.*Despawn requested for {re.escape(self.npc_id)}; tx .*')
         after = read(self.source()); assert before['spawned'] and not after['spawned'] and after['revision'] == before['revision'] + 1 and before['uuid'] == after['uuid']
         self.cancelled_hold(execution); released = self.release()
         self.snapshot('after-despawn', [self.source(), self.checkpoint(self.npc_id)])
         self.check('definition-despawn-intent', before=before, after=after, release=released, physicalNpcAssertion=False)
         self.action('reset'); execution = self.hold()
-        self.command('animus delete ' + self.npc_id, r'.*Deleted; rollback transaction .*')
+        self.command('animus delete ' + self.npc_id, r'.*Deleted [^;]*; tx .*')
         assert not self.source().exists() and not self.checkpoint(self.npc_id).exists()
         self.cancelled_hold(execution); self.release()
         recreated = self.create(self.npc_id); assert recreated['uuid'] != before['uuid']
@@ -611,7 +611,7 @@ historyEntries = 64
         final = self.idle()
         assert len([event for event in self.action('inspect')['events'] if event['kind'] == 'hold-enter']) == 4
         for identity in self.owned_ids[2:]:
-            self.command('animus delete ' + identity, r'.*Deleted; rollback transaction .*')
+            self.command('animus delete ' + identity, r'.*Deleted [^;]*; tx .*')
         self.check('invocation-capacity-after-cancel', retained=retained, blocked=fifth, status=state, final=final)
 
     def restart(self):

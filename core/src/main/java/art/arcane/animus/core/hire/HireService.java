@@ -78,7 +78,7 @@ public final class HireService<P, S> {
                 if (!hireable) AnimusLog.shared().routine("hires ended because the NPC stopped being hireable", contract.npc().toString(),
                         "Hire of " + contract.npc() + " by " + contract.playerName() + " ended: the NPC is no longer hireable", log);
                 else notify(contract.player(), Palette.PINK_LIGHT + living.active(contract.npc()).map(NpcRuntime.ActiveNpc::name).map(RichText::plain).orElse("Your bodyguard")
-                        + "'s contract has ended. &7Right-click it to hire again.");
+                        + "'s contract ended; &7right-click it to hire again");
                 continue;
             }
             if (!living.players().online(contract.player()) || living.active(contract.npc()).isEmpty()) continue;
