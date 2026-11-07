@@ -13,6 +13,7 @@ import '../state/workspace_repository.dart';
 import 'brand_mark.dart';
 import 'menu_button.dart';
 import 'server/connection_pill.dart';
+import 'shortcut_sheet.dart';
 
 /// What the top bar's controls do. A null action shows its control
 /// disabled.
@@ -29,6 +30,7 @@ class TopbarActions {
     this.onExportZip,
     this.onExportGloss,
     this.onDocuments,
+    this.onShowSidebar,
   });
 
   final void Function() onPalette;
@@ -44,6 +46,9 @@ class TopbarActions {
 
   /// Opens the documents drawer on phones.
   final void Function()? onDocuments;
+
+  /// Brings back the sidebar hidden with Cmd or Ctrl+B; null while shown.
+  final void Function()? onShowSidebar;
 }
 
 class ShellTopbar extends StatelessWidget {
@@ -112,6 +117,14 @@ class ShellTopbar extends StatelessWidget {
   List<Widget> _wideControls(WorkspaceSnapshot? workspace) => <Widget>[
         dom.div(classes: 'animus-topbar-actions', <Widget>[
           if (workspace != null) ...<Widget>[
+            if (actions.onShowSidebar != null)
+              Button.ghost(
+                label: 'Show sidebar',
+                icon: ArcaneIcon.panelLeft(),
+                size: ButtonSize.small,
+                attributes: <String, String>{'aria-keyshortcuts': platformAriaKeys(const <String>['Mod+B']), 'title': 'Show sidebar (${platformKeys('Mod+B')})'},
+                onPressed: actions.onShowSidebar,
+              ),
             dom.div(classes: 'animus-toolgroup', attributes: const <String, String>{'role': 'group', 'aria-label': 'Edit history'}, <Widget>[
               Button.ghost(
                 label: 'Undo',
@@ -119,8 +132,8 @@ class ShellTopbar extends StatelessWidget {
                 size: ButtonSize.small,
                 disabled: actions.onUndo == null,
                 attributes: <String, String>{
-                  'aria-keyshortcuts': 'Control+Z Meta+Z',
-                  'title': undoLabel == null ? 'Nothing to undo' : 'Undo: $undoLabel',
+                  'aria-keyshortcuts': platformAriaKeys(const <String>['Mod+Z']),
+                  'title': undoLabel == null ? 'Nothing to undo' : 'Undo: $undoLabel (${platformKeys('Mod+Z')})',
                 },
                 onPressed: actions.onUndo,
               ),
@@ -130,8 +143,8 @@ class ShellTopbar extends StatelessWidget {
                 size: ButtonSize.small,
                 disabled: actions.onRedo == null,
                 attributes: <String, String>{
-                  'aria-keyshortcuts': 'Control+Shift+Z Meta+Shift+Z Control+Y',
-                  'title': redoLabel == null ? 'Nothing to redo' : 'Redo: $redoLabel',
+                  'aria-keyshortcuts': platformAriaKeys(const <String>['Mod+Shift+Z', 'Mod+Y']),
+                  'title': redoLabel == null ? 'Nothing to redo' : 'Redo: $redoLabel (${platformKeys('Mod+Shift+Z')})',
                 },
                 onPressed: actions.onRedo,
               ),
@@ -148,7 +161,7 @@ class ShellTopbar extends StatelessWidget {
             label: 'Commands',
             icon: ArcaneIcon.search(),
             size: ButtonSize.small,
-            attributes: const <String, String>{'aria-keyshortcuts': 'Control+K Meta+K', 'title': 'Commands (Ctrl+K)'},
+            attributes: <String, String>{'aria-keyshortcuts': platformAriaKeys(const <String>['Mod+K']), 'title': 'Commands (${platformKeys('Mod+K')})'},
             onPressed: actions.onPalette,
           ),
           Button.ghost(

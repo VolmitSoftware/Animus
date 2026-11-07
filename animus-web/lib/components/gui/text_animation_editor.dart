@@ -10,6 +10,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/text_animation.dart';
@@ -169,7 +170,7 @@ class TextAnimationEditor extends StatelessWidget {
       ]),
       dom.section(classes: 'animus-panel animus-gui-inspector', <Widget>[
         PresetFix(document: document, presets: presets, kind: DocumentKind.textAnimation, onJson: onJson),
-        GuiSection(title: 'Frames', count: frames.length, children: <Widget>[
+        GuiSection(title: 'Frames', count: frames.length, tip: 'The texts shown in turn, one per line. A frame cannot show another animation.', docs: Docs.textAnimations, children: <Widget>[
           if (frames.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('Needs at least one frame. Add one.')]),
           for (final Diagnostic problem in diagnosticsAt(diagnostics, r'$.frames'))
             dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
@@ -185,7 +186,7 @@ class TextAnimationEditor extends StatelessWidget {
                 const Component.text(' a frame cannot show another animation'),
               ]),
         ]),
-        GuiSection(title: 'Timing', children: <Widget>[
+        GuiSection(title: 'Timing', tip: 'The order frames play in and how long each one shows.', docs: Docs.textAnimations, children: <Widget>[
           GuiRow(
             label: 'Mode *',
             forId: modeId,

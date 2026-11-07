@@ -13,6 +13,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../config/docs_links.dart';
 import '../logic/gui/gui_text.dart';
 import '../logic/sidebar_sections.dart';
 import '../model/animus_document.dart';
@@ -20,7 +21,9 @@ import '../model/document_kind.dart';
 import '../state/live_session.dart';
 import '../state/workspace_repository.dart';
 import '../state/workspace_route.dart';
+import 'info_tip.dart';
 import 'server/live_bar.dart';
+import 'shortcut_sheet.dart';
 
 /// Kinds listed in the sidebar, in this order.
 const List<DocumentKind> listedKinds = <DocumentKind>[
@@ -45,7 +48,7 @@ const List<DocumentKind> listedKinds = <DocumentKind>[
 /// Kinds whose sidebar section is a folder tree (NPC ids are folder/name).
 const Set<DocumentKind> foldered = <DocumentKind>{DocumentKind.npc};
 
-/// The id of the sidebar's search box, which Ctrl+F and `/` focus.
+/// The id of the sidebar's search box, which Cmd or Ctrl+F and `/` focus.
 const String documentSearchId = 'animus-doc-search';
 
 int errorCount(AnimusDocument document) =>
@@ -273,7 +276,7 @@ class _ShellSidebarState extends State<ShellSidebar> {
               id: documentSearchId,
               placeholder: 'Search documents',
               value: _filter,
-              attributes: const <String, String>{'aria-keyshortcuts': 'Control+F /'},
+              attributes: <String, String>{'aria-keyshortcuts': '${platformAriaKeys(const <String>['Mod+F'])} /'},
               onChanged: (String value) => setState(() => _filter = value),
             ),
           ]),
@@ -283,6 +286,15 @@ class _ShellSidebarState extends State<ShellSidebar> {
             ]),
           if (groups.isNotEmpty)
             dom.div(classes: 'animus-tree-tools', <Widget>[
+              // On phones the drawer keeps Tab and Escape for its own stops.
+              if (!compact)
+                const dom.span(classes: 'animus-tree-tools-label', <Widget>[
+                  InfoTip(
+                    tip: 'Every document in this workspace by kind. What you collapse stays collapsed in this browser.',
+                    docs: Docs.editorDocuments,
+                    child: Component.text('By kind'),
+                  ),
+                ]),
               Button.ghost(
                 label: 'Collapse all',
                 size: ButtonSize.small,

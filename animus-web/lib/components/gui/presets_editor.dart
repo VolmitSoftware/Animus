@@ -118,7 +118,7 @@ class _PresetsEditorState extends State<PresetsEditor> {
             onChanged: (String? v) => setState(() => _kind = v ?? _kind),
           ),
         ),
-        GuiSection(title: 'Defaults for $_kind', open: asMap(doc['defaults']).containsKey(_kind), children: <Widget>[
+        GuiSection(title: 'Defaults for $_kind', open: asMap(doc['defaults']).containsKey(_kind), tip: 'Fields every $_kind document starts from before its own.', docs: Docs.gloss, children: <Widget>[
           _values(
             key: ValueKey<String>('defaults-$_kind'),
             values: asMap(asMap(doc['defaults'])[_kind]),
@@ -128,9 +128,7 @@ class _PresetsEditorState extends State<PresetsEditor> {
             onChanged: (JsonMap v) => component.onJson(writeAt(_doc, const <JsonStep>[], withPresetDefaults(_doc, _kind, v)), coalesce: 'defaults.$_kind'),
           ),
         ]),
-        GuiSection(title: 'Presets for $_kind', count: named.length, children: <Widget>[
-          if (named.isEmpty) dom.p(classes: 'animus-muted', <Widget>[Component.text('No $_kind presets yet.')]),
-          for (final MapEntry<String, Object?> entry in named.entries) _preset(named, entry.key, asMap(entry.value)),
+        GuiSection(title: 'Presets for $_kind', count: named.length, tip: 'Named field sets a $_kind document applies by naming one in preset.', docs: Docs.gloss, children: <Widget>[
           Button.secondary(
             label: 'Add a preset',
             size: ButtonSize.small,
@@ -142,6 +140,8 @@ class _PresetsEditorState extends State<PresetsEditor> {
               _write(<JsonStep>['presets', _kind, 'preset$n'], <String, Object?>{'extends': null, 'values': <String, Object?>{}});
             },
           ),
+          if (named.isEmpty) dom.p(classes: 'animus-muted', <Widget>[Component.text('No $_kind presets yet.')]),
+          for (final MapEntry<String, Object?> entry in named.entries) _preset(named, entry.key, asMap(entry.value)),
         ]),
       ]),
     ]);
@@ -169,7 +169,7 @@ class _PresetsEditorState extends State<PresetsEditor> {
     final String path = childPath(childPath(r'$.presets', _kind), name);
     final String nameId = guiPathId('$path-name');
     final String extendsId = guiPathId('$path.extends');
-    return GuiSection(title: name, open: false, children: <Widget>[
+    return GuiSection(title: name, open: false, tip: 'Applied to a $_kind document that names it in preset.', docs: Docs.gloss, children: <Widget>[
       GuiRow(
         label: 'Name',
         forId: nameId,

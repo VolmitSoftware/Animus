@@ -8,9 +8,11 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component, ValueKey;
 
+import '../../config/docs_links.dart';
 import '../../logic/rig_edit.dart';
 import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
+import '../info_tip.dart';
 import 'rig_inspector.dart';
 
 class RigAnimationsPanel extends StatefulWidget {
@@ -86,6 +88,13 @@ class _RigAnimationsPanelState extends State<RigAnimationsPanel> {
     final JsonMap names = animationNames(component.rig);
     final List<String> own = _own;
     return dom.div(classes: 'animus-rig-names', attributes: const <String, String>{'aria-label': 'Named animations'}, <Widget>[
+      const dom.p(classes: 'animus-gui-help', <Widget>[
+        InfoTip(
+          tip: 'Behaviors and NPCs play this rig\'s animations by these names. idle and walk play on their own.',
+          docs: Docs.animations,
+          child: Component.text('About names'),
+        ),
+      ]),
       for (final String missing in navigationAnimations)
         if (!names.containsKey(missing))
           dom.p(classes: 'animus-muted', <Widget>[

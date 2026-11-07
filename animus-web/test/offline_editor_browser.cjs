@@ -340,7 +340,7 @@ async function run(browser, viewport, label, skinFile) {
   await page.locator('.animus-pill[data-phase="online"]').waitFor();
   await page.getByRole('button', {name: /^Compare with/}).click();
   await page.getByRole('group', {name: 'New on the server'}).or(page.getByText('New on the server')).first().waitFor();
-  await page.getByText('Different on the server').waitFor();
+  await page.getByText('Different on the server', {exact: true}).waitFor();
   await page.getByRole('radio', {name: 'Replace it with mine'}).click();
   const pushCount = Number((await page.getByRole('button', {name: /^Push \d+ documents?$/}).textContent()).match(/\d+/)[0]);
   assert.ok(pushCount >= 14, `pushes the new documents and the baker: ${pushCount}`);

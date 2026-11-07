@@ -9,6 +9,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_text.dart';
 import '../../logic/npc/skin_edits.dart';
@@ -117,6 +118,8 @@ class _SkinSummaryState extends State<SkinSummary> {
           GuiRow(label: 'Arms', tip: block, child: dom.span(<Widget>[Component.text(info?.slim == true ? 'Slim (Alex)' : 'Classic (Steve)')])),
         GuiSection(
           title: 'Load the PNG',
+          tip: 'Load the skin image to see it on the preview. The skin document holds only its hash, so this stays in the browser.',
+          docs: Docs.npcAppearance,
           children: <Widget>[
             const dom.p(classes: 'animus-gui-help', <Widget>[
               Component.text('Preview only. The document stores no image.'),
@@ -140,6 +143,8 @@ class _SkinSummaryState extends State<SkinSummary> {
         ),
         GuiSection(
           title: 'Worn by',
+          tip: 'NPCs and trait groups whose skin or skin pool uses this skin.',
+          docs: Docs.npcAppearance,
           count: wearers.length,
           children: <Widget>[
             if (wearers.isEmpty)

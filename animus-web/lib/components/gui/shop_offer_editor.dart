@@ -9,6 +9,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/item_components.dart';
 import '../../logic/gui/shop_board.dart';
@@ -265,7 +266,7 @@ class ShopOfferEditor extends StatelessWidget {
         CountStepper(value: asInt(item['count']), label: '$label count', onChanged: (int? count) => put(withField(item, 'count', count == 1 ? null : count))),
       ]),
       for (final Diagnostic problem in _at(path, nested: true)) _problem(problem),
-      GuiSection(title: 'Details', open: (asString(item['components']) ?? '').isNotEmpty, children: <Widget>[
+      GuiSection(title: 'Details', open: (asString(item['components']) ?? '').isNotEmpty, tip: 'Enchantments, custom model number and other item components.', docs: Docs.shopEntries, children: <Widget>[
         ItemDetailsEditor(item: item, label: label, onChanged: put),
       ]),
     ]);
@@ -311,7 +312,7 @@ class ShopOfferEditor extends StatelessWidget {
         ),
       ]),
       for (final Diagnostic problem in _at(path, nested: true)) _problem(problem),
-      GuiSection(title: 'Details', open: (asString(item['components']) ?? '').isNotEmpty, children: <Widget>[
+      GuiSection(title: 'Details', open: (asString(item['components']) ?? '').isNotEmpty, tip: 'Enchantments, custom model number and other item components.', docs: Docs.shopEntries, children: <Widget>[
         ItemDetailsEditor(item: item, label: name, onChanged: (JsonMap next) => put(<String, Object?>{...one, 'item': next})),
       ]),
     ]);

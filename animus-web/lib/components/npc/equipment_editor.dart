@@ -7,11 +7,13 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/minecraft_ids.dart';
 import '../../mc/npc/npc_look.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
+import '../info_tip.dart';
 import '../inspect/inspect_fields.dart';
 import '../mc/item_picker.dart';
 import '../mc/mc_item_icons.dart';
@@ -24,7 +26,7 @@ const Map<NpcSlot, String> slotHelp = <NpcSlot, String>{
   NpcSlot.chest: 'Chestplate or elytra.',
   NpcSlot.legs: 'Leggings.',
   NpcSlot.feet: 'Boots.',
-  NpcSlot.body: 'Horse armour, llama carpet or wolf armour.',
+  NpcSlot.body: 'Horse armor, llama carpet or wolf armor.',
   NpcSlot.saddle: 'Saddle on horses, pigs and striders.',
 };
 
@@ -143,7 +145,9 @@ class _EquipmentEditorState extends State<EquipmentEditor> {
         ]),
         dom.div(classes: 'animus-equipment-fields', <Widget>[
           dom.div(classes: 'animus-equipment-head', <Widget>[
-            dom.strong(<Widget>[Component.text(slotLabel(slot))]),
+            dom.strong(<Widget>[
+              withTip(Component.text(slotLabel(slot)), 'An item id, its stack count, and item components in brackets such as [enchantment_glint_override=true].', docs: Docs.npcAppearance),
+            ]),
             dom.span(classes: 'animus-gui-help', <Widget>[Component.text(slotHelp[slot]!)]),
           ]),
           dom.div(classes: 'animus-gui-line', <Widget>[

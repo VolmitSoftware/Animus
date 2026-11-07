@@ -7,6 +7,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_catalog.dart';
 import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
@@ -131,13 +132,13 @@ class _HologramEditorState extends State<HologramEditor> {
       ]),
       dom.section(classes: 'animus-panel animus-gui-inspector', <Widget>[
         PresetFix(document: component.document, presets: component.presets, kind: DocumentKind.hologram, onJson: component.onJson),
-        GuiSection(title: _page != null ? 'Lines of page ${_page! + 1}' : (_variant != null ? 'Lines of variant ${_variant! + 1}' : 'Lines'), children: <Widget>[
+        GuiSection(title: _page != null ? 'Lines of page ${_page! + 1}' : (_variant != null ? 'Lines of variant ${_variant! + 1}' : 'Lines'), tip: 'Rows from top to bottom: text, an item, a block or a player head.', docs: Docs.holograms, children: <Widget>[
           if (_page == null && _variant == null && pages.isNotEmpty)
             const dom.p(classes: 'animus-muted', <Widget>[Component.text('Pages replace these lines. Pick a page above.')])
           else
             _lines(asList(readIn(doc, _linesSteps))),
         ]),
-        GuiSection(title: 'Placement', children: _placement(doc)),
+        GuiSection(title: 'Placement', tip: 'Where the hologram stands, how far it shows and how often it redraws.', docs: Docs.holograms, children: _placement(doc)),
         DisplayStyleEditor(
           style: asMap(doc['style']),
           path: r'$.style',
@@ -198,8 +199,6 @@ class _HologramEditorState extends State<HologramEditor> {
     final String base = formatPath(_linesSteps);
     void setLines(JsonList next) => _write(_linesSteps, next, coalesce: '$base-structure');
     return dom.div(classes: 'animus-gui-lines', <Widget>[
-      if (lines.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No rows yet. Add one below.')]),
-      for (int index = 0; index < lines.length; index++) _line(lines, index, '$base[$index]', setLines),
       dom.div(classes: 'animus-row', <Widget>[
         for (final String kind in hologramLineKinds)
           Button.ghost(
@@ -209,6 +208,8 @@ class _HologramEditorState extends State<HologramEditor> {
             onPressed: () => setLines(<Object?>[...lines, newHologramLine(kind)]),
           ),
       ]),
+      if (lines.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No rows yet.')]),
+      for (int index = 0; index < lines.length; index++) _line(lines, index, '$base[$index]', setLines),
     ]);
   }
 
@@ -364,8 +365,27 @@ class _HologramEditorState extends State<HologramEditor> {
   }
 
   List<Widget> _pages(JsonList pages) => <Widget>[
+        Button.secondary(
+          label: 'Add page',
+          size: ButtonSize.small,
+          disabled: pages.length >= 64,
+          onPressed: () {
+            final JsonList base = asList(_doc['lines']);
+            Object? next = writeIn(_doc, <JsonStep>['pages'], <Object?>[
+              ...pages,
+              <String, Object?>{'id': 'page${pages.length + 1}', 'lines': pages.isEmpty && base.isNotEmpty ? deepCopy(base) : <Object?>['&fPage ${pages.length + 1}']},
+            ]);
+            // Core refuses lines and pages together; the first page takes the lines.
+            if (pages.isEmpty) next = writeIn(next, <JsonStep>['lines'], null);
+            component.onJson(writeAt(_doc, const <JsonStep>[], next));
+            setState(() {
+              _page = pages.length;
+              _variant = null;
+            });
+          },
+        ),
         for (int index = 0; index < pages.length; index++)
-          GuiSection(title: 'Page ${asString(asMap(pages[index])['id']) ?? index + 1}', open: _page == index, children: <Widget>[
+          GuiSection(title: 'Page ${asString(asMap(pages[index])['id']) ?? index + 1}', open: _page == index, tip: 'One set of rows a viewer can turn to. Edit lines shows it in the stage.', docs: Docs.holograms, children: <Widget>[
             GuiRow(
               label: 'Id',
               forId: guiPathId('\$.pages[$index].id'),
@@ -403,29 +423,9 @@ class _HologramEditorState extends State<HologramEditor> {
               GuiIconButton(icon: ArcaneIcon.trash(size: IconSize.sm), label: 'Remove page ${index + 1}', onPressed: () => _removePage(pages, index)),
             ]),
           ]),
-        Button.secondary(
-          label: 'Add page',
-          size: ButtonSize.small,
-          disabled: pages.length >= 64,
-          onPressed: () {
-            final JsonList base = asList(_doc['lines']);
-            Object? next = writeIn(_doc, <JsonStep>['pages'], <Object?>[
-              ...pages,
-              <String, Object?>{'id': 'page${pages.length + 1}', 'lines': pages.isEmpty && base.isNotEmpty ? deepCopy(base) : <Object?>['&fPage ${pages.length + 1}']},
-            ]);
-            // Core refuses lines and pages together; the first page takes the lines.
-            if (pages.isEmpty) next = writeIn(next, <JsonStep>['lines'], null);
-            component.onJson(writeAt(_doc, const <JsonStep>[], next));
-            setState(() {
-              _page = pages.length;
-              _variant = null;
-            });
-          },
-        ),
       ];
 
   List<Widget> _variants(JsonList variants) => <Widget>[
-        for (int index = 0; index < variants.length; index++) _variantSection(variants, index),
         Button.secondary(
           label: 'Add variant',
           size: ButtonSize.small,
@@ -440,12 +440,13 @@ class _HologramEditorState extends State<HologramEditor> {
             },
           ]),
         ),
+        for (int index = 0; index < variants.length; index++) _variantSection(variants, index),
       ];
 
   Widget _variantSection(JsonList variants, int index) {
     final JsonMap variant = asMap(variants[index]);
     final String path = '\$.variants[$index]';
-    return GuiSection(title: 'Variant ${asString(variant['id']) ?? index + 1}', open: _variant == index, children: <Widget>[
+    return GuiSection(title: 'Variant ${asString(variant['id']) ?? index + 1}', open: _variant == index, tip: 'Replaces the lines or style it names while When holds. Higher priority wins.', docs: Docs.holograms, children: <Widget>[
       GuiRow(
         label: 'Id',
         forId: guiPathId('$path.id'),

@@ -52,6 +52,7 @@ class CapabilityFields extends StatelessWidget {
     return dom.div(classes: 'animus-capability', <Widget>[
       GuiRow(
         label: 'Capability *',
+        tip: spec == null ? 'What this step does: a built-in capability or one a module adds, written namespace:name such as animus:say.' : null,
         help: spec == null
             ? (id == null || id.isEmpty ? null : 'Module capability, checked on install.')
             : <String>[
@@ -77,7 +78,8 @@ class CapabilityFields extends StatelessWidget {
           if (spec == null)
             SuggestInput(
               value: id ?? '',
-              label: 'Module capability, namespace:name',
+              label: 'Capability id',
+              placeholder: 'namespace:name',
               profile: FieldProfile(values: <ValueRef>[ValueRef.capabilities(kind)]),
               onChanged: (String next) => context.write(<JsonStep>[...steps, 'capability'], next)),
         ]),

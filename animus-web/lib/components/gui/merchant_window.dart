@@ -11,7 +11,9 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/shop_offers.dart';
+import '../info_tip.dart';
 import '../mc/mc_item_icons.dart';
 import 'chest_window.dart';
 import 'gui_fields.dart';
@@ -64,7 +66,9 @@ class _MerchantWindowState extends State<MerchantWindow> {
   @override
   Widget build(BuildContext context) {
     return dom.div(classes: 'animus-merchant-screen', attributes: <String, String>{'role': 'group', 'aria-label': component.label}, <Widget>[
-      dom.div(classes: 'animus-chest-title', <Widget>[GuiStyledText(component.title, defaultColor: mcInventoryTitleColor)]),
+      dom.div(classes: 'animus-chest-title', <Widget>[
+        withTip(GuiStyledText(component.title, defaultColor: mcInventoryTitleColor), 'The villager trading screen. Static entries and offers whose mode is off do not show here.', docs: Docs.shops),
+      ]),
       if (component.offers.isEmpty)
         const dom.p(classes: 'animus-merchant-empty', <Widget>[Component.text('No offers: every entry is static or its mode is off.')])
       else

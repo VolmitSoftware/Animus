@@ -107,7 +107,7 @@ async function run(browser, width, height, label, scratch, theme) {
   await page.locator('.animus-live .animus-pill[data-phase="online"]').waitFor({timeout: 20000});
 
   await page.goto(`${site}/#/citizens`);
-  await page.getByRole('heading', {name: 'Convert Citizens, Shopkeepers, dtlTraders and Denizen data'}).waitFor();
+  await page.getByRole('heading', {name: 'Import Citizens and others'}).waitFor();
   await page.getByRole('heading', {name: 'Import on a server'}).waitFor();
   await page.locator('[data-testid="import-connection"]', {hasText: 'Online (direct)'}).waitFor({timeout: 20000});
   await choose(page, 'Choose saves.yml', saves);

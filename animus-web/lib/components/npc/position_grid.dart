@@ -13,7 +13,9 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../config/docs_links.dart';
 import '../../logic/npc/route_model.dart';
+import '../info_tip.dart';
 import '../rig/rig_gizmo.dart' show eventNumber;
 
 int _nextPositionGridId = 0;
@@ -187,7 +189,13 @@ class _PositionGridState extends State<PositionGrid> {
         events: <String, void Function(web.Event)>{'click': (web.Event event) => _place(event, bounds)},
       ),
       dom.div(classes: 'animus-route-legend', <Widget>[
-        dom.span(<Widget>[Component.text('x ${bounds.minX.toInt()} to ${bounds.maxX.toInt()}, z ${bounds.minZ.toInt()} to ${bounds.maxZ.toInt()}; north is up; grid every ${step.toInt()} block${step == 1 ? '' : 's'}')]),
+        dom.span(<Widget>[
+          withTip(
+            Component.text('x ${bounds.minX.toInt()} to ${bounds.maxX.toInt()}, z ${bounds.minZ.toInt()} to ${bounds.maxZ.toInt()}; north is up; grid every ${step.toInt()} block${step == 1 ? '' : 's'}'),
+            'Click the grid to place the picked mark, or drag a mark. With a mark focused, arrows move it a quarter block, Shift+arrows a whole block.',
+            docs: Docs.editorKeyboard,
+          ),
+        ]),
       ]),
     ]);
   }

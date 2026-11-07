@@ -8,6 +8,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_catalog.dart';
 import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
@@ -232,6 +233,8 @@ class ComponentEditor extends StatelessWidget {
     Widget actions(String key, String title) => GuiSection(
           title: title,
           count: asList(data[key]).length,
+          tip: 'Run in order when the viewer clicks. A failed condition stops the rest.',
+          docs: Docs.guiActions,
           children: <Widget>[
             ActionsEditor(
               actions: asList(data[key]),
@@ -246,6 +249,8 @@ class ComponentEditor extends StatelessWidget {
         );
     Widget icon(String key, String title) => GuiSection(
           title: title,
+          tip: chest ? 'The item shown in the slot, with its name and lore.' : 'The item or block shown for this component.',
+          docs: chest ? Docs.chestGuis : Docs.menus,
           children: <Widget>[
             IconEditor(
               icon: asMap(data[key]),
@@ -340,6 +345,8 @@ class ComponentEditor extends StatelessWidget {
           _flow(data),
           GuiSection(
             title: 'Template',
+            tip: 'The component drawn once per entry. The entry is named by Variable.',
+            docs: chest ? Docs.chestGuis : Docs.menus,
             children: <Widget>[
               ComponentEditor(
                 component: asMap(data['template']),
@@ -386,6 +393,8 @@ class ComponentEditor extends StatelessWidget {
     double axis(int i) => asDouble(offset.elementAtOrNull(i)) ?? 0;
     return GuiSection(
       title: 'Hover and click box',
+      tip: 'How the component reacts when looked at, and the box that takes the click.',
+      docs: Docs.menus,
       open: data.containsKey('hitbox') || data.containsKey('highlightModifier') || data.containsKey('hoverEasing'),
       children: <Widget>[
         guiFieldRow('Highlight', childPath(path, 'highlightModifier'), diagnostics, help: 'Hover growth, -64 to 64',
@@ -413,7 +422,7 @@ class ComponentEditor extends StatelessWidget {
               ),
           ]),
         ),
-        guiFieldRow('Box anchor', childPath(hitboxPath, 'anchor'), diagnostics, help: 'button: on the component. menu: menu centre.',
+        guiFieldRow('Box anchor', childPath(hitboxPath, 'anchor'), diagnostics, help: 'button: on the component. menu: menu center.',
             (String id) => GuiSelect(id: id, value: asString(hitbox['anchor']), options: const <String>['button', 'menu'], allowNone: true, noneLabel: 'button', onChanged: (String? v) => setHitbox('anchor', v))),
       ],
     );
@@ -427,7 +436,7 @@ class ComponentEditor extends StatelessWidget {
       onChanged(withField(data, 'tooltip', next.isEmpty ? null : next));
     }
 
-    return GuiSection(title: 'Tooltip', open: tooltip.isNotEmpty, children: <Widget>[
+    return GuiSection(title: 'Tooltip', open: tooltip.isNotEmpty, tip: 'Text shown beside the button while the viewer looks at it.', docs: Docs.menus, children: <Widget>[
       guiFieldRow('Lines', childPath(tooltipPath, 'lines'), diagnostics, nested: true, labelled: false,
           (String _) => GuiLinesEditor(lines: stringList(tooltip['lines']), names: names, onChanged: (List<String> lines) => setTooltip('lines', lines))),
       guiFieldRow('Delay', childPath(tooltipPath, 'delayTicks'), diagnostics, help: 'Ticks before showing, default 10',
@@ -446,7 +455,7 @@ class ComponentEditor extends StatelessWidget {
 
     Widget number(String key, String label, String help, {bool integer = false}) => guiFieldRow(label, childPath(flowPath, key), diagnostics, help: help,
         (String id) => GuiNumberInput(id: id, value: integer ? asInt(flow[key]) : asDouble(flow[key]), integer: integer, label: 'Flow $label', onChanged: (num? v) => setFlow(key, v)));
-    return GuiSection(title: 'Flow', open: flow.isNotEmpty, children: <Widget>[
+    return GuiSection(title: 'Flow', open: flow.isNotEmpty, tip: 'The grid the list lays its entries on, in blocks.', docs: Docs.menus, children: <Widget>[
       number('columns', 'Columns', '1 to 64, default 3', integer: true),
       number('spacingX', 'Spacing X', 'Column gap, default 1'),
       number('spacingY', 'Spacing Y', 'Row gap, default 0.5'),
@@ -461,7 +470,7 @@ class ComponentEditor extends StatelessWidget {
     final JsonList tabs = asList(data['tabs']);
     final String tabsPath = childPath(path, 'tabs');
     void setTabs(JsonList next) => onChanged(<String, Object?>{...data, 'tabs': next});
-    return GuiSection(title: 'Tabs', count: tabs.length, children: <Widget>[
+    return GuiSection(title: 'Tabs', count: tabs.length, tip: 'Each tab stores its id in Variable when picked. The label defaults to the id.', docs: Docs.menus, children: <Widget>[
       for (final Diagnostic problem in diagnosticsAt(diagnostics, tabsPath))
         dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
       for (int index = 0; index < tabs.length; index++)

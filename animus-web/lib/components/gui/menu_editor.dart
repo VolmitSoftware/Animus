@@ -1,4 +1,4 @@
-/// The holographic menu editor: the menu's placement and behaviour, its
+/// The holographic menu editor: the menu's placement and behavior, its
 /// components with their offsets, motion, data, icons and actions, menu
 /// constants and named action lists, drawn live in the 3D stage in front of
 /// the viewer. A click on the stage selects the component under it.
@@ -8,6 +8,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/action_targets.dart';
 import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
@@ -109,15 +110,6 @@ class _MenuEditorState extends State<MenuEditor> {
           },
         ),
         dom.ul(classes: 'animus-gui-component-list', attributes: const <String, String>{'role': 'list', 'aria-label': 'Components'}, <Widget>[
-          for (int index = 0; index < components.length; index++)
-            dom.li(<Widget>[
-              Button.ghost(
-                label: '${asString(asMap(components[index])['id']) ?? index} (${asString(asMap(asMap(components[index])['data'])['type']) ?? '?'})',
-                size: ButtonSize.small,
-                attributes: <String, String>{'aria-pressed': '${index == _selected}'},
-                onPressed: () => setState(() => _selected = index),
-              ),
-            ]),
           dom.li(<Widget>[
             Button.secondary(
               label: 'Add component',
@@ -140,14 +132,23 @@ class _MenuEditorState extends State<MenuEditor> {
               },
             ),
           ]),
+          for (int index = 0; index < components.length; index++)
+            dom.li(<Widget>[
+              Button.ghost(
+                label: '${asString(asMap(components[index])['id']) ?? index} (${asString(asMap(asMap(components[index])['data'])['type']) ?? '?'})',
+                size: ButtonSize.small,
+                attributes: <String, String>{'aria-pressed': '${index == _selected}'},
+                onPressed: () => setState(() => _selected = index),
+              ),
+            ]),
         ]),
       ]),
       dom.section(classes: 'animus-panel animus-gui-inspector', <Widget>[
         if (components.isEmpty)
-          const dom.p(classes: 'animus-muted', <Widget>[Component.text('No components yet. Add one below.')])
+          const dom.p(classes: 'animus-muted', <Widget>[Component.text('No components yet. Add one with Add component.')])
         else
-          GuiSection(title: 'Component $selectedId', children: _component(components)),
-        GuiSection(title: 'Menu', open: components.isEmpty, children: <Widget>[
+          GuiSection(title: 'Component $selectedId', tip: 'The selected component. Click one in the stage or the list to pick it.', docs: Docs.menus, children: _component(components)),
+        GuiSection(title: 'Menu', open: components.isEmpty, tip: 'Where the menu opens around the viewer and what closes it.', docs: Docs.menus, children: <Widget>[
           _vector(const <JsonStep>['offset'], 'Offset *', help: 'Blocks from viewer\'s feet'),
           GuiRow(
             label: 'Movement',
@@ -177,8 +178,8 @@ class _MenuEditorState extends State<MenuEditor> {
                 onChanged: (String v) => _write(<JsonStep>['show'], conditionValue(v)),
               )),
         ]),
-        GuiSection(title: 'Constants', count: asMap(doc['vars']).length, open: false, children: _vars(doc)),
-        GuiSection(title: 'Named actions', count: _namedLists.length, open: false, children: _named(doc)),
+        GuiSection(title: 'Constants', count: asMap(doc['vars']).length, open: false, tip: 'Named values every expression in this menu can read.', docs: Docs.guiExpressions, children: _vars(doc)),
+        GuiSection(title: 'Named actions', count: _namedLists.length, open: false, tip: 'Action lists any action in this menu can run with call.', docs: Docs.guiActions, children: _named(doc)),
       ]),
     ]);
   }
@@ -193,7 +194,7 @@ class _MenuEditorState extends State<MenuEditor> {
         problems: diagnosticsAt(_diagnostics, '$path.id'),
         child: GuiTextInput(value: asString(entry['id']) ?? '', label: 'Component id', onChanged: (String v) => _write(<JsonStep>['components', index, 'id'], v)),
       ),
-      _vector(<JsonStep>['components', index, 'offset'], 'Offset *', help: 'Blocks from menu centre'),
+      _vector(<JsonStep>['components', index, 'offset'], 'Offset *', help: 'Blocks from menu center'),
       guiFieldRow('Show when', '$path.show', _diagnostics, (String id) => GuiTextInput(
             id: id,
             value: conditionText(entry['show']),
@@ -240,7 +241,7 @@ class _MenuEditorState extends State<MenuEditor> {
 
     Widget field(String key, String label, String help) => guiFieldRow(label, '$path.motion.$key', _diagnostics, help: help,
         (String id) => GuiNumberOrExpression(id: id, value: motion[key], label: 'Motion $label', onChanged: (Object? v) => set(key, v)));
-    return GuiSection(title: 'Motion', open: motion.isNotEmpty, children: <Widget>[
+    return GuiSection(title: 'Motion', open: motion.isNotEmpty, tip: 'The offset and scale the component eases in from when the menu opens.', docs: Docs.menus, children: <Widget>[
       field('x', 'X', 'Blocks, default 0'),
       field('y', 'Y', 'Blocks, default 0'),
       field('z', 'Z', 'Blocks, default 0'),
@@ -258,6 +259,17 @@ class _MenuEditorState extends State<MenuEditor> {
       const dom.p(classes: 'animus-muted', <Widget>[
         Component.text('Constants, such as 5 or \'gold\'. Names: a-z, 0-9, _'),
       ]),
+      Button.secondary(
+        label: 'Add constant',
+        size: ButtonSize.small,
+        onPressed: () {
+          int n = vars.length + 1;
+          while (vars.containsKey('value$n')) {
+            n++;
+          }
+          setAll(<String, Object?>{...vars, 'value$n': '0'});
+        },
+      ),
       for (final MapEntry<String, Object?> entry in vars.entries)
         dom.div(classes: 'animus-gui-line', attributes: <String, String>{'data-path': childPath(r'$.vars', entry.key)}, <Widget>[
           GuiTextInput(
@@ -278,25 +290,25 @@ class _MenuEditorState extends State<MenuEditor> {
           for (final Diagnostic problem in diagnosticsAt(_diagnostics, childPath(r'$.vars', entry.key)))
             dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
         ]),
-      Button.secondary(
-        label: 'Add constant',
-        size: ButtonSize.small,
-        onPressed: () {
-          int n = vars.length + 1;
-          while (vars.containsKey('value$n')) {
-            n++;
-          }
-          setAll(<String, Object?>{...vars, 'value$n': '0'});
-        },
-      ),
     ];
   }
 
   List<Widget> _named(JsonMap doc) {
     final JsonMap named = asMap(doc['actions']);
     return <Widget>[
+      Button.secondary(
+        label: 'Add named list',
+        size: ButtonSize.small,
+        onPressed: () {
+          int n = named.length + 1;
+          while (named.containsKey('list$n')) {
+            n++;
+          }
+          _write(<JsonStep>['actions', 'list$n'], <Object?>[]);
+        },
+      ),
       for (final MapEntry<String, Object?> entry in named.entries)
-        GuiSection(title: entry.key, count: asList(entry.value).length, open: false, children: <Widget>[
+        GuiSection(title: entry.key, count: asList(entry.value).length, open: false, tip: 'Run this list from any action with call.', docs: Docs.guiActions, children: <Widget>[
           guiFieldRow('Name', childPath(r'$.actions', entry.key), _diagnostics, help: 'Letters, digits, _ and -', (String id) => GuiTextInput(
                 id: id,
                 value: entry.key,
@@ -320,17 +332,6 @@ class _MenuEditorState extends State<MenuEditor> {
             onPressed: () => _write(<JsonStep>['actions'], named.length == 1 ? null : (<String, Object?>{...named}..remove(entry.key))),
           ),
         ]),
-      Button.secondary(
-        label: 'Add named list',
-        size: ButtonSize.small,
-        onPressed: () {
-          int n = named.length + 1;
-          while (named.containsKey('list$n')) {
-            n++;
-          }
-          _write(<JsonStep>['actions', 'list$n'], <Object?>[]);
-        },
-      ),
     ];
   }
 }

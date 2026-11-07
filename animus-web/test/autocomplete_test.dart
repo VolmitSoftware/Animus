@@ -80,6 +80,13 @@ void main() {
       expect(caretSpot('%vault_eco% and', 15, FieldProfile.guiText).source, CaretSource.none);
     });
 
+    test('should say PlaceholderAPI suggestions are not filled on the server yet', () {
+      final CompletionEnv papi = CompletionEnv(sources: sources.copyWith(papi: const <String>['player', 'server']));
+      final CompletionResult result = completeText('%pl', 3, FieldProfile.guiText, papi);
+      expect(labels(result), contains('player'));
+      expect(result.items.every((CompletionItem item) => item.detail.endsWith('Not filled on the server yet')), isTrue);
+    });
+
     test('should offer flag names inside a flag call string', () {
       final CaretSpot spot = caretSpot("has_flag('player', 'me", 22, FieldProfile.behaviorExpression);
       expect((spot.source, spot.query), (CaretSource.flagName, 'me'));

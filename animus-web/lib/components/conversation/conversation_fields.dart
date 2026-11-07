@@ -453,7 +453,7 @@ const List<PickOption> answerColours = <PickOption>[
   PickOption('aqua', 'Aqua'),
   PickOption('light_purple', 'Pink'),
   PickOption('white', 'White'),
-  PickOption('gray', 'Grey'),
+  PickOption('gray', 'Gray'),
 ];
 
 class OptionExtras extends StatelessWidget {
@@ -480,11 +480,11 @@ class OptionExtras extends StatelessWidget {
     return dom.div(classes: 'animus-conv-args', <Widget>[
       _labelled(
         '$id:color',
-        'Colour',
+        'Color',
         'Without one, yes-like answers are green and no-like ones red.',
         ConversationPicker(
           id: '$id:color',
-          label: 'Colour',
+          label: 'Color',
           value: option.color ?? '',
           options: colours,
           onPick: (String value) => _edit((ConversationOption o) => o.color = value.isEmpty ? null : value),

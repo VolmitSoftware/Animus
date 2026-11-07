@@ -2,7 +2,7 @@
 /// summary line shows the node's type and what it does in plain words; the
 /// body holds its tools, its fields and its children on a thin rail per
 /// level. Keyboard: Up and Down move between rows, Right opens, Left
-/// closes, Enter toggles, Delete asks before removing.
+/// closes, Enter toggles, Delete asks in place before removing.
 library;
 
 import 'dart:js_interop';
@@ -22,8 +22,10 @@ import '../../logic/inspect/completion_catalog.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../model/animus_document.dart';
+import '../../services/browser.dart' show focusById;
 import '../gui/gui_fields.dart';
 import '../info_tip.dart';
+import '../offline/offline_fields.dart' show ConfirmRow;
 import 'behavior_capability.dart';
 import 'behavior_inputs.dart';
 import 'behavior_operand.dart';
@@ -123,7 +125,7 @@ void _moveFocus(web.Element from, int by) {
   if (at >= 0 && next >= 0 && next < visible.length) visible[next].focus();
 }
 
-class BehaviorNodeView extends StatelessWidget {
+class BehaviorNodeView extends StatefulWidget {
   const BehaviorNodeView({
     required this.context,
     required this.node,
@@ -150,16 +152,37 @@ class BehaviorNodeView extends StatelessWidget {
   /// branches: `break` and `continue` need one.
   final bool inLoop;
 
+  @override
+  State<BehaviorNodeView> createState() => _BehaviorNodeViewState();
+}
+
+int _nextNodeId = 0;
+
+class _BehaviorNodeViewState extends State<BehaviorNodeView> {
+  final String _id = 'animus-node-${_nextNodeId++}';
+
+  /// Kept here so a rebuild after an edit leaves the step as the reader
+  /// left it.
+  bool _open = true;
+
+  /// Delete was pressed on the summary and the inline question is showing.
+  bool _confirming = false;
+
+  BehaviorContext get ctx => component.context;
+  Object? get node => component.node;
+  List<JsonStep> get steps => component.steps;
+  String? get caption => component.caption;
+  bool get inLoop => component.inLoop;
+
   String get _path => formatPath(steps);
 
-  void _put(JsonMap next) => context.write(steps, next);
+  void _put(JsonMap next) => ctx.write(steps, next);
 
   void _onKey(web.Event event) {
     if (!event.isA<web.KeyboardEvent>()) return;
     final web.KeyboardEvent key = event as web.KeyboardEvent;
     final web.Element? summary = key.currentTarget as web.Element?;
     if (summary == null) return;
-    final web.Element? details = summary.parentElement;
     switch (key.key) {
       case 'ArrowDown':
         key.preventDefault();
@@ -169,63 +192,94 @@ class BehaviorNodeView extends StatelessWidget {
         _moveFocus(summary, -1);
       case 'ArrowRight':
         key.preventDefault();
-        details?.setAttribute('open', '');
+        if (!_open) setState(() => _open = true);
       case 'ArrowLeft':
         key.preventDefault();
-        details?.removeAttribute('open');
+        if (_open) setState(() => _open = false);
       case 'Delete':
-        final void Function()? remove = onRemove;
-        if (remove == null) return;
+        if (component.onRemove == null) return;
         key.preventDefault();
-        if (web.window.confirm('Remove ${caption ?? 'this step'} (${nodeSummary(node, variables: context.variables)}) and its contents?')) remove();
+        setState(() {
+          _open = true;
+          _confirming = true;
+        });
     }
+  }
+
+  void _cancelRemove() {
+    setState(() => _confirming = false);
+    focusById('$_id-summary');
   }
 
   @override
   Widget build(BuildContext build) {
     final JsonMap value = asMap(node);
     final String? type = asString(value['type']);
-    final NodeSpec? spec = context.catalog.nodes[type];
-    final List<Diagnostic> own = diagnosticsAt(context.diagnostics, _path);
-    final List<Diagnostic> nested = diagnosticsAt(context.diagnostics, _path, nested: true);
+    final NodeSpec? spec = ctx.catalog.nodes[type];
+    final List<Diagnostic> own = diagnosticsAt(ctx.diagnostics, _path);
+    final List<Diagnostic> nested = diagnosticsAt(ctx.diagnostics, _path, nested: true);
     final bool failing = nested.any((Diagnostic d) => d.severity == DiagnosticSeverity.error);
     final bool strayJump = (type == 'break' || type == 'continue') && !inLoop;
     final List<String> kept = unknownKeys(value, spec?.fields.map((FieldSpec field) => field.key) ?? const <String>[]);
     final String label = caption ?? 'step';
     return dom.details(
       classes: 'animus-node${failing ? ' has-error' : ''}',
-      attributes: <String, String>{'open': '', 'data-node-path': _path, 'data-node-type': type ?? ''},
+      attributes: <String, String>{if (_open) 'open': '', 'data-node-path': _path, 'data-node-type': type ?? ''},
+      events: <String, void Function(web.Event)>{
+        'toggle': (web.Event event) {
+          if (event.target != event.currentTarget) return;
+          final bool open = (event.currentTarget! as web.HTMLDetailsElement).open;
+          if (open != _open) setState(() => _open = open);
+        },
+      },
       <Widget>[
         dom.summary(
+          id: '$_id-summary',
           classes: 'animus-node-summary',
-          attributes: <String, String>{'aria-label': '$label, ${type ?? 'no type'}: ${nodeSummary(value, variables: context.variables)}${failing ? ', has problems' : ''}'},
-          events: <String, void Function(web.Event)>{'keydown': _onKey},
+          attributes: <String, String>{'aria-label': '$label, ${type ?? 'no type'}: ${nodeSummary(value, variables: ctx.variables)}${failing ? ', has problems' : ''}'},
+          events: <String, void Function(web.Event)>{
+            'keydown': _onKey,
+            'click': (web.Event event) {
+              if (takeSummaryClick(event)) setState(() => _open = !_open);
+            },
+          },
           <Widget>[
             dom.span(classes: 'animus-node-caption', <Widget>[Component.text(label)]),
             dom.span(classes: 'animus-node-type', <Widget>[withTip(Component.text(type ?? '?'), spec?.description, docs: Docs.behaviorNodes)]),
-            dom.span(classes: 'animus-node-line', <Widget>[Component.text(nodeSummary(value, variables: context.variables))]),
+            dom.span(classes: 'animus-node-line', <Widget>[Component.text(nodeSummary(value, variables: ctx.variables))]),
             if (failing) const dom.span(classes: 'animus-node-flag is-error', <Widget>[Component.text('problem')]),
             if (strayJump) const dom.span(classes: 'animus-node-flag is-warning', <Widget>[Component.text('outside a loop')]),
           ],
         ),
         dom.div(classes: 'animus-node-body', <Widget>[
+          if (_confirming && component.onRemove != null)
+            ConfirmRow(
+              question: 'Remove $label?',
+              detail: '${nodeSummary(value, variables: ctx.variables)}, with what it holds.',
+              confirmLabel: 'Remove',
+              onConfirm: () {
+                setState(() => _confirming = false);
+                component.onRemove!();
+              },
+              onCancel: _cancelRemove,
+            ),
           dom.div(classes: 'animus-node-tools', <Widget>[
             GuiSelect(
               value: type,
-              options: context.nodeTypes,
+              options: ctx.nodeTypes,
               noneLabel: 'Pick a step type',
               label: 'Type of $label',
               onChanged: (String? next) {
                 if (next != null) {
-                  _put(changeNodeType(value, next, context.catalog, routine: context.entry, variables: context.variables, server: context.server));
+                  _put(changeNodeType(value, next, ctx.catalog, routine: ctx.entry, variables: ctx.variables, server: ctx.server));
                 }
               },
             ),
             if (spec == null)
               dom.span(classes: 'animus-node-help', <Widget>[Component.text(type == null ? 'Pick a type' : 'Unknown type, kept as written')]),
-            if (onUp != null) GuiIconButton(icon: ArcaneIcon.arrowUp(size: IconSize.sm), label: 'Move $label up', onPressed: onUp!),
-            if (onDown != null) GuiIconButton(icon: ArcaneIcon.arrowDown(size: IconSize.sm), label: 'Move $label down', onPressed: onDown!),
-            if (onRemove != null) GuiIconButton(icon: ArcaneIcon.x(size: IconSize.sm), label: 'Remove $label', onPressed: onRemove!),
+            if (component.onUp != null) GuiIconButton(icon: ArcaneIcon.arrowUp(size: IconSize.sm), label: 'Move $label up', onPressed: component.onUp!),
+            if (component.onDown != null) GuiIconButton(icon: ArcaneIcon.arrowDown(size: IconSize.sm), label: 'Move $label down', onPressed: component.onDown!),
+            if (component.onRemove != null) GuiIconButton(icon: ArcaneIcon.x(size: IconSize.sm), label: 'Remove $label', onPressed: component.onRemove!),
           ]),
           for (final Diagnostic problem in own)
             dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', attributes: const <String, String>{'role': 'note'}, <Widget>[Component.text(problem.message)]),
@@ -240,7 +294,7 @@ class BehaviorNodeView extends StatelessWidget {
     );
   }
 
-  List<Diagnostic> _problems(String key, {bool nested = true}) => diagnosticsAt(context.diagnostics, formatPath(<JsonStep>[...steps, key]), nested: nested);
+  List<Diagnostic> _problems(String key, {bool nested = true}) => diagnosticsAt(ctx.diagnostics, formatPath(<JsonStep>[...steps, key]), nested: nested);
 
   FieldSpec _field(NodeSpec? spec, String key) => spec?.field(key) ?? FieldSpec(key: key, kind: FieldKind.any);
 
@@ -250,13 +304,13 @@ class BehaviorNodeView extends StatelessWidget {
     final List<Widget> out = <Widget>[];
     switch (type) {
       case 'action':
-        out.add(CapabilityFields(context: context, node: value, steps: steps, kind: 'action'));
+        out.add(CapabilityFields(context: ctx, node: value, steps: steps, kind: 'action'));
       case 'condition':
         out.add(_conditionMode(value));
         if (value.containsKey('expression')) {
           out.add(_expressionRow(value, _field(spec, 'expression')));
         } else {
-          out.add(CapabilityFields(context: context, node: value, steps: steps, kind: 'condition'));
+          out.add(CapabilityFields(context: ctx, node: value, steps: steps, kind: 'condition'));
         }
       case 'while':
         out.add(_expressionRow(value, _field(spec, 'expression')));
@@ -269,14 +323,14 @@ class BehaviorNodeView extends StatelessWidget {
         out.add(_loopVariable(value, _field(spec, 'index'), const <String>['integer', 'decimal', 'any']));
         out.add(_loopVariable(value, _field(spec, 'key'), const <String>['string', 'any']));
       case 'set':
-        out.add(_variablePicker(value, _field(spec, 'variable'), context.variables.keys.toList()));
-        out.add(_operandRow(value, _field(spec, 'value'), asString(asMap(context.variables[value['variable']])['type']) ?? 'any'));
+        out.add(_variablePicker(value, _field(spec, 'variable'), ctx.variables.keys.toList()));
+        out.add(_operandRow(value, _field(spec, 'value'), asString(asMap(ctx.variables[value['variable']])['type']) ?? 'any'));
       case 'return':
         out.add(_returnRow(value, _field(spec, 'value')));
       case 'call':
         out.add(_routineRow(value, _field(spec, 'routine')));
-        out.add(CallArguments(context: context, node: value, steps: steps));
-        out.add(_variablePicker(value, _field(spec, 'result'), context.variables.keys.toList(), optional: true));
+        out.add(CallArguments(context: ctx, node: value, steps: steps));
+        out.add(_variablePicker(value, _field(spec, 'result'), ctx.variables.keys.toList(), optional: true));
     }
     const Set<String> custom = <String>{
       'capability', 'arguments', 'bindings', 'expressions', 'templates', 'expression', 'count', 'index', 'list', 'as', 'key', 'variable', 'value', 'routine', 'result',
@@ -294,9 +348,9 @@ class BehaviorNodeView extends StatelessWidget {
           field: field,
           value: value[field.key],
           path: formatPath(<JsonStep>[...steps, field.key]),
-          diagnostics: context.diagnostics,
+          diagnostics: ctx.diagnostics,
           profile: kind == 'expression' ? FieldProfile.behaviorExpression : FieldProfile.none,
-          onChanged: (Object? next) => context.write(<JsonStep>[...steps, field.key], next),
+          onChanged: (Object? next) => ctx.write(<JsonStep>[...steps, field.key], next),
         ));
       }
     }
@@ -324,7 +378,7 @@ class BehaviorNodeView extends StatelessWidget {
           if (next == 'expression') {
             out['expression'] = 'true';
           } else {
-            final JsonMap fresh = defaultNode('condition', context.catalog, server: context.server);
+            final JsonMap fresh = defaultNode('condition', ctx.catalog, server: ctx.server);
             out['capability'] = fresh['capability'];
             out['arguments'] = fresh['arguments'];
           }
@@ -340,10 +394,10 @@ class BehaviorNodeView extends StatelessWidget {
         problems: _problems('expression'),
         child: BehaviorExpressionInput(
           value: asString(value['expression']) ?? '',
-          scope: context.scope,
+          scope: ctx.scope,
           label: 'Expression of ${caption ?? 'step'}',
           placeholder: 'count < 3',
-          onChanged: (String next) => context.write(<JsonStep>[...steps, 'expression'], next),
+          onChanged: (String next) => ctx.write(<JsonStep>[...steps, 'expression'], next),
         ),
       );
 
@@ -354,11 +408,11 @@ class BehaviorNodeView extends StatelessWidget {
         child: OperandControl(
           value: value[field.key],
           type: type,
-          variables: context.variables,
-          scope: context.scope,
+          variables: ctx.variables,
+          scope: ctx.scope,
           label: '${label ?? humanizeKey(field.key)} of ${caption ?? 'step'}',
           literal: literal,
-          onChanged: (Object? next) => context.write(<JsonStep>[...steps, field.key], next),
+          onChanged: (Object? next) => ctx.write(<JsonStep>[...steps, field.key], next),
         ),
       );
 
@@ -372,7 +426,7 @@ class BehaviorNodeView extends StatelessWidget {
       literal: GuiNumberInput(
         value: count is num ? count : null,
         label: 'Count of ${caption ?? 'step'}',
-        onChanged: (num? next) => context.write(<JsonStep>[...steps, 'count'], (next ?? 0).round().clamp(0, 128)),
+        onChanged: (num? next) => ctx.write(<JsonStep>[...steps, 'count'], (next ?? 0).round().clamp(0, 128)),
       ),
     );
   }
@@ -387,15 +441,15 @@ class BehaviorNodeView extends StatelessWidget {
         GuiSwitch(
           value: has,
           label: 'Return a value',
-          onChanged: (bool on) => context.write(<JsonStep>[...steps, 'value'], on ? 0 : null),
+          onChanged: (bool on) => ctx.write(<JsonStep>[...steps, 'value'], on ? 0 : null),
         ),
         if (has)
           OperandControl(
             value: value['value'],
-            variables: context.variables,
-            scope: context.scope,
+            variables: ctx.variables,
+            scope: ctx.scope,
             label: 'Returned value',
-            onChanged: (Object? next) => context.write(<JsonStep>[...steps, 'value'], next),
+            onChanged: (Object? next) => ctx.write(<JsonStep>[...steps, 'value'], next),
           ),
       ]),
     );
@@ -406,15 +460,15 @@ class BehaviorNodeView extends StatelessWidget {
         help: field.help,
         problems: <Diagnostic>[
           ..._problems('routine'),
-          if (value['routine'] is String && !context.routines.contains(value['routine']))
+          if (value['routine'] is String && !ctx.routines.contains(value['routine']))
             Diagnostic(DiagnosticSeverity.warning, formatPath(<JsonStep>[...steps, 'routine']), 'No routine ${value['routine']} in this document.'),
         ],
         child: GuiSelect(
           value: asString(value['routine']),
-          options: context.routines,
+          options: ctx.routines,
           noneLabel: 'Pick a routine',
           label: 'Routine ${caption ?? 'step'} calls',
-          onChanged: (String? next) => context.write(<JsonStep>[...steps, 'routine'], next),
+          onChanged: (String? next) => ctx.write(<JsonStep>[...steps, 'routine'], next),
         ),
       );
 
@@ -427,17 +481,17 @@ class BehaviorNodeView extends StatelessWidget {
             : GuiSelect(
                 value: asString(value[field.key]),
                 options: options,
-                labels: <String, String>{for (final String name in options) name: '$name (${asString(asMap(context.variables[name])['type']) ?? '?'})'},
+                labels: <String, String>{for (final String name in options) name: '$name (${asString(asMap(ctx.variables[name])['type']) ?? '?'})'},
                 allowNone: optional || !field.required,
                 noneLabel: optional || !field.required ? 'Not set' : 'Pick a variable',
                 label: '${humanizeKey(field.key)} of ${caption ?? 'step'}',
-                onChanged: (String? next) => context.write(<JsonStep>[...steps, field.key], next),
+                onChanged: (String? next) => ctx.write(<JsonStep>[...steps, field.key], next),
               ),
       );
 
   /// A loop's `as`, `index` or `key`: execution variables of [types].
   Widget _loopVariable(JsonMap value, FieldSpec field, List<String> types) {
-    final List<String> options = executionVariables(context.variables, types: types);
+    final List<String> options = executionVariables(ctx.variables, types: types);
     final Widget picker = _variablePicker(value, field, options);
     if (options.isNotEmpty || !field.required) return picker;
     return GuiRow(
@@ -448,9 +502,9 @@ class BehaviorNodeView extends StatelessWidget {
         label: 'Declare item and use it',
         size: ButtonSize.small,
         onPressed: () {
-          final String name = uniqueName('item', context.variables.keys);
-          final JsonMap base = <String, Object?>{...context.document, 'variables': <String, Object?>{...context.variables, name: <String, Object?>{'type': 'any', 'initial': ''}}};
-          context.writeDocument(asMap(writeIn(base, <JsonStep>[...steps, field.key], name)));
+          final String name = uniqueName('item', ctx.variables.keys);
+          final JsonMap base = <String, Object?>{...ctx.document, 'variables': <String, Object?>{...ctx.variables, name: <String, Object?>{'type': 'any', 'initial': ''}}};
+          ctx.writeDocument(asMap(writeIn(base, <JsonStep>[...steps, field.key], name)));
         },
       ),
     );
@@ -465,18 +519,18 @@ class BehaviorNodeView extends StatelessWidget {
       for (int index = 0; index < items.length; index++)
         BehaviorNodeView(
           key: ValueKey<String>(formatPath(<JsonStep>[...at, index])),
-          context: context,
+          context: ctx,
           node: items[index],
           steps: <JsonStep>[...at, index],
           caption: '$noun ${index + 1}',
           inLoop: childLoop,
-          onUp: index == 0 ? null : () => context.write(at, moveItem(items, index, index - 1)),
-          onDown: index == items.length - 1 ? null : () => context.write(at, moveItem(items, index, index + 1)),
-          onRemove: () => context.write(at, removeItem(items, index)),
+          onUp: index == 0 ? null : () => ctx.write(at, moveItem(items, index, index - 1)),
+          onDown: index == items.length - 1 ? null : () => ctx.write(at, moveItem(items, index, index + 1)),
+          onRemove: () => ctx.write(at, removeItem(items, index)),
         ),
-      for (final Diagnostic problem in diagnosticsAt(context.diagnostics, formatPath(at)))
+      for (final Diagnostic problem in diagnosticsAt(ctx.diagnostics, formatPath(at)))
         dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
-      AddNodeSelect(context: context, label: 'Add $noun', onAdd: (String type) => context.addAt(at, type, append: true)),
+      AddNodeSelect(context: ctx, label: 'Add $noun', onAdd: (String type) => ctx.addAt(at, type, append: true)),
     ]);
   }
 
@@ -487,19 +541,19 @@ class BehaviorNodeView extends StatelessWidget {
       return GuiRow(
         label: fieldLabel(field),
         help: field.help,
-        problems: diagnosticsAt(context.diagnostics, formatPath(at)),
-        child: AddNodeSelect(context: context, label: 'Add ${field.key}', onAdd: (String type) => context.addAt(at, type)),
+        problems: diagnosticsAt(ctx.diagnostics, formatPath(at)),
+        child: AddNodeSelect(context: ctx, label: 'Add ${field.key}', onAdd: (String type) => ctx.addAt(at, type)),
       );
     }
     return dom.div(classes: 'animus-node-children', <Widget>[
       BehaviorNodeView(
         key: ValueKey<String>(formatPath(at)),
-        context: context,
+        context: ctx,
         node: child,
         steps: at,
         caption: field.key,
         inLoop: childLoop,
-        onRemove: field.required ? null : () => context.write(at, null),
+        onRemove: field.required ? null : () => ctx.write(at, null),
       ),
     ]);
   }

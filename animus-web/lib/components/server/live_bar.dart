@@ -4,6 +4,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/change_sets.dart';
 import '../../logic/json_merge.dart';
 import '../../model/document_kind.dart';
@@ -13,6 +14,8 @@ import '../../services/server/pairing.dart';
 import '../../services/server/server_connection.dart';
 import '../../state/live_session.dart';
 import '../../state/workspace_route.dart';
+import '../fold.dart';
+import '../info_tip.dart';
 import 'connection_pill.dart';
 import 'live_confirm.dart';
 
@@ -139,6 +142,13 @@ class _LiveBarState extends State<LiveBar> {
         ]),
       dom.div(classes: 'animus-live-actions', <Widget>[
         dom.div(classes: 'animus-live-group', attributes: const <String, String>{'role': 'group', 'aria-label': 'Send drafts to the server'}, <Widget>[
+          const dom.span(classes: 'animus-muted', <Widget>[
+            InfoTip(
+              tip: 'Validate runs the server\'s checks; Preview shows the drafts to your player only. Apply writes them, with the change note, as one change set that Undo last apply reverts.',
+              docs: Docs.liveApply,
+              child: Component.text('Drafts'),
+            ),
+          ]),
           Button.secondary(
             label: 'Validate',
             size: ButtonSize.small,
@@ -157,6 +167,7 @@ class _LiveBarState extends State<LiveBar> {
             label: drafts.isEmpty ? 'Apply' : 'Apply ${drafts.length}',
             size: ButtonSize.small,
             disabled: !online || !idle || drafts.isEmpty,
+            attributes: const <String, String>{'id': 'animus-live-apply'},
             onPressed: () async {
               final bool applied = await session.apply(message: _message.trim().isEmpty ? null : _message.trim());
               // A refused or unanswered apply keeps the note for the retry.
@@ -217,8 +228,9 @@ class _LiveBarState extends State<LiveBar> {
             ]),
         ]),
       if (session.log.isNotEmpty)
-        dom.details(classes: 'animus-live-log', <Widget>[
-          dom.summary(attributes: const <String, String>{'data-testid': 'live-last'}, <Widget>[Component.text(session.log.last.message)]),
+        Fold(classes: 'animus-live-log', summary: <Widget>[
+          dom.span(attributes: const <String, String>{'data-testid': 'live-last'}, <Widget>[Component.text(session.log.last.message)]),
+        ], children: <Widget>[
           dom.ul(<Widget>[
             for (final LiveNotice notice in session.log.reversed.take(12))
               dom.li(classes: 'is-${notice.level.name}', <Widget>[
@@ -309,7 +321,7 @@ class _ConflictPanelState extends State<ConflictPanel> {
                           Button(
                             label: side == MergeSide.mine ? 'Mine' : 'Server',
                             size: ButtonSize.small,
-                            variant: (view.choices[conflict.path] ?? MergeSide.mine) == side ? ButtonVariant.primary : ButtonVariant.ghost,
+                            variant: ButtonVariant.ghost,
                             attributes: <String, String>{'role': 'radio', 'aria-checked': '${(view.choices[conflict.path] ?? MergeSide.mine) == side}'},
                             onPressed: () => session.choose(view.key, conflict.path, side),
                           ),

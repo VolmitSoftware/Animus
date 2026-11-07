@@ -9,6 +9,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_text.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/npc/group_model.dart';
@@ -22,6 +23,7 @@ import '../../state/live_session.dart';
 import '../../state/workspace_repository.dart';
 import '../../state/workspace_route.dart';
 import '../gui/gui_fields.dart';
+import '../info_tip.dart';
 import 'npc_folders.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../select/suggest_input.dart';
@@ -145,7 +147,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
       <Widget>[
         dom.header(classes: 'animus-npc-browser-head', <Widget>[
           dom.h2(<Widget>[
-            const Component.text('NPCs'),
+            withTip(const Component.text('NPCs'), 'Every NPC definition in this workspace. Search by name or id, or with tag:, has:, is:, type:, world: and folder:.', docs: Docs.editorDocuments),
             dom.span(classes: 'animus-count', <Widget>[Component.text(shown.length == all.length ? '${all.length}' : '${shown.length} of ${all.length}')]),
           ]),
           dom.div(classes: 'animus-npc-search', <Widget>[
@@ -172,10 +174,10 @@ class _NpcBrowserState extends State<NpcBrowser> {
     );
   }
 
-  Widget _chip(String label, bool active, void Function() onPressed, {String? count}) => Button(
+  /// A filter toggle; the pressed state, not a primary fill, marks it on.
+  Widget _chip(String label, bool active, void Function() onPressed, {String? count}) => Button.ghost(
     label: count == null ? label : '$label $count',
     size: ButtonSize.small,
-    variant: active ? ButtonVariant.primary : ButtonVariant.ghost,
     attributes: <String, String>{'aria-pressed': '$active'},
     onPressed: onPressed,
   );
@@ -258,7 +260,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
           selected: _selectedFolder,
           onSelect: _openFolder,
         ),
-        const dom.h3(<Widget>[Component.text('Tags')]),
+        dom.h3(<Widget>[withTip(const Component.text('Tags'), 'Every tag in the workspace with its NPC count. Pick one to filter the list.')]),
         if (tags.isEmpty)
           const dom.p(classes: 'animus-muted', <Widget>[Component.text('No tags yet. Select NPCs and add one.')])
         else
@@ -313,7 +315,13 @@ class _NpcBrowserState extends State<NpcBrowser> {
       classes: 'animus-npc-group-assign',
       attributes: const <String, String>{'aria-label': 'Trait groups', 'data-npc': 'group-assign'},
       <Widget>[
-        const dom.h3(<Widget>[Component.text('Trait groups')]),
+        dom.h3(<Widget>[
+          withTip(
+            const Component.text('Trait groups'),
+            'Adds a group to the end of each NPC\'s groups, or removes it, as /animus groups assign and unassign do. One undo step.',
+            docs: Docs.groupList,
+          ),
+        ]),
         dom.div(classes: 'animus-npc-group-assign-fields', <Widget>[
           dom.label(classes: 'animus-npc-filter-select', <Widget>[
             const dom.span(<Widget>[Component.text('Group')]),
@@ -327,7 +335,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
             ),
           ]),
           dom.label(classes: 'animus-npc-filter-select', <Widget>[
-            const dom.span(<Widget>[Component.text('For')]),
+            dom.span(<Widget>[withTip(const Component.text('For'), 'The selected NPCs, every NPC in one folder (not its subfolders), or every NPC whose tags, with its groups\' tags, include one.')]),
             GuiSelect(
               id: 'animus-group-assign-by',
               value: _assignBy,
@@ -411,63 +419,11 @@ class _NpcBrowserState extends State<NpcBrowser> {
       },
       <Widget>[
         dom.div(classes: 'animus-npc-bulk-head', <Widget>[
-          dom.strong(<Widget>[Component.text('$count selected')]),
+          dom.strong(<Widget>[withTip(Component.text('$count selected'), 'Each bulk edit is one undo step and, on a server workspace, one change at the next apply.', docs: Docs.editorDocuments)]),
           Button.ghost(label: 'Clear selection', size: ButtonSize.small, onPressed: () => setState(() => _selected.clear())),
         ]),
         dom.div(classes: 'animus-npc-bulk-group', <Widget>[
-          const dom.span(classes: 'animus-npc-bulk-label', <Widget>[Component.text('Tags')]),
-          SuggestInput(
-            value: _tag,
-            label: 'Tag',
-            placeholder: 'guard',
-            suggestions: <FieldOption>[for (final (String tag, int _) in npcTags(all)) FieldOption(tag)],
-            onChanged: (String value) => setState(() => _tag = value.trim().toLowerCase()),
-          ),
-          Button.secondary(
-            label: 'Add tag',
-            size: ButtonSize.small,
-            disabled: _busy || !npcTagPattern.hasMatch(_tag),
-            onPressed: () => _bulk('Tagged', addTag(selected, _tag)),
-          ),
-          if (selectedTags.isNotEmpty)
-            GuiSelect(
-              value: null,
-              options: selectedTags,
-              label: 'Remove a tag',
-              noneLabel: 'Pick a tag to remove',
-              onChanged: (String? tag) {
-                if (tag != null) _bulk('Untagged', removeTag(selected, tag));
-              },
-            ),
-        ]),
-        _moveGroup(all, selected, keys),
-        dom.div(classes: 'animus-npc-bulk-group', <Widget>[
-          const dom.span(classes: 'animus-npc-bulk-label', <Widget>[Component.text('Module')]),
-          if (modules.isEmpty)
-            const dom.span(classes: 'animus-muted', <Widget>[Component.text('No modules.')])
-          else
-            GuiSelect(value: module, options: modules, label: 'Module to change', noneLabel: 'Pick a module', onChanged: (String? value) => setState(() => _module = value)),
-          Button.secondary(
-            label: 'Enable',
-            size: ButtonSize.small,
-            disabled: _busy || module == null || !toggleableModules.contains(module),
-            onPressed: () => _bulk('Enabled $module on', setModuleEnabled(selected, module!, true)),
-          ),
-          Button.secondary(
-            label: 'Disable',
-            size: ButtonSize.small,
-            disabled: _busy || module == null || !toggleableModules.contains(module),
-            onPressed: () => _bulk('Disabled $module on', setModuleEnabled(selected, module!, false)),
-          ),
-          Button.ghost(
-            label: 'Remove module',
-            size: ButtonSize.small,
-            disabled: _busy || module == null,
-            onPressed: () => _bulk('Removed $module from', removeModule(selected, module!)),
-          ),
-        ]),
-        dom.div(classes: 'animus-npc-bulk-group', <Widget>[
-          const dom.span(classes: 'animus-npc-bulk-label', <Widget>[Component.text('Presence')]),
+          dom.span(classes: 'animus-npc-bulk-label', <Widget>[withTip(const Component.text('Presence'), 'Set spawned writes the definitions and takes effect at the next apply. Spawn and despawn on server act on the live server now.', docs: Docs.npcActivation)]),
           Button.secondary(label: 'Set spawned', size: ButtonSize.small, disabled: _busy, onPressed: () => _bulk('Set spawned on', setSpawned(selected, true))),
           Button.secondary(
             label: 'Set despawned',
@@ -500,6 +456,58 @@ class _NpcBrowserState extends State<NpcBrowser> {
             ]),
         ]),
         dom.div(classes: 'animus-npc-bulk-group', <Widget>[
+          dom.span(classes: 'animus-npc-bulk-label', <Widget>[withTip(const Component.text('Tags'), 'Adds a tag to every selected NPC, or removes one they carry. Lowercase letters, digits, _ and -.')]),
+          SuggestInput(
+            value: _tag,
+            label: 'Tag',
+            placeholder: 'guard',
+            suggestions: <FieldOption>[for (final (String tag, int _) in npcTags(all)) FieldOption(tag)],
+            onChanged: (String value) => setState(() => _tag = value.trim().toLowerCase()),
+          ),
+          Button.secondary(
+            label: 'Add tag',
+            size: ButtonSize.small,
+            disabled: _busy || !npcTagPattern.hasMatch(_tag),
+            onPressed: () => _bulk('Tagged', addTag(selected, _tag)),
+          ),
+          if (selectedTags.isNotEmpty)
+            GuiSelect(
+              value: null,
+              options: selectedTags,
+              label: 'Remove a tag',
+              noneLabel: 'Pick a tag to remove',
+              onChanged: (String? tag) {
+                if (tag != null) _bulk('Untagged', removeTag(selected, tag));
+              },
+            ),
+        ]),
+        _moveGroup(all, selected, keys),
+        dom.div(classes: 'animus-npc-bulk-group', <Widget>[
+          dom.span(classes: 'animus-npc-bulk-label', <Widget>[withTip(const Component.text('Module'), 'Turns a module the selection has on or off, or removes it from every selected NPC.', docs: Docs.npc)]),
+          if (modules.isEmpty)
+            const dom.span(classes: 'animus-muted', <Widget>[Component.text('No modules.')])
+          else
+            GuiSelect(value: module, options: modules, label: 'Module to change', noneLabel: 'Pick a module', onChanged: (String? value) => setState(() => _module = value)),
+          Button.secondary(
+            label: 'Enable',
+            size: ButtonSize.small,
+            disabled: _busy || module == null || !toggleableModules.contains(module),
+            onPressed: () => _bulk('Enabled $module on', setModuleEnabled(selected, module!, true)),
+          ),
+          Button.secondary(
+            label: 'Disable',
+            size: ButtonSize.small,
+            disabled: _busy || module == null || !toggleableModules.contains(module),
+            onPressed: () => _bulk('Disabled $module on', setModuleEnabled(selected, module!, false)),
+          ),
+          Button.ghost(
+            label: 'Remove module',
+            size: ButtonSize.small,
+            disabled: _busy || module == null,
+            onPressed: () => _bulk('Removed $module from', removeModule(selected, module!)),
+          ),
+        ]),
+        dom.div(classes: 'animus-npc-bulk-group', <Widget>[
           if (_confirm != _Confirm.delete)
             Button.ghost(label: 'Delete', size: ButtonSize.small, disabled: _busy, onPressed: () => setState(() => _confirm = _Confirm.delete))
           else ...<Widget>[
@@ -524,7 +532,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
     final String target = _folder.trim().isNotEmpty ? typed : (_moveTarget == '/' ? '' : _moveTarget);
     final String? problem = _folder.trim().isEmpty ? null : npcFolderProblem(typed);
     return dom.div(classes: 'animus-npc-bulk-group', <Widget>[
-      const dom.span(classes: 'animus-npc-bulk-label', <Widget>[Component.text('Folder')]),
+      dom.span(classes: 'animus-npc-bulk-label', <Widget>[withTip(const Component.text('Folder'), 'Moves the selected NPC files to another folder under npcs/. The ids change; the UUIDs stay.', docs: Docs.editorDocuments)]),
       NpcFolderPicker(
         root: npcFolderTree(all, extra: NpcFolderMemory.created(component.workspace.id)),
         value: _moveTarget,
@@ -606,10 +614,12 @@ class _NpcBrowserState extends State<NpcBrowser> {
             },
           ),
           ]),
-          const dom.span(<Widget>[Component.text('Name')]),
-          const dom.span(classes: 'animus-npc-col-type', <Widget>[Component.text('Type')]),
-          const dom.span(classes: 'animus-npc-col-world', <Widget>[Component.text('World')]),
-          const dom.span(<Widget>[Component.text('Tags and features')]),
+          dom.span(<Widget>[withTip(const Component.text('Name'), 'The display name and the file id under npcs/. Open one to edit it.')]),
+          dom.span(classes: 'animus-npc-col-type', <Widget>[withTip(const Component.text('Type'), 'The entity type the body appears as.')]),
+          dom.span(classes: 'animus-npc-col-world', <Widget>[withTip(const Component.text('World'), 'The world in the NPC\'s position.')]),
+          dom.span(<Widget>[
+            withTip(const Component.text('Tags and features'), 'Tags, then modules and parts such as combat, route or shop. A number counts errors.'),
+          ]),
         ]),
         for (final NpcEntry entry in shown) _row(entry),
       ],

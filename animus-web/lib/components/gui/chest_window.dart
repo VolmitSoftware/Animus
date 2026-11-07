@@ -13,9 +13,11 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_layout.dart';
 import '../../logic/gui/gui_text.dart';
+import '../info_tip.dart';
 import '../mc/mc_item_icons.dart';
 import 'gui_fields.dart';
 
@@ -117,7 +119,13 @@ class _ChestWindowState extends State<ChestWindow> {
   Widget build(BuildContext context) {
     final ChestLayout layout = component.layout;
     return dom.div(classes: 'animus-chest-screen', attributes: <String, String>{'role': 'group', 'aria-label': component.label}, <Widget>[
-      dom.div(classes: 'animus-chest-title', <Widget>[GuiStyledText(layout.title, defaultColor: mcInventoryTitleColor)]),
+      dom.div(classes: 'animus-chest-title', <Widget>[
+        withTip(
+          GuiStyledText(layout.title, defaultColor: mcInventoryTitleColor),
+          component.showMask ? 'The window as players see it. Letters mark each slot\'s mask key; click a slot to edit it.' : 'The window as players see it.',
+          docs: component.showMask ? Docs.chestGuis : null,
+        ),
+      ]),
       dom.div(
         classes: 'animus-chest${component.onPaint != null ? ' is-painting' : ''}',
         styles: dom.Styles(raw: <String, String>{'grid-template-columns': 'repeat(${layout.width}, var(--animus-slot))'}),

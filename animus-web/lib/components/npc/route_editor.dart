@@ -117,7 +117,7 @@ class _RouteWaitInputState extends State<RouteWaitInput> {
         id: '${component.id}-range',
         label: 'Range',
         size: ButtonSize.small,
-        variant: ranged ? ButtonVariant.primary : ButtonVariant.ghost,
+        variant: ButtonVariant.ghost,
         attributes: <String, String>{'aria-pressed': '$ranged', 'aria-label': '$label wait range'},
         onPressed: _toggle,
       ),
@@ -426,7 +426,7 @@ class _RouteEditorState extends State<RouteEditor> {
   Widget _toolButton(RouteTool tool, String label) => Button(
         label: label,
         size: ButtonSize.small,
-        variant: _tool == tool ? ButtonVariant.primary : ButtonVariant.ghost,
+        variant: ButtonVariant.ghost,
         attributes: <String, String>{'aria-pressed': '${_tool == tool}'},
         onPressed: () => setState(() => _tool = tool),
       );
@@ -438,7 +438,7 @@ class _RouteEditorState extends State<RouteEditor> {
       InspectRow(
         label: 'Order',
         labelFor: '$_gridId-order',
-        help: 'sequence in order; pingpong back and forth; random picks points via guides; wander roams near a centre.',
+        help: 'Sequence walks in order, pingpong back and forth, random picks points by guides, wander roams near a center.',
         child: GuiSelect(id: '$_gridId-order', value: asString(route['order']), options: routeOrders, allowNone: true, noneLabel: 'sequence (default)', onChanged: (String? value) {
           if (value == null) {
             _write(setRouteOrder(route, 'sequence')..remove('order'));

@@ -32,6 +32,7 @@ import 'mc_asset_loader.dart';
 import 'mc_gl.dart';
 import '../info_tip.dart';
 import 'mc_gl_renderer.dart';
+import '../shortcut_sheet.dart' show platformKeys;
 
 /// Pixels of drag one arrow key press stands for.
 const double mcStageKeyStepPx = 24;
@@ -565,10 +566,10 @@ class _McStageState extends State<McStage> {
         ],
       ),
       dom.p(id: '$_id-keys', classes: 'animus-mc-keys', <Widget>[
-        const InfoTip(
-          tip: 'Drag to orbit, Shift or right drag to pan, Ctrl and the wheel to zoom. Focused: arrows orbit, Shift and arrows pan, + and - zoom, 0 resets.',
+        InfoTip(
+          tip: 'Drag to orbit, Shift or right drag to pan, ${platformKeys('Mod')} and the wheel to zoom. Focused: arrows orbit, Shift and arrows pan, + and - zoom, 0 resets.',
           docs: Docs.editorKeyboard,
-          child: Component.text('Controls'),
+          child: const Component.text('Controls'),
         ),
       ]),
       dom.div(id: '$_id-status', classes: 'animus-mc-status', attributes: const <String, String>{'aria-live': 'polite'}, <Widget>[

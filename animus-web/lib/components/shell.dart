@@ -11,7 +11,6 @@ import '../logic/data_folder.dart';
 import '../logic/gui/gloss_bundle.dart';
 import '../logic/gui/gui_json.dart';
 import '../logic/gui/gui_text.dart';
-import '../logic/inspect/server_behaviors.dart';
 import '../logic/offline/new_documents.dart';
 import '../logic/npc/skin_edits.dart';
 import '../logic/recording/rename_references.dart';
@@ -25,7 +24,6 @@ import '../state/live_session.dart';
 import '../state/server_hub.dart';
 import '../state/workspace_repository.dart';
 import '../state/workspace_route.dart';
-import 'brand_mark.dart';
 import 'citizens_screen.dart';
 import '../logic/command_search.dart';
 import 'command_palette.dart';
@@ -45,7 +43,10 @@ import 'server/live_bar.dart';
 import 'server/pair_page.dart';
 import 'server/server_overview.dart';
 import 'shell_sidebar.dart';
+import 'shortcut_sheet.dart';
+import 'shortcuts.dart';
 import 'shell_topbar.dart';
+import 'workspace_overview.dart';
 
 /// The id of every screen's `<main>`, the target of the skip link.
 const String mainId = 'animus-main';
@@ -84,6 +85,11 @@ class _EditorShellState extends State<EditorShell> {
   bool _compact = false;
   bool _drawerOpen = false;
   bool _paletteOpen = false;
+  bool _sheetOpen = false;
+
+  /// The sidebar hidden on wide screens (Cmd or Ctrl+B); phones use the
+  /// drawer instead.
+  bool _sidebarHidden = false;
 
   /// A Gloss bundle whose documents would replace ones the workspace has,
   /// waiting for the user to confirm.
@@ -121,37 +127,75 @@ class _EditorShellState extends State<EditorShell> {
     if (_drawerOpen && (component.store.workspace == null || oldComponent.route != component.route)) _setDrawer(false);
   }
 
-  /// The page-wide shortcuts. Keys typed into a text box stay with the box;
-  /// Escape is handled by whatever has focus.
+  /// The page-wide shortcuts ([shortcutGroups]). Keys typed into a text
+  /// box stay with the box; Escape is handled by whatever has focus.
   void _shortcut(web.KeyboardEvent event) {
-    if (_paletteOpen) return;
-    final bool modifier = event.ctrlKey || event.metaKey;
-    final String key = event.key.toLowerCase();
-    if (isTypingTarget(event.target) || event.altKey) return;
+    if (_paletteOpen || _sheetOpen || isTypingTarget(event.target)) return;
+    final ShortcutAction? action = matchShortcut(key: event.key, mod: event.ctrlKey || event.metaKey, shift: event.shiftKey, alt: event.altKey);
+    if (action == null) return;
     final WorkspaceSnapshot? workspace = component.store.workspace;
-    if (modifier && key == 'k') {
-      event.preventDefault();
-      _openPalette();
-    } else if (modifier && key == 'z' && workspace != null) {
-      event.preventDefault();
-      event.shiftKey ? _redo() : _undo();
-    } else if (modifier && key == 'y' && workspace != null) {
-      event.preventDefault();
-      _redo();
-    } else if (((modifier && key == 'f') || (!modifier && key == '/')) && workspace != null) {
-      event.preventDefault();
-      _focusSearch();
+    if (workspace == null && action != ShortcutAction.palette && action != ShortcutAction.sheet) return;
+    event.preventDefault();
+    _run(action, workspace);
+  }
+
+  void _run(ShortcutAction action, WorkspaceSnapshot? workspace) {
+    switch (action) {
+      case ShortcutAction.palette:
+        _openPalette();
+      case ShortcutAction.sheet:
+        _openSheet();
+      case ShortcutAction.search:
+        _focusSearch();
+      case ShortcutAction.undo:
+        _undo();
+      case ShortcutAction.redo:
+        _redo();
+      case ShortcutAction.save:
+        _save(workspace!);
+      case ShortcutAction.sidebar:
+        _toggleSidebar();
+      case ShortcutAction.newDocument:
+        component.onNavigate(NewDocumentRoute(workspace!.id));
+      case ShortcutAction.browseNpcs:
+        component.onNavigate(NpcListRoute(workspace!.id));
+    }
+  }
+
+  /// Every edit is saved as it lands, so Save retries one the browser
+  /// refused; in a live workspace it presses Apply.
+  void _save(WorkspaceSnapshot workspace) {
+    if (workspace.server != null && component.session != null) {
+      final web.HTMLButtonElement? apply = web.document.getElementById('animus-live-apply') as web.HTMLButtonElement?;
+      if (apply != null && !apply.disabled) {
+        apply.click();
+      } else {
+        ArcaneSonner.info('Nothing to apply. Edits are kept as drafts until Apply.');
+      }
+    } else if (component.store.hasUnsavedEdit) {
+      component.store.saveAgain();
+    } else {
+      ArcaneSonner.info('Saved. Every edit is kept in this browser as you make it.');
+    }
+  }
+
+  void _toggleSidebar() {
+    if (_compact) {
+      _drawerOpen ? _closeDrawer() : _openDrawer();
+    } else {
+      setState(() => _sidebarHidden = !_sidebarHidden);
     }
   }
 
   void _focusSearch() {
     if (_compact && !_drawerOpen) setState(() => _setDrawer(true));
+    if (!_compact && _sidebarHidden) setState(() => _sidebarHidden = false);
     focusWhenShown(documentSearchId);
   }
 
   void _setDrawer(bool open) {
     _drawerOpen = open;
-    setScrollLocked(open || _paletteOpen);
+    setScrollLocked(open || _paletteOpen || _sheetOpen);
   }
 
   void _openDrawer() {
@@ -180,7 +224,17 @@ class _EditorShellState extends State<EditorShell> {
 
   void _closePalette() {
     setState(() => _paletteOpen = false);
-    setScrollLocked(_drawerOpen);
+    setScrollLocked(_drawerOpen || _sheetOpen);
+  }
+
+  void _openSheet() {
+    setState(() => _sheetOpen = true);
+    setScrollLocked(true);
+  }
+
+  void _closeSheet() {
+    setState(() => _sheetOpen = false);
+    setScrollLocked(_drawerOpen || _paletteOpen);
   }
 
   Future<void> _undo() async {
@@ -351,6 +405,7 @@ class _EditorShellState extends State<EditorShell> {
       onExportZip: workspace != null ? () => exportWorkspace(workspace) : null,
       onExportGloss: workspace != null ? () => _exportGloss(workspace) : null,
       onDocuments: workspace != null ? (_drawerOpen ? _closeDrawer : _openDrawer) : null,
+      onShowSidebar: workspace != null && _sidebarHidden && !_compact ? _toggleSidebar : null,
     );
   }
 
@@ -398,12 +453,13 @@ class _EditorShellState extends State<EditorShell> {
           ]),
         ])
       else if (workspace == null && component.route is CitizensRoute)
-        CitizensScreen(key: const ValueKey<String>('citizens'), hub: component.hub)
+        CitizensScreen(key: const ValueKey<String>('citizens'), hub: component.hub, store: component.store, onNavigate: component.onNavigate)
       else if (workspace == null)
         _home(store)
       else
         _workspace(workspace),
       if (_paletteOpen) CommandPalette(key: const ValueKey<String>('palette'), commands: _commands(workspace), onClose: _closePalette),
+      if (_sheetOpen) ShortcutSheet(key: const ValueKey<String>('shortcuts'), onClose: _closeSheet),
     ]);
   }
 
@@ -431,16 +487,19 @@ class _EditorShellState extends State<EditorShell> {
     final bool dark = component.brightness == Brightness.dark;
     return <PaletteCommand>[
       if (workspace != null) ...<PaletteCommand>[
-        if (store.canUndo) PaletteCommand('Edit', 'Undo ${store.undoLabel}', _undo, hint: 'Ctrl+Z', keywords: const <String>['undo']),
-        if (store.canRedo) PaletteCommand('Edit', 'Redo ${store.redoLabel}', _redo, hint: 'Ctrl+Shift+Z', keywords: const <String>['redo']),
-        PaletteCommand('Workspace', 'New document', () => component.onNavigate(NewDocumentRoute(workspace.id)), keywords: const <String>['create', 'add']),
+        if (store.canUndo) PaletteCommand('Edit', 'Undo ${store.undoLabel}', _undo, hint: platformKeys('Mod+Z'), keywords: const <String>['undo']),
+        if (store.canRedo) PaletteCommand('Edit', 'Redo ${store.redoLabel}', _redo, hint: platformKeys('Mod+Shift+Z'), keywords: const <String>['redo']),
+        PaletteCommand('Edit', workspace.server == null ? 'Save' : 'Apply to the server', () => _save(workspace), hint: platformKeys('Mod+S'), keywords: const <String>['save', 'apply']),
+        PaletteCommand('Workspace', 'Search documents', _focusSearch, hint: platformKeys('Mod+F'), keywords: const <String>['find', 'filter']),
+        PaletteCommand('Workspace', 'New document', () => component.onNavigate(NewDocumentRoute(workspace.id)), hint: 'N', keywords: const <String>['create', 'add']),
         PaletteCommand('Workspace', 'New conversation', () => component.onNavigate(NewDocumentRoute.conversation(workspace.id)), keywords: const <String>['dialogue', 'talk', 'create']),
         PaletteCommand('Workspace', 'Export the data folder zip', () => exportWorkspace(workspace), keywords: const <String>['download', 'save']),
         PaletteCommand('Workspace', 'Export a Gloss bundle', () => _exportGloss(workspace), keywords: const <String>['download']),
         PaletteCommand('Workspace', 'Import a Blockbench model', () => _importBbmodel(workspace), keywords: const <String>['bbmodel', 'rig']),
         PaletteCommand('Workspace', 'Import a Gloss bundle', _importGloss),
         if (workspace.server == null) PaletteCommand('Workspace', 'Send to a server', () => component.onNavigate(SyncRoute(workspace.id)), keywords: const <String>['push', 'pull', 'sync']),
-        PaletteCommand('Workspace', 'Browse NPCs', () => component.onNavigate(NpcListRoute(workspace.id)), keywords: const <String>['search', 'filter']),
+        PaletteCommand('Workspace', 'Browse NPCs', () => component.onNavigate(NpcListRoute(workspace.id)), hint: 'B', keywords: const <String>['search', 'filter']),
+        PaletteCommand('Workspace', _compact || !_sidebarHidden ? 'Show or hide the sidebar' : 'Show the sidebar', _toggleSidebar, hint: platformKeys('Mod+B'), keywords: const <String>['documents', 'panel']),
         if (workspace.documents.any((AnimusDocument document) => document.kind == DocumentKind.recording))
           PaletteCommand('Workspace', 'Browse recordings', () => component.onNavigate(RecordingListRoute(workspace.id)), keywords: const <String>['performance', 'playback']),
         PaletteCommand('Workspace', 'Workspace overview', () => component.onNavigate(WorkspaceRoute(workspace.id))),
@@ -464,10 +523,11 @@ class _EditorShellState extends State<EditorShell> {
             hint: '${summary.documentCount} document${summary.documentCount == 1 ? '' : 's'}',
           ),
       PaletteCommand('Workspaces', 'All workspaces', () => component.onNavigate(const HomeRoute()), keywords: const <String>['home']),
+      PaletteCommand('App', 'Keyboard shortcuts', _openSheet, hint: '?', keywords: const <String>['keys', 'help', 'hotkeys']),
       PaletteCommand('App', dark ? 'Use light theme' : 'Use dark theme', component.onToggleTheme, keywords: const <String>['theme', 'dark', 'light']),
       PaletteCommand('App', 'Open data folder', () => _open(pickDirectory)),
       PaletteCommand('App', 'Open zip', () => _open(pickZip)),
-      PaletteCommand('App', 'Convert Citizens and others', () => component.onNavigate(const CitizensRoute())),
+      PaletteCommand('App', converterTitle, () => component.onNavigate(const CitizensRoute()), keywords: const <String>['citizens', 'shopkeepers', 'denizen', 'convert']),
     ];
   }
 
@@ -493,7 +553,7 @@ class _EditorShellState extends State<EditorShell> {
       workspaceId: workspace.id,
       route: route,
       onNavigate: component.onNavigate,
-      child: dom.div(key: ValueKey<String>('workspace:${workspace.id}'), classes: 'animus-workspace', <Widget>[
+      child: dom.div(key: ValueKey<String>('workspace:${workspace.id}'), classes: 'animus-workspace${_sidebarHidden && !_compact ? ' is-sidebar-hidden' : ''}', <Widget>[
       ShellSidebar(
         workspace: workspace,
         route: route,
@@ -586,104 +646,14 @@ class _EditorShellState extends State<EditorShell> {
             onOpened: (DocumentKind kind, String id) => component.onNavigate(DocumentRoute(workspace.id, kind, id)),
           )
         else
-          _overview(workspace),
+          WorkspaceOverview(
+            workspace: workspace,
+            ignored: component.store.ignored,
+            onNavigate: component.onNavigate,
+          ),
       ]),
     ]),
     );
-  }
-
-  Widget _overview(WorkspaceSnapshot workspace) {
-    final List<AnimusDocument> invalid = workspace.documents.where((AnimusDocument document) => !document.valid).toList();
-    return dom.div(classes: 'animus-overview', <Widget>[
-      dom.section(classes: 'animus-panel', <Widget>[
-        dom.h1(id: mainHeadingId, attributes: const <String, String>{'tabindex': '-1'}, <Widget>[Component.text(workspace.name)]),
-        if (workspace.documents.isNotEmpty)
-          dom.div(classes: 'animus-stats', <Widget>[
-            for (final DocumentKind kind in listedKinds)
-              if (workspace.documents.any((AnimusDocument document) => document.kind == kind))
-                if (kind == DocumentKind.serverBehaviors)
-                  dom.div(classes: 'animus-stat', <Widget>[
-                    dom.strong(<Widget>[Component.text('${listedServerBehaviors(workspace.documents).length}')]),
-                    const dom.span(<Widget>[Component.text('Server behaviors listed to run')]),
-                  ])
-                else
-                dom.div(classes: 'animus-stat', <Widget>[
-                  dom.strong(<Widget>[Component.text('${workspace.documents.where((AnimusDocument document) => document.kind == kind).length}')]),
-                  dom.span(<Widget>[Component.text(kind.label)]),
-                ]),
-          ])
-        else
-          dom.div(classes: 'animus-empty', <Widget>[
-            const BrandMark(size: 56, classes: 'animus-empty-mark'),
-            dom.div(<Widget>[
-              const dom.p(<Widget>[
-                Component.text('No documents yet.'),
-              ]),
-              dom.div(classes: 'animus-row', <Widget>[
-                Button.primary(label: 'Create an NPC', size: ButtonSize.small, onPressed: () => component.onNavigate(NewDocumentRoute(workspace.id, DocumentKind.npc))),
-                Button.ghost(label: 'All kinds', size: ButtonSize.small, onPressed: () => component.onNavigate(NewDocumentRoute(workspace.id))),
-              ]),
-            ]),
-          ]),
-      ]),
-      if (workspace.documents.isNotEmpty) _starters(workspace),
-      if (workspace.documents.isNotEmpty)
-        dom.section(classes: 'animus-panel${invalid.isEmpty ? '' : ' is-error'}', <Widget>[
-          dom.h2(<Widget>[
-            Component.text(invalid.isEmpty
-                ? 'Every document passes the shared schemas'
-                : '${invalid.length} ${invalid.length == 1 ? 'document needs' : 'documents need'} repair'),
-          ]),
-          if (invalid.isNotEmpty)
-            dom.ul(classes: 'animus-problem-list', <Widget>[
-              for (final AnimusDocument document in invalid)
-                dom.li(<Widget>[
-                  dom.a(href: DocumentRoute(workspace.id, document.kind, document.id).format(), <Widget>[
-                    Component.text('${document.kind.label}: ${document.id}'),
-                  ]),
-                  dom.span(classes: 'animus-muted', <Widget>[Component.text(_firstError(document))]),
-                ]),
-            ]),
-        ]),
-      if (component.store.ignored.isNotEmpty)
-        dom.section(classes: 'animus-panel', <Widget>[
-          dom.details(<Widget>[
-            dom.summary(<Widget>[Component.text('${component.store.ignored.length} files are not editor documents')]),
-            dom.ul(classes: 'animus-muted', <Widget>[
-              for (final String path in component.store.ignored.take(200)) dom.li(<Widget>[dom.code(<Widget>[Component.text(path)])]),
-            ]),
-          ]),
-        ]),
-    ]);
-  }
-
-  /// Ways into the playground: NPC previews and behavior dry runs.
-  Widget _starters(WorkspaceSnapshot workspace) {
-    final List<AnimusDocument> npcs = <AnimusDocument>[for (final AnimusDocument document in workspace.documents) if (document.kind == DocumentKind.npc) document];
-    final List<AnimusDocument> behaviors = <AnimusDocument>[for (final AnimusDocument document in workspace.documents) if (document.kind == DocumentKind.behavior) document];
-    Widget links(String title, List<AnimusDocument> documents, String verb) => dom.div(classes: 'animus-try-group', <Widget>[
-          dom.h3(<Widget>[Component.text(title)]),
-          dom.ul(classes: 'animus-try-list', <Widget>[
-            for (final AnimusDocument document in documents.take(8))
-              dom.li(<Widget>[
-                dom.a(href: DocumentRoute(workspace.id, document.kind, document.id, ViewMode.preview).format(), <Widget>[
-                  Component.text('$verb ${document.kind == DocumentKind.npc ? guiPlainText(document.title) : document.id}'),
-                ]),
-              ]),
-          ]),
-        ]);
-    return dom.section(classes: 'animus-panel animus-try', attributes: const <String, String>{'aria-labelledby': 'animus-try-title'}, <Widget>[
-      const dom.h2(id: 'animus-try-title', <Widget>[Component.text('Try it in the browser')]),
-      dom.div(classes: 'animus-try-groups', <Widget>[
-        if (npcs.isNotEmpty) links('NPC previews', npcs, 'Preview'),
-        if (behaviors.isNotEmpty) links('Behavior dry runs', behaviors, 'Dry-run'),
-        if (npcs.isEmpty && behaviors.isEmpty)
-          dom.p(<Widget>[
-            dom.a(href: NewDocumentRoute(workspace.id, DocumentKind.npc).format(), const <Widget>[Component.text('Create an NPC')]),
-            const Component.text(' to preview it here.'),
-          ]),
-      ]),
-    ]);
   }
 
   Future<void> _importBbmodel(WorkspaceSnapshot workspace) async {
@@ -733,12 +703,5 @@ class _EditorShellState extends State<EditorShell> {
     final AnimusDocument? skin = component.store.document(DocumentKind.skin, hash);
     if (skin == null && component.store.workspace?.server != null) component.session?.openSkin(hash);
     return skin;
-  }
-
-  String _firstError(AnimusDocument document) {
-    for (final Diagnostic diagnostic in document.diagnostics) {
-      if (diagnostic.severity == DiagnosticSeverity.error) return '${diagnostic.path}: ${diagnostic.message}';
-    }
-    return '';
   }
 }

@@ -39,8 +39,8 @@
   color: var(--animus-muted);
 }
 
-/* Tabs: a quiet strip; the selected one is raised with a pink underline
-   (the colours come from the stylesheet so every lane's tabs match). */
+/* Tabs: a quiet strip; the selected one is raised with a full pink border
+   (control_css.dart), so every lane's tabs match. */
 .animus-tabs,
 .animus-segmented {
   display: inline-flex;

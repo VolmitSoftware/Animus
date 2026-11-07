@@ -16,12 +16,18 @@ import 'package:web/web.dart' as web;
 import '../config/docs_links.dart';
 import '../logic/citizens/citizens_converter.dart';
 import '../logic/citizens/citizens_review.dart';
+import '../logic/citizens/converted_workspace.dart';
 import '../logic/citizens/denizen_folder.dart';
 import '../logic/denizen/denizen_converter.dart';
 import '../logic/shopkeepers/shopkeepers_converter.dart';
+import '../model/animus_document.dart';
 import '../services/browser.dart';
 import '../services/server/server_imports.dart';
+import '../state/editor_store.dart';
 import '../state/server_hub.dart';
+import '../state/workspace_repository.dart';
+import '../state/workspace_route.dart';
+import 'fold.dart';
 import 'info_tip.dart';
 import 'server/server_import_panel.dart';
 
@@ -34,8 +40,8 @@ external set _shopkeepersResult(JSString? value);
 @JS('animusDenizenResult')
 external set _denizenResult(JSString? value);
 
-/// The screen's name, also on the home page button that opens it.
-const String converterTitle = 'Convert Citizens, Shopkeepers, dtlTraders and Denizen data';
+/// The screen's heading, also the label of the home page button that opens it.
+const String converterTitle = 'Import Citizens and others';
 
 /// A field status from a Citizens NPC report, in words.
 String fieldStatusLabel(String status) => switch (status) {
@@ -82,9 +88,14 @@ Future<Map<String, String>?> _pickTextFolder() {
 }
 
 class CitizensScreen extends StatefulWidget {
-  const CitizensScreen({required this.hub, super.key});
+  const CitizensScreen({required this.hub, this.store, this.onNavigate, super.key});
 
   final ServerHub hub;
+
+  /// Where Open as workspace and Send to server create the converted
+  /// workspace; without both those next steps are not offered.
+  final EditorStore? store;
+  final void Function(EditorRoute route)? onNavigate;
 
   @override
   State<CitizensScreen> createState() => _CitizensScreenState();
@@ -107,6 +118,8 @@ class _CitizensScreenState extends State<CitizensScreen> {
   DenizenFolder? _denizen;
   DenizenPreview? _denizenPreview;
   String? _denizenError;
+  String? _importState;
+  bool _opening = false;
 
   static const String _yaml = '.yml,.yaml,application/x-yaml,text/yaml';
 
@@ -299,6 +312,48 @@ class _CitizensScreenState extends State<CitizensScreen> {
     }
   }
 
+  ConverterStep get _step => converterNextStep(
+        citizensChosen: _bytes != null,
+        citizensConverted: _review != null,
+        shopsChosen: _shopSave != null,
+        shopsConverted: _shops != null,
+        denizenChosen: _denizen != null && !_denizen!.empty,
+        denizenConverted: _denizenPreview != null,
+        importState: _importState,
+      );
+
+  ButtonVariant _variant(ConverterStep step) => _step == step ? ButtonVariant.primary : ButtonVariant.secondary;
+
+  /// Opens everything converted so far as a new workspace, then shows it, or
+  /// its Sync page when [send] is set and a server is paired.
+  Future<void> _openWorkspace({required bool send}) async {
+    final EditorStore? store = component.store;
+    final void Function(EditorRoute route)? navigateTo = component.onNavigate;
+    if (store == null || navigateTo == null) return;
+    setState(() => _opening = true);
+    try {
+      final WorkspaceSnapshot made = await store.openFiles(
+        convertedWorkspaceName(citizens: _review != null, shops: _shops != null, denizen: _denizenPreview != null),
+        convertedWorkspaceFiles(citizens: _review?.preview, shops: _shops, denizen: _denizenPreview),
+      );
+      final int invalid = made.documents.where((AnimusDocument document) => !document.valid).length;
+      ArcaneSonner.success('Opened ${made.name}: ${made.documents.length} documents${invalid == 0 ? '' : ', $invalid to repair'}.');
+      if (!send) {
+        navigateTo(WorkspaceRoute(made.id));
+      } else if (component.hub.servers.isEmpty) {
+        ArcaneSonner.info('Pair a server under Servers, then send ${made.name} from its Sync page.');
+        navigateTo(const HomeRoute());
+      } else {
+        navigateTo(SyncRoute(made.id));
+      }
+      focusMainHeading();
+    } on Object catch (failure) {
+      ArcaneSonner.error('Could not open the conversion ($failure). Download the bundle instead.');
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
+  }
+
   void _download(CitizensReview review) {
     downloadBytes('animus-citizens-import-${review.preview.id.substring(0, 12)}.zip', citizensBundleZip(review.preview));
     ArcaneSonner.success(_unzipNext);
@@ -317,7 +372,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
           ),
         ]),
         dom.div(classes: 'animus-row', <Widget>[
-          Button.secondary(label: 'Choose saves.yml', icon: ArcaneIcon.fileUp(), disabled: _busy, onPressed: _choose),
+          Button.secondary(label: 'Choose saves.yml', icon: ArcaneIcon.fileUp(), size: ButtonSize.small, disabled: _busy, onPressed: _choose),
           dom.span(classes: 'animus-muted animus-citizens-file', <Widget>[Component.text(_fileName ?? 'No Citizens save chosen')]),
         ]),
         TextArea(
@@ -329,7 +384,14 @@ class _CitizensScreenState extends State<CitizensScreen> {
           onChanged: (String value) => setState(() => _worlds = value),
         ),
         dom.div(classes: 'animus-row', <Widget>[
-          Button.primary(label: _busy ? 'Converting' : 'Convert', icon: ArcaneIcon.play(), disabled: _busy || _bytes == null, onPressed: _convert),
+          Button(
+            label: _busy ? 'Converting' : 'Convert',
+            icon: ArcaneIcon.play(),
+            variant: _variant(ConverterStep.convertCitizens),
+            size: ButtonSize.small,
+            disabled: _busy || _bytes == null,
+            onPressed: _convert,
+          ),
           const dom.a(href: '#/', classes: 'animus-muted', <Widget>[Component.text('Back to workspaces')]),
         ]),
       ]),
@@ -342,9 +404,42 @@ class _CitizensScreenState extends State<CitizensScreen> {
       _shopkeepersPanel(),
       _tradersPanel(),
       _denizenPanel(),
-      ServerImportPanel(hub: component.hub, uploads: _uploads, worlds: _worldMap),
+      if (component.store != null && component.onNavigate != null && (review != null || _shops != null || _denizenPreview != null)) _nextPanel(),
+      ServerImportPanel(
+        hub: component.hub,
+        uploads: _uploads,
+        worlds: _worldMap,
+        onState: (String state) => setState(() => _importState = state),
+      ),
     ]);
   }
+
+  Widget _nextPanel() => dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Next steps', 'data-testid': 'citizens-next'}, <Widget>[
+        const dom.h2(<Widget>[
+          InfoTip(
+            tip: 'Open the converted NPCs, shops, GUIs and behaviors as a workspace in this browser to review and edit them, then send them to a paired server.',
+            docs: Docs.citizensOutput,
+            child: Component.text('Next steps'),
+          ),
+        ]),
+        dom.div(classes: 'animus-row', <Widget>[
+          Button(
+            label: _opening ? 'Opening' : 'Open as workspace',
+            icon: ArcaneIcon.folderOpen(),
+            variant: _variant(ConverterStep.openWorkspace),
+            size: ButtonSize.small,
+            disabled: _busy || _opening,
+            onPressed: () => _openWorkspace(send: false),
+          ),
+          Button.secondary(
+            label: 'Send to server',
+            icon: ArcaneIcon.upload(),
+            size: ButtonSize.small,
+            disabled: _busy || _opening,
+            onPressed: () => _openWorkspace(send: true),
+          ),
+        ]),
+      ]);
 
   Map<String, String> get _worldMap {
     try {
@@ -364,7 +459,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
         ),
       ]),
       dom.div(classes: 'animus-row', <Widget>[
-        Button.secondary(label: 'Choose dtlTraders files', icon: ArcaneIcon.fileUp(), disabled: _busy, onPressed: _chooseTraders),
+        Button.secondary(label: 'Choose dtlTraders files', icon: ArcaneIcon.fileUp(), size: ButtonSize.small, disabled: _busy, onPressed: _chooseTraders),
         dom.span(classes: 'animus-muted animus-citizens-file', <Widget>[
           Component.text(_traders.isEmpty ? 'No dtlTraders files chosen' : _traders.map(((String, Uint8List) file) => file.$1).join(', ')),
         ]),
@@ -388,7 +483,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
         ),
       ]),
       dom.div(classes: 'animus-row', <Widget>[
-        Button.secondary(label: 'Choose Denizen folder', icon: ArcaneIcon.folderOpen(), disabled: _busy, onPressed: _chooseDenizen),
+        Button.secondary(label: 'Choose Denizen folder', icon: ArcaneIcon.folderOpen(), size: ButtonSize.small, disabled: _busy, onPressed: _chooseDenizen),
         dom.span(classes: 'animus-muted animus-citizens-file', attributes: const <String, String>{'data-testid': 'denizen-folder'}, <Widget>[
           Component.text(folder == null
               ? 'No Denizen folder chosen'
@@ -398,8 +493,9 @@ class _CitizensScreenState extends State<CitizensScreen> {
         ]),
       ]),
       if (folder != null && folder.skipped.isNotEmpty)
-        dom.details(attributes: const <String, String>{'data-testid': 'denizen-skipped'}, <Widget>[
-          dom.summary(<Widget>[Component.text('${folder.skipped.length} file${folder.skipped.length == 1 ? '' : 's'} not read')]),
+        Fold(attributes: const <String, String>{'data-testid': 'denizen-skipped'}, summary: <Widget>[
+          Component.text('${folder.skipped.length} file${folder.skipped.length == 1 ? '' : 's'} not read'),
+        ], children: <Widget>[
           const dom.p(classes: 'animus-muted', <Widget>[Component.text('Only .dsc and .yml under scripts/, server_flags.dat and player_flags/*.dat are read.')]),
           dom.ul(classes: 'animus-citizens-lines', <Widget>[for (final String path in folder.skipped.take(50)) dom.li(<Widget>[Component.text(path)])]),
         ]),
@@ -408,9 +504,11 @@ class _CitizensScreenState extends State<CitizensScreen> {
           Component.text('No Citizens save chosen above, so assignments bind to no NPC.'),
         ]),
       dom.div(classes: 'animus-row', <Widget>[
-        Button.primary(
+        Button(
           label: _busy ? 'Converting' : 'Convert Denizen',
           icon: ArcaneIcon.play(),
+          variant: _variant(ConverterStep.convertDenizen),
+          size: ButtonSize.small,
           disabled: _busy || folder == null || folder.empty,
           onPressed: _convertDenizen,
         ),
@@ -433,7 +531,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
           dom.code(<Widget>[Component.text(preview.id)]),
         ]),
         dom.div(classes: 'animus-row', <Widget>[
-          Button.secondary(label: 'Download Denizen bundle', icon: ArcaneIcon.download(), onPressed: () => _downloadDenizen(preview)),
+          Button.secondary(label: 'Download Denizen bundle', icon: ArcaneIcon.download(), size: ButtonSize.small, onPressed: () => _downloadDenizen(preview)),
         ]),
       ],
     ]);
@@ -450,15 +548,22 @@ class _CitizensScreenState extends State<CitizensScreen> {
         ),
       ]),
       dom.div(classes: 'animus-row', <Widget>[
-        Button.secondary(label: 'Choose Shopkeepers save.yml', icon: ArcaneIcon.fileUp(), disabled: _busy, onPressed: () => _chooseShops(false)),
+        Button.secondary(label: 'Choose Shopkeepers save.yml', icon: ArcaneIcon.fileUp(), size: ButtonSize.small, disabled: _busy, onPressed: () => _chooseShops(false)),
         dom.span(classes: 'animus-muted animus-citizens-file', <Widget>[Component.text(_shopSave?.$1 ?? 'No Shopkeepers save chosen')]),
       ]),
       dom.div(classes: 'animus-row', <Widget>[
-        Button.secondary(label: 'Choose config.yml', icon: ArcaneIcon.settings(), disabled: _busy, onPressed: () => _chooseShops(true)),
+        Button.secondary(label: 'Choose config.yml', icon: ArcaneIcon.settings(), size: ButtonSize.small, disabled: _busy, onPressed: () => _chooseShops(true)),
         dom.span(classes: 'animus-muted animus-citizens-file', <Widget>[Component.text(_shopConfig?.$1 ?? 'Default currency (emerald)')]),
       ]),
       dom.div(classes: 'animus-row', <Widget>[
-        Button.primary(label: _busy ? 'Converting' : 'Convert shops', icon: ArcaneIcon.store(), disabled: _busy || _shopSave == null, onPressed: _convertShops),
+        Button(
+          label: _busy ? 'Converting' : 'Convert shops',
+          icon: ArcaneIcon.store(),
+          variant: _variant(ConverterStep.convertShops),
+          size: ButtonSize.small,
+          disabled: _busy || _shopSave == null,
+          onPressed: _convertShops,
+        ),
       ]),
       if (_shopError != null)
         dom.div(classes: 'animus-citizens-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[
@@ -482,7 +587,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
           dom.code(<Widget>[Component.text(shops.id)]),
         ]),
         dom.div(classes: 'animus-row', <Widget>[
-          Button.secondary(label: 'Download shops bundle', icon: ArcaneIcon.download(), onPressed: () => _downloadShops(shops)),
+          Button.secondary(label: 'Download shops bundle', icon: ArcaneIcon.download(), size: ButtonSize.small, onPressed: () => _downloadShops(shops)),
         ]),
       ],
     ]);
@@ -490,7 +595,13 @@ class _CitizensScreenState extends State<CitizensScreen> {
 
   List<Widget> _report(CitizensReview review) => <Widget>[
         dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Conversion summary'}, <Widget>[
-          const dom.h2(<Widget>[Component.text('Review')]),
+          const dom.h2(<Widget>[
+            InfoTip(
+              tip: 'What the conversion found in saves.yml. Every NPC lands dormant and is checked on the server before it spawns.',
+              docs: Docs.citizens,
+              child: Component.text('Review'),
+            ),
+          ]),
           if (review.warnings.isNotEmpty || review.issues.isNotEmpty)
             dom.p(classes: 'animus-citizens-lead', <Widget>[
               Component.text(<String>[
@@ -522,21 +633,31 @@ class _CitizensScreenState extends State<CitizensScreen> {
         _list('Migration warnings', review.warnings, 'None.'),
         _list('Records that will not load', review.issues, 'None.'),
         dom.section(classes: 'animus-panel', <Widget>[
-          const dom.h2(<Widget>[Component.text('Fields by conversion status')]),
+          const dom.h2(<Widget>[
+            InfoTip(
+              tip: 'How each Citizens field carried over: converted, converted but worth checking, kept but not run, or needing another plugin.',
+              docs: Docs.citizensOutput,
+              child: Component.text('Fields by conversion status'),
+            ),
+          ]),
           _counts(<String, int>{for (final MapEntry<String, int> entry in review.classification.entries) fieldStatusLabel(entry.key): entry.value}, 'Status', 'Fields',
               code: false),
         ]),
         dom.section(classes: 'animus-panel', <Widget>[
-          dom.h2(<Widget>[Component.text('Traits (${review.traits.length})')]),
+          dom.h2(<Widget>[
+            withTip(Component.text('Traits (${review.traits.length})'), 'The Citizens traits in the save and how many NPCs carry each.', docs: Docs.citizens),
+          ]),
           _counts(review.traits, 'Trait', 'Records'),
         ]),
         dom.section(classes: 'animus-panel', <Widget>[
-          dom.h2(<Widget>[Component.text('Body types (${review.types.length})')]),
+          dom.h2(<Widget>[
+            withTip(Component.text('Body types (${review.types.length})'), 'The entity types the NPCs use, such as player or villager.', docs: Docs.citizens),
+          ]),
           _counts(review.types, 'Type', 'Records'),
         ]),
         dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Download the conversion'}, <Widget>[
           dom.div(classes: 'animus-row', <Widget>[
-            Button.primary(label: 'Download data-folder bundle', icon: ArcaneIcon.download(), onPressed: () => _download(review)),
+            Button.secondary(label: 'Download data-folder bundle', icon: ArcaneIcon.download(), size: ButtonSize.small, onPressed: () => _download(review)),
             const dom.span(classes: 'animus-muted', <Widget>[Component.text(_unzipNext)]),
           ]),
         ]),
@@ -581,8 +702,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
   }
 
   Widget _list(String title, List<String> lines, String empty) => dom.section(classes: 'animus-panel', <Widget>[
-        dom.details(attributes: lines.length <= 20 && lines.isNotEmpty ? const <String, String>{'open': ''} : const <String, String>{}, <Widget>[
-          dom.summary(<Widget>[Component.text('$title (${lines.length})')]),
+        Fold(open: lines.length <= 20 && lines.isNotEmpty, summary: <Widget>[Component.text('$title (${lines.length})')], children: <Widget>[
           if (lines.isEmpty)
             dom.p(classes: 'animus-muted', <Widget>[Component.text(empty)])
           else

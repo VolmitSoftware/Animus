@@ -97,8 +97,21 @@ class _PairPageState extends State<PairPage> {
           dom.p(classes: 'animus-pair-kicker', <Widget>[Component.text(expired ? 'Pairing code expired' : 'Pair this browser with')]),
           dom.h1(id: 'animus-pair-title', <Widget>[Component.text(payload.serverName ?? payload.label ?? 'Server ${payload.serverId.substring(0, 8)}')]),
           dom.div(classes: 'animus-pair-fingerprint', <Widget>[
-            const dom.span(classes: 'animus-muted', <Widget>[Component.text('Fingerprint, must match /animus editor status')]),
+            const dom.span(classes: 'animus-muted', <Widget>[
+              InfoTip(
+                tip: 'The server key this link names. Pair only when it matches what /animus editor status prints on the server.',
+                docs: Docs.pairing,
+                child: Component.text('Fingerprint, must match /animus editor status'),
+              ),
+            ]),
             dom.code(attributes: const <String, String>{'data-testid': 'pair-fingerprint'}, <Widget>[Component.text(payload.fingerprint)]),
+          ]),
+          const dom.p(classes: 'animus-muted', <Widget>[
+            InfoTip(
+              tip: 'Direct talks to the server itself; relay goes through the Animus relay when the server is not reachable.',
+              docs: Docs.connecting,
+              child: Component.text('Ways to reach the server'),
+            ),
           ]),
           dom.ul(classes: 'animus-pair-paths', attributes: const <String, String>{'aria-label': 'Ways to reach the server'}, <Widget>[
             if (payload.directUrl != null) dom.li(<Widget>[const dom.span(<Widget>[Component.text('Direct ')]), dom.code(<Widget>[Component.text(payload.directUrl!)])]),
@@ -136,7 +149,7 @@ class _PairPageState extends State<PairPage> {
               ]),
             ]),
             dom.div(classes: 'animus-row', <Widget>[
-              Button.primary(label: _busy ? 'Pairing' : 'Pair', loading: _busy, disabled: _busy, onPressed: _pair),
+              Button.primary(label: _busy ? 'Pairing' : 'Pair', size: ButtonSize.small, loading: _busy, disabled: _busy, onPressed: _pair),
               const dom.a(href: '#/', classes: 'animus-pair-cancel', <Widget>[Component.text('Cancel')]),
             ]),
           ],
@@ -229,7 +242,13 @@ class _ServersPanelState extends State<ServersPanel> {
   Widget build(BuildContext context) {
     final ServerHub hub = component.hub;
     return dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-labelledby': 'animus-servers-title'}, <Widget>[
-      const dom.h2(id: 'animus-servers-title', attributes: <String, String>{'tabindex': '-1'}, <Widget>[Component.text('Servers')]),
+      const dom.h2(id: 'animus-servers-title', attributes: <String, String>{'tabindex': '-1'}, <Widget>[
+        InfoTip(
+          tip: 'Servers this browser holds a token for. Open one to edit it live, or paste a pairing link below.',
+          docs: Docs.pairing,
+          child: Component.text('Servers'),
+        ),
+      ]),
       if (hub.servers.isEmpty)
         const dom.p(classes: 'animus-muted', <Widget>[
           Component.text('No servers paired. Run /animus editor pair and open its link.'),

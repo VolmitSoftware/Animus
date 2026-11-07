@@ -51,6 +51,8 @@ class _PackEditorState extends State<PackEditor> {
       <Widget>[
         GuiSection(
           title: 'Pack',
+          tip: 'A pack bundles behaviors and lists the Java modules they need. These are its own fields.',
+          docs: Docs.packs,
           children: <Widget>[
             InspectObject(
               schema: component.schema,
@@ -65,6 +67,8 @@ class _PackEditorState extends State<PackEditor> {
         ),
         GuiSection(
           title: 'Modules',
+          tip: "Java modules the pack's behaviors use, each required or optional.",
+          docs: Docs.packs,
           count: modules.length,
           children: <Widget>[
             const dom.p(classes: 'animus-gui-help', <Widget>[

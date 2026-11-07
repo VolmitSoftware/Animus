@@ -2,6 +2,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../model/document_kind.dart';
 import '../../services/server/error_copy.dart';
 import '../../services/server/server_connection.dart';
@@ -9,6 +10,8 @@ import '../../services/server/server_profiles.dart';
 import '../../state/catalog_entry.dart';
 import '../../state/live_session.dart';
 import '../../state/server_hub.dart';
+import '../fold.dart';
+import '../info_tip.dart';
 import 'connection_pill.dart';
 
 /// What a token scope lets this browser do, in words.
@@ -73,9 +76,17 @@ class _ServerOverviewState extends State<ServerOverview> {
             ConnectionPill(status: status, hasToken: token != null),
             if (hint.isNotEmpty) dom.span(classes: 'animus-muted animus-status-hint', <Widget>[Component.text(hint)]),
           ]),
-          const dom.dt(<Widget>[Component.text('Fingerprint')]),
+          const dom.dt(<Widget>[
+            InfoTip(tip: 'The server key this browser trusts. It matches what /animus editor status prints.', docs: Docs.pairing, child: Component.text('Fingerprint')),
+          ]),
           dom.dd(<Widget>[dom.code(<Widget>[Component.text(profile.fingerprint)])]),
-          const dom.dt(<Widget>[Component.text('Paths')]),
+          const dom.dt(<Widget>[
+            InfoTip(
+              tip: 'Direct talks to the server itself; relay goes through the Animus relay when the server is not reachable.',
+              docs: Docs.connecting,
+              child: Component.text('Paths'),
+            ),
+          ]),
           dom.dd(<Widget>[
             dom.ul(classes: 'animus-pair-paths', <Widget>[
               if (profile.directUrl != null) dom.li(<Widget>[const Component.text('Direct '), dom.code(<Widget>[Component.text(profile.directUrl!)])]),
@@ -87,7 +98,13 @@ class _ServerOverviewState extends State<ServerOverview> {
             dom.dd(<Widget>[Component.text(line)]),
           ],
           if (token != null) ...<Widget>[
-            const dom.dt(<Widget>[Component.text('Scopes')]),
+            const dom.dt(<Widget>[
+              InfoTip(
+                tip: 'What this pairing may do on the server. Pair again with scopes= for more.',
+                docs: Docs.tokens,
+                child: Component.text('Scopes'),
+              ),
+            ]),
             dom.dd(classes: 'animus-scopes', <Widget>[
               for (final String scope in token.scopes)
                 dom.span(classes: 'animus-tag', attributes: <String, String>{'title': scope}, <Widget>[Component.text(scopeLabel(scope))]),
@@ -108,8 +125,13 @@ class _ServerOverviewState extends State<ServerOverview> {
           if (status.online && session.owned) Button.ghost(label: 'Reload catalog', size: ButtonSize.small, onPressed: session.loadCatalog),
         ]),
         if (features.isNotEmpty)
-          dom.details(<Widget>[
-            const dom.summary(<Widget>[Component.text('Server features')]),
+          Fold(summary: const <Widget>[
+            InfoTip(
+              tip: 'What this server offers the editor, such as previews, imports and spawning, and why any part is off.',
+              docs: Docs.editorConfig,
+              child: Component.text('Server features'),
+            ),
+          ], children: <Widget>[
             dom.ul(classes: 'animus-muted', <Widget>[
               for (final MapEntry<String, Object?> feature in features.entries)
                 if (feature.value is Map<String, Object?>)
@@ -145,7 +167,11 @@ class _ServerOverviewState extends State<ServerOverview> {
     final ErrorCopy? problem = session.catalogProblem;
     return dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Server catalog'}, <Widget>[
       dom.h2(<Widget>[
-        Component.text(session.catalogLoaded ? '${session.catalog.length} document${session.catalog.length == 1 ? '' : 's'} on the server' : 'Server catalog'),
+        withTip(
+          Component.text(session.catalogLoaded ? '${session.catalog.length} document${session.catalog.length == 1 ? '' : 's'} on the server' : 'Server catalog'),
+          'Every document on the server. Opening one copies it into this workspace as a draft; nothing changes on the server until you apply.',
+          docs: Docs.live,
+        ),
       ]),
       if (session.waiting)
         const dom.p(classes: 'animus-muted', <Widget>[Component.text(LiveSession.otherTab)])

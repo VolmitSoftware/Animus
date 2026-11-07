@@ -40,18 +40,18 @@ const Set<String> _aliases = <String>{'grey', 'dark_grey', 'b', 'st', 'u', 'i', 
 /// the caret, `reset`, `color:` and a hex colour.
 List<CompletionItem> miniMessageTagItems() => <CompletionItem>[
       for (final MapEntry<String, String> color in miniMessageColors.entries)
-        CompletionItem(label: color.key, insert: '${color.key}>', kind: CompletionKind.color, type: color.value, detail: 'Named colour', swatch: color.value),
+        CompletionItem(label: color.key, insert: '${color.key}>', kind: CompletionKind.color, type: color.value, detail: 'Named color', swatch: color.value),
       for (final MapEntry<String, String> decoration in _decorations.entries)
         CompletionItem(label: decoration.key, insert: '${decoration.key}>\$0</${decoration.key}>', kind: CompletionKind.tag, detail: decoration.value),
-      const CompletionItem(label: 'reset', insert: 'reset>', kind: CompletionKind.tag, detail: 'Clears colour and style'),
-      const CompletionItem(label: 'color', insert: r'color:${1:red}>$0</color>', kind: CompletionKind.tag, detail: 'Colour by name or #hex'),
-      const CompletionItem(label: '#RRGGBB', insert: r'#${1:FF5FA2}>', kind: CompletionKind.color, detail: 'Hex colour', swatch: '#FF5FA2'),
+      const CompletionItem(label: 'reset', insert: 'reset>', kind: CompletionKind.tag, detail: 'Clears color and style'),
+      const CompletionItem(label: 'color', insert: r'color:${1:red}>$0</color>', kind: CompletionKind.tag, detail: 'Color by name or #hex'),
+      const CompletionItem(label: '#RRGGBB', insert: r'#${1:FF5FA2}>', kind: CompletionKind.color, detail: 'Hex color', swatch: '#FF5FA2'),
     ];
 
 /// Colour values after `<color:` or `<colour:`.
 List<CompletionItem> miniMessageColorItems() => <CompletionItem>[
       for (final MapEntry<String, String> color in miniMessageColors.entries)
-        CompletionItem(label: color.key, insert: '${color.key}>', kind: CompletionKind.color, type: color.value, detail: 'Named colour', swatch: color.value),
+        CompletionItem(label: color.key, insert: '${color.key}>', kind: CompletionKind.color, type: color.value, detail: 'Named color', swatch: color.value),
     ];
 
 /// Whether the formatter applies `<tag>` (the text between `<` and `>`).

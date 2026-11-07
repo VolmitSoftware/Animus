@@ -9,6 +9,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/inspect_schemas.dart';
 import '../../logic/inspect/schema_fields.dart';
@@ -85,6 +86,24 @@ const Map<String, String> _ruleHelp = <String, String>{
   'targets': 'Any matching rule makes a target.',
   'ignores': 'Never targeted. Beats targets.',
   'avoids': 'Runs from these within avoidance.range.',
+};
+
+/// The tip on each combat part's title.
+const Map<String, String> _sectionTips = <String, String>{
+  'squad': 'NPCs that share a squad name never target each other, and alert squad mates within alertRange.',
+  'guard': 'A player or NPC this one follows and protects, by UUID.',
+  'pursuit': 'How the NPC chases a target: speed, when it gives up, and whether it returns to its post.',
+  'defense': 'How the NPC takes damage: health, armor, knockback, healing and invincibility.',
+  'targeting': 'How the NPC finds and keeps targets: scan range and interval, reaction time, memory and line of sight.',
+  'avoidance': 'How far the NPC keeps from what it avoids, and where it runs to.',
+  'melee': 'Close attacks: damage, reach, cooldown and knockback, or the held weapon with fromEquipment.',
+  'ranged': 'Projectile attacks: the weapon, damage, range, cooldown, accuracy and ammo.',
+  'death': 'What the NPC drops when it dies: items, each with its own chance, and experience.',
+  'respawn': 'Whether and where the NPC comes back after it dies, and after how long.',
+  'greetings': 'Lines the NPC says to players nearby: hostile to its targets, friendly to everyone else.',
+  'targets': 'Mobs, players or NPCs this NPC attacks. Any matching rule makes a target.',
+  'ignores': 'Mobs, players or NPCs this NPC never targets, even when a targets rule matches.',
+  'avoids': 'Mobs, players or NPCs this NPC runs from.',
 };
 
 const List<String> _commonItems = <String>[
@@ -231,6 +250,8 @@ class _CombatEditorState extends State<CombatEditor> {
     final Set<String> edited = <String>{'enabled', 'reviewAccepted', ...combatRuleSections, ...combatSectionKeys.keys};
     return GuiSection(
       title: 'Enabled',
+      tip: 'Whether combat runs. Without it the NPC is invulnerable and never fights.',
+      docs: Docs.combat,
       children: <Widget>[
         _problemList(_at(const <JsonStep>[])),
         dom.div(classes: 'animus-combat-switches', <Widget>[
@@ -264,6 +285,8 @@ class _CombatEditorState extends State<CombatEditor> {
     return GuiSection(
       key: ValueKey<String>('combat:$name'),
       title: title,
+      tip: _sectionTips[name],
+      docs: Docs.combat,
       count: fields.isEmpty ? null : fields.length,
       open: value != null,
       children: <Widget>[
@@ -289,6 +312,8 @@ class _CombatEditorState extends State<CombatEditor> {
     return GuiSection(
       key: ValueKey<String>('combat:$name'),
       title: title,
+      tip: _sectionTips[name],
+      docs: Docs.combat,
       count: rules.isEmpty ? null : rules.length,
       open: value != null,
       children: <Widget>[
@@ -344,6 +369,8 @@ class _CombatEditorState extends State<CombatEditor> {
           GuiSection(
             key: ValueKey<String>('combat:$name:advanced'),
             title: 'Advanced rules',
+            tip: 'Rarer match rules: name patterns, held items, permissions, groups, effects, events and chat, and rules that combine others.',
+            docs: Docs.combatTargets,
             count: advancedCount == 0 ? null : advancedCount,
             open: advancedCount > 0,
             children: <Widget>[
@@ -716,7 +743,7 @@ class _CombatEditorState extends State<CombatEditor> {
               <Widget>[
                 for (final String category in combatCategories)
                   chosen.contains(category)
-                      ? Button.primary(
+                      ? Button.ghost(
                           label: category,
                           size: ButtonSize.small,
                           attributes: const <String, String>{'aria-pressed': 'true'},
@@ -725,7 +752,7 @@ class _CombatEditorState extends State<CombatEditor> {
                               if (item != category) item,
                           ]),
                         )
-                      : Button.outline(
+                      : Button.ghost(
                           label: category,
                           size: ButtonSize.small,
                           attributes: const <String, String>{'aria-pressed': 'false'},

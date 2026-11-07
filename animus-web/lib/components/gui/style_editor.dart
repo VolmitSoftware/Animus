@@ -12,7 +12,7 @@ import '../../model/animus_document.dart';
 import 'component_editor.dart';
 import 'gui_fields.dart';
 
-enum _StyleKind { choice, boolean, integer, number, colour }
+enum _StyleKind { choice, boolean, integer, number, color }
 
 final class _StyleField {
   const _StyleField(this.key, this.kind, this.help, {this.choices = const <String>[]});
@@ -23,30 +23,30 @@ final class _StyleField {
   final List<String> choices;
 }
 
-const List<(String, List<_StyleField>)> _groups = <(String, List<_StyleField>)>[
-  ('Facing and size', <_StyleField>[
+const List<(String, String, List<_StyleField>)> _groups = <(String, String, List<_StyleField>)>[
+  ('Facing and size', 'Whether it turns to face the viewer, its scale and how far away it still shows.', <_StyleField>[
     _StyleField('billboard', _StyleKind.choice, 'How it faces the viewer', choices: <String>['fixed', 'vertical', 'horizontal', 'center']),
     _StyleField('scaleX', _StyleKind.number, '0.01 to 64, default 1'),
     _StyleField('scaleY', _StyleKind.number, '0.01 to 64, default 1'),
     _StyleField('scaleZ', _StyleKind.number, '0.01 to 64, default 1'),
     _StyleField('viewRange', _StyleKind.number, 'Multiple of view distance, default 1'),
   ]),
-  ('Text', <_StyleField>[
+  ('Text', 'Alignment, wrap width, opacity and background of text rows.', <_StyleField>[
     _StyleField('textAlignment', _StyleKind.choice, 'Default center', choices: <String>['center', 'left', 'right']),
     _StyleField('lineWidth', _StyleKind.integer, 'Wrap width, 1 to 16384 px'),
     _StyleField('textOpacity', _StyleKind.integer, '0 to 255, 255 is opaque'),
-    _StyleField('backgroundArgb', _StyleKind.colour, '#AARRGGBB, #00000000 for none'),
+    _StyleField('backgroundArgb', _StyleKind.color, '#AARRGGBB, #00000000 for none'),
     _StyleField('shadow', _StyleKind.boolean, 'Text drop shadow'),
     _StyleField('seeThrough', _StyleKind.boolean, 'Visible through blocks'),
   ]),
-  ('Light, shadow and glow', <_StyleField>[
+  ('Light, shadow and glow', 'Fixed light levels, the shadow under it and the glow outline.', <_StyleField>[
     _StyleField('blockLight', _StyleKind.integer, '0 to 15, set with sky light'),
     _StyleField('skyLight', _StyleKind.integer, '0 to 15, set with block light'),
     _StyleField('shadowRadius', _StyleKind.number, '0 to 64 blocks'),
     _StyleField('shadowStrength', _StyleKind.number, '0 to 1'),
-    _StyleField('glowColor', _StyleKind.colour, '#AARRGGBB, low 24 bits used'),
+    _StyleField('glowColor', _StyleKind.color, '#AARRGGBB, low 24 bits used'),
   ]),
-  ('Culling', <_StyleField>[
+  ('Culling', 'The box the client uses to skip drawing it. Not used yet.', <_StyleField>[
     _StyleField('cullingWidth', _StyleKind.number, '0 to 4096, not used yet'),
     _StyleField('cullingHeight', _StyleKind.number, '0 to 4096, not used yet'),
   ]),
@@ -54,7 +54,7 @@ const List<(String, List<_StyleField>)> _groups = <(String, List<_StyleField>)>[
 
 /// Every style key, for tests and copies.
 List<String> get displayStyleKeys => <String>[
-      for (final (String _, List<_StyleField> fields) in _groups)
+      for (final (String _, String _, List<_StyleField> fields) in _groups)
         for (final _StyleField field in fields) field.key,
     ];
 
@@ -96,7 +96,7 @@ class DisplayStyleEditor extends StatelessWidget {
         ),
       _StyleKind.integer => GuiNumberInput(id: id, value: asInt(value), label: label, onChanged: (num? v) => _set(field.key, v)),
       _StyleKind.number => GuiNumberInput(id: id, value: asDouble(value), integer: false, label: label, onChanged: (num? v) => _set(field.key, v)),
-      _StyleKind.colour => GuiTextInput(id: id, value: asString(value) ?? '', label: label, placeholder: '#AARRGGBB', onChanged: (String v) => _set(field.key, v.trim().isEmpty ? null : v.trim())),
+      _StyleKind.color => GuiTextInput(id: id, value: asString(value) ?? '', label: label, placeholder: '#AARRGGBB', onChanged: (String v) => _set(field.key, v.trim().isEmpty ? null : v.trim())),
     };
     return GuiRow(label: label, forId: id, help: field.help, problems: diagnosticsAt(diagnostics, fieldPath), child: child);
   }
@@ -106,13 +106,15 @@ class DisplayStyleEditor extends StatelessWidget {
     final int set = style.length;
     return GuiSection(
       title: title,
+      tip: 'How the display entity is drawn. Unset fields keep the default each help line names.',
       count: set == 0 ? null : set,
       open: diagnosticsAt(diagnostics, path, nested: true).isNotEmpty,
       children: <Widget>[
         if (note != null) dom.p(classes: 'animus-muted', <Widget>[Component.text(note!)]),
-        for (final (String group, List<_StyleField> fields) in _groups)
+        for (final (String group, String tip, List<_StyleField> fields) in _groups)
           GuiSection(
             title: group,
+            tip: tip,
             count: fields.where((_StyleField field) => style.containsKey(field.key)).length,
             open: false,
             children: <Widget>[for (final _StyleField field in fields) _field(field)],

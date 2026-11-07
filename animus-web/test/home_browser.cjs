@@ -37,8 +37,8 @@ async function run(browser, viewport, label) {
   const docsOf = text => page.locator('.animus-tip').filter({has: page.getByRole('link', {name: text, exact: true})}).locator('.animus-tip-docs');
   assert.equal(await docsOf('From a data folder').getAttribute('href'), 'https://docs.volmitsoftware.com/animus/14-web-editor#working-without-a-server');
   assert.equal(await docsOf('Start a workspace').getAttribute('href'), 'https://docs.volmitsoftware.com/animus/14-web-editor#working-without-a-server');
-  await page.getByRole('button', {name: 'Convert Citizens and others'}).waitFor();
-  await page.getByText('No workspaces yet.', {exact: true}).waitFor();
+  await page.getByRole('button', {name: 'Import Citizens and others'}).waitFor();
+  await page.getByText('No workspaces yet. Start one above.', {exact: true}).waitFor();
   await noSideways(page, `${label} home`);
 
   // The skip link is the first stop and moves focus to the main content.
@@ -86,7 +86,7 @@ async function run(browser, viewport, label) {
   await page.locator('.animus-banner').getByText('There is no workspace "nope" in this browser.', {exact: false}).waitFor();
   await page.locator('.animus-banner').getByRole('button', {name: 'Dismiss'}).click();
   await page.locator('.animus-banner').waitFor({state: 'detached'});
-  await page.getByRole('link', {name: 'Example packs'}).click();
+  await page.getByRole('link', {name: 'Example packs', exact: true}).click();
   await page.getByRole('heading', {name: 'Try it in the browser'}).waitFor();
   const workspace = /#\/workspace\/([^/?]+)/.exec(page.url())[1];
   await page.goto(`${url}/#/workspace/${workspace}/npc/${encodeURIComponent('no/such')}`);

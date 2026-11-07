@@ -12,10 +12,12 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/shop_board.dart';
 import '../../logic/gui/shop_offers.dart';
 import '../../model/animus_document.dart';
+import '../info_tip.dart';
 import '../mc/mc_item_icons.dart';
 import 'gui_fields.dart';
 import 'shop_offer_editor.dart' show offerKindTags;
@@ -162,7 +164,7 @@ class _OfferBoardState extends State<OfferBoard> {
       final String title = '${offerGridTitles[head.grid]} · $page';
       groups.add(dom.section(classes: 'animus-shop-group', attributes: <String, String>{'aria-label': title, 'data-group': '${head.page}:${head.grid}'}, <Widget>[
         dom.h3(classes: 'animus-shop-group-title', <Widget>[
-          Component.text(title),
+          withTip(Component.text(title), 'Offers in one mode on one page. Players switch between Trades, Buying and Selling in the window.', docs: Docs.shopEntries),
           if (!offers[start].modeOn) const dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text(' Mode off: players never see these.')]),
         ]),
         dom.ol(classes: 'animus-shop-offers', <Widget>[

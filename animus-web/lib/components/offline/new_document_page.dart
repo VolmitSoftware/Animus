@@ -458,7 +458,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
           OfflineTextField(
             label: kind == DocumentKind.hologram ? 'First line' : 'Title',
             value: _title,
-            help: '& colour codes work',
+            help: '& color codes work',
             onChanged: (String value) => setState(() => _title = value),
           ),
           _idField(kind),
@@ -517,10 +517,11 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
       dom.div(classes: 'animus-row', <Widget>[
         Button.primary(
           label: exists ? 'Open ${_inSentence(kind)}' : 'Create ${_inSentence(kind)}',
+          size: ButtonSize.small,
           disabled: _busy,
           onPressed: () => _create(kind),
         ),
-        Button.ghost(label: 'Cancel', onPressed: () => component.onNavigate(returning ? documentReturn.origin! : WorkspaceRoute(component.workspace.id))),
+        Button.ghost(label: 'Cancel', size: ButtonSize.small, onPressed: () => component.onNavigate(returning ? documentReturn.origin! : WorkspaceRoute(component.workspace.id))),
       ]),
     ]);
   }
@@ -560,7 +561,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
         label: 'Name',
         value: _name,
         placeholder: 'Old Tom',
-        help: '& colour codes work',
+        help: '& color codes work',
         onChanged: (String value) => setState(() => _name = value),
       ),
       OfflineTextField(label: 'Folder', value: _group, help: 'such as town', onChanged: (String value) => setState(() => _group = value)),

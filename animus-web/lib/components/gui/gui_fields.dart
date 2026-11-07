@@ -445,7 +445,7 @@ class GuiSection extends StatefulWidget {
   final String title;
   final List<Widget> children;
 
-  /// Whether the section starts open.
+  /// Whether the section is open at first; a later change is followed.
   final bool open;
   final int? count;
 
@@ -476,6 +476,13 @@ class _GuiSectionState extends State<GuiSection> {
   /// section again does not fold it back to [GuiSection.open].
   late bool _open = component.open;
 
+  /// An owner that opens the section for a new selection is followed.
+  @override
+  void didUpdateWidget(GuiSection oldComponent) {
+    super.didUpdateWidget(oldComponent);
+    if (oldComponent.open != component.open) _open = component.open;
+  }
+
   @override
   Widget build(BuildContext context) => dom.details(
         classes: 'animus-gui-section',
@@ -504,7 +511,7 @@ class _GuiSectionState extends State<GuiSection> {
 List<String> stringList(Object? value) => <String>[for (final Object? item in asList(value)) if (item is String) item];
 
 /// Section tabs: a tablist whose selected tab has a raised neutral fill and
-/// a pink indicator, so the pink fill stays with the primary action.
+/// a pink border, so the pink fill stays with the primary action.
 class GuiTabs extends StatelessWidget {
   const GuiTabs({required this.tabs, required this.selected, required this.onSelect, required this.label, this.disabled = const <int>{}, super.key});
 
@@ -522,7 +529,7 @@ class GuiTabs extends StatelessWidget {
         attributes: <String, String>{'role': 'tablist', 'aria-label': label},
         <Widget>[
           // Native buttons, as in the view tabs: an arcane button's inline
-          // style would hide the selected tab's pink border.
+          // style would hide the selected tab's border.
           for (int index = 0; index < tabs.length; index++)
             dom.button(
               classes: 'animus-tab',

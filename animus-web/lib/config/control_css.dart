@@ -215,7 +215,7 @@ const String controlCss = r'''
 
 /* Fields: the default control height, a full border, a pink border and
    outline on focus. */
-#arcane-root.arcane-theme-ascii :is(.arcane-text-input:not([data-arcane-field-inner]), .arcane-text-input-container, select.arcane-select, .arcane-select-trigger) {
+#arcane-root.arcane-theme-ascii :is(.arcane-text-input:not([data-arcane-field-inner]), .arcane-text-input-container) {
   box-sizing: border-box;
   height: var(--animus-control-h) !important;
   min-height: var(--animus-control-h) !important;
@@ -226,10 +226,10 @@ const String controlCss = r'''
   height: calc(var(--animus-control-h) - 2px) !important;
   min-height: 0 !important;
 }
-#arcane-root.arcane-theme-ascii :is(.arcane-text-input, .arcane-text-input-container, .arcane-textarea, .arcane-select, .arcane-select-trigger, input, select, textarea):is(:focus, :focus-visible, :focus-within) {
+#arcane-root.arcane-theme-ascii :is(.arcane-text-input, .arcane-text-input-container, .arcane-textarea, input, textarea):is(:focus, :focus-visible, :focus-within) {
   box-shadow: none !important;
 }
-#arcane-root.arcane-theme-ascii :is(.arcane-text-input-container:focus-within, input:focus-visible, select:focus-visible, textarea:focus-visible) {
+#arcane-root.arcane-theme-ascii :is(.arcane-text-input-container:focus-within, input:focus-visible, textarea:focus-visible) {
   border-color: var(--ring) !important;
 }
 

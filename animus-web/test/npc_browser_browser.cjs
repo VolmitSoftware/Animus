@@ -473,7 +473,7 @@ async function local(browser, viewport, tag, theme) {
 
   // Body: pose and owner.
   const body = await part(inspector, 'body');
-  await chooseAndWait(body.getByLabel('Pose', {exact: true}), 'sitting');
+  await chooseAndWait(body.getByRole('combobox', {name: 'Pose', exact: true}), 'sitting');
   await settle(page);
   const identity = await part(inspector, 'identity');
   await identity.getByLabel('Owner UUID').fill('Steve');
@@ -548,14 +548,14 @@ async function local(browser, viewport, tag, theme) {
   await stand.locator('[role="checkbox"][aria-checked="true"]').first().waitFor();
   await stand.getByLabel('Head x degrees', {exact: true}).fill('15');
   await stand.getByLabel('Head x degrees', {exact: true}).blur();
-  assert.equal(await valueOf(keeperBody.getByLabel('Rig', {exact: true})), 'town:golem');
+  assert.equal(await valueOf(keeperBody.getByRole('combobox', {name: 'Rig', exact: true})), 'town:golem');
   await keeperBody.getByRole('button', {name: 'Open rig'}).waitFor();
-  await chooseAndWait(keeperBody.getByLabel('Rig', {exact: true}), '');
+  await chooseAndWait(keeperBody.getByRole('combobox', {name: 'Rig', exact: true}), '');
   await settle(page);
   json = await codeOf(page);
   assert.deepEqual(json.armorStand, {small: true, head: [15, 0, 0]});
   assert.equal(json.rig, undefined, 'picking no rig removes it');
-  await chooseAndWait((await part(keeper, 'body')).getByLabel('Rig', {exact: true}), 'town:golem');
+  await chooseAndWait((await part(keeper, 'body')).getByRole('combobox', {name: 'Rig', exact: true}), 'town:golem');
   await settle(page);
   json = await codeOf(page);
   assert.deepEqual(json.rig, {id: 'town:golem'});

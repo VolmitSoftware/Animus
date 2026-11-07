@@ -9,8 +9,10 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../config/docs_links.dart';
 import '../../logic/rig_edit.dart';
 import '../gui/gui_fields.dart';
+import '../info_tip.dart';
 import 'rig_inspector.dart';
 
 class RigTree extends StatefulWidget {
@@ -100,7 +102,7 @@ class _RigTreeState extends State<RigTree> {
     }
     final String draft = _rename ?? selected ?? '';
     return dom.div(classes: 'animus-rig-tree', <Widget>[
-      dom.h3(id: 'animus-rig-tree-heading', <Widget>[Component.text('Bones (${bones.length})')]),
+      dom.h3(id: 'animus-rig-tree-heading', <Widget>[withTip(Component.text('Bones (${bones.length})'), 'The rig\'s bones, children under their parent. Arrow keys move the selection.', docs: Docs.rigs)]),
       dom.ul(attributes: const <String, String>{'role': 'tree', 'aria-labelledby': 'animus-rig-tree-heading'}, <Widget>[
         for (final JsonMap bone in bones)
           dom.li(
@@ -160,7 +162,7 @@ class _RigTreeState extends State<RigTree> {
           ]),
         ]),
         dom.label(classes: 'animus-rig-field', <Widget>[
-          const dom.span(<Widget>[Component.text('Parent')]),
+          dom.span(<Widget>[withTip(const Component.text('Parent'), 'The bone this one moves with. A bone cannot sit under its own children.', docs: Docs.rigs)]),
           GuiSelect(
             value: parentOf(boneById(rig, selected) ?? const <String, Object?>{}) ?? '',
             options: <String>[

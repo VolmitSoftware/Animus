@@ -13,6 +13,7 @@ import '../../logic/npc/npc_attributes.dart';
 import '../../model/animus_document.dart';
 import '../../logic/select/select_model.dart';
 import '../gui/gui_fields.dart';
+import '../info_tip.dart';
 import '../select/animus_select.dart';
 
 class AttributesEditor extends StatelessWidget {
@@ -90,7 +91,7 @@ class AttributesEditor extends StatelessWidget {
             ),
             if (spec != null)
               dom.span(classes: 'animus-npc-attribute-range', attributes: const <String, String>{'data-attribute-hint': ''}, <Widget>[
-                Component.text('${spec.range}, vanilla ${formatAttribute(spec.defaultValue)}'),
+                withTip(Component.text('${spec.range}, vanilla ${formatAttribute(spec.defaultValue)}'), 'The values the server accepts, and what the body has when this attribute is not set.'),
               ]),
             GuiIconButton(
               icon: ArcaneIcon.x(size: IconSize.sm),

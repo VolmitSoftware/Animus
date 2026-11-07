@@ -616,24 +616,13 @@ class _RigEditorState extends State<RigEditor> {
       if (_problem != null) dom.p(classes: 'animus-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(_problem!)]),
       dom.div(classes: 'animus-rig-layout', attributes: <String, String>{'data-pane': _pane.name}, <Widget>[
         dom.div(classes: 'animus-rig-stage', <Widget>[
-          dom.div(classes: 'animus-segmented', attributes: const <String, String>{'role': 'group', 'aria-label': 'Gizmo'}, <Widget>[
-            dom.span(classes: 'animus-rig-gizmo-caption', <Widget>[
-              InfoTip(
-                tip: _animation == _restPose ? 'Edits pivots, rest rotations and visual scales.' : 'Keys the selected bone at tick ${_round(_clipTime)}.',
-                docs: Docs.editorRigs,
-                child: const Component.text('Gizmo'),
-              ),
-            ]),
-            for (final GizmoMode mode in GizmoMode.values)
-              Button(
-                label: mode.label,
-                size: ButtonSize.small,
-                variant: mode == _mode ? ButtonVariant.primary : ButtonVariant.ghost,
-                attributes: <String, String>{'aria-pressed': '${mode == _mode}'},
-                onPressed: () => setState(() => _mode = mode),
-              ),
-            Button.ghost(label: 'Reset view', size: ButtonSize.small, onPressed: _stage.resetCamera),
-          ]),
+          GizmoToolbar(
+            mode: _mode,
+            restPose: _animation == _restPose,
+            tick: _round(_clipTime),
+            onMode: (GizmoMode mode) => setState(() => _mode = mode),
+            onResetView: _stage.resetCamera,
+          ),
           McStage(
             controller: _stage,
             label: 'Rig ${component.rig.id}${_selected == null ? '' : ', bone $_selected selected'}',
@@ -652,7 +641,7 @@ class _RigEditorState extends State<RigEditor> {
               Button(
                 label: text,
                 size: ButtonSize.small,
-                variant: pane == _pane ? ButtonVariant.primary : ButtonVariant.ghost,
+                variant: pane == _pane ? ButtonVariant.secondary : ButtonVariant.ghost,
                 attributes: <String, String>{'aria-pressed': '${pane == _pane}'},
                 onPressed: () => setState(() => _pane = pane),
               ),
@@ -758,10 +747,9 @@ class _RigEditorState extends State<RigEditor> {
 
   Widget _toolbar(JsonMap rig) {
     return dom.div(classes: 'animus-rig-toolbar', <Widget>[
-      Button.secondary(label: 'Import .bbmodel', icon: ArcaneIcon.upload(), size: ButtonSize.small, disabled: _busy, onPressed: _import),
-      Button.secondary(label: 'Download server files', icon: ArcaneIcon.download(), size: ButtonSize.small, onPressed: _downloadServerFiles),
+      RigFileButtons(busy: _busy, onImport: _import, onDownload: _downloadServerFiles),
       dom.label(classes: 'animus-rig-field', <Widget>[
-        const dom.span(<Widget>[Component.text('Body')]),
+        dom.span(<Widget>[withTip(const Component.text('Body'), 'Hidden shows only the rig; the hidden body keeps the hitbox. Shown keeps the vanilla body and the rig adds parts.', docs: Docs.rigs)]),
         GuiSelect(
           value: rig['body'] == 'shown' ? 'shown' : 'hidden',
           options: const <String>['hidden', 'shown'],
@@ -772,7 +760,7 @@ class _RigEditorState extends State<RigEditor> {
       ]),
       if (rig['body'] == 'shown')
         dom.label(classes: 'animus-rig-field', <Widget>[
-          const dom.span(<Widget>[Component.text('Preview body')]),
+          dom.span(<Widget>[withTip(const Component.text('Preview body'), 'The body shown here only. In game the NPC uses its own.', docs: Docs.editorRigs)]),
           GuiSelect(
             value: _bodyType,
             options: mcBodyTypes,

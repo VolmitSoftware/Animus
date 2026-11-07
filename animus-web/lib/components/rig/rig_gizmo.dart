@@ -8,15 +8,55 @@ import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 import 'dart:math' as math;
 
+import 'package:arcane_jaspr/arcane_jaspr.dart' hide Easing;
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../config/docs_links.dart';
 import '../../logic/rig_gizmo_edit.dart';
 import '../../logic/rig_sampler.dart';
 import '../../mc/rig/rig_scene.dart';
 import '../../mc/scene/mc_camera.dart';
 import '../../mc/scene/mc_math.dart';
+import '../info_tip.dart';
+
+/// The gizmo's mode buttons over the stage, with Reset view.
+class GizmoToolbar extends StatelessWidget {
+  const GizmoToolbar({required this.mode, required this.restPose, required this.tick, required this.onMode, required this.onResetView, super.key});
+
+  final GizmoMode mode;
+
+  /// Whether the rest pose is open, where handles edit the rig itself.
+  final bool restPose;
+
+  /// The playhead tick a drag keys at.
+  final num tick;
+  final void Function(GizmoMode mode) onMode;
+  final void Function() onResetView;
+
+  @override
+  Widget build(BuildContext context) => dom.div(classes: 'animus-segmented', attributes: const <String, String>{'role': 'group', 'aria-label': 'Gizmo'}, <Widget>[
+        dom.span(classes: 'animus-rig-gizmo-caption', <Widget>[
+          InfoTip(
+            tip: restPose
+                ? 'Drag a handle on the selected bone. Edits pivots, rest rotations and visual scales.'
+                : 'Drag a handle on the selected bone. Keys it at tick $tick.',
+            docs: Docs.editorRigs,
+            child: const Component.text('Gizmo'),
+          ),
+        ]),
+        for (final GizmoMode one in GizmoMode.values)
+          Button(
+            label: one.label,
+            size: ButtonSize.small,
+            variant: one == mode ? ButtonVariant.secondary : ButtonVariant.ghost,
+            attributes: <String, String>{'aria-pressed': '${one == mode}'},
+            onPressed: () => onMode(one),
+          ),
+        Button.ghost(label: 'Reset view', size: ButtonSize.small, onPressed: onResetView),
+      ]);
+}
 
 /// Gizmo arms are this long in blocks.
 const double gizmoArmBlocks = 0.45;

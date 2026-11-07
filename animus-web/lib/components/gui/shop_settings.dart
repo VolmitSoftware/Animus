@@ -46,7 +46,7 @@ class ShopSettings extends StatelessWidget {
     void setModes(List<String> next) => _set('modes', next.isEmpty ? null : next);
     return dom.div(classes: 'animus-shop-settings-body', <Widget>[
       _row('Title', 'title', (String id) => GuiTextInput(id: id, value: asString(shop['title']) ?? '', mode: GuiTextMode.template, label: 'Shop title', placeholder: '<gold>Bakery', onChanged: (String v) => _set('title', v.isEmpty ? null : v)),
-          tip: 'The window title. & codes and MiniMessage work; the line under it shows the colours.'),
+          tip: 'The window title. & codes and MiniMessage work; the line under it shows the colors.'),
       _row('Window', 'style', (String id) => GuiSelect(
             id: id,
             hiddenLabel: 'Window',

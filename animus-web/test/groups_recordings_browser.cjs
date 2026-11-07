@@ -140,9 +140,16 @@ async function run(browser, viewport, theme, tag) {
   // Group editor.
   const group = await part(page, 'group');
   assert.ok(await group.locator('[data-group="members"]').getByText('town/gate-guard').count());
-  await page.locator('#animus-group-description').fill('Harbor colours only');
+  await page.locator('#animus-group-description').fill('Harbor colors only');
   await settle(page);
-  assert.equal((await codeOf(page)).description, 'Harbor colours only');
+  assert.equal((await codeOf(page)).description, 'Harbor colors only');
+  // Adding a member from the group screen writes the NPC's groups; Undo takes it back.
+  await choose(group.locator('#animus-group-add-member'), 'town/watchman');
+  await group.getByRole('button', {name: 'Add member'}).click();
+  await group.locator('[data-group="members"]').getByText('town/watchman').waitFor();
+  await topbarAction(page, 'Undo');
+  await settle(page);
+  assert.equal(await group.locator('[data-group="members"]').getByText('town/watchman').count(), 0, 'Undo removes the added member');
   await part(page, 'appearance');
   await shot(page, `${tag}-03-group`);
   await noSidewaysScroll(page, `${tag} group`);

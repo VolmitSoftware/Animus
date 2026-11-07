@@ -170,13 +170,13 @@ CompletionResult completeText(String text, int caret, FieldProfile profile, Comp
       ),
     CaretSource.placeholder => (_placeholderItems(spot, profile, env), 'Placeholders'),
     CaretSource.tag => (_tagItems(spot.query), 'Tags'),
-    CaretSource.tagColor => (miniMessageColorItems(), 'Colours'),
+    CaretSource.tagColor => (miniMessageColorItems(), 'Colors'),
     CaretSource.closingTag => (_closingItems(text.substring(0, spot.from)), 'Closing tags'),
     CaretSource.papi => (
         <CompletionItem>[
-          for (final String id in env.sources.papi) CompletionItem(label: id, insert: '${id}_\$1%', kind: CompletionKind.papi, type: 'expansion', detail: 'PlaceholderAPI'),
+          for (final String id in env.sources.papi) CompletionItem(label: id, insert: '${id}_\$1%', kind: CompletionKind.papi, type: 'expansion', detail: 'PlaceholderAPI. Not filled on the server yet'),
         ],
-        'PlaceholderAPI'
+        'PlaceholderAPI, not filled on the server yet'
       ),
     CaretSource.command => (
         <CompletionItem>[for (final String name in env.sources.commands) CompletionItem(label: name, insert: '$name ', kind: CompletionKind.command, type: 'command', detail: 'On the server')],

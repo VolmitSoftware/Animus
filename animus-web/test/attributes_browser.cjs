@@ -129,7 +129,7 @@ async function run(browser, viewport, theme, tag) {
   await addAttribute(page, attributes, 'scale');
   assert.ok((await addRows(page, attributes)).find((row) => row.value === 'scale').disabled, `${tag}: a set attribute is disabled`);
   const scale = attributes.locator('[data-attribute="scale"]');
-  assert.equal((await scale.locator('[data-attribute-hint]').textContent()).trim(), '0.0625..16, vanilla 1');
+  assert.equal((await scale.locator('[data-attribute-hint]').innerText()).trim(), '0.0625..16, vanilla 1');
   await scale.getByText('Body size', {exact: false}).waitFor({state: 'attached'});
   assert.deepEqual((await codeOf(page)).attributes, {scale: 1});
   attributes = await part(page, 'attributes');

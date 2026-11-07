@@ -16,6 +16,7 @@ import '../../state/server_hub.dart';
 import '../../state/workspace_repository.dart';
 import '../../state/workspace_route.dart';
 import '../brand_mark.dart';
+import '../citizens_screen.dart' show converterTitle;
 import '../info_tip.dart';
 import '../rig/rig_actions.dart';
 import '../server/pair_page.dart';
@@ -146,7 +147,13 @@ class _HomeScreenState extends State<HomeScreen> {
         dom.ol(classes: 'animus-start-ways', <Widget>[
           dom.li(classes: 'animus-start-way is-first', <Widget>[
             const dom.div(classes: 'animus-start-copy', <Widget>[
-              dom.h2(<Widget>[Component.text('Blank')]),
+              dom.h2(<Widget>[
+                InfoTip(
+                  tip: 'An empty workspace. Pick the first document kind on the next page.',
+                  docs: Docs.editor,
+                  child: Component.text('Blank'),
+                ),
+              ]),
             ]),
             dom.div(classes: 'animus-start-row', <Widget>[
               OfflineTextField(
@@ -156,17 +163,23 @@ class _HomeScreenState extends State<HomeScreen> {
                 onChanged: (String value) => setState(() => _name = value),
                 onSubmit: busy ? null : _createBlank,
               ),
-              Button.primary(label: 'Create blank workspace', icon: ArcaneIcon.plus(), disabled: busy, onPressed: _createBlank),
+              Button.primary(label: 'Create blank workspace', icon: ArcaneIcon.plus(), size: ButtonSize.small, disabled: busy, onPressed: _createBlank),
             ]),
           ]),
           dom.li(classes: 'animus-start-way', <Widget>[
             dom.div(classes: 'animus-start-copy', <Widget>[
-              const dom.h2(<Widget>[Component.text('From the example packs')]),
+              const dom.h2(<Widget>[
+                InfoTip(
+                  tip: 'A workspace with the example NPCs, behaviors and GUIs to read and change.',
+                  docs: Docs.editorDocuments,
+                  child: Component.text('From the example packs'),
+                ),
+              ]),
               dom.p(classes: 'animus-muted', <Widget>[
                 Component.text(packs.map(((String, String) pack) => pack.$1).join(', ')),
               ]),
             ]),
-            Button.secondary(label: 'Create with example packs', disabled: busy, onPressed: _createStarter),
+            Button.secondary(label: 'Create with example packs', size: ButtonSize.small, disabled: busy, onPressed: _createStarter),
           ]),
           dom.li(classes: 'animus-start-way', <Widget>[
             const dom.div(classes: 'animus-start-copy', <Widget>[
@@ -179,11 +192,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ]),
             ]),
             dom.div(classes: 'animus-row', <Widget>[
-              Button.secondary(label: 'Open folder', icon: ArcaneIcon.folderOpen(), disabled: busy, onPressed: component.onOpenFolder),
-              Button.secondary(label: 'Open zip', icon: ArcaneIcon.fileArchive(), disabled: busy, onPressed: component.onOpenZip),
+              Button.secondary(label: 'Open folder', icon: ArcaneIcon.folderOpen(), size: ButtonSize.small, disabled: busy, onPressed: component.onOpenFolder),
+              Button.secondary(label: 'Open zip', icon: ArcaneIcon.fileArchive(), size: ButtonSize.small, disabled: busy, onPressed: component.onOpenZip),
               Button.ghost(
-                label: 'Convert Citizens and others',
+                label: converterTitle,
                 icon: ArcaneIcon.arrowRightLeft(),
+                size: ButtonSize.small,
                 disabled: busy,
                 onPressed: () => component.onNavigate(const CitizensRoute()),
               ),
@@ -200,7 +214,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final WorkspaceSnapshot? deleted = store.deleted;
     final String? listProblem = store.listProblem;
     return dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-labelledby': 'animus-workspaces-title'}, <Widget>[
-      const dom.h2(id: 'animus-workspaces-title', attributes: <String, String>{'tabindex': '-1'}, <Widget>[Component.text('Workspaces in this browser')]),
+      const dom.h2(id: 'animus-workspaces-title', attributes: <String, String>{'tabindex': '-1'}, <Widget>[
+        InfoTip(
+          tip: 'Kept in this browser\'s storage. Export a zip to move one or keep a copy.',
+          docs: Docs.editor,
+          child: Component.text('Workspaces in this browser'),
+        ),
+      ]),
       if (deleted != null && !store.workspaces.any((WorkspaceSummary summary) => summary.id == deleted.id))
         dom.div(classes: 'animus-row animus-restore', attributes: const <String, String>{'role': 'status'}, <Widget>[
           Component.text('Deleted ${deleted.name}. Restore until you close the tab.'),
@@ -218,7 +238,7 @@ class _HomeScreenState extends State<HomeScreen> {
       else if (!store.workspacesListed)
         const dom.p(classes: 'animus-muted', attributes: <String, String>{'role': 'status'}, <Widget>[Component.text('Loading workspaces...')])
       else if (store.workspaces.isEmpty)
-        const dom.p(classes: 'animus-muted', <Widget>[Component.text('No workspaces yet.')])
+        const dom.p(classes: 'animus-muted', <Widget>[Component.text('No workspaces yet. Start one above.')])
       else
         dom.ul(classes: 'animus-workspace-list', <Widget>[
           for (final WorkspaceSummary summary in store.workspaces) dom.li(classes: 'animus-workspace-row', <Widget>[_workspaceRow(summary, busy)]),

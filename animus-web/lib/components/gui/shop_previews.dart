@@ -10,6 +10,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_layout.dart';
 import '../../logic/gui/shop_board.dart';
@@ -17,6 +18,7 @@ import '../../logic/gui/shop_checks.dart';
 import '../../logic/gui/shop_layout.dart';
 import '../../logic/gui/shop_offers.dart';
 import '../../model/animus_document.dart';
+import '../info_tip.dart';
 import 'chest_window.dart';
 import 'gui_fields.dart';
 import 'merchant_window.dart';
@@ -97,7 +99,7 @@ class _ShopPreviewsState extends State<ShopPreviews> {
           onSelect: (int index) => setState(() => _tab = index),
         ),
       ]),
-      dom.p(classes: 'animus-muted', <Widget>[Component.text(where)]),
+      dom.p(classes: 'animus-muted', <Widget>[withTip(Component.text(where), 'Style picks which screen players get. Both previews list the same offers.', docs: Docs.shops)]),
       if (tab == 0) _trading(shop) else _chest(shop),
       dom.div(classes: 'animus-row', <Widget>[
         GuiSwitch(value: _usedUp, label: 'Limits used up', onChanged: (bool on) => setState(() => _usedUp = on)),

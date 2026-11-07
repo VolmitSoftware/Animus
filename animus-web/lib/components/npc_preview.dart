@@ -285,7 +285,7 @@ class _NpcPreviewState extends State<NpcPreview> {
           Button(
             label: 'Route',
             size: ButtonSize.small,
-            variant: _showRoute ? ButtonVariant.primary : ButtonVariant.ghost,
+            variant: ButtonVariant.ghost,
             attributes: <String, String>{'aria-pressed': '$_showRoute'},
             onPressed: () {
               setState(() => _showRoute = !_showRoute);
@@ -346,7 +346,7 @@ class _NpcPreviewState extends State<NpcPreview> {
             Button(
               label: 'Classic',
               size: ButtonSize.small,
-              variant: slim ? ButtonVariant.ghost : ButtonVariant.primary,
+              variant: ButtonVariant.ghost,
               attributes: <String, String>{'aria-pressed': '${!slim}'},
               onPressed: () {
                 setState(() => _slim = false);
@@ -356,7 +356,7 @@ class _NpcPreviewState extends State<NpcPreview> {
             Button(
               label: 'Slim',
               size: ButtonSize.small,
-              variant: slim ? ButtonVariant.primary : ButtonVariant.ghost,
+              variant: ButtonVariant.ghost,
               attributes: <String, String>{'aria-pressed': '$slim'},
               onPressed: () {
                 setState(() => _slim = true);

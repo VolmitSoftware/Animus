@@ -6,8 +6,8 @@ library;
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
-import 'package:web/web.dart' as web;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/action_targets.dart';
 import '../../logic/gui/gui_catalog.dart';
 import '../../logic/gui/gui_expression.dart';
@@ -17,7 +17,9 @@ import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../inspect/typed_values_editor.dart';
 import '../mc/item_picker.dart';
+import '../offline/offline_fields.dart' show ConfirmRow;
 import '../select/suggest_input.dart';
+import '../server/live_confirm.dart' show focusSoon;
 import 'gui_fields.dart';
 import 'gui_targets.dart';
 import '../../logic/suggest/field_profile.dart';
@@ -128,24 +130,15 @@ class ActionsEditor extends StatelessWidget {
             dom.span(classes: 'animus-sr-only', <Widget>[Component.text(steps ? 'Step ' : 'Action ')]),
             Component.text('${index + 1}'),
           ]),
-          GuiSelect(
+          _ActionTypePicker(
             id: guiPathId('$actionPath-type'),
-            value: type,
+            action: action,
             options: <String>[for (final String one in lists.offered) if (!unavailable.contains(one)) one],
             labels: <String, String>{
               ...actionLabels,
               if (!offered) type: lists.refused.contains(type) || unavailable.contains(type) ? '$type (not available here)' : '$type (unknown)',
             },
-            onChanged: (String? next) {
-              if (next == null || next == type) return;
-              final (JsonMap changed, List<String> dropped) = changeActionType(action, next);
-              if (dropped.isNotEmpty &&
-                  !web.window.confirm('A $next action has no ${dropped.join(', ')}. Their nested actions will be dropped. Change type?')) {
-                onChanged(<Object?>[...actions]);
-                return;
-              }
-              _set(index, changed);
-            },
+            onChanged: (JsonMap changed) => _set(index, changed),
           ),
           GuiIconButton(
             icon: ArcaneIcon.arrowUp(size: IconSize.sm),
@@ -199,6 +192,8 @@ class ActionsEditor extends StatelessWidget {
             ),
           GuiSection(
             title: 'Click and condition',
+            tip: 'Which click runs this action, a condition it needs and a cooldown per viewer.',
+            docs: Docs.guiActions,
             open: action.containsKey('trigger') || (action.containsKey('when') && type != 'if') || action.containsKey('cooldownTicks'),
             children: <Widget>[
               for (final GuiField field in commonActionFields)
@@ -296,6 +291,8 @@ class ActionsEditor extends StatelessWidget {
         return GuiSection(
           title: name,
           count: asList(value).length,
+          tip: field.help.isEmpty ? 'Actions run in order inside this one.' : field.help,
+          docs: Docs.guiActions,
           children: <Widget>[
             ActionsEditor(
               actions: asList(value),
@@ -312,9 +309,9 @@ class ActionsEditor extends StatelessWidget {
         );
       case GuiFieldKind.branches:
         final JsonList branches = asList(value);
-        return GuiSection(title: 'Branches', count: branches.length, children: <Widget>[
+        return GuiSection(title: 'Branches', count: branches.length, tip: 'Action lists that start together and run side by side.', docs: Docs.guiActions, children: <Widget>[
           for (int branch = 0; branch < branches.length; branch++)
-            GuiSection(title: 'Branch ${branch + 1}', children: <Widget>[
+            GuiSection(title: 'Branch ${branch + 1}', tip: 'One list, run in order alongside the other branches.', docs: Docs.guiActions, children: <Widget>[
               ActionsEditor(
                 actions: asList(branches[branch]),
                 path: indexPath(fieldPath, branch),
@@ -336,7 +333,7 @@ class ActionsEditor extends StatelessWidget {
         ]);
       case GuiFieldKind.cases:
         final JsonMap cases = asMap(value);
-        return GuiSection(title: 'Cases', count: cases.length, children: <Widget>[
+        return GuiSection(title: 'Cases', count: cases.length, tip: 'The list whose value matches on runs. No match runs default.', docs: Docs.guiActions, children: <Widget>[
           for (final MapEntry<String, Object?> entry in cases.entries)
             dom.div(classes: 'animus-gui-case', <Widget>[
               GuiRow(
@@ -398,7 +395,7 @@ class ActionsEditor extends StatelessWidget {
           return GuiRow(label: rowLabel, forId: labelled ? rowId : null, help: help, problems: diagnosticsAt(diagnostics, childPath(fieldPath, key), nested: key == 'lore'), child: child(rowId));
         }
 
-        return GuiSection(title: name, children: <Widget>[
+        return GuiSection(title: name, tip: 'The item, its count, name and lore.', docs: Docs.guiActions, children: <Widget>[
           for (final Diagnostic problem in problems) dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
           row('item', 'Item *', (String rowId) => ItemPicker(id: rowId, value: asString(icon['item']) ?? '', label: 'Item id', placeholder: 'minecraft:bread', onChanged: (String v) => set(with_('item', v))),
               help: 'Item id or expression'),
@@ -446,5 +443,64 @@ class ActionsEditor extends StatelessWidget {
       ('inventory', 'id') || ('animus:open-shop', 'shop') => <FieldOption>[for (final String id in ids) FieldOption(id)],
       _ => null,
     };
+  }
+}
+
+/// The action's type select. A change that drops nested action lists asks
+/// first, in place of the select, and focus comes back to the select after
+/// either answer.
+class _ActionTypePicker extends StatefulWidget {
+  const _ActionTypePicker({required this.id, required this.action, required this.options, required this.labels, required this.onChanged});
+
+  final String id;
+  final JsonMap action;
+  final List<String> options;
+  final Map<String, String> labels;
+  final void Function(JsonMap action) onChanged;
+
+  @override
+  State<_ActionTypePicker> createState() => _ActionTypePickerState();
+}
+
+class _ActionTypePickerState extends State<_ActionTypePicker> {
+  /// The type asked about, the action it would write and the lists it drops.
+  ({String type, JsonMap changed, List<String> dropped})? _pending;
+
+  void _pick(String? next) {
+    if (next == null || next == asString(component.action['type'])) return;
+    final (JsonMap changed, List<String> dropped) = changeActionType(component.action, next);
+    if (dropped.isEmpty) {
+      component.onChanged(changed);
+      return;
+    }
+    setState(() => _pending = (type: next, changed: changed, dropped: dropped));
+  }
+
+  void _answer(bool change) {
+    final JsonMap? changed = _pending?.changed;
+    setState(() => _pending = null);
+    if (change && changed != null) component.onChanged(changed);
+    focusSoon(component.id);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ({String type, JsonMap changed, List<String> dropped})? pending = _pending;
+    if (pending != null) {
+      return ConfirmRow(
+        question: 'Change to ${component.labels[pending.type] ?? pending.type}?',
+        detail: 'It has no ${pending.dropped.join(', ')}, so the actions in them are dropped.',
+        confirmLabel: 'Change type',
+        onConfirm: () => _answer(true),
+        onCancel: () => _answer(false),
+      );
+    }
+    return GuiSelect(
+      id: component.id,
+      value: asString(component.action['type']) ?? '',
+      options: component.options,
+      labels: component.labels,
+      onChanged: _pick,
+    );
   }
 }

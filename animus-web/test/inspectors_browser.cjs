@@ -112,7 +112,7 @@ async function run(browser, viewport, tag, theme) {
   const name = inspector.getByLabel('name', {exact: true});
   await name.fill('Greeter Edited');
   await page.waitForTimeout(300);
-  // Behaviors sit in the inspector's Behaviour part, closed until opened.
+  // Behaviors sit in the inspector's Behavior part, closed until opened.
   const behaviour = inspector.locator('details[data-section="behaviour"]');
   if (!(await behaviour.evaluate((element) => element.open))) await behaviour.locator('summary').first().click();
   await choose(await selectWith(inspector, 'Add a behavior'), 'shop:keeper');

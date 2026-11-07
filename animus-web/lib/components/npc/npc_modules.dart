@@ -6,6 +6,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
@@ -63,7 +64,7 @@ class ShopBindingEditor extends StatelessWidget {
     const String openOnId = 'animus-npc-shop-open-on';
     if (value == null) {
       return dom.div(classes: 'animus-npc-module', <Widget>[
-        const NpcSubhead('Shop', help: 'No shop.'),
+        const NpcSubhead('Shop', help: 'No shop.', tip: 'A shop document that opens when a player clicks the NPC.', docs: Docs.shops),
         const dom.label(classes: 'animus-sr-only', attributes: <String, String>{'for': shopId}, <Widget>[Component.text('Open a workspace shop on click')]),
         dom.div(classes: 'animus-gui-line', <Widget>[
           GuiSelect(
@@ -84,7 +85,7 @@ class ShopBindingEditor extends StatelessWidget {
     final String path = childPath(r'$.modules', shopModule);
     final String? shop = asString(module['shop']);
     return dom.div(classes: 'animus-npc-module', <Widget>[
-      const NpcSubhead('Shop'),
+      const NpcSubhead('Shop', tip: 'A shop document that opens when a player clicks the NPC.', docs: Docs.shops),
       InspectRow(
         label: 'Shop',
         labelFor: shopId,
@@ -282,6 +283,7 @@ class NavigationEditor extends StatelessWidget {
       ]),
       InspectRow(
         label: 'Moves by',
+        tip: 'Where the waypoints come from: written on this NPC, a route document, or a recorded performance.',
         labelFor: sourceId,
         help: 'One source at a time.',
         problems: diagnosticsAt(diagnostics, path),
@@ -416,7 +418,7 @@ class MountEditor extends StatelessWidget {
     if (value == null) {
       if (vehicles.isEmpty) return const dom.div(<Widget>[]);
       return dom.div(classes: 'animus-npc-module', <Widget>[
-        const NpcSubhead('Mount', help: 'Rides nothing.'),
+        const NpcSubhead('Mount', help: 'Rides nothing.', tip: 'Another NPC this one rides, by id.', docs: Docs.mounts),
         const dom.label(classes: 'animus-sr-only', attributes: <String, String>{'for': vehicleId}, <Widget>[Component.text('Ride another NPC')]),
         GuiSelect(
           id: vehicleId,
@@ -433,7 +435,7 @@ class MountEditor extends StatelessWidget {
     final String? vehicle = asString(module['vehicle']);
     final String path = childPath(r'$.modules', mountModule);
     return dom.div(classes: 'animus-npc-module', <Widget>[
-      const NpcSubhead('Mount'),
+      const NpcSubhead('Mount', tip: 'Another NPC this one rides, by id.', docs: Docs.mounts),
       dom.div(classes: 'animus-row', <Widget>[
         GuiSwitch(value: module['enabled'] != false, label: 'Riding', onChanged: (bool on) => onChanged(<String, Object?>{...module, 'enabled': on})),
         GuiIconButton(

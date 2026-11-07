@@ -83,7 +83,7 @@ abstract final class Docs {
   static const DocLink denizen = DocLink('13-migrating-from-citizens', 'denizen');
 
   static const DocLink editor = DocLink('14-web-editor', 'working-without-a-server');
-  static const DocLink editorDocuments = DocLink('14-web-editor', 'npcs-groups-routes-recordings-skins-and-packs');
+  static const DocLink editorDocuments = DocLink('14-web-editor', 'npcs-trait-groups-routes-recordings-skins-and-packs');
   static const DocLink editorRigs = DocLink('14-web-editor', 'rig-and-animation-editor');
   static const DocLink editorGuis = DocLink('14-web-editor', 'gui-editors');
   static const DocLink editorKeyboard = DocLink('14-web-editor', 'keyboard-and-commands');

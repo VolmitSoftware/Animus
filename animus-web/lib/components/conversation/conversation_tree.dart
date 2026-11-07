@@ -20,6 +20,7 @@ import '../info_tip.dart';
 import 'conversation_fields.dart';
 import 'conversation_input.dart';
 import 'conversation_picker.dart';
+import '../shortcut_sheet.dart' show platformKeys;
 
 /// Runs [change] on the latest conversation and writes it back; edits
 /// sharing [coalesce] undo together. [focus] is a field to focus once the
@@ -240,7 +241,7 @@ class _TreeBuilder {
           if (step is ConversationLine) MenuAction('Delay, sound, animation', () => scope.toggle(at.key)),
           MenuAction('Move up', at.index == 0 ? null : () => edit((Conversation c) => moveStep(c, at, at.index - 1)), hint: 'Alt+Up'),
           MenuAction('Move down', at.index >= count - 1 ? null : () => edit((Conversation c) => moveStep(c, at, at.index + 1)), hint: 'Alt+Down'),
-          MenuAction('Duplicate', () => edit((Conversation c) => duplicateStep(c, at)), hint: 'Ctrl+D'),
+          MenuAction('Duplicate', () => edit((Conversation c) => duplicateStep(c, at)), hint: platformKeys('Mod+D')),
           MenuAction('Delete', () => edit((Conversation c) => removeStep(c, at))),
         ],
       );
@@ -456,18 +457,18 @@ class _TreeBuilder {
             Button.ghost(
               icon: ArcaneIcon.plus(size: IconSize.sm),
               size: ButtonSize.small,
-              attributes: <String, String>{'aria-label': 'Add what follows ${option.text.isEmpty ? 'answer ${index + 1}' : option.text}', 'title': 'Add what follows (Ctrl+Enter)'},
+              attributes: <String, String>{'aria-label': 'Add what follows ${option.text.isEmpty ? 'answer ${index + 1}' : option.text}', 'title': 'Add what follows (${platformKeys('Mod+Enter')})'},
               onPressed: follow,
             ),
           ConversationMenu(
             label: 'Answer options',
             icon: ArcaneIcon.ellipsis(size: IconSize.sm),
             actions: <MenuAction>[
-              MenuAction(next == null ? 'Add what follows' : 'Edit what follows', follow, hint: 'Ctrl+Enter'),
-              MenuAction('Colour, hover, target', () => scope.toggle(key)),
+              MenuAction(next == null ? 'Add what follows' : 'Edit what follows', follow, hint: platformKeys('Mod+Enter')),
+              MenuAction('Color, hover, target', () => scope.toggle(key)),
               MenuAction('Move up', index == 0 ? null : () => edit((Conversation c) => _moveOption(c, at, index, index - 1)), hint: 'Alt+Up'),
               MenuAction('Move down', index >= choices.options.length - 1 ? null : () => edit((Conversation c) => _moveOption(c, at, index, index + 1)), hint: 'Alt+Down'),
-              MenuAction('Duplicate', choices.options.length >= maximumOptions ? null : () => edit((Conversation c) => duplicateOption(c, at, index)), hint: 'Ctrl+D'),
+              MenuAction('Duplicate', choices.options.length >= maximumOptions ? null : () => edit((Conversation c) => duplicateOption(c, at, index)), hint: platformKeys('Mod+D')),
               MenuAction('Delete', () => edit((Conversation c) => _removeOption(c, at, index))),
             ],
           ),
@@ -550,7 +551,7 @@ class PlaceholderMenu extends StatelessWidget {
 Widget conversationKeysTip(String label) => dom.h2(classes: 'animus-conv-title', <Widget>[
       withTip(
         Component.text(label),
-        'Enter adds a line, and a line ending in [Yes] [No] becomes a question. Type /ask, /if, /do, /goto or /end in an empty line; Alt+arrows move, Ctrl+D duplicates, Ctrl+Enter on an answer adds what follows.',
+        'Enter adds a line, and a line ending in [Yes] [No] becomes a question. Type /ask, /if, /do, /goto or /end in an empty line; ${platformKeys('Alt')}+arrows move, ${platformKeys('Mod+D')} duplicates, ${platformKeys('Mod+Enter')} on an answer adds what follows.',
         docs: conversationDocs,
       ),
     ]);

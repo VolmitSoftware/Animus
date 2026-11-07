@@ -1,6 +1,6 @@
 /// The NPC definition's Visual view, read top down: identity, body,
-/// attributes, position, appearance (skin, equipment, hologram, nameplate), behaviour
-/// (behaviors, route, movement, inventory), modules (combat, shop, mount and
+/// position, appearance (skin, equipment, hologram, nameplate), attributes,
+/// behavior (behaviors, route, movement, inventory), modules (combat, shop, mount and
 /// the rest), then fields kept as written. Each part's heading summarises it
 /// while closed. Edits change the parsed definition and report it whole, so
 /// unknown keys survive.
@@ -18,6 +18,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/citizens/definition_validation.dart' show effectiveActivationDiagnostics;
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/inspect_schemas.dart';
@@ -44,6 +45,7 @@ import '../npc/body_type_field.dart';
 import '../npc/body_type_parts.dart';
 import '../npc/combat_editor.dart';
 import '../npc/equipment_editor.dart';
+import '../npc/group_part.dart';
 import '../npc/group_parts.dart';
 import '../npc/inventory_editor.dart';
 import '../npc/npc_modules.dart';
@@ -272,10 +274,10 @@ class _NpcInspectorState extends State<NpcInspector> {
         if (component.schemas.live) const dom.p(classes: 'animus-muted', <Widget>[Component.text('Using server schemas.')]),
         if (_group) _groupPart() else ...<Widget>[_identity(doc), if (npcGroups(doc).isNotEmpty) _effective(doc)],
         _body(doc),
-        _attributes(doc),
         if (!_group) _position(doc),
         _appearance(doc),
-        _behaviour(doc),
+        _attributes(doc),
+        _behavior(doc),
         _modulesPart(doc),
         _kept(doc),
       ],
@@ -289,6 +291,8 @@ class _NpcInspectorState extends State<NpcInspector> {
     return NpcSection(
       id: 'identity',
       title: 'Identity',
+      tip: 'Who the NPC is: its name, file id, UUID, tags, trait groups and owner.',
+      docs: Docs.npc,
       summary: '${asString(doc['name']) ?? ''}, ${component.document.id}',
       open: _open('identity', true),
       onToggle: (bool open) => setState(() => _opened['identity'] = open),
@@ -303,6 +307,7 @@ class _NpcInspectorState extends State<NpcInspector> {
         GuiRow(
           label: 'Owner',
           help: 'Player UUID, lowercase.',
+          tip: 'The player who owns this NPC. Modules may use it for their own permission rules.',
           problems: <Diagnostic>[
             ...diagnosticsAt(_diagnostics, r'$.owner'),
             if (owner != null && owner.isNotEmpty && !validOwner(owner) && diagnosticsAt(_diagnostics, r'$.owner').isEmpty)
@@ -330,6 +335,7 @@ class _NpcInspectorState extends State<NpcInspector> {
     return GuiRow(
       label: 'Tags',
       help: 'Searchable. a-z, 0-9, _ and -',
+      tip: 'Labels for finding and grouping NPCs, at most 32. Trait groups can add tags too.',
       problems: diagnosticsAt(_diagnostics, r'$.tags', nested: true),
       child: dom.div(classes: 'animus-tag-editor', <Widget>[
         dom.div(classes: 'animus-npc-tag-cloud', <Widget>[
@@ -398,6 +404,8 @@ class _NpcInspectorState extends State<NpcInspector> {
       return NpcSection(
       id: 'effective',
       title: 'Effective',
+      tip: 'The definition the server runs after merging the trait groups, with the source of each value.',
+      docs: Docs.groupMerge,
       summary: '$fromGroups value${fromGroups == 1 ? '' : 's'} from ${effective.groups.join(', ')}',
       open: _open('effective', false),
       onToggle: (bool open) => setState(() => _opened['effective'] = open),
@@ -415,67 +423,19 @@ class _NpcInspectorState extends State<NpcInspector> {
   }
 
   /// A group's own part: its id, description, members and tags.
-  Widget _groupPart() {
-    final JsonMap file = _file;
-    final String id = component.document.id;
-    final String description = asString(file['description']) ?? '';
-    final List<NpcEntry> members = <NpcEntry>[
-      for (final NpcEntry entry in npcEntries(component.workspaceDocuments))
-        if (npcGroups(entry.json).contains(id)) entry,
-    ];
-    const String descriptionId = 'animus-group-description';
-    return NpcSection(
-      id: 'group',
-      title: 'Group',
-      summary: '$id, ${members.length} NPC${members.length == 1 ? '' : 's'}',
-      open: _open('group', true),
-      onToggle: (bool open) => setState(() => _opened['group'] = open),
-      children: <Widget>[
-        GuiRow(
-          label: 'ID',
-          help: 'Rename updates member NPCs.',
-          child: dom.code(classes: 'animus-inspect-const', <Widget>[Component.text(id)]),
-        ),
-        GuiRow(
-          label: 'Description',
-          forId: descriptionId,
-          help: 'Shown in /animus groups list.',
-          problems: diagnosticsAt(component.diagnostics, r'$.description'),
-          child: GuiTextInput(
-            id: descriptionId,
-            value: description,
-            label: 'Group description',
-            placeholder: 'What NPCs in this group share',
-            onChanged: (String text) =>
-                component.onJson(writeAt(file, const <JsonStep>['description'], text.trim().isEmpty ? null : text), coalesce: 'group:description'),
-          ),
-        ),
-        GuiRow(
-          label: 'Members',
-          help: 'Assign in bulk from Browse NPCs.',
-          child: members.isEmpty
-              ? const dom.p(classes: 'animus-muted', <Widget>[Component.text('No members yet.')])
-              : dom.ul(classes: 'animus-group-members', attributes: const <String, String>{'data-group': 'members'}, <Widget>[
-                  for (final NpcEntry entry in members.take(24))
-                    dom.li(<Widget>[
-                      if (component.onOpen != null)
-                        Button.ghost(
-                          label: entry.name,
-                          size: ButtonSize.small,
-                          attributes: <String, String>{'aria-label': 'Open NPC ${entry.key}'},
-                          onPressed: () => component.onOpen!(DocumentKind.npc, entry.key),
-                        )
-                      else
-                        dom.span(<Widget>[Component.text(entry.name)]),
-                      dom.code(classes: 'animus-muted', <Widget>[Component.text(entry.key)]),
-                    ]),
-                  if (members.length > 24) dom.li(classes: 'animus-muted', <Widget>[Component.text('and ${members.length - 24} more')]),
-                ]),
-        ),
-        _tags(_doc),
-      ],
-    );
-  }
+  Widget _groupPart() => GroupPart(
+        id: component.document.id,
+        file: _file,
+        entries: npcEntries(component.workspaceDocuments),
+        groups: _groups,
+        tags: _tags(_doc),
+        diagnostics: component.diagnostics,
+        onOpen: component.onOpen,
+        onCommit: component.onCommit,
+        open: _open('group', true),
+        onToggle: (bool open) => setState(() => _opened['group'] = open),
+        onDescription: (String? text) => component.onJson(writeAt(_file, const <JsonStep>['description'], text), coalesce: 'group:description'),
+      );
 
   /// A group's `skins`: hashes each member takes one of by its UUID.
   Widget _skinPool(JsonMap doc) => GroupSkinPool(
@@ -504,6 +464,8 @@ class _NpcInspectorState extends State<NpcInspector> {
     return NpcSection(
       id: 'body',
       title: 'Body',
+      tip: 'The entity the NPC appears as, whether it is in the world, and its rig, pose and body traits.',
+      docs: Docs.npcAppearance,
       summary: summary,
       open: _open('body', false),
       onToggle: (bool open) => setState(() => _opened['body'] = open),
@@ -514,19 +476,20 @@ class _NpcInspectorState extends State<NpcInspector> {
           problems: fieldProblems(_spec('type'), doc['type'], r'$.type', _diagnostics),
           child: _bodyType(doc),
         ),
+        if (!_group) _field('spawned'),
         if (misplaced.isNotEmpty)
           MisplacedFields(
             fields: misplaced,
             onRemove: (String field) => _write(<JsonStep>[field], null),
             onRemoveAll: () => component.onJson((Object? latest) => withoutMisplacedBodyFields(asMap(latest), type), coalesce: 'npc:misplaced'),
           ),
-        if (!_group) _field('spawned'),
         InspectRow(
           label: 'Rig',
           labelFor: rigId,
           help: rigs.isEmpty
               ? 'No rigs. Import a Blockbench model.'
               : 'Replaces the body.',
+          tip: 'A rig document whose model the NPC shows in place of its vanilla body.',
           problems: diagnosticsAt(_diagnostics, r'$.rig', nested: true),
           child: dom.div(classes: 'animus-gui-line', <Widget>[
             GuiSelect(
@@ -548,6 +511,7 @@ class _NpcInspectorState extends State<NpcInspector> {
           label: 'Pose',
           labelFor: poseId,
           help: _group ? 'Player bodies only.' : '',
+          tip: 'How a player body stands, sits or lies. Other bodies always stand.',
           problems: diagnosticsAt(_diagnostics, r'$.pose'),
           child: GuiSelect(
             id: poseId,
@@ -559,7 +523,7 @@ class _NpcInspectorState extends State<NpcInspector> {
           ),
         ),
         if (type == 'minecraft:armor_stand') ...<Widget>[
-          const NpcSubhead('Armor stand'),
+          const NpcSubhead('Armor stand', tip: 'Which stand parts show, and the angle of each part in degrees.', docs: Docs.npcFlags),
           ArmorStandEditor(
             value: doc['armorStand'],
             schema: _schema,
@@ -574,7 +538,7 @@ class _NpcInspectorState extends State<NpcInspector> {
           diagnostics: _diagnostics,
           onChanged: (String field, Object? value) => _write(<JsonStep>[field], value),
         ),
-        const NpcSubhead('Traits'),
+        const NpcSubhead('Traits', tip: 'Vanilla entity flags such as glowing, baby and gravity, where the body type supports them.', docs: Docs.npcFlags),
         for (final String trait in _group ? _traits : traitsFor(type)) _field(trait),
         if (!_group)
           for (final String trait in _traits)
@@ -613,6 +577,8 @@ class _NpcInspectorState extends State<NpcInspector> {
     return NpcSection(
       id: 'attributes',
       title: 'Attributes',
+      tip: 'Vanilla entity attributes such as max health, speed and scale, set as base values.',
+      docs: Docs.npc,
       summary: summary,
       open: _open('attributes', false),
       onToggle: (bool open) => setState(() => _opened['attributes'] = open),
@@ -643,6 +609,8 @@ class _NpcInspectorState extends State<NpcInspector> {
     return NpcSection(
       id: 'position',
       title: 'Position',
+      tip: 'Where the NPC stands: world, coordinates and facing, plus named facings for the animus:pose action.',
+      docs: Docs.npcPoses,
       summary: '${asString(at['world']) ?? 'no world'} ${n(at['x'])}, ${n(at['y'])}, ${n(at['z'])}',
       open: _open('position', false),
       onToggle: (bool open) => setState(() => _opened['position'] = open),
@@ -683,11 +651,13 @@ class _NpcInspectorState extends State<NpcInspector> {
     return NpcSection(
       id: 'appearance',
       title: 'Appearance',
+      tip: 'How the NPC looks: skin, worn and held items, hologram lines and the nameplate.',
+      docs: Docs.npcAppearance,
       summary: summary,
       open: _open('appearance', false),
       onToggle: (bool open) => setState(() => _opened['appearance'] = open),
       children: <Widget>[
-        const NpcSubhead('Skin'),
+        const NpcSubhead('Skin', tip: 'The skin a player body wears, from a skin document in this workspace.', docs: Docs.npcAppearance),
         if (_group || _type == 'minecraft:player')
           SkinPicker(
             npcId: component.document.id,
@@ -703,24 +673,25 @@ class _NpcInspectorState extends State<NpcInspector> {
         else
           NoSkinNote(diagnostics: _diagnostics),
         if (_group) _skinPool(doc),
-        const NpcSubhead('Equipment'),
+        const NpcSubhead('Equipment', tip: 'Items the body wears and holds, by slot.', docs: Docs.npcAppearance),
         EquipmentEditor(
           value: doc['equipment'],
           bodyType: _type,
           diagnostics: _diagnostics,
           onChanged: (Object? value) => _write(<JsonStep>['equipment'], value),
         ),
-        const NpcSubhead('Hologram', help: 'Lines above the body.'),
+        const NpcSubhead('Hologram', help: 'Lines above the body.', tip: 'Text lines drawn above the body. & codes such as &a set the color.', docs: Docs.npcText),
         HologramLinesEditor(
           value: doc['hologram'],
           schema: _schema,
           diagnostics: _diagnostics,
           onChanged: (Object? value) => _write(<JsonStep>['hologram'], value),
         ),
-        const NpcSubhead('Nameplate'),
+        const NpcSubhead('Nameplate', tip: 'The name shown above the body.', docs: Docs.npcText),
         GuiRow(
           label: 'Show the name',
           help: 'Off hides it for everyone.',
+          tip: 'Whether the name shows above the body. Hologram lines still show when it is off.',
           problems: diagnosticsAt(_diagnostics, r'$.nameplate', nested: true),
           child: GuiSwitch(
             value: nameplate,
@@ -732,9 +703,9 @@ class _NpcInspectorState extends State<NpcInspector> {
     );
   }
 
-  // Behaviour ----------------------------------------------------------------
+  // Behavior -----------------------------------------------------------------
 
-  Widget _behaviour(JsonMap doc) {
+  Widget _behavior(JsonMap doc) {
     final List<String> listed = stringList(doc['behaviors']);
     final JsonMap navigation = asMap(_modules[navigationModule]);
     final String route = !_modules.containsKey(navigationModule)
@@ -744,18 +715,20 @@ class _NpcInspectorState extends State<NpcInspector> {
         : '${asList(navigation['points']).length} waypoints';
     return NpcSection(
       id: 'behaviour',
-      title: 'Behaviour',
+      title: 'Behavior',
+      tip: 'What the NPC does: the behaviors it runs, the route it walks, how it moves, and its stored inventory.',
+      docs: Docs.behaviors,
       summary: '${listed.length} behavior${listed.length == 1 ? '' : 's'}, $route',
       open: _open('behaviour', false),
       onToggle: (bool open) => setState(() => _opened['behaviour'] = open),
       children: <Widget>[
         _behaviors(doc),
-        const NpcSubhead('Route'),
+        const NpcSubhead('Route', tip: 'Waypoints the NPC walks, written here or taken from a route document.', docs: Docs.routes),
         _route(),
-        const NpcSubhead('Movement'),
+        const NpcSubhead('Movement', tip: 'How the NPC walks wherever it walks. A route\'s own speed wins over speed here.', docs: Docs.movement),
         _field('movement'),
         if (!_group) ...<Widget>[
-          const NpcSubhead('Inventory'),
+          const NpcSubhead('Inventory', tip: 'A stored inventory that behaviors and modules read. Nothing draws it.', docs: Docs.npcInventory),
           NpcInventoryEditor(value: doc['inventory'], diagnostics: _diagnostics, onChanged: (Object? value) => _write(<JsonStep>['inventory'], value)),
         ],
       ],
@@ -811,6 +784,8 @@ class _NpcInspectorState extends State<NpcInspector> {
     return NpcSection(
       id: 'modules',
       title: 'Modules',
+      tip: 'Optional features the NPC runs, such as combat, a shop or a mount, each under its namespace:name key.',
+      docs: Docs.npc,
       summary: keys.isEmpty ? 'none' : keys.map((String key) => key.startsWith('animus:') ? key.substring(7) : key).join(', '),
       open: _open('modules', false),
       onToggle: (bool open) => setState(() => _opened['modules'] = open),
@@ -822,7 +797,7 @@ class _NpcInspectorState extends State<NpcInspector> {
     final Object? raw = _modules[combatModule];
     if (raw == null) {
       return dom.div(classes: 'animus-npc-module', <Widget>[
-        const NpcSubhead('Combat', help: 'Off: invulnerable, never fights.'),
+        const NpcSubhead('Combat', help: 'Off: invulnerable, never fights.', tip: 'How the NPC fights: targeting, melee and ranged attacks, squads, guarding, pursuit and what it drops.', docs: Docs.combat),
         Button.secondary(label: 'Enable combat', size: ButtonSize.small, onPressed: () => _putModule(combatModule, <String, Object?>{'enabled': true})),
       ]);
     }
@@ -833,7 +808,7 @@ class _NpcInspectorState extends State<NpcInspector> {
       for (final NpcEntry entry in npcs) ...stringList(asMap(asMap(entry.modules[combatModule])['targets'])['squads']),
     };
     return dom.div(classes: 'animus-npc-module', <Widget>[
-      const NpcSubhead('Combat'),
+      const NpcSubhead('Combat', tip: 'How the NPC fights: targeting, melee and ranged attacks, squads, guarding, pursuit and what it drops.', docs: Docs.combat),
       CombatEditor(
         value: raw,
         diagnostics: _diagnostics,
@@ -977,6 +952,8 @@ class _NpcInspectorState extends State<NpcInspector> {
     return NpcSection(
       id: 'kept',
       title: 'Kept fields',
+      tip: 'Fields this editor has no control for. They stay in the file exactly as written.',
+      docs: Docs.npc,
       summary: <String>[...rest.map((FieldSpec field) => field.key), ...kept].join(', '),
       open: _open('kept', false),
       onToggle: (bool open) => setState(() => _opened['kept'] = open),

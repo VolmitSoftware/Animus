@@ -10,6 +10,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../config/docs_links.dart';
 import '../../logic/offline/sync_plan.dart';
+import '../../logic/offline/sync_step.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../../services/server/error_copy.dart';
@@ -87,6 +88,25 @@ class _SyncPageState extends State<SyncPage> {
       if (mounted) setState(() => _busy = null);
     }
   }
+
+  int get _serverErrors => (_validated ?? const <String, List<Diagnostic>>{}).values.fold<int>(
+    0,
+    (int total, List<Diagnostic> list) => total + list.where((Diagnostic d) => d.severity == DiagnosticSeverity.error).length,
+  );
+
+  SyncStep get _step {
+    final List<PushEntry> selection = _selection;
+    return syncNextStep(
+      pushCompared: _push != null,
+      pushSelected: selection.length,
+      validated: _validatedFor != null && _validatedFor == _selectionKey(selection) && _serverErrors == 0,
+      pullSelected: _pullSelected.length,
+      pullCompared: _pull != null,
+      pullWrites: _pull == null ? 0 : pullWrites(_pull!, _pullChoices).length,
+    );
+  }
+
+  ButtonVariant _variant(SyncStep step) => _step == step ? ButtonVariant.primary : ButtonVariant.secondary;
 
   List<PushEntry> get _selection => _push == null ? const <PushEntry>[] : pushSelection(_push!, _pushChoices);
 
@@ -239,10 +259,7 @@ class _SyncPageState extends State<SyncPage> {
     final PushPlan? plan = _push;
     final List<PushEntry> selection = _selection;
     final bool validatedNow = _validatedFor != null && _validatedFor == _selectionKey(selection);
-    final int serverErrors = (_validated ?? const <String, List<Diagnostic>>{}).values.fold<int>(
-      0,
-      (int total, List<Diagnostic> list) => total + list.where((Diagnostic d) => d.severity == DiagnosticSeverity.error).length,
-    );
+    final int serverErrors = _serverErrors;
     final bool waiting = _sync(server).pending != null;
     final List<PushEntry> replacing = <PushEntry>[
       for (final PushEntry entry in selection)
@@ -252,9 +269,16 @@ class _SyncPageState extends State<SyncPage> {
       classes: 'animus-panel',
       attributes: const <String, String>{'aria-labelledby': 'animus-push-title'},
       <Widget>[
-        const dom.h2(id: 'animus-push-title', <Widget>[Component.text('Push this workspace')]),
+        const dom.h2(id: 'animus-push-title', <Widget>[
+          InfoTip(
+            tip: 'Compare lists what is new or different on the server, Validate runs its checks, and Push applies the picked documents as one change set.',
+            docs: Docs.sending,
+            child: Component.text('Push this workspace'),
+          ),
+        ]),
         dom.div(classes: 'animus-row', <Widget>[
-          Button.primary(
+          Button(
+            variant: _variant(SyncStep.comparePush),
             label: plan == null ? 'Compare with ${server.name}' : 'Compare again',
             size: ButtonSize.small,
             disabled: !online || _busy != null,
@@ -343,13 +367,15 @@ class _SyncPageState extends State<SyncPage> {
             onChanged: (String value) => setState(() => _message = value),
           ),
           dom.div(classes: 'animus-row', <Widget>[
-            Button.secondary(
+            Button(
+              variant: _variant(SyncStep.validate),
               label: 'Validate ${selection.length} on the server',
               size: ButtonSize.small,
               disabled: !online || selection.isEmpty || _busy != null,
               onPressed: () => _validate(server),
             ),
-            Button.primary(
+            Button(
+              variant: _variant(SyncStep.push),
               label: 'Push ${selection.length} document${selection.length == 1 ? '' : 's'}',
               size: ButtonSize.small,
               disabled: !online || selection.isEmpty || !validatedNow || serverErrors > 0 || _busy != null || waiting || _confirmReplace,
@@ -409,7 +435,7 @@ class _SyncPageState extends State<SyncPage> {
         Button(
           label: text,
           size: ButtonSize.small,
-          variant: option == value ? ButtonVariant.primary : ButtonVariant.ghost,
+          variant: ButtonVariant.ghost,
           attributes: <String, String>{'role': 'radio', 'aria-checked': '${option == value}'},
           onPressed: () => onChanged(option),
         ),
@@ -430,7 +456,13 @@ class _SyncPageState extends State<SyncPage> {
       classes: 'animus-panel',
       attributes: const <String, String>{'aria-labelledby': 'animus-pull-title'},
       <Widget>[
-        const dom.h2(id: 'animus-pull-title', <Widget>[Component.text('Pull from the server')]),
+        const dom.h2(id: 'animus-pull-title', <Widget>[
+          InfoTip(
+            tip: 'Copies picked server documents into this workspace as one undo step. A document you also changed is only replaced when you choose so.',
+            docs: Docs.sending,
+            child: Component.text('Pull from the server'),
+          ),
+        ]),
         dom.div(classes: 'animus-row', <Widget>[
           Button.secondary(
             label: catalog == null ? 'Load the server catalog' : 'Reload the catalog',
@@ -455,7 +487,8 @@ class _SyncPageState extends State<SyncPage> {
               size: ButtonSize.small,
               onPressed: () => setState(() => _pullSelected.addAll(<String>[for (final CatalogEntry entry in shown) entry.key])),
             ),
-            Button.primary(
+            Button(
+              variant: _variant(SyncStep.comparePull),
               label: 'Compare ${_pullSelected.length} selected',
               size: ButtonSize.small,
               disabled: _pullSelected.isEmpty || !online || _busy != null,
@@ -493,7 +526,8 @@ class _SyncPageState extends State<SyncPage> {
               ], (PullChoice value) => setState(() => _pullChoices[entry.key] = value)),
             ]),
           dom.div(classes: 'animus-row', <Widget>[
-            Button.primary(
+            Button(
+              variant: _variant(SyncStep.pull),
               label: 'Pull $writes document${writes == 1 ? '' : 's'}',
               size: ButtonSize.small,
               disabled: writes == 0 || _busy != null,

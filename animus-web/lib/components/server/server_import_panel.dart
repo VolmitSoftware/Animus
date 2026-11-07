@@ -14,8 +14,10 @@ import '../../services/server/server_imports.dart';
 import '../../services/server/server_profiles.dart';
 import '../../services/server/transport.dart';
 import '../../state/server_hub.dart';
+import '../../state/workspace_route.dart';
 import '../gui/gui_fields.dart';
 import '../../config/docs_links.dart';
+import '../fold.dart';
 import '../info_tip.dart';
 import 'connection_pill.dart';
 import 'live_confirm.dart';
@@ -43,6 +45,9 @@ String importCategoryLabel(String category) => switch (category) {
 
 /// One issue from a staged report: a line of text, or an object with a
 /// message and the record it is about.
+/// The pair command that grants every scope an import needs.
+const String importPairCommand = '/animus editor pair scopes=read,import,apply:npcs,apply:behaviors,apply:gui';
+
 String importIssueLine(Object? issue) {
   if (issue is String) return issue;
   if (issue is Map<String, Object?>) {
@@ -55,9 +60,13 @@ String importIssueLine(Object? issue) {
 }
 
 class ServerImportPanel extends StatefulWidget {
-  const ServerImportPanel({required this.hub, required this.uploads, required this.worlds, super.key});
+  const ServerImportPanel({required this.hub, required this.uploads, required this.worlds, this.onState, super.key});
 
   final ServerHub hub;
+
+  /// Called with the import state after each server answer, so the screen
+  /// can step back while Apply is the next step.
+  final void Function(String state)? onState;
 
   /// The files chosen on the screen, in upload order.
   final List<ImportUpload> uploads;
@@ -123,6 +132,7 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
         _review = review;
         _accept.retainAll(<String>{for (final String category in importCategories) if ((review.pending[category] ?? 0) > 0) category});
       });
+      component.onState?.call(review.state);
     } on ImportRefused catch (refused) {
       if (mounted) setState(() => _error = refused.detail == null ? refused.message : '${refused.message} Server: ${refused.detail}');
     } on NotConnected catch (offline) {
@@ -167,7 +177,9 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
         ),
       ]),
       if (servers.isEmpty)
-        const dom.p(<Widget>[Component.text('No servers paired. Run /animus editor pair scopes=read,import,apply:npcs,apply:behaviors,apply:gui and open its link.')])
+        const dom.p(<Widget>[
+          InfoTip(tip: 'Run $importPairCommand and open its link.', docs: Docs.pairing, child: Component.text('No servers paired. Pair one with the import scope.')),
+        ])
       else ...<Widget>[
         dom.div(classes: 'animus-row', <Widget>[
           GuiSelect(
@@ -191,13 +203,20 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
         ]),
         if (online && !scoped)
           const dom.p(classes: 'animus-citizens-error', attributes: <String, String>{'role': 'alert'}, <Widget>[
-            Component.text('This pairing cannot import. Run /animus editor pair scopes=read,import,apply:npcs,apply:behaviors,apply:gui and open the new link.'),
+            InfoTip(tip: 'Run $importPairCommand and open the new link.', docs: Docs.tokens, child: Component.text('This pairing cannot import. Pair again with the import scope.')),
           ]),
         if (path == ConnectionPath.relay)
           dom.p(classes: 'animus-muted', attributes: const <String, String>{'data-testid': 'import-relay-note'}, <Widget>[
             Component.text('Relay limit: ${formatSize(relayUploadBytes)} per file. Use the direct path for larger saves.'),
           ]),
         dom.div(classes: 'animus-row', <Widget>[
+          const dom.span(classes: 'animus-muted', <Widget>[
+            InfoTip(
+              tip: 'What staging does when an NPC from this save is already on the server: refuse, replace the earlier import, or install a labeled second copy.',
+              docs: Docs.liveImports,
+              child: Component.text('On collision'),
+            ),
+          ]),
           GuiSelect(
             value: _mode,
             options: const <String>['reject', 'replace', 'duplicate'],
@@ -215,9 +234,10 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
               size: ComponentSize.sm,
               onChanged: (String value) => setState(() => _label = value),
             ),
-          Button.primary(
+          Button.secondary(
             label: _busy == 'Uploading' ? 'Uploading' : 'Upload and stage',
             icon: ArcaneIcon.upload(),
+            size: ButtonSize.small,
             disabled: !online || !scoped || _busy != null || component.uploads.isEmpty || problems.isNotEmpty || review?.state == 'applied',
             onPressed: () => _run('Uploading', _uploadAndStage),
           ),
@@ -268,8 +288,7 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
           for (final String line in review.lines) dom.li(<Widget>[Component.text(line)]),
         ]),
       if (issues.isNotEmpty)
-        dom.details(<Widget>[
-          dom.summary(<Widget>[Component.text('Issues (${issues.length})')]),
+        Fold(summary: <Widget>[Component.text('Issues (${issues.length})')], children: <Widget>[
           dom.ul(classes: 'animus-citizens-lines', <Widget>[for (final Object? issue in issues) dom.li(<Widget>[Component.text(importIssueLine(issue))])]),
         ]),
       if (importId != null && _confirm == 'apply')
@@ -297,6 +316,7 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
             Button.primary(
               label: _busy == 'Applying' ? 'Applying' : 'Apply',
               icon: ArcaneIcon.check(),
+              size: ButtonSize.small,
               disabled: busy,
               attributes: <String, String>{'id': _actionId('apply')},
               onPressed: () => setState(() => _confirm = 'apply'),
@@ -305,6 +325,7 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
             Button.secondary(
               label: 'Roll back',
               icon: ArcaneIcon.undo(),
+              size: ButtonSize.small,
               disabled: busy,
               attributes: <String, String>{'id': _actionId('rollback')},
               onPressed: () => setState(() => _confirm = 'rollback'),
@@ -315,7 +336,13 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
   }
 
   List<Widget> _acceptView(ImportReview review, String importId) => <Widget>[
-        const dom.h3(<Widget>[Component.text('Review categories')]),
+        const dom.h3(<Widget>[
+          InfoTip(
+            tip: 'Each category stays off until accepted: spawning, patrols, combat, riding, shops, builds and Denizen behaviors.',
+            docs: Docs.liveImports,
+            child: Component.text('Review categories'),
+          ),
+        ]),
         dom.div(classes: 'animus-import-categories', attributes: const <String, String>{'data-testid': 'import-categories'}, <Widget>[
           for (final String category in importCategories)
             ArcaneCheckbox(
@@ -350,6 +377,11 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
               attributes: <String, String>{'id': _actionId('accept-all')},
               onPressed: () => setState(() => _confirm = 'accept-all'),
             ),
+          ]),
+        if (_serverId != null)
+          dom.p(attributes: const <String, String>{'data-testid': 'import-next'}, <Widget>[
+            dom.a(href: ServerRoute(_serverId!, const <String>[]).format(), const <Widget>[Component.text('Open the imported NPCs')]),
+            const dom.span(classes: 'animus-muted', <Widget>[Component.text(' in the server catalog; filter by citizens- or shopkeeper-.')]),
           ]),
       ];
 

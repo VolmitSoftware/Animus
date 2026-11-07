@@ -13,11 +13,13 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/recording/recording_edit.dart';
 import '../../logic/recording/recording_model.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart' show JsonEdit, prefersReducedMotion;
+import '../info_tip.dart';
 import 'recording_details.dart';
 
 /// The id of the scrub input.
@@ -176,12 +178,20 @@ class _RecordingViewState extends State<RecordingView> {
       attributes: const <String, String>{'data-recording': 'facts'},
       <Widget>[
         for (final (String label, String value) in facts) ...<Widget>[
-          dom.dt(<Widget>[Component.text(label)]),
+          dom.dt(<Widget>[withTip(Component.text(label), _factTips[label], docs: Docs.recordings)]),
           dom.dd(<Widget>[Component.text(value)]),
         ],
       ],
     );
   }
+
+  /// Tips on the facts that need one.
+  static const Map<String, String> _factTips = <String, String>{
+    'Origin': 'Where the take started. Each frame stores its position as an offset from here.',
+    'Sample ticks': 'Ticks between two captured frames, 1 to 20.',
+    'Flag changes': 'Frames where on ground, sneaking, sprinting, swimming, gliding or jumping turns on or off.',
+    'Revision': 'A number raised on each change, 1 or more.',
+  };
 
   static String _f(double value) => value.toStringAsFixed(2);
 
@@ -314,6 +324,7 @@ class _RecordingViewState extends State<RecordingView> {
           attributes: <String, String>{'aria-hidden': 'true', 'style': '--trim-from: ${(from / width * 100).toStringAsFixed(2)}%; --trim-to: ${(to / width * 100).toStringAsFixed(2)}%'},
           const <Widget>[dom.span(<Widget>[])],
         ),
+        dom.div(<Widget>[withTip(const Component.text('Trim range'), 'Pick a start and end on the scrub, then Trim. Frames and events outside are dropped; Undo brings them back.', docs: Docs.recordings)]),
         dom.span(
           classes: 'animus-recording-readout',
           attributes: const <String, String>{'data-recording': 'trim-range', 'aria-live': 'polite'},
@@ -356,7 +367,7 @@ class _RecordingViewState extends State<RecordingView> {
 
   Widget _events(Recording recording, double tick) {
     return dom.div(classes: 'animus-recording-events', <Widget>[
-      const dom.h2(<Widget>[Component.text('Events')]),
+      dom.h2(<Widget>[withTip(const Component.text('Events'), 'Swings, equipment changes and item use during the take. Click a tick to scrub there.', docs: Docs.recordings)]),
       if (recording.events.isEmpty)
         const dom.p(classes: 'animus-muted', <Widget>[Component.text('No events recorded.')])
       else

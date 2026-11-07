@@ -8,12 +8,15 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/npc/group_merge.dart';
 import '../../logic/npc/group_model.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
+import '../fold.dart';
 import '../gui/gui_fields.dart';
+import '../info_tip.dart';
 import '../select/skin_faces.dart';
 
 /// Skin hashes as the server stores them.
@@ -50,6 +53,7 @@ class NpcGroupsList extends StatelessWidget {
     return GuiRow(
       label: 'Groups',
       help: 'First to last; own fields win.',
+      tip: "Trait groups this NPC takes values from. A later group overrides an earlier one, and the NPC's own fields override every group.",
       problems: diagnosticsAt(diagnostics, r'$.groups', nested: true),
       child: dom.div(classes: 'animus-npc-groups', attributes: const <String, String>{'data-npc': 'groups'}, <Widget>[
         if (listed.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No groups.')]),
@@ -124,11 +128,13 @@ class EffectiveTable extends StatelessWidget {
   Widget build(BuildContext context) => dom.div(classes: 'animus-effective', <Widget>[
         dom.div(classes: 'animus-effective-wrap', <Widget>[
           dom.table(classes: 'animus-effective-table', attributes: const <String, String>{'aria-label': 'Effective definition'}, <Widget>[
-            const dom.thead(<Widget>[
+            dom.thead(<Widget>[
               dom.tr(<Widget>[
-                dom.th(attributes: <String, String>{'scope': 'col'}, <Widget>[Component.text('Field')]),
-                dom.th(attributes: <String, String>{'scope': 'col'}, <Widget>[Component.text('Value')]),
-                dom.th(attributes: <String, String>{'scope': 'col'}, <Widget>[Component.text('From')]),
+                const dom.th(attributes: <String, String>{'scope': 'col'}, <Widget>[Component.text('Field')]),
+                const dom.th(attributes: <String, String>{'scope': 'col'}, <Widget>[Component.text('Value')]),
+                dom.th(attributes: <String, String>{'scope': 'col'}, <Widget>[
+                  withTip(const Component.text('From'), 'The group that set the value, or this NPC when its own field wins.', docs: Docs.groupMerge),
+                ]),
               ]),
             ]),
             dom.tbody(<Widget>[
@@ -157,10 +163,11 @@ class EffectiveTable extends StatelessWidget {
             ]),
           ]),
         ]),
-        dom.details(classes: 'animus-effective-json', <Widget>[
-          const dom.summary(<Widget>[Component.text('Effective JSON')]),
-          dom.pre(<Widget>[dom.code(<Widget>[Component.text(prettyJson(effective.json))])]),
-        ]),
+        Fold(
+          classes: 'animus-effective-json',
+          summary: <Widget>[withTip(const Component.text('Effective JSON'), 'The merged definition the server runs for this NPC.', docs: Docs.groupMerge)],
+          children: <Widget>[dom.pre(<Widget>[dom.code(<Widget>[Component.text(prettyJson(effective.json))])])],
+        ),
       ]);
 }
 
@@ -198,6 +205,7 @@ class _GroupSkinPoolState extends State<GroupSkinPool> {
     return GuiRow(
       label: 'Skin pool',
       help: 'Each member keeps one, picked by UUID. Its own skin wins.',
+      tip: 'Skins the members share. Each member always gets the same one, chosen from its UUID.',
       problems: diagnosticsAt(component.diagnostics, r'$.skins', nested: true),
       child: dom.div(classes: 'animus-group-skins', <Widget>[
         if (pool.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No pool. Members use the skin above.')]),

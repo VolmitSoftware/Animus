@@ -7,6 +7,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_layout.dart';
@@ -334,7 +335,7 @@ class _InventoryEditorState extends State<InventoryEditor> {
           onChanged: (bool on) => _write(<JsonStep>['closeOnTeleport'], on ? null : false),
         ),
       ),
-      GuiSection(title: 'Refresh', open: refresh.isNotEmpty, children: <Widget>[
+      GuiSection(title: 'Refresh', open: refresh.isNotEmpty, tip: 'How often the open window redraws its title, slots and conditions.', docs: Docs.chestGuis, children: <Widget>[
         guiFieldRow('Mode', r'$.refresh.mode', d, help: 'dynamic redraws changes, always redraws all',
             (String id) => GuiSelect(id: id, value: asString(refresh['mode']), options: const <String>['dynamic', 'always'], allowNone: true, noneLabel: 'dynamic', onChanged: (String? v) => setRefresh('mode', v))),
         guiFieldRow('Title', r'$.refresh.titleTicks', d, help: '0 to 1200 ticks, 0 is off',
@@ -365,8 +366,17 @@ class _InventoryEditorState extends State<InventoryEditor> {
   Widget _keys(JsonMap keys) {
     final List<JsonStep> owner = <JsonStep>[...chestFieldOwner(_doc, _variant, 'keys'), 'keys'];
     return dom.div(classes: 'animus-gui-fields', <Widget>[
+      Button.secondary(
+        label: 'Add key',
+        size: ButtonSize.small,
+        onPressed: () {
+          const String pool = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#@*+=';
+          final String char = pool.split('').firstWhere((String c) => !keys.containsKey(c), orElse: () => '?');
+          _write(<JsonStep>[...owner, char], <String, Object?>{'type': 'decoration', 'icon': <String, Object?>{'type': 'item', 'item': 'minecraft:stone'}});
+        },
+      ),
       for (final MapEntry<String, Object?> entry in keys.entries)
-        GuiSection(title: 'Key ${entry.key}', open: false, children: <Widget>[
+        GuiSection(title: 'Key ${entry.key}', open: false, tip: 'The component drawn in every mask cell with this character.', docs: Docs.chestGuis, children: <Widget>[
           GuiRow(
             label: 'Character',
             help: 'One character, updates the mask',
@@ -394,15 +404,6 @@ class _InventoryEditorState extends State<InventoryEditor> {
             onChanged: (JsonMap next) => _write(<JsonStep>[...owner, entry.key], next),
           ),
         ]),
-      Button.secondary(
-        label: 'Add key',
-        size: ButtonSize.small,
-        onPressed: () {
-          const String pool = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#@*+=';
-          final String char = pool.split('').firstWhere((String c) => !keys.containsKey(c), orElse: () => '?');
-          _write(<JsonStep>[...owner, char], <String, Object?>{'type': 'decoration', 'icon': <String, Object?>{'type': 'item', 'item': 'minecraft:stone'}});
-        },
-      ),
     ]);
   }
 
@@ -452,7 +453,7 @@ class _InventoryEditorState extends State<InventoryEditor> {
         child: GuiNumberInput(value: asInt(list['pageSize']), label: 'Page size', onChanged: (num? v) => set('pageSize', v)),
       ),
       GuiRow(label: 'Refresh', help: 'Ticks between source reads.', child: GuiNumberInput(value: asInt(list['refreshTicks']), label: 'List refresh ticks', onChanged: (num? v) => set('refreshTicks', v))),
-      GuiSection(title: 'Template', children: <Widget>[
+      GuiSection(title: 'Template', tip: 'The component drawn once per entry, in each cell of the area.', docs: Docs.chestGuis, children: <Widget>[
         ComponentEditor(
           component: asMap(list['template']),
           path: r'$.list.template',
@@ -473,8 +474,16 @@ class _InventoryEditorState extends State<InventoryEditor> {
       const dom.p(classes: 'animus-gui-help', <Widget>[
         InfoTip(tip: 'The highest-priority variant whose condition holds replaces the title, mask, keys or slots it names. Nothing merges.', child: Component.text('About variants')),
       ]),
+      Button.secondary(
+        label: 'Add variant',
+        size: ButtonSize.small,
+        onPressed: () => _write(<JsonStep>['variants'], <Object?>[
+          ...variants,
+          <String, Object?>{'id': 'variant${variants.length + 1}', 'priority': 0, 'when': 'viewer.level > 10', 'presentation': <String, Object?>{'title': asString(doc['title']) ?? ''}},
+        ]),
+      ),
       for (int index = 0; index < variants.length; index++)
-        GuiSection(title: 'Variant ${asString(asMap(variants[index])['id']) ?? index}', open: _variant == index, children: <Widget>[
+        GuiSection(title: 'Variant ${asString(asMap(variants[index])['id']) ?? index}', open: _variant == index, tip: 'Replaces the fields it names while When holds. Show in the window previews it.', docs: Docs.chestGuis, children: <Widget>[
           GuiRow(
             label: 'Id',
             problems: diagnosticsAt(_diagnostics, '\$.variants[$index].id'),
@@ -521,14 +530,6 @@ class _InventoryEditorState extends State<InventoryEditor> {
             ),
           ]),
         ]),
-      Button.secondary(
-        label: 'Add variant',
-        size: ButtonSize.small,
-        onPressed: () => _write(<JsonStep>['variants'], <Object?>[
-          ...variants,
-          <String, Object?>{'id': 'variant${variants.length + 1}', 'priority': 0, 'when': 'viewer.level > 10', 'presentation': <String, Object?>{'title': asString(doc['title']) ?? ''}},
-        ]),
-      ),
     ]);
   }
 
@@ -538,8 +539,19 @@ class _InventoryEditorState extends State<InventoryEditor> {
       const dom.p(classes: 'animus-gui-help', <Widget>[
         InfoTip(tip: 'Run a named list from any action with call. Calls must exist and must not loop.', child: Component.text('About named actions')),
       ]),
+      Button.secondary(
+        label: 'Add named list',
+        size: ButtonSize.small,
+        onPressed: () {
+          int n = named.length + 1;
+          while (named.containsKey('list$n')) {
+            n++;
+          }
+          _write(<JsonStep>['actions', 'list$n'], <Object?>[]);
+        },
+      ),
       for (final MapEntry<String, Object?> entry in named.entries)
-        GuiSection(title: entry.key, count: asList(entry.value).length, children: <Widget>[
+        GuiSection(title: entry.key, count: asList(entry.value).length, tip: 'Run this list from any action with call.', docs: Docs.guiActions, children: <Widget>[
           GuiRow(
             label: 'Name',
             problems: diagnosticsAt(_diagnostics, childPath(r'$.actions', entry.key)),
@@ -567,17 +579,6 @@ class _InventoryEditorState extends State<InventoryEditor> {
             onChanged: (JsonList next) => _write(<JsonStep>['actions', entry.key], next),
           ),
         ]),
-      Button.secondary(
-        label: 'Add named list',
-        size: ButtonSize.small,
-        onPressed: () {
-          int n = named.length + 1;
-          while (named.containsKey('list$n')) {
-            n++;
-          }
-          _write(<JsonStep>['actions', 'list$n'], <Object?>[]);
-        },
-      ),
     ]);
   }
 }

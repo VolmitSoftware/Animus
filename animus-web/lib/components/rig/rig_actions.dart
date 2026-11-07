@@ -5,6 +5,10 @@ library;
 import 'dart:typed_data';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
+import 'package:jaspr/dom.dart' as dom;
+import 'package:jaspr/jaspr.dart' show Component;
+
+import '../../config/docs_links.dart';
 
 import '../../logic/bbmodel_import.dart';
 import '../../logic/data_folder_export.dart';
@@ -14,6 +18,7 @@ import '../../model/document_kind.dart';
 import '../../services/browser.dart';
 import '../../state/editor_store.dart';
 import '../../state/workspace_repository.dart';
+import '../info_tip.dart';
 
 /// Picks a `.bbmodel`, imports it as a new rig in [namespace] with its
 /// animations and pack sources, and returns the rig id; null when cancelled
@@ -62,4 +67,30 @@ void exportWorkspace(WorkspaceSnapshot workspace) {
   ArcaneSonner.success(
     'Saved $name: ${workspace.documents.length} documents, ${workspace.resources.length} pack files. Unzip over plugins/Animus.',
   );
+}
+
+/// The rig editor's file buttons: Blockbench import and the server files
+/// download, under one labelled caption.
+class RigFileButtons extends StatelessWidget {
+  const RigFileButtons({required this.busy, required this.onImport, required this.onDownload, super.key});
+
+  /// True while an import runs.
+  final bool busy;
+  final void Function() onImport;
+  final void Function() onDownload;
+
+  @override
+  Widget build(BuildContext context) => dom.div(classes: 'animus-rig-field', <Widget>[
+        dom.span(<Widget>[
+          withTip(
+            const Component.text('Files'),
+            'Import makes a new rig from a Blockbench model. Download zips this rig, its animations and pack files for the server.',
+            docs: Docs.blockbench,
+          ),
+        ]),
+        dom.div(classes: 'animus-row', <Widget>[
+          Button.secondary(label: 'Import .bbmodel', icon: ArcaneIcon.upload(), size: ButtonSize.small, disabled: busy, onPressed: onImport),
+          Button.secondary(label: 'Download server files', icon: ArcaneIcon.download(), size: ButtonSize.small, onPressed: onDownload),
+        ]),
+      ]);
 }

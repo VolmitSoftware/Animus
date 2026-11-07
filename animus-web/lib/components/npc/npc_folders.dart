@@ -12,6 +12,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../config/docs_links.dart';
 import '../../logic/npc/npc_bulk.dart';
 import '../../logic/npc/npc_catalog.dart';
 import '../../logic/npc/npc_paths.dart';
@@ -20,6 +21,7 @@ import '../../model/document_kind.dart';
 import '../../state/editor_store.dart';
 import '../../state/workspace_route.dart';
 import '../gui/gui_fields.dart';
+import '../info_tip.dart';
 
 /// Folder state that outlives the browser component but not the page:
 /// folders made here that hold no NPC yet. A folder exists only through its
@@ -223,7 +225,13 @@ class _NpcFolderPanelState extends State<NpcFolderPanel> {
     final int focus = _focus.clamp(0, rows.length - 1);
     final NpcFolderNode current = byPath[component.selected] ?? root;
     return dom.div(classes: 'animus-npc-folder-panel', <Widget>[
-      const dom.h3(attributes: <String, String>{'id': 'animus-npc-folders-title'}, <Widget>[Component.text('Folders')]),
+      dom.h3(attributes: const <String, String>{'id': 'animus-npc-folders-title'}, <Widget>[
+        withTip(
+          const Component.text('Folders'),
+          'Subfolders of npcs/ in the data folder. Pick one to filter the list; arrows move through the tree, Left and Right fold it.',
+          docs: Docs.editorDocuments,
+        ),
+      ]),
       dom.ul(
         classes: 'animus-npc-tree',
         attributes: const <String, String>{'role': 'tree', 'aria-labelledby': 'animus-npc-folders-title'},
@@ -333,7 +341,7 @@ class _NpcFolderPanelState extends State<NpcFolderPanel> {
             onChanged: (String value) => setState(() => _text = value),
           ),
           dom.div(classes: 'animus-row', <Widget>[
-            Button.primary(label: 'Make folder', size: ButtonSize.small, disabled: _busy, onPressed: () => _create(current, existing)),
+            Button.secondary(label: 'Make folder', size: ButtonSize.small, disabled: _busy, onPressed: () => _create(current, existing)),
             Button.ghost(label: 'Cancel', size: ButtonSize.small, onPressed: _cancel),
           ]),
         ],
@@ -347,7 +355,7 @@ class _NpcFolderPanelState extends State<NpcFolderPanel> {
             onChanged: (String value) => setState(() => _text = value),
           ),
           dom.div(classes: 'animus-row', <Widget>[
-            Button.primary(
+            Button.secondary(
               label: 'Rename folder',
               size: ButtonSize.small,
               disabled: _busy,
@@ -365,7 +373,7 @@ class _NpcFolderPanelState extends State<NpcFolderPanel> {
             onChanged: (String value) => setState(() => _target = value),
           ),
           dom.div(classes: 'animus-row', <Widget>[
-            Button.primary(
+            Button.secondary(
               label: 'Move folder',
               size: ButtonSize.small,
               disabled: _busy,
@@ -398,7 +406,9 @@ class _NpcFolderPanelState extends State<NpcFolderPanel> {
         },
       },
       <Widget>[
-        dom.p(classes: 'animus-muted animus-npc-folder-where', <Widget>[Component.text('Selected: $where')]),
+        dom.p(classes: 'animus-muted animus-npc-folder-where', <Widget>[
+          withTip(Component.text('Selected: $where'), 'New folder, rename, move and delete act on this folder. A rename or move rewrites every NPC inside it as one undo step.'),
+        ]),
         dom.div(classes: 'animus-npc-folder-buttons', <Widget>[
           Button.secondary(label: 'New folder', size: ButtonSize.small, disabled: _busy, onPressed: () => _start(_Operation.create, current)),
           if (!rootSelected) ...<Widget>[
