@@ -28,12 +28,19 @@ public final class RecordingWriter {
     public static Outcome save(DocumentStore store, CatalogReloads reloads, RecordingCapture.Take take, int maximumBytes) throws IOException {
         String path = DocumentKind.RECORDING.folder() + "/" + take.id() + ".json";
         String current = store.read(path);
-        RecordingDocument document = take.document(EditorDocuments.revision(current) + 1);
+        RecordingDocument document = take.document(EditorDocuments.revision(current) + 1, kept(current, maximumBytes));
         String content = document.serialize();
         int bytes = content.getBytes(StandardCharsets.UTF_8).length;
         if (bytes > maximumBytes) return new TooLarge(bytes, maximumBytes);
         String transaction = store.commit(List.of(new DocumentStore.Change(path, JsonDocuments.hash(current), content)));
         reloads.reload(new CatalogChange(Set.of(DocumentKind.RECORDING), Set.of(), false));
         return new Saved(document.revision(), bytes, transaction, document.frames().size(), document.events().size());
+    }
+
+    /** The details an owner set on the recording a new take replaces; none when there is none or it does not parse. */
+    private static RecordingDocument.Details kept(String current, int maximumBytes) {
+        if (current == null) return RecordingDocument.Details.NONE;
+        try { return RecordingDocument.parse(current, maximumBytes).details(); }
+        catch (IOException unreadable) { return RecordingDocument.Details.NONE; }
     }
 }

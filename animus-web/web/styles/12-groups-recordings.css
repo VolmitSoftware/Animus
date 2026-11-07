@@ -210,6 +210,13 @@
   grid-template-areas: 'stage';
 }
 
+/* Split view gives the recording half the width: one column, as on a
+   narrow screen. */
+.animus-views.is-split .animus-recording:not(.is-preview) {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'facts' 'stage' 'events';
+}
+
 .animus-recording-facts {
   grid-area: facts;
   display: grid;
@@ -315,6 +322,53 @@ html.light .animus-recording-marker {
   font-family: var(--font-mono);
   font-size: 0.8125rem;
   overflow-wrap: anywhere;
+}
+
+/* Details form above the facts, and the trim controls under the scrub. The
+   cut part of the path and of the trim bar stays grey; the kept part is the
+   foreground colour, not pink, so pink still marks only the scrub. */
+.animus-recording-details {
+  display: grid;
+  gap: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--animus-border);
+  min-width: 0;
+}
+
+.animus-recording-line.is-cut {
+  stroke-dasharray: 4 4;
+  opacity: 0.6;
+}
+
+.animus-recording-line.is-kept {
+  stroke: currentColor;
+}
+
+.animus-recording-trim {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.animus-recording-trim-bar {
+  position: relative;
+  height: 0.5rem;
+  border: 1px solid var(--animus-border);
+  background: var(--animus-panel);
+}
+
+.animus-recording-trim-bar span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--trim-from, 0%);
+  right: calc(100% - var(--trim-to, 100%));
+  background: currentColor;
+}
+
+.animus-recording-trim-actions {
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .animus-recording-events {

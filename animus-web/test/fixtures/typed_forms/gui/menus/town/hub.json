@@ -1,0 +1,181 @@
+{
+  "offset": [
+    0,
+    1.6,
+    2.5
+  ],
+  "lockPosition": false,
+  "followPlayer": false,
+  "maxDistance": 6,
+  "closeOnTeleport": true,
+  "components": [
+    {
+      "id": "title",
+      "offset": [
+        0,
+        1.1,
+        0
+      ],
+      "data": {
+        "type": "decoration",
+        "icon": {
+          "type": "text",
+          "text": "&6&lTown hub\n&7Hello, {{ viewer.name }}"
+        }
+      }
+    },
+    {
+      "id": "market",
+      "offset": [
+        -0.8,
+        0.4,
+        0
+      ],
+      "data": {
+        "type": "button",
+        "icon": {
+          "type": "item",
+          "item": "minecraft:emerald",
+          "name": "&aMarket"
+        },
+        "actions": [
+          {
+            "type": "call",
+            "action": "main"
+          },
+          {
+            "type": "navigate",
+            "mode": "push",
+            "target": "town:hub",
+            "list": "goods"
+          }
+        ]
+      }
+    },
+    {
+      "id": "stone",
+      "offset": [
+        0,
+        0.4,
+        0
+      ],
+      "data": {
+        "type": "decoration",
+        "icon": {
+          "type": "block",
+          "block": "minecraft:stone_bricks"
+        }
+      }
+    },
+    {
+      "id": "head",
+      "offset": [
+        0.8,
+        0.4,
+        0
+      ],
+      "data": {
+        "type": "button",
+        "icon": {
+          "type": "playerHead",
+          "player": "{{ viewer.name }}"
+        },
+        "actions": [
+          {
+            "type": "message",
+            "message": "&bThat is you."
+          }
+        ]
+      }
+    },
+    {
+      "id": "sound",
+      "offset": [
+        0,
+        -0.3,
+        0
+      ],
+      "data": {
+        "type": "toggle",
+        "condition": "session.muted == true",
+        "expectedValue": "true",
+        "trueIcon": {
+          "type": "text",
+          "text": "&cSound off"
+        },
+        "falseIcon": {
+          "type": "text",
+          "text": "&aSound on"
+        },
+        "trueActions": [
+          {
+            "type": "setSession",
+            "var": "muted",
+            "value": "false"
+          }
+        ],
+        "falseActions": [
+          {
+            "type": "setSession",
+            "var": "muted",
+            "value": "true"
+          }
+        ]
+      }
+    },
+    {
+      "id": "close",
+      "offset": [
+        0,
+        -0.9,
+        0
+      ],
+      "data": {
+        "type": "button",
+        "icon": {
+          "type": "item",
+          "item": "minecraft:barrier",
+          "name": "&cClose"
+        },
+        "actions": [
+          {
+            "type": "close"
+          }
+        ]
+      }
+    },
+    {
+      "id": "goods",
+      "offset": [
+        0,
+        -1.5,
+        0
+      ],
+      "data": {
+        "type": "list",
+        "var": "entry",
+        "source": "['a', 'b']",
+        "template": {
+          "type": "decoration",
+          "icon": {
+            "type": "text",
+            "text": "{{ entry }}"
+          }
+        }
+      }
+    }
+  ],
+  "actions": {
+    "main": [
+      {
+        "type": "message",
+        "message": "Hi"
+      }
+    ],
+    "bye": [
+      {
+        "type": "close"
+      }
+    ]
+  }
+}

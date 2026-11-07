@@ -11,7 +11,7 @@ class RecordingRunTest {
     private static final RecordingDocument LINE = new RecordingDocument(1, "walk", UUID.fromString("8667ba71-b85a-4004-af54-457a9734eed7"), "world",
             new RecordingDocument.Origin(0, 64, 0, 0, 0), 2, 1000,
             List.of(new RecordingFrame(0, 0, 0, 0, 0, 0, RecordingFrame.ON_GROUND), new RecordingFrame(1000, 100, 0, 0, 0, 0, RecordingFrame.ON_GROUND)), List.of());
-    private static final RecordingSource ONCE = new RecordingSource("walk", Playback.ONCE);
+    private static final RecordingSource ONCE = new RecordingSource("walk", java.util.Optional.of(Playback.ONCE));
 
     @Test void aRunWalksInToItsCursorThenPlays() {
         RecordingRun run = new RecordingRun(ONCE, LINE);
@@ -73,7 +73,7 @@ class RecordingRunTest {
         assertEquals(250, resumed.playback().cursor());
         assertEquals(RecordingRun.Phase.WALKING_IN, resumed.phase());
         assertEquals(25, resumed.goal().x(), 1e-9);
-        assertEquals(0, RecordingRun.resume(new RecordingSource("walk", Playback.LOOP), LINE, Optional.of(run.state())).playback().cursor());
+        assertEquals(0, RecordingRun.resume(new RecordingSource("walk", java.util.Optional.of(Playback.LOOP)), LINE, Optional.of(run.state())).playback().cursor());
         assertEquals(0, RecordingRun.resume(ONCE, LINE, Optional.empty()).playback().cursor());
     }
 

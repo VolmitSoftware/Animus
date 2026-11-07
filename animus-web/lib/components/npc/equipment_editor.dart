@@ -8,16 +8,12 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
-import '../../logic/inspect/schema_fields.dart';
-import '../../logic/suggest/completion_sources.dart';
-import '../../logic/suggest/field_profile.dart';
-import '../../logic/suggest/field_profiles.dart';
 import '../../mc/npc/npc_look.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
 import '../inspect/inspect_fields.dart';
+import '../mc/item_picker.dart';
 import '../mc/mc_item_icons.dart';
-import '../select/suggest_input.dart';
 
 /// What each slot holds, for the help line.
 const Map<NpcSlot, String> slotHelp = <NpcSlot, String>{
@@ -150,12 +146,12 @@ class _EquipmentEditorState extends State<EquipmentEditor> {
             dom.span(classes: 'animus-gui-help', <Widget>[Component.text(slotHelp[slot]!)]),
           ]),
           dom.div(classes: 'animus-gui-line', <Widget>[
-            SuggestInput(
+            ItemPicker(
               value: id,
               label: 'equipment.${slot.key}',
-              profile: idProfile(const ValueRef.registry(RegistryKind.item)),
               placeholder: slot == NpcSlot.saddle ? 'minecraft:saddle' : 'minecraft:iron_sword',
-              suggestions: <FieldOption>[for (final String option in slotSuggestions(slot)) FieldOption(option)],
+              preferred: slotSuggestions(slot),
+              icon: false,
               onChanged: (String value) => value.trim().isEmpty ? _put(slot, null) : field('id', value.trim()),
             ),
             if (id.isNotEmpty) GuiIconButton(icon: ArcaneIcon.x(size: IconSize.sm), label: 'Clear ${slotLabel(slot).toLowerCase()}', onPressed: () => _put(slot, null)),

@@ -12,10 +12,13 @@
 /// pool beside the skin.
 library;
 
+import 'dart:typed_data';
+
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../logic/citizens/definition_validation.dart' show effectiveActivationDiagnostics;
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/inspect_schemas.dart';
 import '../../logic/inspect/schema_fields.dart';
@@ -25,14 +28,19 @@ import '../../logic/npc/group_model.dart';
 import '../../logic/npc/npc_appearance.dart';
 import '../../logic/npc/npc_attributes.dart';
 import '../../logic/npc/npc_catalog.dart';
+import '../../logic/npc/reference_options.dart';
+import '../../logic/npc/route_copy.dart';
 import '../../logic/npc/route_model.dart';
+import '../../logic/npc/skin_edits.dart';
 import '../../logic/suggest/field_profile.dart';
-import '../../mc/rigs/mc_rigs.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
+import '../conversation/conversation_attach.dart' show ConversationCommit;
 import '../gui/gui_fields.dart';
 import '../npc/appearance_editor.dart';
 import '../npc/attributes_editor.dart';
+import '../npc/behavior_list.dart';
+import '../npc/body_type_field.dart';
 import '../npc/combat_editor.dart';
 import '../npc/equipment_editor.dart';
 import '../npc/group_parts.dart';
@@ -43,6 +51,7 @@ import '../npc/npc_section.dart';
 import '../npc/skin_picker.dart';
 import '../info_tip.dart';
 import 'inspect_fields.dart';
+import 'typed_values_editor.dart';
 import '../select/suggest_input.dart';
 
 /// Keys the NPC inspector lays out itself; the rest show under kept fields.
@@ -101,6 +110,9 @@ class NpcInspector extends StatefulWidget {
     this.workspaceDocuments = const <AnimusDocument>[],
     this.onSkinLoaded,
     this.onOpen,
+    this.onCommit,
+    this.serverBehaviors = const <String>[],
+    this.skinEditing,
     super.key,
   }) : forGroup = false;
 
@@ -113,6 +125,9 @@ class NpcInspector extends StatefulWidget {
     this.workspaceDocuments = const <AnimusDocument>[],
     this.onSkinLoaded,
     this.onOpen,
+    this.onCommit,
+    this.serverBehaviors = const <String>[],
+    this.skinEditing,
     super.key,
   }) : forGroup = true;
 
@@ -137,6 +152,18 @@ class NpcInspector extends StatefulWidget {
   /// Opens another document of the workspace.
   final void Function(DocumentKind kind, String id)? onOpen;
 
+  /// Writes several documents as one undoable change (copying a route for
+  /// this NPC); null hides that action.
+  final ConversationCommit? onCommit;
+
+  /// Behavior ids in the connected server's catalog, offered beside the
+  /// workspace's.
+  final List<String> serverBehaviors;
+
+  /// Skin edits that write several documents (a new skin, a model change, a
+  /// body type without its skin); null leaves those out.
+  final SkinEditing? skinEditing;
+
   @override
   State<NpcInspector> createState() => _NpcInspectorState();
 }
@@ -155,7 +182,8 @@ class _NpcInspectorState extends State<NpcInspector> {
   /// The definition fields the parts edit: the NPC, or the group's values.
   JsonMap get _doc => _group ? asMap(_file['values']) : _file;
   SchemaView get _schema => component.schemas.npc;
-  List<Diagnostic> get _diagnostics => _group ? _valuesDiagnostics(component.diagnostics) : component.diagnostics;
+  List<Diagnostic> get _diagnostics =>
+      _group ? _valuesDiagnostics(component.diagnostics) : <Diagnostic>[...component.diagnostics, ...effectiveActivationDiagnostics(_file, _groups)];
 
   /// A group has no body type; armor stand values imply one, as the server's
   /// check assumes.
@@ -470,12 +498,7 @@ class _NpcInspectorState extends State<NpcInspector> {
           label: fieldLabel(_spec('type'), label: 'Type'),
           help: _spec('type').description,
           problems: fieldProblems(_spec('type'), doc['type'], r'$.type', _diagnostics),
-          child: SuggestInput(
-            value: asString(doc['type']) ?? '',
-            label: 'Body type',
-            suggestions: <FieldOption>[for (final String body in mcBodyTypes) FieldOption(body)],
-            onChanged: (String value) => _write(<JsonStep>['type'], value),
-          ),
+          child: _bodyType(doc),
         ),
         if (!_group) _field('spawned'),
         InspectRow(
@@ -531,6 +554,26 @@ class _NpcInspectorState extends State<NpcInspector> {
         const NpcSubhead('Traits'),
         for (final String trait in _traits) _field(trait),
       ],
+    );
+  }
+
+  /// The type, with the question when a skin would block it.
+  Widget _bodyType(JsonMap doc) {
+    final List<String> groups = skinGroupsOf(component.workspaceDocuments, doc);
+    final SkinCommit? commit = component.skinEditing?.commit;
+    return BodyTypeField(
+      value: asString(doc['type']) ?? '',
+      skinned: doc.containsKey('skin'),
+      skinGroups: groups,
+      otherMembers: otherGroupMembers(component.workspaceDocuments, component.document.id, groups),
+      onChanged: (String value) => _write(<JsonStep>['type'], value),
+      onChangeWithoutSkin: (String type) {
+        if (commit != null) {
+          commit(typeWithoutSkin(documents: component.workspaceDocuments, npcId: component.document.id, type: type));
+        } else {
+          component.onJson((Object? latest) => <String, Object?>{...asMap(latest), 'type': type}..remove('skin'));
+        }
+      },
     );
   }
 
@@ -620,8 +663,11 @@ class _NpcInspectorState extends State<NpcInspector> {
         const NpcSubhead('Skin'),
         SkinPicker(
           npcId: component.document.id,
+          target: SkinTarget(_group ? DocumentKind.group : DocumentKind.npc, component.document.id),
           value: skin,
-          skins: _documents(DocumentKind.skin),
+          workspaceDocuments: component.workspaceDocuments,
+          resources: component.skinEditing?.resources ?? const <String, Uint8List>{},
+          onCommit: component.skinEditing?.commit,
           diagnostics: _diagnostics,
           onChanged: (String? value) => _write(<JsonStep>['skin'], value),
           onLoaded: component.onSkinLoaded,
@@ -686,76 +732,15 @@ class _NpcInspectorState extends State<NpcInspector> {
     );
   }
 
-  Widget _behaviors(JsonMap doc) {
-    final List<String> behaviorIds = npcBehaviorIds(component.workspaceDocuments);
-    final Set<String> serverWide = <String>{
-      for (final String id in _ids(DocumentKind.behavior))
-        if (!behaviorIds.contains(id)) id,
-    };
-    final List<String> listed = stringList(doc['behaviors']);
-    final List<String> available = <String>[
-      for (final String id in behaviorIds)
-        if (!listed.contains(id)) id,
-    ];
-    void put(List<String> next) => _write(<JsonStep>['behaviors'], next.isEmpty ? null : next);
-    const String addId = 'animus-npc-add-behavior';
-    return dom.div(
-      classes: 'animus-npc-behaviors',
-      attributes: const <String, String>{'role': 'group', 'aria-label': 'Behaviors'},
-      <Widget>[
-        NpcSubhead('Behaviors', help: _spec('behaviors').description),
-        if (listed.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No behaviors. Add one below.')]),
-        for (int index = 0; index < listed.length; index++)
-          dom.div(key: ValueKey<String>('behavior-$index'), classes: 'animus-inspect-item', <Widget>[
-            dom.div(classes: 'animus-gui-line', <Widget>[
-              SuggestInput(
-                value: listed[index],
-                label: 'Behavior ${index + 1}',
-                suggestions: <FieldOption>[for (final String id in behaviorIds) FieldOption(id)],
-                onChanged: (String value) => put(<String>[...listed]..[index] = value),
-              ),
-              if (component.onOpen != null && _ids(DocumentKind.behavior).contains(listed[index]))
-                Button.ghost(label: 'Open', size: ButtonSize.small, onPressed: () => component.onOpen!(DocumentKind.behavior, listed[index])),
-              GuiIconButton(
-                icon: ArcaneIcon.arrowUp(size: IconSize.sm),
-                label: 'Move behavior ${index + 1} up',
-                disabled: index == 0,
-                onPressed: () => put(<String>[for (final Object? id in moveItem(listed, index, index - 1)) id! as String]),
-              ),
-              GuiIconButton(
-                icon: ArcaneIcon.x(size: IconSize.sm),
-                label: 'Remove behavior ${index + 1}',
-                onPressed: () => put(<String>[...listed]..removeAt(index)),
-              ),
-            ]),
-            if (serverWide.contains(listed[index]))
-              const dom.span(classes: 'animus-gui-problem is-error', <Widget>[
-                Component.text('Server-wide behavior. List it in server-behaviors.json.'),
-              ])
-            else if (!behaviorIds.contains(listed[index]))
-              const dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('Not in this workspace; may be on the server.')]),
-            for (final Diagnostic problem in diagnosticsAt(_diagnostics, '\$.behaviors[$index]'))
-              dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
-          ]),
-        dom.div(classes: 'animus-row', <Widget>[
-          if (available.isNotEmpty) ...<Widget>[
-            const dom.label(classes: 'animus-sr-only', attributes: <String, String>{'for': addId}, <Widget>[Component.text('Add a workspace behavior')]),
-            GuiSelect(
-              references: DocumentKind.behavior,
-              id: addId,
-              value: null,
-              options: available,
-              noneLabel: 'Add a workspace behavior',
-              onChanged: (String? id) {
-                if (id != null) put(<String>[...listed, id]);
-              },
-            ),
-          ],
-          Button.ghost(label: 'Add by id', size: ButtonSize.small, onPressed: () => put(<String>[...listed, ''])),
-        ]),
-      ],
-    );
-  }
+  Widget _behaviors(JsonMap doc) => NpcBehaviorList(
+    listed: stringList(doc['behaviors']),
+    documents: component.workspaceDocuments,
+    serverBehaviors: component.serverBehaviors,
+    diagnostics: _diagnostics,
+    help: _spec('behaviors').description,
+    onOpen: component.onOpen,
+    onChanged: (List<String> next) => _write(<JsonStep>['behaviors'], next.isEmpty ? null : next),
+  );
 
   (double, double, double)? get _origin {
     final JsonMap position = asMap(_doc['position']);
@@ -771,8 +756,23 @@ class _NpcInspectorState extends State<NpcInspector> {
     imported: _doc.containsKey('migration'),
     diagnostics: _diagnostics,
     onOpen: component.onOpen,
+    onCopyRoute: _copyRoute(),
+    copyLabel: _group ? 'Make a copy for this group' : 'Make a copy for this NPC',
     onChanged: (Object? value, {JsonMap? from}) => _putModule(navigationModule, value, from: from),
   );
+
+  /// Copies the referenced workspace route for this NPC in one commit; null
+  /// when there is nothing to copy.
+  void Function()? _copyRoute() {
+    final ConversationCommit? commit = component.onCommit;
+    final String? reference = asString(asMap(_modules[navigationModule])['route']);
+    final AnimusDocument? route = reference == null ? null : _documents(DocumentKind.route).where((AnimusDocument d) => d.id == reference).firstOrNull;
+    if (commit == null || route == null) return null;
+    return () {
+      final RouteCopy copy = copyRouteFor(component.document, route, component.workspaceDocuments);
+      commit(copy.changes, 'copy route $reference to ${copy.id}');
+    };
+  }
 
   // Modules ------------------------------------------------------------------
 
@@ -813,6 +813,8 @@ class _NpcInspectorState extends State<NpcInspector> {
         ],
         squads: squads.toList()..sort(),
         imported: doc.containsKey('migration'),
+        origin: _origin,
+        schema: component.schemas.npc,
         onChanged: (Object? value) => _putModule(combatModule, value),
       ),
     ]);
@@ -820,7 +822,7 @@ class _NpcInspectorState extends State<NpcInspector> {
 
   Widget _shop() => ShopBindingEditor(
     value: _modules[shopModule],
-    shops: _ids(DocumentKind.shop),
+    shops: shopPickerOptions(component.workspaceDocuments),
     imported: _doc.containsKey('migration'),
     diagnostics: _diagnostics,
     onOpen: component.onOpen,
@@ -852,7 +854,7 @@ class _NpcInspectorState extends State<NpcInspector> {
     final String? adding = _newModule;
     const String addId = 'animus-npc-add-module';
     return dom.div(classes: 'animus-npc-module', <Widget>[
-      const NpcSubhead('Other modules', help: 'Unknown modules are edited as JSON.'),
+      const NpcSubhead('Other modules', help: 'Modules without an editor of their own. Kept as written.'),
       for (final MapEntry<String, Object?> entry in others)
         _module(entry.key, entry.value, known.where((FieldSpec field) => field.key == entry.key).firstOrNull),
       dom.div(classes: 'animus-row', <Widget>[
@@ -915,7 +917,10 @@ class _NpcInspectorState extends State<NpcInspector> {
             onChanged: (JsonMap next) => _putModule(key, next),
           )
         else ...<Widget>[
-          KeptJsonEditor(value: value, label: 'Module $key', onChanged: (Object? next) => _putModule(key, next)),
+          if (value is Map<String, Object?>)
+            KeyValueEditor(value: value, label: 'Module $key', onChanged: (JsonMap next) => _putModule(key, next))
+          else
+            TypedValueEditor(value: value, label: 'Module $key', onChanged: (Object? next) => _putModule(key, next)),
           for (final Diagnostic problem in diagnosticsAt(_diagnostics, path, nested: true))
             dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[
               dom.code(<Widget>[Component.text(problem.path)]),

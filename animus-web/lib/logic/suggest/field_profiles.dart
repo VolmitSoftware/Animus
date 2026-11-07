@@ -65,6 +65,11 @@ FieldProfile argumentProfile(String? capability, String key) {
   return FieldProfile.none;
 }
 
+/// A skin PNG address: Mojang's texture server is the usual source.
+const FieldProfile skinAddressProfile = FieldProfile(options: <ValueOption>[
+  ValueOption('https://textures.minecraft.net/texture/', detail: "Mojang's skin textures"),
+]);
+
 /// A shop entry's broadcast line (`ShopScreen` fills these).
 const FieldProfile shopBroadcastProfile = FieldProfile(miniMessage: true, placeholders: <String, String>{
   'player': "The buyer's name",

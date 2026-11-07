@@ -475,7 +475,7 @@ final class RegionActor implements RegionOwner.Body {
         if (routeSource != null) routeReadWanted = true;
         return routeSource != null;
     }
-    void playRecording(String reference, Playback playback) {
+    void playRecording(String reference, Optional<Playback> playback) {
         Objects.requireNonNull(playback);
         if (reference == null || !reference.matches(RecordingDocument.ID)) throw new IllegalArgumentException("Invalid recording identifier");
         if (!host.recordings().enabled()) throw new IllegalStateException(RECORDINGS_DISABLED);
@@ -1417,7 +1417,7 @@ final class RegionActor implements RegionOwner.Body {
             return;
         }
         routeError = null;
-        if (routeWatch != null && read.recording.playback() != Playback.ONCE) { navigationStatus = "invalid: a looping recording never finishes"; failWatch(navigationStatus); return; }
+        if (routeWatch != null && read.recording.mode(document) != Playback.ONCE) { navigationStatus = "invalid: a looping recording never finishes"; failWatch(navigationStatus); return; }
         boolean same = current != null && current.source().equals(read.recording) && current.document().equals(document);
         if (!read.start) {
             if (same) return;

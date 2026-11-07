@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "7b3c1d2e-4f50-5a61-8b72-9c83d4e5f601",
+  "id": "warden",
+  "group": "town",
+  "name": "Warden",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 2.5,
+    "y": 64,
+    "z": 3.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "animus:combat": {
+      "enabled": true,
+      "targets": {
+        "categories": [
+          "monsters"
+        ],
+        "patterns": {
+          "names": [
+            "^Bandit"
+          ]
+        }
+      },
+      "avoidance": {
+        "range": 10,
+        "returnPoint": {
+          "world": "world",
+          "x": 0,
+          "y": 64,
+          "z": 0
+        }
+      },
+      "ranged": {
+        "enabled": true,
+        "weapon": "potion",
+        "effect": {
+          "id": "minecraft:poison",
+          "amplifier": 1
+        }
+      },
+      "death": {
+        "drops": [
+          {
+            "item": "minecraft:iron_ingot",
+            "amount": 2,
+            "chance": 0.5
+          }
+        ]
+      },
+      "respawn": {
+        "delayTicks": 100,
+        "locations": [
+          {
+            "world": "world",
+            "x": 4,
+            "y": 64,
+            "z": 4
+          }
+        ]
+      }
+    }
+  }
+}

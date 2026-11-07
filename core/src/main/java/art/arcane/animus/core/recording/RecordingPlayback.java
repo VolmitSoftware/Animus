@@ -39,6 +39,8 @@ public final class RecordingPlayback {
     private int cursor;
     private Direction direction;
     private int segment;
+    /** Hundredths of a tick the recording's speed has moved past the cursor; a whole tick steps it. */
+    private int carry;
 
     /**
      * Starts at {@code startTick}, playing forward; events at the start tick are due first.
@@ -102,9 +104,18 @@ public final class RecordingPlayback {
 
     public State state() { return new State(cursor, direction, mode); }
 
-    /** Moves one tick: {@code once} stays on its end tick, {@code loop} goes from the last tick to 0, {@code pingpong} turns at both ends. */
+    /**
+     * One game tick of play: the cursor moves the recording's {@code speed} in ticks, a whole tick at a time, queueing the
+     * events of every tick it reaches. {@code once} stays on its end tick, {@code loop} goes from the last tick to 0,
+     * {@code pingpong} turns at both ends.
+     */
     public void advance() {
-        if (step()) queue(cursor, pending);
+        carry += document.details().hundredths();
+        while (carry >= 100) {
+            carry -= 100;
+            if (!step()) { carry = 0; return; }
+            queue(cursor, pending);
+        }
     }
 
     /**

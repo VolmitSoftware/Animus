@@ -88,6 +88,22 @@ class _SuggestInputState extends State<SuggestInput> {
   /// Suggestions for the text typed since focus; all of them before that.
   SelectRows get _rows => SelectRows(filterOptions(_options, _typed ?? ''), _actions.length);
 
+  /// Typed text matched nothing yet; a parent that narrows its suggestions
+  /// to the text answers after the keystroke, so the list opens then.
+  bool _awaiting = false;
+
+  @override
+  void didUpdateWidget(SuggestInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_awaiting || identical(oldWidget.suggestions, component.suggestions)) return;
+    _awaiting = false;
+    if ((_typed ?? '').isNotEmpty && _rows.length > 0 && !_state.open) {
+      Future<void>.microtask(() {
+        if (mounted && !_state.open) _show(const SelectState(open: true));
+      });
+    }
+  }
+
   @override
   void dispose() {
     _stopWatching?.call();
@@ -190,12 +206,14 @@ class _SuggestInputState extends State<SuggestInput> {
             final String text = (event.target! as web.HTMLInputElement).value;
             _typed = text;
             component.onChanged(text);
+            _awaiting = text.isNotEmpty && _rows.length == 0;
             if (!_listed) return;
             _show(text.isNotEmpty && _rows.length > 0 ? const SelectState(open: true) : const SelectState());
           },
           'keydown': _key,
           'blur': (web.Event _) {
             if (!mounted) return;
+            _awaiting = false;
             if (_state.open) _show(const SelectState());
             setState(() => _typed = null);
           },
@@ -234,7 +252,22 @@ class _SuggestInputState extends State<SuggestInput> {
       for (final FieldOption option in component.suggestions) ValueOption(option.label, detail: option.description ?? ''),
     ]);
     return dom.div(classes: 'animus-gui-text', <Widget>[
-      AutocompleteInput(id: _baseId, value: component.value, profile: profile, label: component.label, placeholder: component.placeholder, onChanged: component.onChanged),
+      AutocompleteInput(
+        id: _baseId,
+        value: component.value,
+        profile: profile,
+        label: component.label,
+        placeholder: component.placeholder,
+        onChanged: component.onChanged,
+        // Enter with the list closed submits, as in the plain field.
+        onKey: component.onSubmit == null
+            ? null
+            : (web.KeyboardEvent key) {
+                if (key.key != 'Enter') return false;
+                component.onSubmit!();
+                return true;
+              },
+      ),
     ]);
   }
 

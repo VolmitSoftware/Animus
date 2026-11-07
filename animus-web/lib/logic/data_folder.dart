@@ -10,6 +10,7 @@ import 'package:archive/archive.dart';
 
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
+import 'citizens/definition_validation.dart';
 import 'gui/gui_validation.dart';
 import 'inspect/json_syntax.dart';
 import 'npc/combat_settings.dart';
@@ -225,9 +226,11 @@ AnimusDocument validateSource(DocumentLocation location, String path, String sou
     ...mergeGuiDiagnostics(schemas.validate(location.kind, json), validateGui(location.kind, json)),
     ..._identity(location, json),
     if (location.kind == DocumentKind.rig) ...validateRigStructure(json),
-    if (location.kind == DocumentKind.group) ...groupValueDiagnostics(json, schemas),
+    if (location.kind == DocumentKind.group) ...<Diagnostic>[...groupValueDiagnostics(json, schemas), ...groupRuleDiagnostics(json, location.id, source)],
   ];
-  if (location.kind == DocumentKind.npc) diagnostics.addAll(npcCombatDiagnostics(json, diagnostics));
+  if (location.kind == DocumentKind.npc) {
+    diagnostics.addAll(<Diagnostic>[...npcCombatDiagnostics(json, diagnostics), ...npcActivationDiagnostics(json), ...npcRuleDiagnostics(json, location.id)]);
+  }
   return AnimusDocument(kind: location.kind, id: location.id, path: path, source: source, json: json, diagnostics: diagnostics);
 }
 

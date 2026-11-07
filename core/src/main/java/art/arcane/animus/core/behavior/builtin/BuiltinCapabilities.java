@@ -381,7 +381,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         action("stop-navigation", Effect.WORLD, "Stops the NPC's current route and any route it is following.", schema(""),
                 (arguments, problems) -> {},
                 call -> onOwner(call, () -> result("stopped", platform.stopNavigation(call.npc()))));
-        action("play-recording", Effect.WORLD, "Replaces the NPC's route with a recording it walks to and plays once, in a loop (the default) or back and forth. With wait, a once playback completes when it ends.",
+        action("play-recording", Effect.WORLD, "Replaces the NPC's route with a recording it walks to and plays once, in a loop or back and forth; without playback, the recording's own playback, else loop. With wait, a once playback completes when it ends.",
                 schema(string("recording", 64) + "," + choice("playback", "once", "loop", "pingpong") + "," + bool("wait") + "," + integer("timeoutTicks", MINIMUM_WAIT_TICKS, MAXIMUM_WAIT_TICKS),
                         required("recording")),
                 BuiltinCapabilities::checkPlayRecording, this::playRecording);
@@ -757,7 +757,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
 
     private CompletionStage<String> playRecording(Call call) {
         String recording = text(call.arguments, "recording").orElseThrow();
-        Playback playback = text(call.arguments, "playback").flatMap(Playback::parse).orElse(Playback.DEFAULT);
+        Optional<Playback> playback = text(call.arguments, "playback").flatMap(Playback::parse);
         return awaitable(call, () -> { platform.playRecording(call.npc(), recording, playback); return new JsonObject(); }, "finished");
     }
 
@@ -843,7 +843,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
             problems.add(problem("$.timeoutTicks", "navigation-timeout-without-wait", "timeoutTicks applies only with wait set to true"));
         if (!arguments.get("recording").getAsString().matches(RECORDING_ID))
             problems.add(problem("$.recording", "recording-id", "recording is a recording id: lowercase letters, digits, _ or -, starting with a letter or digit"));
-        if (flag(arguments, "wait", false) && !text(arguments, "playback").orElse(Playback.DEFAULT.key()).equals(Playback.ONCE.key()))
+        if (flag(arguments, "wait", false) && !text(arguments, "playback").orElse(Playback.ONCE.key()).equals(Playback.ONCE.key()))
             problems.add(problem("$.wait", "play-recording-wait-loop", "Only a once playback finishes; wait needs playback set to once"));
     }
 

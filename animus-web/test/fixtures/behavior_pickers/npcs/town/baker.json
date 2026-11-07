@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "17cfa070-aab9-5bd6-94c6-f5438cefb4c1",
+  "id": "baker",
+  "group": "town",
+  "name": "Baker",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": -3.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "tags": [
+    "merchant"
+  ],
+  "behaviors": [
+    "town:greeter"
+  ],
+  "modules": {
+    "animus:navigation": {
+      "enabled": true,
+      "route": "town-patrol"
+    },
+    "example:glow": {
+      "color": "gold",
+      "strength": 2
+    }
+  }
+}

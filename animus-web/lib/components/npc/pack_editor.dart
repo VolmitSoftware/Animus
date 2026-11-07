@@ -145,24 +145,7 @@ class _PackEditorState extends State<PackEditor> {
           onChanged: (bool required) =>
               put(<String, Object?>{...module, 'required': required}..removeWhere((String key, Object? value) => key == 'required' && value == true)),
         ),
-        GuiRow(
-          label: 'Configuration',
-          help: 'Kept as written.',
-          problems: diagnosticsAt(component.diagnostics, '$path.configuration', nested: true),
-          child: KeptJsonEditor(
-            value: module['configuration'] ?? const <String, Object?>{},
-            label: 'Module $name configuration',
-            onChanged: (Object? value) {
-              final JsonMap next = <String, Object?>{...module};
-              if (value is Map<String, Object?> && value.isEmpty || value == null) {
-                next.remove('configuration');
-              } else {
-                next['configuration'] = value;
-              }
-              put(next);
-            },
-          ),
-        ),
+        _configuration(pack, name, module, path),
         for (final Diagnostic problem in diagnosticsAt(component.diagnostics, path, nested: true))
           if (!problem.path.startsWith('$path.configuration'))
             dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[
@@ -170,6 +153,30 @@ class _PackEditorState extends State<PackEditor> {
               Component.text(' ${problem.message}'),
             ]),
       ],
+    );
+  }
+
+  /// The module's settings: a form from its schema when the server publishes
+  /// one, else typed keys and values. A value that is not an object stays JSON.
+  Widget _configuration(JsonMap pack, String name, JsonMap module, String path) {
+    final String at = '$path.configuration';
+    final FieldSpec field = packModuleConfiguration(component.schema, pack, name);
+    final Object? value = module['configuration'];
+    final bool schemed = field.schema.containsKey('properties');
+    return GuiRow(
+      label: 'Configuration',
+      tip: schemed ? "Fields from the module's schema. Keys it does not name are kept." : 'The module publishes no schema here; its keys are kept as written.',
+      problems: diagnosticsAt(component.diagnostics, at, nested: true),
+      child: value != null && value is! Map<String, Object?>
+          ? KeptJsonEditor(value: value, label: 'Module $name configuration', onChanged: (Object? next) => _write(putPackModule(pack, name, asMap(writeIn(module, const <JsonStep>['configuration'], next))), 'module:$name'))
+          : InspectControl(
+              field: field,
+              value: value,
+              path: at,
+              schema: component.schema,
+              diagnostics: component.diagnostics,
+              onChanged: (Object? next) => _write(putPackModuleConfiguration(pack, name, next is Map<String, Object?> ? next : null), 'module:$name'),
+            ),
     );
   }
 }

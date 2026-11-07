@@ -4,7 +4,6 @@
 /// the document.
 library;
 
-import 'dart:convert';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
@@ -570,64 +569,3 @@ List<Widget> guiMoveButtons({required int index, required int length, required S
         onPressed: () => onMove(index + 1),
       ),
     ];
-
-/// A JSON object typed as text. Nothing is written until the text parses
-/// to an object; until then the field says what is wrong.
-class GuiJsonObjectInput extends StatefulWidget {
-  const GuiJsonObjectInput({required this.value, required this.onChanged, required this.label, this.id, this.multiline = false, super.key});
-
-  final JsonMap? value;
-
-  /// The parsed object, or null when the text is cleared.
-  final void Function(JsonMap? value) onChanged;
-  final String label;
-  final String? id;
-  final bool multiline;
-
-  @override
-  State<GuiJsonObjectInput> createState() => _GuiJsonObjectInputState();
-}
-
-class _GuiJsonObjectInputState extends State<GuiJsonObjectInput> {
-  late final String _id = component.id ?? guiFieldId();
-  String? _typed;
-  String? _problem;
-
-  String _encode(JsonMap? value) => value == null || value.isEmpty ? '' : (component.multiline ? prettyJson(value).trimRight() : jsonEncode(value));
-
-  void _onText(String text) {
-    _typed = text;
-    if (text.trim().isEmpty) {
-      setState(() => _problem = null);
-      component.onChanged(null);
-      return;
-    }
-    try {
-      final Object? parsed = jsonDecode(text);
-      if (parsed is Map<String, Object?>) {
-        setState(() => _problem = null);
-        component.onChanged(parsed);
-      } else {
-        setState(() => _problem = 'Must be a JSON object. Not saved yet.');
-      }
-    } on FormatException catch (error) {
-      setState(() => _problem = 'Invalid JSON (${error.message}). Not saved yet.');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return dom.div(classes: 'animus-gui-text', <Widget>[
-      GuiTextInput(
-        id: _id,
-        value: _typed ?? _encode(component.value),
-        multiline: component.multiline,
-        label: component.label,
-        placeholder: '{"name": "value"}',
-        onChanged: _onText,
-      ),
-      if (_problem != null)
-        dom.span(classes: 'animus-gui-problem is-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(_problem!)]),
-    ]);
-  }
-}

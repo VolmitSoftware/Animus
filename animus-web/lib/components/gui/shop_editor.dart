@@ -23,6 +23,7 @@ import '../../logic/suggest/field_profile.dart';
 import '../../logic/suggest/field_profiles.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
+import '../mc/item_picker.dart';
 import '../select/suggest_input.dart';
 import 'chest_window.dart';
 import 'component_editor.dart';
@@ -490,7 +491,7 @@ class _ShopEditorState extends State<ShopEditor> {
           ),
           help: 'Drops fields the new type lacks'),
       GuiSection(title: 'Item', children: <Widget>[
-        _row('Item *', '$path.item.id', (String id) => GuiTextInput(id: id, value: asString(item['id']) ?? '', label: 'Item id', profile: idProfile(const ValueRef.registry(RegistryKind.item)), onChanged: (String v) => setIn('item', 'id', v))),
+        _row('Item *', '$path.item.id', (String id) => ItemPicker(id: id, value: asString(item['id']) ?? '', label: 'Item id', placeholder: 'minecraft:bread', onChanged: (String v) => setIn('item', 'id', v))),
         _row('Count', '$path.item.count', (String id) => GuiNumberInput(id: id, value: asInt(item['count']), label: 'Item count', onChanged: (num? v) => setIn('item', 'count', v)),
             help: '1 to 99, priced per this many'),
         _row('Components', '$path.item.components', (String id) => GuiTextInput(id: id, value: asString(item['components']) ?? '', label: 'Item components', onChanged: (String v) => setIn('item', 'components', v)),
@@ -568,10 +569,10 @@ class _ShopEditorState extends State<ShopEditor> {
         dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
       for (int index = 0; index < goods.length; index++)
         dom.div(classes: 'animus-row animus-gui-goods', <Widget>[
-          GuiTextInput(
+          ItemPicker(
             value: asString(asMap(asMap(goods[index])['item'])['id']) ?? '',
             label: '$title ${index + 1} item',
-            profile: idProfile(const ValueRef.registry(RegistryKind.item)),
+            placeholder: 'minecraft:emerald',
             onChanged: (String v) => _write(<JsonStep>[...steps, key, index, 'item', 'id'], v),
           ),
           GuiNumberInput(

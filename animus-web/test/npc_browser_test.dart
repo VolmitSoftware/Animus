@@ -4,7 +4,6 @@ import 'dart:typed_data';
 
 import 'package:animus_editor/logic/data_folder.dart';
 import 'package:animus_editor/logic/gui/gui_json.dart';
-import 'package:animus_editor/logic/npc/dialogue_tree.dart';
 import 'package:animus_editor/logic/npc/npc_bulk.dart';
 import 'package:animus_editor/logic/npc/npc_catalog.dart';
 import 'package:animus_editor/logic/npc/npc_paths.dart';
@@ -348,66 +347,6 @@ void main() {
       expect(bounds.width, bounds.depth);
       expect(bounds.step, 1);
       expect(RouteBounds.around(const <RouteNode>[RouteNode(0, 0, 0), RouteNode(300, 0, 300)]).step, greaterThan(8));
-    });
-  });
-
-  group('dialogue', () {
-    JsonMap behavior() => asMap(_documents().firstWhere((AnimusDocument d) => d.kind == DocumentKind.behavior).json);
-
-    test('a trigger starts the entry routine and answers nest under options', () {
-      final DialogueTree tree = dialogueTree(behavior());
-      expect(tree.hasDialogue, isTrue);
-      expect(tree.unasked, isEmpty);
-      final DialogueStart start = tree.starts.single;
-      expect(start.label, 'interaction');
-      expect(start.routine, 'main');
-      expect((start.steps.first as DialogueSay).text, 'Ahoy there.');
-      final DialogueChoices ferry = start.steps[1] as DialogueChoices;
-      expect(ferry.prompt, 'Need a crossing?');
-      expect(ferry.steps, <JsonStep>['routines', 'main', 'steps', 2]);
-      expect(ferry.options.map((DialogueOption o) => o.id), <String>['yes', 'no']);
-      final DialogueAnswer yes = ferry.options.first.answers.single;
-      expect(yes.routine, 'cross');
-      final DialogueChoices fare = yes.steps[1] as DialogueChoices;
-      expect(fare.options.first.answers.single.routine, 'paid');
-      expect(fare.options.last.answers, isEmpty, reason: 'nobody answers "later"');
-      expect((ferry.options.last.answers.single.steps.single as DialogueSay).text, 'Suit yourself.');
-    });
-
-    test('unasked answers, branches, effects and loops back are reported', () {
-      final JsonMap doc = <String, Object?>{
-        'entry': 'main',
-        'routines': <String, Object?>{
-          'main': <String, Object?>{
-            'type': 'condition',
-            'capability': 'animus:flag-state',
-            'arguments': <String, Object?>{'name': 'met'},
-            'then': <String, Object?>{'type': 'action', 'capability': 'animus:say', 'arguments': <String, Object?>{'text': 'Again?'}},
-            'else': <String, Object?>{
-              'type': 'sequence',
-              'steps': <Object?>[
-                <String, Object?>{'type': 'action', 'capability': 'animus:set-flag', 'arguments': <String, Object?>{'name': 'met'}},
-                <String, Object?>{'type': 'call', 'routine': 'main'},
-              ],
-            },
-          },
-        },
-        'triggers': <Object?>[
-          <String, Object?>{'id': 'orphan', 'event': 'dialogue_choice', 'dialogue': 'nobody-asks'},
-        ],
-      };
-      final DialogueTree tree = dialogueTree(doc);
-      expect(tree.unasked, <String>['orphan']);
-      expect(tree.starts.single.label, 'entry');
-      final DialogueBranch branch = tree.starts.single.steps.single as DialogueBranch;
-      expect(branch.label, 'animus:flag-state name=met');
-      expect((branch.then.single as DialogueSay).text, 'Again?');
-      expect((branch.otherwise.first as DialogueEffect).capability, 'animus:set-flag');
-      expect((branch.otherwise.last as DialogueJump).routine, 'main');
-    });
-
-    test('a behavior without speech has no dialogue', () {
-      expect(dialogueTree(const <String, Object?>{'entry': 'main', 'routines': <String, Object?>{'main': <String, Object?>{'type': 'action', 'capability': 'animus:look'}}}).hasDialogue, isFalse);
     });
   });
 }

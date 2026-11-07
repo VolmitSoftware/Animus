@@ -115,7 +115,7 @@ async function run(browser, viewport, tag, theme) {
   // Behaviors sit in the inspector's Behaviour part, closed until opened.
   const behaviour = inspector.locator('details[data-section="behaviour"]');
   if (!(await behaviour.evaluate((element) => element.open))) await behaviour.locator('summary').first().click();
-  await choose(await selectWith(inspector, 'Add a workspace behavior'), 'shop:keeper');
+  await choose(await selectWith(inspector, 'Add a behavior'), 'shop:keeper');
   await page.waitForTimeout(300);
   await shot(page, `${tag}-npc-inspector`);
   let json = await codeOf(page);
