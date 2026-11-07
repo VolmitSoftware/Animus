@@ -2,6 +2,7 @@ package art.arcane.animus.bukkit.gui;
 
 import art.arcane.animus.bukkit.BukkitWorldLookup;
 
+import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.PacketKind;
 import art.arcane.animus.bukkit.protection.RegionContainerAccess;
@@ -218,7 +219,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     }
     @Override public void title(Player player, String title, String subtitle, int fadeIn, int stay, int fadeOut) { player.sendTitle(title, subtitle, fadeIn, stay, fadeOut); }
     @Override public void sound(Player player, String sound, String source, float volume, float pitch) {
-        NamespacedKey key = NamespacedKey.fromString(sound.contains(":") ? sound : "minecraft:" + sound);
+        NamespacedKey key = NamespacedKey.fromString(MinecraftIds.normalize(sound));
         Sound found = key == null ? null : Registry.SOUNDS.get(key);
         SoundCategory category;
         try { category = SoundCategory.valueOf(source.toUpperCase(Locale.ROOT)); }
@@ -280,14 +281,14 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     }
 
     @Override public boolean effect(Player player, String effect, int ticks, int amplifier) {
-        NamespacedKey key = NamespacedKey.fromString(effect.contains(":") ? effect : "minecraft:" + effect);
+        NamespacedKey key = NamespacedKey.fromString(MinecraftIds.normalize(effect));
         PotionEffectType type = key == null ? null : Registry.EFFECT.get(key);
         if (type == null) return false;
         return player.addPotionEffect(new PotionEffect(type, ticks, amplifier));
     }
 
     @Override public boolean particle(Player player, String particle, int count, double spread, double x, double y, double z) {
-        NamespacedKey key = NamespacedKey.fromString(particle.contains(":") ? particle : "minecraft:" + particle);
+        NamespacedKey key = NamespacedKey.fromString(MinecraftIds.normalize(particle));
         Particle type = key == null ? null : Registry.PARTICLE_TYPE.get(key);
         if (type == null || type.getDataType() != Void.class) return false;
         player.spawnParticle(type, x, y, z, count, spread, spread, spread, 0);

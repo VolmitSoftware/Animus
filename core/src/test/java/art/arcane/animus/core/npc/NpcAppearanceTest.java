@@ -42,6 +42,22 @@ class NpcAppearanceTest {
         assertEquals(Optional.of(UUID.fromString("00000000-0000-0000-0000-00000000000a")), parsed.owner());
     }
 
+    @Test void bareEquipmentItemIdsAreMinecraftItems() throws IOException {
+        String extra = "\"equipment\":{\"main_hand\":{\"id\":\"netherite_axe\"},\"head\":{\"id\":\"minecraft:iron_helmet\"}}";
+        assertEquals(List.of(), errors("minecraft:player", extra));
+        NpcAppearance appearance = NpcAppearance.of(NpcDefinition.parse(JsonDocuments.write(definition("minecraft:player", extra))));
+        assertEquals(new NpcItem("minecraft:netherite_axe", 1, Optional.empty(), Optional.empty()), appearance.equipment().get(EquipmentSlot.MAIN_HAND));
+        assertEquals(new NpcItem("minecraft:iron_helmet", 1, Optional.empty(), Optional.empty()), appearance.equipment().get(EquipmentSlot.HEAD));
+    }
+
+    @Test void bareEntityTypesAreMinecraftTypes() throws IOException {
+        assertEquals(List.of(), errors("villager", ""));
+        assertEquals("minecraft:villager", NpcDefinition.parse(JsonDocuments.write(definition("villager", ""))).json().get("type").getAsString());
+        assertEquals("minecraft:villager", NpcDefinition.parse(JsonDocuments.write(definition("minecraft:villager", ""))).json().get("type").getAsString());
+        assertFalse(errors(":villager", "").isEmpty());
+        assertFalse(errors("Villager", "").isEmpty(), "types are written in lowercase");
+    }
+
     @Test void absentFieldsGiveAPlainStandingBody() throws IOException {
         NpcDefinition parsed = NpcDefinition.parse(JsonDocuments.write(definition("minecraft:horse", "")));
         NpcAppearance appearance = NpcAppearance.of(parsed);

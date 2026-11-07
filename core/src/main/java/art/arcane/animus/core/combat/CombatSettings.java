@@ -2,6 +2,7 @@ package art.arcane.animus.core.combat;
 
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcAttributes;
+import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.presentation.BodyRules;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -33,7 +34,6 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
     private static final String ROOT = "$.modules." + MODULE;
     private static final int MAXIMUM_RULE_ENTRIES = 256;
     private static final int MAXIMUM_NESTED_RULES = 16;
-    private static final String NAMESPACED = "[a-z0-9_.-]+:[a-z0-9_./-]+";
     /** Status effects that help whoever they reach; a potion of any other effect is an attack. */
     private static final Set<String> HELPFUL_EFFECTS = Set.of("minecraft:instant_health", "minecraft:regeneration", "minecraft:speed", "minecraft:strength",
             "minecraft:resistance", "minecraft:fire_resistance", "minecraft:absorption", "minecraft:health_boost", "minecraft:saturation", "minecraft:night_vision",
@@ -170,7 +170,7 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
         patterns.known("players", "npcs", "names");
         Reader items = rules.child("items");
         items.known("mainHand", "offHand", "worn");
-        List<String> effects = rules.matching("effects", NAMESPACED, "expected namespace:effect");
+        List<String> effects = rules.ids("effects", "expected namespace:effect");
         List<String> permissions = rules.matching("permissions", "[A-Za-z0-9_.*-]{1,128}", "expected a permission node");
         List<String> groups = rules.matching("groups", "[A-Za-z0-9_.-]{1,64}", "expected a group name");
         List<TargetRules> all = new ArrayList<>();
@@ -189,7 +189,7 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
         }
         List<String> chat = rules.matching("chat", "(?s).{1,128}", "expected 1..128 characters");
         for (int i = 0; i < chat.size(); i++) if (chat.get(i).isBlank()) throw new IllegalArgumentException(rules.field("chat") + "[" + i + "]: expected text");
-        return new TargetRules(categories, Set.copyOf(rules.strings("entityTypes")), Set.copyOf(rules.strings("players")),
+        return new TargetRules(categories, rules.strings("entityTypes").stream().map(MinecraftIds::normalize).collect(java.util.stream.Collectors.toSet()), Set.copyOf(rules.strings("players")),
                 Set.copyOf(rules.strings("npcs")), Set.copyOf(rules.strings("names")), Set.copyOf(rules.strings("squads")), rules.bool("owner", false),
                 new TargetRules.Patterns(patterns.patterns("players"), patterns.patterns("npcs"), patterns.patterns("names")),
                 new TargetRules.Items(items.patterns("mainHand"), items.patterns("offHand"), items.patterns("worn")),
@@ -262,8 +262,8 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
         if (map.object().size() > 64) throw new IllegalArgumentException(map.path() + ": at most 64 entries");
         Map<String, Double> weaponDamage = new HashMap<>();
         for (String item : map.object().keySet()) {
-            if (!item.matches(NAMESPACED)) throw new IllegalArgumentException(map.field(item) + ": expected namespace:item key");
-            weaponDamage.put(item, map.number(item, 1, 0, 100));
+            if (!MinecraftIds.valid(item)) throw new IllegalArgumentException(map.field(item) + ": expected namespace:item key");
+            weaponDamage.put(MinecraftIds.normalize(item), map.number(item, 1, 0, 100));
         }
         return new Melee(reader.bool("enabled", true), reader.number("damage", 2, .01, 100), reader.number("reach", 3, .5, 6),
                 reader.integer("cooldownTicks", 20, 1, 1200), reader.number("knockback", .4, 0, 4), reader.bool("fromEquipment", false), weaponDamage);
@@ -280,8 +280,8 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
             Reader potion = reader.child("effect");
             potion.known("id", "amplifier", "durationTicks");
             String id = potion.string("id", "");
-            if (!id.matches(NAMESPACED)) throw new IllegalArgumentException(potion.field("id") + ": expected namespace:effect");
-            effect = Optional.of(new Effect(id, potion.integer("amplifier", 0, 0, 9), potion.integer("durationTicks", 200, 1, 72000)));
+            if (!MinecraftIds.valid(id)) throw new IllegalArgumentException(potion.field("id") + ": expected namespace:effect");
+            effect = Optional.of(new Effect(MinecraftIds.normalize(id), potion.integer("amplifier", 0, 0, 9), potion.integer("durationTicks", 200, 1, 72000)));
         } else if (weapon == RangedWeapon.POTION) throw new IllegalArgumentException(reader.field("effect") + ": required for a potion");
         return new Ranged(reader.bool("enabled", false), weapon, reader.number("damage", 3, .01, 100), reader.number("range", 24, 1, 256),
                 reader.number("minimumRange", 0, 0, 256), reader.integer("cooldownTicks", 40, 1, 1200), reader.number("velocity", 1.6, .5, 4),
@@ -305,8 +305,8 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
             Reader drop = new Reader(entries.get(i).getAsJsonObject(), path);
             drop.known("item", "amount", "chance");
             String item = drop.string("item", "");
-            if (!item.matches(NAMESPACED)) throw new IllegalArgumentException(path + ".item: expected namespace:item");
-            drops.add(new DropRule(item, drop.integer("amount", 1, 1, 64), drop.number("chance", 1, 0, 1)));
+            if (!MinecraftIds.valid(item)) throw new IllegalArgumentException(path + ".item: expected namespace:item");
+            drops.add(new DropRule(MinecraftIds.normalize(item), drop.integer("amount", 1, 1, 64), drop.number("chance", 1, 0, 1)));
         }
         return new Death(drops, reader.integer("experience", 0, 0, 10000), reader.bool("victimDrops", true));
     }
@@ -428,6 +428,15 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
                 if (!values.get(i).matches(form)) throw new IllegalArgumentException(field(key) + "[" + i + "]: " + expected);
             }
             return values;
+        }
+        /** Registry ids in {@link MinecraftIds#normalize} form; a bare id means {@code minecraft:<id>}. */
+        List<String> ids(String key, String expected) {
+            List<String> values = strings(key), result = new ArrayList<>();
+            for (int i = 0; i < values.size(); i++) {
+                if (!MinecraftIds.valid(values.get(i))) throw new IllegalArgumentException(field(key) + "[" + i + "]: " + expected);
+                result.add(MinecraftIds.normalize(values.get(i)));
+            }
+            return result;
         }
         List<NamePattern> patterns(String key) {
             List<String> sources = strings(key);

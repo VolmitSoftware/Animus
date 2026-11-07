@@ -9,6 +9,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/schema_fields.dart';
+import '../../logic/minecraft_ids.dart';
 import '../../logic/suggest/completion_sources.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../logic/suggest/field_profiles.dart';
@@ -59,8 +60,6 @@ List<String> slotSuggestions(NpcSlot slot) => switch (slot) {
         ],
       NpcSlot.saddle => const <String>['minecraft:saddle'],
     };
-
-final RegExp _itemId = RegExp(r'^[a-z0-9_.-]+:[a-z0-9_./-]+$');
 
 /// A label for a slot key: `main_hand` reads "Main hand".
 String slotLabel(NpcSlot slot) => '${slot.key[0].toUpperCase()}${slot.key.substring(1).replaceAll('_', ' ')}';
@@ -130,7 +129,7 @@ class _EquipmentEditorState extends State<EquipmentEditor> {
     final String? icon = key == null ? null : McItemIcons.url(key);
     final String path = childPath(r'$.equipment', slot.key);
     final List<Diagnostic> problems = diagnosticsAt(component.diagnostics, path, nested: true);
-    final bool badId = id.isNotEmpty && !_itemId.hasMatch(id);
+    final bool badId = id.isNotEmpty && !validMinecraftId(id);
     void field(String name, Object? value) {
       final JsonMap next = asMap(writeIn(item, <JsonStep>[name], value));
       _put(slot, next.isEmpty ? null : next);
@@ -175,7 +174,7 @@ class _EquipmentEditorState extends State<EquipmentEditor> {
                 onChanged: (String value) => field('components', value.trim().isEmpty ? null : value.trim()),
               ),
             ]),
-          if (badId) const dom.span(classes: 'animus-gui-problem is-error', <Widget>[Component.text('Use namespace:item, such as minecraft:iron_sword.')]),
+          if (badId) const dom.span(classes: 'animus-gui-problem is-error', <Widget>[Component.text('Use an item id such as iron_sword or minecraft:iron_sword.')]),
           for (final Diagnostic problem in problems)
             dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
         ]),

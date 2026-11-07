@@ -519,10 +519,19 @@ async function local(browser, viewport, tag, theme) {
   await offHand.scrollIntoViewIfNeeded();
   await offHand.fill('minecraft:shield');
   await offHand.blur();
+  // A bare id is a minecraft item: kept as written, not flagged.
+  const head = look.getByLabel('equipment.head', {exact: true});
+  await head.scrollIntoViewIfNeeded();
+  await head.fill('netherite_helmet');
+  await head.blur();
+  await settle(page);
+  assert.equal(await look.locator('[data-slot="head"] .animus-gui-problem').count(), 0, `${tag}: a bare item id is accepted`);
+  assert.equal(await page.locator('.animus-diagnostics li', {hasText: 'equipment.head'}).count(), 0, `${tag}: a bare item id validates`);
   await look.getByRole('radio', {name: /^Skin 1 of 1, .*dc33741f$/}).click();
   await settle(page);
   json = await codeOf(page);
   assert.deepEqual(json.equipment.off_hand, {id: 'minecraft:shield'});
+  assert.deepEqual(json.equipment.head, {id: 'netherite_helmet'});
   assert.equal(json.equipment.main_hand.id, 'minecraft:iron_sword');
   assert.equal(json.skin, skinHash);
   await page.locator('.animus-npc-visual canvas').first().waitFor();

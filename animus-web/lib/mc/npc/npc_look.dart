@@ -4,6 +4,7 @@
 /// refuse them for; the document's own diagnostics report them.
 library;
 
+import '../../logic/minecraft_ids.dart';
 import '../../logic/npc/npc_attributes.dart';
 
 /// `NpcPose`.
@@ -50,17 +51,15 @@ enum NpcSlot {
 final class NpcItem {
   const NpcItem({required this.id, this.count = 1, this.components});
 
-  static final RegExp _id = RegExp(r'^[a-z0-9_.-]+:[a-z0-9_./-]+$');
-
   /// Null for a value the server refuses (`NpcItem.parse`).
   static NpcItem? parse(Object? value) {
     if (value is! Map<String, Object?>) return null;
     final Object? id = value['id'];
-    if (id is! String || id.length > 128 || !_id.hasMatch(id)) return null;
+    if (id is! String || !validMinecraftId(id)) return null;
     final Object? count = value['count'];
     final Object? components = value['components'];
     return NpcItem(
-      id: id,
+      id: normalizeMinecraftId(id),
       count: count is int ? count : 1,
       components: components is String && components.startsWith('[') && components.endsWith(']') ? components : null,
     );

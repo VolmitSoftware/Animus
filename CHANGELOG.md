@@ -532,6 +532,7 @@
 - Nested settings such as movement and stuck lay out as full-width groups instead of squeezed columns.
 - The editor NPC list hides its type and world columns when its own column is narrow.
 - Clicking an NPC inspector label focuses its text or number field.
+- A Minecraft id without a namespace, such as `netherite_axe` in equipment, a shop offer, combat drops or a `give-item` action, now means the `minecraft:` id instead of being refused. Entity types, villager professions, rig and recording blocks, effects, sounds, particles and Bukkit dimension keys follow the same rule, and the schemas and editor accept both forms.
 
 ### Notes
 

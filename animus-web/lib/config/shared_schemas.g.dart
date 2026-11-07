@@ -10605,8 +10605,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "type": {
       "type": "string",
-      "pattern": "^[a-z0-9_]+:[a-z0-9_/]+$",
-      "description": "An entity type such as minecraft:player. The examples are the bodies every transport draws.",
+      "pattern": "^([a-z0-9_]+:)?[a-z0-9_/]+$",
+      "description": "An entity type such as minecraft:player or player. The examples are the bodies every transport draws.",
       "examples": [
         "minecraft:armadillo",
         "minecraft:armor_stand",
@@ -12715,7 +12715,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                   "maxProperties": 64,
                   "propertyNames": {
                     "type": "string",
-                    "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+                    "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
                   },
                   "additionalProperties": {
                     "type": "number",
@@ -12797,7 +12797,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                   "properties": {
                     "id": {
                       "type": "string",
-                      "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+                      "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
                     },
                     "amplifier": {
                       "type": "integer",
@@ -12914,7 +12914,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     "properties": {
                       "item": {
                         "type": "string",
-                        "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+                        "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
                       },
                       "amount": {
                         "type": "integer",
@@ -13074,7 +13074,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "properties": {
                 "profession": {
                   "type": "string",
-                  "pattern": "^[a-z0-9_.-]+:[a-z0-9_/.-]+$",
+                  "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$",
                   "description": "Such as minecraft:farmer. minecraft:none by default."
                 },
                 "level": {
@@ -13403,8 +13403,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "id": {
           "type": "string",
-          "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$",
-          "description": "namespace:item, such as minecraft:iron_sword.",
+          "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$",
+          "description": "An item id such as minecraft:iron_sword; a bare iron_sword means the same.",
           "maxLength": 128
         },
         "count": {
@@ -13604,7 +13604,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "maxItems": 256,
           "items": {
             "type": "string",
-            "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+            "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
           }
         },
         "all": {
@@ -13814,7 +13814,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "maxItems": 256,
           "items": {
             "type": "string",
-            "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+            "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
           }
         },
         "all": {
@@ -13975,7 +13975,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "maxItems": 256,
           "items": {
             "type": "string",
-            "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+            "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
           }
         }
       },
@@ -20850,7 +20850,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "when": true,
               "world": {
                 "type": "string",
-                "pattern": "^[a-z0-9._-]+:[a-z0-9/._-]+$"
+                "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
               },
               "x": {
                 "type": "number"
@@ -21231,7 +21231,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "x": {"$ref": "#/$defs/block"},
         "y": {"$ref": "#/$defs/block"},
         "z": {"$ref": "#/$defs/block"},
-        "block": {"type": "string", "maxLength": 128, "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"}
+        "block": {"type": "string", "maxLength": 128, "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"}
       }
     },
     "item": {
@@ -21239,7 +21239,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "additionalProperties": false,
       "required": ["id"],
       "properties": {
-        "id": {"type": "string", "maxLength": 128, "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"},
+        "id": {"type": "string", "maxLength": 128, "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"},
         "count": {"type": "integer", "minimum": 1, "maximum": 99},
         "components": {"type": "string", "maxLength": 4096, "pattern": "^\\[[\\s\\S]*\\]$"}
       }
@@ -21285,7 +21285,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "additionalProperties": false,
       "required": ["id"],
       "properties": {
-        "id": {"type": "string", "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"},
+        "id": {"type": "string", "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"},
         "count": {"type": "integer", "minimum": 1, "maximum": 99},
         "components": {"type": "string", "maxLength": 4096, "pattern": "^\\[[\\s\\S]*\\]$"}
       }
@@ -21306,7 +21306,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                                  "itemDisplay": {"enum": ["none", "thirdperson_lefthand", "thirdperson_righthand", "firstperson_lefthand", "firstperson_righthand", "head", "gui", "ground", "fixed"]}}}},
         {"if": {"properties": {"type": {"const": "block"}}},
          "then": {"required": ["block"], "propertyNames": {"enum": ["type", "translation", "rotation", "scale", "block"]},
-                  "properties": {"block": {"type": "string", "maxLength": 1024, "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+(\\[[^\\]]*\\])?$"}}}},
+                  "properties": {"block": {"type": "string", "maxLength": 1024, "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+(\\[[^\\]]*\\])?$"}}}},
         {"if": {"properties": {"type": {"const": "text"}}},
          "then": {"required": ["text"], "propertyNames": {"enum": ["type", "translation", "rotation", "scale", "text", "billboard", "background", "shadow", "lineWidth"]},
                   "properties": {"text": {"type": "string", "maxLength": 1024},
@@ -21429,7 +21429,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "additionalProperties": false,
       "required": ["id"],
       "properties": {
-        "id": {"type": "string", "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"},
+        "id": {"type": "string", "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"},
         "count": {"type": "integer", "minimum": 1, "maximum": 99},
         "components": {"type": "string", "maxLength": 4096, "pattern": "^\\[[\\s\\S]*\\]$"},
         "imported": {"type": "object"}

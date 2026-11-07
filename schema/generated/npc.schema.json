@@ -47,8 +47,8 @@
     },
     "type": {
       "type": "string",
-      "pattern": "^[a-z0-9_]+:[a-z0-9_/]+$",
-      "description": "An entity type such as minecraft:player. The examples are the bodies every transport draws.",
+      "pattern": "^([a-z0-9_]+:)?[a-z0-9_/]+$",
+      "description": "An entity type such as minecraft:player or player. The examples are the bodies every transport draws.",
       "examples": [
         "minecraft:armadillo",
         "minecraft:armor_stand",
@@ -2157,7 +2157,7 @@
                   "maxProperties": 64,
                   "propertyNames": {
                     "type": "string",
-                    "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+                    "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
                   },
                   "additionalProperties": {
                     "type": "number",
@@ -2239,7 +2239,7 @@
                   "properties": {
                     "id": {
                       "type": "string",
-                      "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+                      "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
                     },
                     "amplifier": {
                       "type": "integer",
@@ -2356,7 +2356,7 @@
                     "properties": {
                       "item": {
                         "type": "string",
-                        "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+                        "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
                       },
                       "amount": {
                         "type": "integer",
@@ -2516,7 +2516,7 @@
               "properties": {
                 "profession": {
                   "type": "string",
-                  "pattern": "^[a-z0-9_.-]+:[a-z0-9_/.-]+$",
+                  "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$",
                   "description": "Such as minecraft:farmer. minecraft:none by default."
                 },
                 "level": {
@@ -2845,8 +2845,8 @@
       "properties": {
         "id": {
           "type": "string",
-          "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$",
-          "description": "namespace:item, such as minecraft:iron_sword.",
+          "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$",
+          "description": "An item id such as minecraft:iron_sword; a bare iron_sword means the same.",
           "maxLength": 128
         },
         "count": {
@@ -3046,7 +3046,7 @@
           "maxItems": 256,
           "items": {
             "type": "string",
-            "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+            "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
           }
         },
         "all": {
@@ -3256,7 +3256,7 @@
           "maxItems": 256,
           "items": {
             "type": "string",
-            "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+            "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
           }
         },
         "all": {
@@ -3417,7 +3417,7 @@
           "maxItems": 256,
           "items": {
             "type": "string",
-            "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+            "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
           }
         }
       },
