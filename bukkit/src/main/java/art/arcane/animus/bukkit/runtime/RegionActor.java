@@ -808,6 +808,7 @@ final class RegionActor implements RegionOwner.Body {
     }
     void setEquipment(EquipmentSlot slot, ItemStack item) {
         if (!host.packets.equipmentAvailable()) throw new IllegalStateException("Equipment packets are unavailable on this server version");
+        if (!BodyRules.equipmentSlots(spec.type()).contains(slot)) throw new IllegalArgumentException(BodyRules.slotRefusal(spec.type(), slot));
         equipment.put(slot, item.clone());
         equipmentRevision++;
         publish(true);
@@ -1021,7 +1022,8 @@ final class RegionActor implements RegionOwner.Body {
             if (once) blockedWarned = true;
             boolean terrain = current.longLeg.terrainBlocks();
             AnimusLog.shared().routine(PersistedNpcService.blockedLegs(terrain), id, PersistedNpcService.blockedLeg(id, current.waypoint, current.origin, current.goal, reason,
-                    current.leg != null && movement.teleportsWhenStuck(), terrain), host.plugin.getLogger()::warning);
+                    current.leg != null && movement.teleportsWhenStuck(), terrain), Optional.of(PersistedNpcService.blockedLegCase(id, current.waypoint, reason)),
+                    host.plugin.getLogger()::warning);
         }
         failLeg(current, reason);
     }

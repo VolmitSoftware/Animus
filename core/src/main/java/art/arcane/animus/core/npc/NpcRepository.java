@@ -29,7 +29,7 @@ public final class NpcRepository {
         /** The hash of the file {@code definition} was read from. */
         public String expectedHash(NpcDefinition definition) throws IOException {
             String hash = sourceHashes.get(definition.path());
-            if (hash == null) throw new IOException("Conflict: " + definition.path() + " was not read from the store");
+            if (hash == null) throw DocumentStore.conflict(definition.path());
             return hash;
         }
     }
@@ -44,6 +44,8 @@ public final class NpcRepository {
     private volatile Map<String, String> problems = Map.of(), groupProblems = Map.of();
     private volatile GroupCatalog groups = GroupCatalog.EMPTY;
     private Map<String, String> hashes = Map.of();
+    /** The on-disk hash of each file whose hand edit a reload or hotload refused, while its last valid version stays published. */
+    private Map<String, String> refused = Map.of();
     private boolean loaded;
     public NpcRepository(DocumentStore store) { this.store = store; checkpoints = new DefinitionCheckpoints(store); }
     public Collection<NpcDefinition> all() { return active.values(); }
@@ -60,6 +62,15 @@ public final class NpcRepository {
     public Map<String, String> groupProblems() { return groupProblems; }
     /** The stored definitions, without group values, and the file hash each was read from, taken together. Batch writers start from these. */
     public synchronized Installed installed() { return new Installed(stored.values(), hashes); }
+    /**
+     * Records that hotload refused the content of {@code path} hashed {@code hash}. An explicit edit or delete of that NPC
+     * then replaces the refused file instead of answering a conflict, and a batch skips it.
+     */
+    public synchronized void refused(String path, String hash) {
+        Map<String, String> next = new HashMap<>(refused);
+        next.put(path, hash);
+        refused = Map.copyOf(next);
+    }
     public List<String> diagnostics() { return problems.entrySet().stream().map(entry -> entry.getKey() + ": " + entry.getValue()).toList(); }
 
     /** Restores only known invalid existing files, never deleted definitions or unknown malformed records. */
@@ -174,7 +185,16 @@ public final class NpcRepository {
                 if (!problem.getValue().equals(groupProblems.get(problem.getKey())))
                     LOG.log(System.Logger.Level.WARNING, problem.getKey() + ": group-problem=" + problem.getValue() + "; kept the last valid effective definition");
             stored = Collections.unmodifiableMap(candidates); active = Collections.unmodifiableMap(effective); provenance = Collections.unmodifiableMap(sources);
-            hashes = Map.copyOf(nextHashes); loaded = true; groups = catalog;
+            Map<String, String> nextRefused = new HashMap<>();
+            for (Read read : reads.values()) {
+                String published = nextHashes.get(read.path());
+                if (published == null || (read.error() == null && !recovered.containsKey(read.path()) && published.equals(read.sourceHash()))) continue;
+                try {
+                    String onDisk = store.hash(read.path());
+                    if (!onDisk.equals(published)) nextRefused.put(read.path(), onDisk);
+                } catch (IOException unreadable) { /* A file that cannot be read stays a conflict until it is fixed. */ }
+            }
+            hashes = Map.copyOf(nextHashes); refused = Map.copyOf(nextRefused); loaded = true; groups = catalog;
             problems = Collections.unmodifiableMap(reported); groupProblems = Collections.unmodifiableMap(nextGroupProblems);
         }
         return new ScanResult(reported.entrySet().stream().map(entry -> entry.getKey() + ": " + entry.getValue()).toList(), candidates.size());
@@ -238,20 +258,33 @@ public final class NpcRepository {
         }
         NpcDefinition previous = stored.get(updated.id());
         if ((previous == null && draft.expectedRevision() != 0) || (previous != null && (previous.revision() != draft.expectedRevision() || !previous.uuid().equals(updated.uuid()))))
-            throw new IOException("Conflict: identity or revision changed");
+            throw DocumentStore.conflict(draft.path());
         if (previous == null && stored.size() >= 100_000) throw new IOException("NPC definition limit exceeded: 100000");
         String serialized = updated.serialize(), sourceHash = JsonDocuments.hash(serialized);
         List<DocumentStore.Change> changes = new ArrayList<>();
-        changes.add(new DocumentStore.Change(updated.path(), draft.expectedHash(), serialized));
+        Optional<String> replaced = refusedBase(draft.path(), draft.expectedHash());
+        changes.add(new DocumentStore.Change(updated.path(), replaced.orElse(draft.expectedHash()), serialized));
         checkpoints.capture(updated, sourceHash).ifPresent(changes::add);
         String transaction = store.commit(changes);
         publish(updated.id(), updated, resolution, updated.path(), sourceHash);
-        return transaction;
+        return replaced.isPresent() ? transaction + "; replaced the refused hand edits in " + updated.path() : transaction;
+    }
+
+    /**
+     * The hash a write to {@code path} must find on disk when that file holds a refused hand edit and the caller started
+     * from the published version: the write is the user's explicit intent, so it replaces the refused content. Empty
+     * otherwise, so any other change since the last read stays a conflict.
+     */
+    private Optional<String> refusedBase(String path, String expectedHash) throws IOException {
+        String hash = refused.get(path);
+        if (hash == null || !Objects.equals(expectedHash, hashes.get(path)) || !store.hash(path).equals(hash)) return Optional.empty();
+        return Optional.of(hash);
     }
 
     /**
      * Applies several drafts as one transaction with one rollback receipt. Each draft is checked as {@link #apply} checks
-     * it, and any refusal refuses the whole batch with every error, before anything is written.
+     * it, and any refusal refuses the whole batch with every error, before anything is written. A member whose file holds
+     * a refused hand edit is skipped instead: the result is the transaction followed by a note naming the skipped members.
      */
     public synchronized String applyAll(List<Draft> drafts) throws IOException {
         if (drafts.isEmpty()) throw new IOException("Nothing to apply");
@@ -259,12 +292,14 @@ public final class NpcRepository {
         List<NpcDefinition> updated = new ArrayList<>();
         List<Resolution> resolutions = new ArrayList<>();
         Map<String, String> expected = new HashMap<>();
+        List<String> skipped = new ArrayList<>();
         for (Draft draft : drafts) {
             NpcDefinition previous = stored.values().stream().filter((NpcDefinition definition) -> definition.path().equals(draft.path())).findFirst().orElse(null);
             String label = previous == null ? draft.path() : previous.id();
             try {
                 if (previous == null || previous.revision() != draft.expectedRevision() || !Objects.equals(hashes.get(draft.path()), draft.expectedHash()))
-                    throw new IOException("Conflict: identity or revision changed");
+                    throw DocumentStore.conflict(draft.path());
+                if (refusedBase(draft.path(), draft.expectedHash()).isPresent()) { skipped.add(label + ": " + draft.path() + " has refused hand edits"); continue; }
                 if (draft.expectedRevision() == Long.MAX_VALUE) throw new IOException("Revision exhausted");
                 JsonObject json = draft.document();
                 json.addProperty("revision", draft.expectedRevision() + 1);
@@ -278,22 +313,25 @@ public final class NpcRepository {
             } catch (IOException refused) { errors.add(label + ": " + refused.getMessage()); }
         }
         if (!errors.isEmpty()) throw new IOException(String.join("; ", errors));
+        String skip = String.join(", ", skipped) + (skipped.size() == 1 ? "; fix the file" : "; fix the files") + " or /animus reload";
+        if (updated.isEmpty()) throw new IOException("Skipped " + skip);
         String transaction = DefinitionBatch.commit(store, updated, expected, List.of());
         for (int i = 0; i < updated.size(); i++) {
             NpcDefinition definition = updated.get(i);
             publish(definition.id(), definition, resolutions.get(i), definition.path(), JsonDocuments.hash(definition.serialize()));
         }
-        return transaction;
+        return skipped.isEmpty() ? transaction : transaction + "; skipped " + skip;
     }
 
     public synchronized String delete(String id) throws IOException {
         Draft draft = draft(id);
+        Optional<String> replaced = refusedBase(draft.path(), draft.expectedHash());
         List<DocumentStore.Change> changes = new ArrayList<>();
-        changes.add(new DocumentStore.Change(draft.path(), draft.expectedHash(), null));
+        changes.add(new DocumentStore.Change(draft.path(), replaced.orElse(draft.expectedHash()), null));
         checkpoints.remove(draft.path()).ifPresent(changes::add);
         String transaction = store.commit(changes);
         publish(id, null, null, draft.path(), null);
-        return transaction;
+        return replaced.isPresent() ? transaction + "; removed the refused hand edits in " + draft.path() : transaction;
     }
 
     /** Publishes one NPC's stored and effective definitions after a committed write, or removes them when {@code definition} is null. */
@@ -309,6 +347,7 @@ public final class NpcRepository {
         }
         stored = Collections.unmodifiableMap(nextStored); active = Collections.unmodifiableMap(nextActive);
         provenance = Collections.unmodifiableMap(nextSources); hashes = Map.copyOf(nextHashes);
+        if (refused.containsKey(path)) { Map<String, String> nextRefused = new HashMap<>(refused); nextRefused.remove(path); refused = Map.copyOf(nextRefused); }
         Map<String, String> nextProblems = new TreeMap<>(problems); nextProblems.remove(path); problems = Collections.unmodifiableMap(nextProblems);
         Map<String, String> nextGroupProblems = new TreeMap<>(groupProblems); nextGroupProblems.remove(path); groupProblems = Collections.unmodifiableMap(nextGroupProblems);
     }

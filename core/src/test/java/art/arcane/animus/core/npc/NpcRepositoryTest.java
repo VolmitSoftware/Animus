@@ -23,7 +23,9 @@ class NpcRepositoryTest {
             Files.writeString(root.resolve(draft.path()), JSON.replace("\"y\":64", "\"y\":\"bad\""));
             assertTrue(repository.reload().getFirst().contains("$.position.y"));
             assertEquals("Guard", repository.find("guard").orElseThrow().name());
-            assertThrows(IOException.class, () -> repository.apply(draft));
+            Files.writeString(root.resolve(draft.path()), JSON.replace("\"Guard\"", "\"Hand edit not read yet\""));
+            IOException conflict = assertThrows(IOException.class, () -> repository.apply(draft));
+            assertEquals("Conflict: npcs/town/guard.json changed since Animus read it; fix the file or /animus reload", conflict.getMessage());
             Files.writeString(root.resolve(draft.path()), JSON);
             var edited = draft.document(); edited.addProperty("name", "Watchman");
             repository.apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), edited));
@@ -38,6 +40,49 @@ class NpcRepositoryTest {
             assertEquals("Watchman", repository.find("guard").orElseThrow().name());
         }
     }
+    @Test void anEditOrDeleteReplacesARefusedHandEditAndLeavesOtherNpcsAlone() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            store.commit(List.of(new DocumentStore.Change("npcs/town/guard.json", "missing", JSON), new DocumentStore.Change("npcs/town/baker.json", "missing", BAKER)));
+            NpcRepository repository = new NpcRepository(store);
+            assertTrue(repository.reload().isEmpty());
+            String broken = JSON.replace("\"y\":64", "\"y\":\"bad\"");
+            Files.writeString(root.resolve("npcs/town/guard.json"), broken);
+            assertEquals(1, repository.reload().size());
+
+            NpcRepository.Draft draft = repository.draft("guard");
+            JsonObject edited = draft.document(); edited.addProperty("name", "Watchman");
+            String saved = repository.apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), edited));
+            assertTrue(saved.endsWith("; replaced the refused hand edits in npcs/town/guard.json"), saved);
+            assertTrue(Files.readString(root.resolve("npcs/town/guard.json")).contains("\"Watchman\""));
+            assertTrue(repository.diagnostics().isEmpty(), repository.diagnostics().toString());
+            assertFalse(repository.apply(repository.draft("guard")).contains("refused"), "the note appears only while refused edits are on disk");
+
+            Files.writeString(root.resolve("npcs/town/guard.json"), broken);
+            assertEquals(1, repository.reload().size());
+            String deleted = repository.delete("guard");
+            assertTrue(deleted.endsWith("; removed the refused hand edits in npcs/town/guard.json"), deleted);
+            assertFalse(Files.exists(root.resolve("npcs/town/guard.json")));
+            assertTrue(repository.find("guard").isEmpty());
+
+            String baker = repository.delete("baker");
+            assertFalse(baker.contains(";"), baker);
+            assertTrue(repository.find("baker").isEmpty());
+        }
+    }
+
+    @Test void aHotloadRefusalRecordedForTheFileLetsTheNextEditReplaceIt() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            store.commit(List.of(new DocumentStore.Change("npcs/town/guard.json", "missing", JSON)));
+            NpcRepository repository = new NpcRepository(store);
+            assertTrue(repository.reload().isEmpty());
+            String refused = JSON.replace("\"Guard\"", "\"Refused by hotload\"");
+            Files.writeString(root.resolve("npcs/town/guard.json"), refused);
+            assertThrows(IOException.class, () -> repository.delete("guard"), "an unreviewed change is a real conflict");
+            repository.refused("npcs/town/guard.json", JsonDocuments.hash(refused));
+            assertTrue(repository.delete("guard").endsWith("; removed the refused hand edits in npcs/town/guard.json"));
+        }
+    }
+
     static final String BAKER = JSON.replace("12345678-1234-1234-1234-123456789abc", "22345678-1234-1234-1234-123456789abc")
             .replace("\"id\":\"guard\"", "\"id\":\"baker\"").replace("\"name\":\"Guard\"", "\"name\":\"Baker\"");
 

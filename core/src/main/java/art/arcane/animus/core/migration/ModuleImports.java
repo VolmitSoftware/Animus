@@ -5,6 +5,7 @@ import art.arcane.animus.api.Outcome;
 import art.arcane.animus.core.extension.ModuleHooks;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.storage.NpcPaths;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
@@ -124,10 +125,10 @@ public final class ModuleImports {
                 if (!uuids.add(UUID.fromString(uuid))) errors.add("$.uuid: duplicate NPC UUID");
                 JsonElement groupValue = definition.get("group");
                 String group = groupValue.isJsonPrimitive() ? groupValue.getAsString() : prefix;
-                String path = "npcs/" + group + "/" + npcId + ".json";
+                String path = NpcPaths.path(group, npcId);
                 if (!path.matches(CitizensImporter.NPC_PATH)) {
                     if (errors.isEmpty()) errors.add("$.id: " + npcId + " in group " + group + " is not a valid import path");
-                    path = "npcs/" + prefix + "/" + npcId + ".json";
+                    path = NpcPaths.path(prefix, npcId);
                 }
                 JsonObject report = new JsonObject();
                 report.addProperty("sourceId", record.sourceId());

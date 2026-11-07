@@ -113,7 +113,7 @@ class EditorPartsTest {
     void service_pairLinkDecodesToReachableCode() throws Exception {
         Path data = directory.resolve("server");
         Files.createDirectories(data);
-        Files.writeString(data.resolve("config.toml"), "statusMessage = \"Hello\"\n[editor]\nlistenerEnabled = true\nrelayEnabled = false\nport = 0\n");
+        Files.writeString(data.resolve("config.toml"), "[editor]\nlistenerEnabled = true\nrelayEnabled = false\nport = 0\n");
         art.arcane.animus.core.AnimusRuntime runtime = new art.arcane.animus.core.AnimusRuntime(
                 new art.arcane.animus.core.RuntimeEnvironment(art.arcane.animus.core.Platform.BUKKIT, "26.2", data));
         runtime.start();
@@ -141,7 +141,7 @@ class EditorPartsTest {
     void pairCommand_isTwoLinesWithOpenAndCopyChipsAndThePlainLinkForTheConsole() throws Exception {
         Path data = directory.resolve("paired");
         Files.createDirectories(data);
-        Files.writeString(data.resolve("config.toml"), "statusMessage = \"Hello\"\n[editor]\nlistenerEnabled = true\nrelayEnabled = false\nport = 0\n");
+        Files.writeString(data.resolve("config.toml"), "[editor]\nlistenerEnabled = true\nrelayEnabled = false\nport = 0\n");
         art.arcane.animus.core.AnimusRuntime runtime = new art.arcane.animus.core.AnimusRuntime(
                 new art.arcane.animus.core.RuntimeEnvironment(art.arcane.animus.core.Platform.BUKKIT, "26.2", data));
         runtime.start();

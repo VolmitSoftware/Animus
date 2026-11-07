@@ -109,7 +109,6 @@ class DefinitionSpecTest {
                         for (int viewers : new int[]{1, 1024})
                             for (int updates : new int[]{1, 64}) {
                                 Files.writeString(directory.resolve("config.toml"), """
-                                        statusMessage = "Runtime budget validation"
                                         [npcs]
                                         enabled = %s
                                         viewDistance = %d

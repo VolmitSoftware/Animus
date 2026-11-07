@@ -54,7 +54,7 @@ def main():
         if status=='OK':return json.loads(re.search(r'; result (\{.*\})',receipt)[1])
         return receipt
     def config(enabled):
-        (data/'config.toml').write_text('statusMessage = "Module QA"\npacketProofEnabled = false\n[npcs]\nenabled = false\n[modules]\nenabled = '+str(enabled).lower()+'\nmaximumInvocations = 8\ninvocationTimeoutMillis = 1500\ndeliveryBudgetMillis = 250\n')
+        (data/'config.toml').write_text('packetProofEnabled = false\n[npcs]\nenabled = false\n[modules]\nenabled = '+str(enabled).lower()+'\nmaximumInvocations = 8\ninvocationTimeoutMillis = 1500\ndeliveryBudgetMillis = 250\n')
     def module_status(state):
         deadline=time.monotonic()+30
         while time.monotonic()<deadline:

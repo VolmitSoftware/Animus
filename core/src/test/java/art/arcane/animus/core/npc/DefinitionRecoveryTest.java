@@ -24,7 +24,7 @@ class DefinitionRecoveryTest {
         return repository.apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), json));
     }
 
-    @Test void restartRetainsKnownInvalidDefinitionWithoutOverwritingSourceOrBypassingConflicts() throws Exception {
+    @Test void restartRetainsKnownInvalidDefinitionUntilAnExplicitEditReplacesIt() throws Exception {
         String valid;
         try (AnimusRuntime runtime = runtime()) {
             runtime.start(); seed(runtime.npcs());
@@ -40,10 +40,12 @@ class DefinitionRecoveryTest {
             assertTrue(runtime.npcs().diagnostics().getFirst().contains("$.position.y"));
             assertTrue(runtime.npcs().diagnostics().getFirst().contains("durable recovery"));
             assertEquals(broken, Files.readString(root.resolve(PATH)));
-            assertThrows(IOException.class, () -> rename(runtime.npcs(), "guard", "Do not overwrite"));
-            assertEquals(broken, Files.readString(root.resolve(PATH)));
             assertTrue(new Administration(runtime).status().stream().anyMatch(line -> line.contains("| 1 file problem, see /animus validate")));
-            Files.writeString(root.resolve(PATH), valid);
+            Files.writeString(root.resolve(PATH), broken.replace("\"Guard\"", "\"Unread hand edit\""));
+            assertThrows(IOException.class, () -> rename(runtime.npcs(), "guard", "Do not overwrite"), "a change nobody read yet is never overwritten");
+            Files.writeString(root.resolve(PATH), broken);
+            assertTrue(rename(runtime.npcs(), "guard", "Explicit edit").endsWith("; replaced the refused hand edits in " + PATH));
+            assertTrue(Files.readString(root.resolve(PATH)).contains("Explicit edit"));
             assertTrue(runtime.npcs().reload().isEmpty()); assertTrue(runtime.npcs().diagnostics().isEmpty());
         }
     }

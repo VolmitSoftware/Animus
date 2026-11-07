@@ -36,6 +36,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * The NPC definition schema, read from the same bounds {@link NpcDefinition#validate} enforces. Unknown root fields and
@@ -160,6 +161,7 @@ public final class NpcSchemaGenerator {
             absent.add("not", required(field.field()));
             rules.add(onlyForType(field.type(), absent));
         }
+        new TreeMap<>(BodyRules.limitedEquipment()).forEach((String body, Set<EquipmentSlot> slots) -> rules.add(equipmentFor(body, slots)));
         root.add("allOf", rules);
         return root;
     }
@@ -194,6 +196,17 @@ public final class NpcSchemaGenerator {
         for (EquipmentSlot slot : EquipmentSlot.values()) slots.add(slot.key(), reference("item"));
         equipment.add("properties", slots);
         return equipment;
+    }
+
+    /** A body of {@code type} lists only the slots it shows, or no equipment at all. */
+    private static JsonObject equipmentFor(String type, Set<EquipmentSlot> slots) {
+        JsonObject shown = new JsonObject();
+        if (slots.isEmpty()) shown.addProperty("maxProperties", 0);
+        else shown.add("propertyNames", choices(slots.stream().map(EquipmentSlot::key).toList()));
+        JsonObject rule = new JsonObject();
+        rule.add("if", property("type", constant(type)));
+        rule.add("then", property("equipment", shown));
+        return rule;
     }
 
     private static JsonObject hologram() {

@@ -1,6 +1,6 @@
 package art.arcane.animus.core.config;
 
-import art.arcane.animus.core.BuildIdentity;
+import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.behavior.BehaviorEngine;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import art.arcane.animus.core.behavior.state.BehaviorStateStore;
@@ -13,9 +13,10 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /** Plugin-wide settings are TOML. NPC definitions, behaviors, state and generated data remain JSON. */
-public record PluginSettings(String statusMessage, boolean packetProofEnabled, NpcRuntimeSettings npcs,
+public record PluginSettings(boolean packetProofEnabled, NpcRuntimeSettings npcs,
                              FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors, CombatBudgets combat, BuildSettings builds,
                              ShopSettings shops, EditorRelaySettings relay, EditorSettings editor, RigSettings rigs,
                              NavigationSettings navigation, HotloadSettings hotload, RecordingSettings recordings) {
@@ -33,7 +34,6 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
             DocumentStore.atomic(store.resolve("backups/config-" + JsonDocuments.hash(original) + ".json"), original);
         } else {
             document = new JsonObject();
-            document.addProperty("statusMessage", "Hello from " + BuildIdentity.NAME);
             document.addProperty("packetProofEnabled", false);
             document.add("npcs", new Gson().toJsonTree(NpcRuntimeSettings.DEFAULT));
             document.add("files", new Gson().toJsonTree(FileWorkSettings.DEFAULT));
@@ -53,8 +53,26 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
         catch (RuntimeException e) { throw new IOException("Cannot migrate config.json to TOML; original retained", e); }
         if (!document.equals(TomlCodec.toJsonElement(encoded)))
             throw new IOException("config.json cannot be represented losslessly in TOML; original retained");
-        DocumentStore.atomic(toml, "# Animus plugin settings. NPC and behavior documents use JSON.\n" + encoded);
+        DocumentStore.atomic(toml, "# Animus plugin settings. NPC and behavior documents use JSON. Every key: " + DOCS + "\n" + commented(encoded));
         return readToml(toml);
+    }
+
+    private static final String DOCS = ChatLine.docsUrl("03-configuration", "");
+    /** The one-line note above each top-level table of a written config.toml; its docs section is named after the table. */
+    private static final Map<String, String> TABLES = Map.ofEntries(Map.entry("npcs", "NPC presentation and viewer budgets"),
+            Map.entry("files", "File work and backups"), Map.entry("modules", "Animus modules"), Map.entry("behaviors", "Behavior engine, triggers and actions"),
+            Map.entry("combat", "Combat NPCs"), Map.entry("builds", "Builder NPCs"), Map.entry("shops", "Shops and their messages"),
+            Map.entry("editor", "Web editor listener, relay and notices"), Map.entry("rigs", "Rigs and animations"), Map.entry("navigation", "Route planning"),
+            Map.entry("hotload", "Live reload of hand edits"), Map.entry("recordings", "Recordings and ghost replays"));
+
+    private static String commented(String encoded) {
+        StringBuilder text = new StringBuilder(encoded.length() + 1024);
+        for (String line : encoded.split("\n", -1)) {
+            String table = line.startsWith("[") && line.endsWith("]") ? line.substring(1, line.length() - 1) : "";
+            if (TABLES.containsKey(table)) text.append("# ").append(TABLES.get(table)).append(": ").append(DOCS).append('#').append(table).append('\n');
+            text.append(line).append('\n');
+        }
+        return text.substring(0, text.length() - 1);
     }
 
     private static PluginSettings readToml(Path path) throws IOException {
@@ -73,9 +91,6 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
 
     private static PluginSettings validate(JsonElement data, Path path) throws IOException {
         if (data == null || !data.isJsonObject()) throw new IOException(path + ": expected settings table");
-        JsonElement message = data.getAsJsonObject().get("statusMessage");
-        if (message == null || !message.isJsonPrimitive() || !message.getAsJsonPrimitive().isString() || message.getAsString().isBlank())
-            throw new IOException(path + ": statusMessage must be a nonblank string");
         JsonElement proof = data.getAsJsonObject().get("packetProofEnabled");
         if (proof != null && (!proof.isJsonPrimitive() || !proof.getAsJsonPrimitive().isBoolean()))
             throw new IOException(path + ": packetProofEnabled must be a boolean");
@@ -145,7 +160,7 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
         RecordingSettings recordingSettings;
         try { recordingSettings = recordings(table(data.getAsJsonObject(), "recordings")); }
         catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": recordings: " + e.getMessage(), e); }
-        return new PluginSettings(message.getAsString(), proof != null && proof.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings, shopSettings,
+        return new PluginSettings(proof != null && proof.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings, shopSettings,
                 relaySettings, editorSettings, rigSettings, navigationSettings, hotloadSettings, recordingSettings);
     }
 

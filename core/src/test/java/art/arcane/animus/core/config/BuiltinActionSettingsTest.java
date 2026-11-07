@@ -15,7 +15,7 @@ class BuiltinActionSettingsTest {
     @TempDir Path root;
 
     private BuiltinActionSettings load(String toml) throws Exception {
-        Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n" + toml);
+        Files.writeString(root.resolve("config.toml"), toml);
         try (DocumentStore store = new DocumentStore(root)) { return PluginSettings.load(store).behaviors().actions(); }
     }
 
@@ -62,7 +62,7 @@ class BuiltinActionSettingsTest {
             "commandBehaviors = [\"*\"]", "commandBehaviors = [\"NotAnId\"]", "commandBehaviors = [1]", "commandBehaviors = \"town:gate\"",
             "commandNamespaces = [\"*\"]", "commandNamespaces = [\"Town\"]", "commandNamespaces = [\"town:gate\"]"})
     void invalidSettingsFailLoadWithoutChangingTheFile(String line) throws Exception {
-        String source = "statusMessage = 'Test'\n[behaviors.actions]\n" + line + "\n";
+        String source = "[behaviors.actions]\n" + line + "\n";
         Files.writeString(root.resolve("config.toml"), source);
         try (DocumentStore store = new DocumentStore(root)) { assertThrows(IOException.class, () -> PluginSettings.load(store)); }
         assertEquals(source, Files.readString(root.resolve("config.toml")));

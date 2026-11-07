@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class SettingsLivenessTest {
     @Test void everyConfigKeyAppliesLive() {
-        for (String key : new String[] {"statusMessage", "packetProofEnabled", "hotload.enabled", "npcs.viewDistance", "npcs.enabled", "npcs.packetsPerTick",
+        for (String key : new String[] {"packetProofEnabled", "hotload.enabled", "npcs.viewDistance", "npcs.enabled", "npcs.packetsPerTick",
                 "files.maximumOperations", "files.deliveryBudgetMillis", "modules.enabled", "modules.maximumInvocations", "behaviors.enabled",
                 "behaviors.engine.fibers", "behaviors.catalog.maximumDocuments", "behaviors.triggers.enabled", "behaviors.state.flushMillis",
                 "behaviors.actions.actionsPerTick", "behaviors.actions.commandBehaviors[0]", "combat.enabled", "combat.brainsPerTick",

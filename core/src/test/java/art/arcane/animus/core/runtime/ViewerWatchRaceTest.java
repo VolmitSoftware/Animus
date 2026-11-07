@@ -71,7 +71,8 @@ class ViewerWatchRaceTest {
         harness.tick(6);
         String status = harness.service.status();
         assertFalse(status.contains("last-error"), status);
-        assertTrue(harness.warnings.isEmpty(), harness.warnings.toString());
+        assertEquals(1, harness.warnings.size(), "the closed connection is logged once with the player and reason: " + harness.warnings);
+        assertTrue(harness.warnings.getFirst().contains("Watcher") && harness.warnings.getFirst().contains("Viewer is not connected"), harness.warnings.getFirst());
         assertEquals(0, harness.transport.spawned.get());
 
         harness.service.quit(harness.player);
@@ -80,6 +81,7 @@ class ViewerWatchRaceTest {
         harness.tick(6);
         assertTrue(harness.transport.spawned.get() >= 1, "the returning player sees the NPC");
         assertFalse(harness.service.status().contains("last-error"));
+        assertEquals(1, harness.warnings.size(), harness.warnings.toString());
     }
 
     @Test

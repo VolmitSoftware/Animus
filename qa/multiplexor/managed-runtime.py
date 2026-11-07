@@ -93,7 +93,7 @@ def target(args, source):
         data.mkdir(parents=True, exist_ok=True)
         definition = data/'npcs/qa'/f'{npc_id}.json'
         assert not definition.exists(), 'Refusing an existing definition'
-        (data / 'config.toml').write_text('statusMessage = "Multiplexor QA"\npacketProofEnabled = true\n')
+        (data / 'config.toml').write_text('packetProofEnabled = true\n')
         properties = instance / 'server.properties'
         existing = properties.read_text().splitlines()
         overrides = {'server-ip':'127.0.0.1','online-mode':'false','level-type':'minecraft:flat','generator-settings':json.dumps({'layers':[{'block':'minecraft:bedrock','height':1},{'block':'minecraft:stone','height':59},{'block':'minecraft:grass_block','height':1}],'biome':'minecraft:plains'},separators=(',',':')), 'generate-structures':'false','view-distance':'2','simulation-distance':'2','max-players':'8','spawn-protection':'0','pause-when-empty-seconds':'-1'}

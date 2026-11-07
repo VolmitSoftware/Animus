@@ -3649,7 +3649,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         "chest",
                         "legs",
                         "feet",
-                        "body"
+                        "body",
+                        "saddle"
                       ]
                     },
                     "item": {
@@ -8254,7 +8255,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "chest",
             "legs",
             "feet",
-            "body"
+            "body",
+            "saddle"
           ]
         },
         "item": {
@@ -14920,6 +14922,161 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "required": [
             "dragon"
           ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:armadillo"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:armor_stand"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand",
+                "off_hand",
+                "head",
+                "chest",
+                "legs",
+                "feet"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:ender_dragon"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:frog"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:horse"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "body",
+                "saddle"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:llama"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "body"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:player"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand",
+                "off_hand",
+                "head",
+                "chest",
+                "legs",
+                "feet"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:turtle"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
         }
       }
     }

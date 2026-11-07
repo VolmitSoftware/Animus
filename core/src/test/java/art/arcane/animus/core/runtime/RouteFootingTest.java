@@ -7,11 +7,14 @@ import art.arcane.animus.core.navigation.VoxelSnapshot.Cell;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * An imported patrol can stand above the ground it walks on (the terrain under a Citizens NPC changed, or it was placed
@@ -45,35 +48,44 @@ class RouteFootingTest {
         return harness;
     }
 
+    /**
+     * Ticks until {@code done} holds for the navigation status. Path planning runs on its own thread, so a fixed tick
+     * count can end before a plan lands on a loaded machine; the wall-clock deadline bounds the wait instead.
+     */
+    private static String tickUntil(ViewerWatchRaceTest.Harness harness, Predicate<String> done, String expected) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (true) {
+            harness.tick(1);
+            String navigation = harness.service.navigationStatus("floating-patrol");
+            if (done.test(navigation)) return navigation;
+            if (System.nanoTime() > deadline) fail("expected " + expected + " within 30 s; navigation: " + navigation);
+            try { TimeUnit.MILLISECONDS.sleep(1); }
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); fail("interrupted while waiting for " + expected); }
+        }
+    }
+
     @Test
     void aPatrolWithNoPlayerNearSleepsAndWakesWhenOneComes() throws IOException {
         ViewerWatchRaceTest.Harness harness = patrol(64, true);
-        harness.tick(80);
-        assertTrue(harness.service.navigationStatus("floating-patrol").contains("sleeping"), harness.service.navigationStatus("floating-patrol"));
+        tickUntil(harness, (String navigation) -> navigation.contains("sleeping"), "the patrol to sleep");
         assertTrue(harness.service.status().contains("routes-sleeping=1"), harness.service.status());
         harness.playersAway = false;
-        harness.tick(80);
-        assertTrue(harness.service.status().contains("routes-sleeping=0"), harness.service.status());
+        tickUntil(harness, (String navigation) -> harness.service.status().contains("routes-sleeping=0"), "the patrol to wake");
         assertTrue(!harness.service.navigationStatus("floating-patrol").contains("sleeping"), harness.service.navigationStatus("floating-patrol"));
     }
 
     @Test
     void aPatrolStandingInTheAirFallsToTheGroundBeforeItsFirstLeg() throws IOException {
         ViewerWatchRaceTest.Harness harness = patrol(67, false);
-        harness.tick(80);
-
-        String navigation = harness.service.navigationStatus("floating-patrol");
+        String navigation = tickUntil(harness, (String status) -> status.contains("position=") && !status.contains("y=67.0, z=2.5]; tick"), "the body to leave the air");
         assertTrue(!navigation.contains("UNREACHABLE"), navigation);
-        assertTrue(!navigation.contains("y=67.0, z=2.5]; tick"), "the body left the air: " + navigation);
         assertEquals(0, harness.warnings.size(), harness.warnings.toString());
     }
 
     /** Citizens stores the clicked block, the ground under the feet, so an imported point names y=63 on ground topped at 64. */
     @Test void aPatrolWhoseWaypointsNameTheGroundBlockWalksOnTopOfIt() throws IOException {
         ViewerWatchRaceTest.Harness harness = patrol(64, false, 63, "", (int x, int y2, int z) -> y2 < 64 ? Cell.SOLID : Cell.AIR);
-        harness.tick(200);
-
-        String navigation = harness.service.navigationStatus("floating-patrol");
+        String navigation = tickUntil(harness, (String status) -> status.contains("arrivals=") && !status.contains("arrivals=0"), "an arrival");
         assertEquals(0, harness.warnings.size(), harness.warnings.toString());
         assertTrue(!navigation.contains("arrivals=0"), navigation);
         assertTrue(navigation.matches("(?s).*position=Vec3\\[x=[^,]+, y=64\\.0.*"), "the body stays on the ground: " + navigation);
@@ -86,9 +98,7 @@ class RouteFootingTest {
 
                  "movement": {"stuck": {"afterTicks": 40, "teleport": true}},""",
                 (int x, int y2, int z) -> y2 < 64 || (y2 < 68 && Math.max(Math.abs(x - 6), Math.abs(z - 2)) == 1) ? Cell.SOLID : Cell.AIR);
-        harness.tick(400);
-
-        String navigation = harness.service.navigationStatus("floating-patrol");
+        String navigation = tickUntil(harness, (String status) -> status.contains("arrivals=") && !status.contains("arrivals=0"), "an arrival after the teleport");
         assertTrue(navigation.matches("(?s).*position=Vec3\\[x=[^,]+, y=64\\.0.*"), "the body never ends inside the ground: " + navigation);
         assertTrue(!navigation.contains("arrivals=0"), "the patrol keeps going: " + navigation);
     }

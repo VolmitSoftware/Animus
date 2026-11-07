@@ -74,6 +74,11 @@ public final class DocumentStore implements AutoCloseable {
     }
     public synchronized String hash(String relative) throws IOException { return JsonDocuments.hash(read(relative)); }
 
+    /** The refusal of a write whose file changed after it was read: which file, and how to recover. */
+    public static IOException conflict(String path) {
+        return new IOException("Conflict: " + path + " changed since Animus read it; fix the file or /animus reload");
+    }
+
     /** Content-addressed generated JSON. Unreferenced objects are harmless; references publish in journaled transactions. */
     public synchronized String putImmutableJson(String namespace, String content) throws IOException {
         ensureWritable();
@@ -142,7 +147,7 @@ public final class DocumentStore implements AutoCloseable {
             writable(change.path());
             if (!paths.add(resolve(change.path()))) throw new IOException("Duplicate transaction path: " + change.path());
             String before = read(change.path());
-            if (!JsonDocuments.hash(before).equals(change.expectedHash())) throw new IOException("Conflict: " + change.path());
+            if (!JsonDocuments.hash(before).equals(change.expectedHash())) throw conflict(change.path());
             if (change.content() != null && change.content().getBytes(StandardCharsets.UTF_8).length > JsonDocuments.MAX_BYTES)
                 throw new IOException("Document exceeds size limit: " + change.path());
             payloadBytes += bytes(before) + bytes(change.content());

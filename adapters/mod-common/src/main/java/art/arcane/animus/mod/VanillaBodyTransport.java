@@ -385,7 +385,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (session == null) return unwatched("Viewer is not watched");
         if (session.visible.get(body.entityId) != body) return failed("Body is not visible to this viewer");
         List<Pair<net.minecraft.world.entity.EquipmentSlot, ItemStack>> entries = new ArrayList<>(items.size());
-        for (Map.Entry<EquipmentSlot, ItemStack> item : items.entrySet())
+        for (Map.Entry<EquipmentSlot, ItemStack> item : BodyRules.shownEquipment(body.typeKey(), items).entrySet())
             entries.add(Pair.of(net.minecraft.world.entity.EquipmentSlot.valueOf(BodyRules.nativeSlot(item.getKey())), item.getValue().copy()));
         if (entries.isEmpty()) return CompletableFuture.completedFuture(null);
         return send(session, body, PacketKind.EQUIPMENT, List.of(new ClientboundSetEquipmentPacket(body.entityId, entries)));

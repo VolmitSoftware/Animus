@@ -29,7 +29,6 @@ class EditorNotifySettingsTest {
     @Test
     void shouldReadSwitchesAndPartialSoundsOverDefaults() throws IOException {
         Files.writeString(root.resolve("config.toml"), """
-                statusMessage = "x"
                 [editor.notify]
                 chat = false
                 actionBar = true
@@ -65,7 +64,7 @@ class EditorNotifySettingsTest {
     }
 
     private void assertRefused(String table, String message) throws IOException {
-        Files.writeString(root.resolve("config.toml"), "statusMessage = \"x\"\n" + table);
+        Files.writeString(root.resolve("config.toml"), table);
         try (DocumentStore store = new DocumentStore(root)) {
             IOException failure = assertThrows(IOException.class, () -> PluginSettings.load(store));
             assertTrue(failure.getMessage().contains(message), failure.getMessage());

@@ -32,7 +32,7 @@ public record EditorSettings(boolean enabled, String editorUrl, boolean listener
             "relayConcurrentRequests");
     private static final Set<String> LOOPBACK = Set.of("127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1");
     public static final EditorSettings DEFAULT = new EditorSettings(true, "https://animus-editor.web.app", true, "127.0.0.1", 9797, "", "", "",
-            List.of("https://animus-editor.web.app", "https://animus-editor.firebaseapp.com", "http://127.0.0.1:8098", "http://localhost:8098"),
+            List.of("https://animus-editor.web.app", "https://animus-editor.firebaseapp.com"),
             7, 30, 4 * 1024 * 1024, 16 * 1024 * 1024, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24, EditorNotifySettings.DEFAULT);
 
     public EditorSettings {

@@ -72,7 +72,6 @@ def generate(output, case, seed='animus-benchmark-v1', world='world'):
     for npc in definitions:
         write_json(output / 'animus/npcs/benchmark' / f"{npc['id']}.json", npc)
     (output / 'animus/config.toml').write_text('''# Benchmark plugin settings; generated NPC data is JSON.
-statusMessage = "Animus synthetic benchmark"
 packetProofEnabled = false
 [npcs]
 enabled = true

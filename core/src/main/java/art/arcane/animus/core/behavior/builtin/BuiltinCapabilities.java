@@ -408,7 +408,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                     return onOwner(call, () -> { platform.setAppearance(call.npc(), change); return "{}"; });
                 });
         action("set-equipment", Effect.WORLD, "Shows an item in an equipment slot, or clears the slot when no item is given. Lasts until the runtime restarts or the definition changes.",
-                schema(choice("slot", "main_hand", "off_hand", "head", "chest", "legs", "feet", "body") + "," + string("item", 128), required("slot")),
+                schema(choice("slot", "main_hand", "off_hand", "head", "chest", "legs", "feet", "body", "saddle") + "," + string("item", 128), required("slot")),
                 (arguments, problems) -> {
                     if (arguments.has("item")) matches(arguments, "item", MinecraftIds.PATTERN, problems);
                 },

@@ -333,7 +333,7 @@ class RecordingPlaybackRuntimeTest {
         art.arcane.animus.core.config.RecordingSettings on = base.recordings();
         art.arcane.animus.core.config.RecordingSettings off = new art.arcane.animus.core.config.RecordingSettings(false, on.sampleTicks(), on.maximumTicks(),
                 on.maximumFileBytes(), on.maximumSessions(), on.ghostEnabled(), on.ghostIntervalTicks(), on.ghostStretchTicks(), on.ghostGlow(), on.ghostColor(), on.maximumPreviews());
-        art.arcane.animus.core.config.PluginSettings next = new art.arcane.animus.core.config.PluginSettings(base.statusMessage(), base.packetProofEnabled(), base.npcs(),
+        art.arcane.animus.core.config.PluginSettings next = new art.arcane.animus.core.config.PluginSettings(base.packetProofEnabled(), base.npcs(),
                 base.files(), base.modules(), base.behaviors(), base.combat(), base.builds(), base.shops(), base.relay(), base.editor(), base.rigs(), base.navigation(),
                 base.hotload(), off);
         Thread lane = new Thread(() -> harness.runtime.applySettings(next), "file-lane");

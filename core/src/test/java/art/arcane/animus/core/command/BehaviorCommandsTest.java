@@ -229,7 +229,7 @@ class BehaviorCommandsTest {
         harness.runtime.npcs().apply(new art.arcane.animus.core.npc.NpcRepository.Draft(before.path(),before.expectedHash(),before.expectedRevision(),document));
     }
     @Test void triggerStartedScopedValuesReachDiskWhileRunningThroughTheRealWiring()throws Exception{
-        Files.writeString(root.resolve("config.toml"),"statusMessage = 'Test'\n[behaviors.state]\nflushMillis = 100\n");
+        Files.writeString(root.resolve("config.toml"),"[behaviors.state]\nflushMillis = 100\n");
         Path behavior=root.resolve("behaviors/example/quest.json");Files.createDirectories(behavior.getParent());
         Files.writeString(behavior,"{\"schemaVersion\":1,\"revision\":1,\"id\":\"example:quest\",\"entry\":\"main\",\"variables\":{\"trust\":{\"type\":\"integer\",\"initial\":0,\"scope\":\"relationship\",\"lifetime\":\"persistent\"}},\"routines\":{\"main\":{\"type\":\"set\",\"variable\":\"trust\",\"value\":7}},\"triggers\":[{\"id\":\"click\",\"event\":\"interaction\"},{\"id\":\"born\",\"event\":\"spawn\"}]}");
         try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){

@@ -3,7 +3,11 @@ package art.arcane.animus.core.presentation;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.virtual.DragonBody;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** Wire rules every packet transport shares: body types, reserved IDs, rotation and passenger rosters. */
@@ -77,6 +81,38 @@ public final class BodyRules {
         return java.util.Optional.empty();
     }
     public static boolean canBeBaby(String type) { return babyFlag(type).isPresent(); }
+
+    private static final Set<EquipmentSlot> WORN = Collections.unmodifiableSet(EnumSet.of(EquipmentSlot.MAIN_HAND, EquipmentSlot.OFF_HAND,
+            EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET));
+    private static final Set<EquipmentSlot> EVERY_SLOT = Collections.unmodifiableSet(EnumSet.allOf(EquipmentSlot.class));
+    /** The equipment slots the client draws on each presented body; the web editor's {@code mcDrawnSlots} is the same map. */
+    private static final Map<String, Set<EquipmentSlot>> SLOTS = Map.of(PLAYER, WORN, "minecraft:armor_stand", WORN,
+            "minecraft:horse", Collections.unmodifiableSet(EnumSet.of(EquipmentSlot.BODY, EquipmentSlot.SADDLE)),
+            "minecraft:llama", Collections.unmodifiableSet(EnumSet.of(EquipmentSlot.BODY)),
+            "minecraft:turtle", Set.of(), "minecraft:frog", Set.of(), "minecraft:armadillo", Set.of(), DragonBody.TYPE, Set.of());
+
+    /** The slots a body of {@code type} shows, in slot order. A type no transport presents keeps every slot. */
+    public static Set<EquipmentSlot> equipmentSlots(String type) { return SLOTS.getOrDefault(type, EVERY_SLOT); }
+
+    /** The presented body types whose slots are limited, each with the slots it shows. */
+    public static Map<String, Set<EquipmentSlot>> limitedEquipment() { return SLOTS; }
+
+    /** Only the items of {@code items} a body of {@code type} shows; nothing else is ever sent. */
+    public static <I> Map<EquipmentSlot, I> shownEquipment(String type, Map<EquipmentSlot, I> items) {
+        Set<EquipmentSlot> shown = equipmentSlots(type);
+        if (shown.containsAll(items.keySet())) return items;
+        Map<EquipmentSlot, I> kept = new EnumMap<>(EquipmentSlot.class);
+        for (Map.Entry<EquipmentSlot, I> item : items.entrySet()) if (shown.contains(item.getKey())) kept.put(item.getKey(), item.getValue());
+        return kept;
+    }
+
+    /** Why a body of {@code type} cannot show {@code slot}: the body, the slot and the slots it does show. */
+    public static String slotRefusal(String type, EquipmentSlot slot) {
+        Set<EquipmentSlot> shown = equipmentSlots(type);
+        if (shown.isEmpty()) return type + " bodies show no equipment";
+        return type + " bodies cannot show " + slot.key() + "; they show "
+                + String.join(", ", shown.stream().map(EquipmentSlot::key).toList()).replaceFirst(", ([^,]+)$", " and $1");
+    }
 
     /** The vanilla {@code EquipmentSlot} constant name. */
     public static String nativeSlot(EquipmentSlot slot) {

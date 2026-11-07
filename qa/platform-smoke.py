@@ -120,7 +120,7 @@ def run_target(args, version):
         shutil.copy2(args.accepted_eula, root / 'eula.txt')
         data = plugins / 'Animus'
         data.mkdir(exist_ok=True)
-        (data / 'config.toml').write_text('statusMessage = "Platform smoke"\npacketProofEnabled = true\n')
+        (data / 'config.toml').write_text('packetProofEnabled = true\n')
         with socket.socket() as listener:
             listener.bind(('127.0.0.1', 0))
             port = listener.getsockname()[1]

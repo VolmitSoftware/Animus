@@ -113,7 +113,7 @@ def main():
         port=helpers['free_port']();run(a,'instance','port',name,str(port));report['port']=port
         assert 'eula=true' in (reference/'eula.txt').read_text().lower();shutil.copy2(reference/'eula.txt',instance/'eula.txt')
         data.mkdir(parents=True,exist_ok=True)
-        (data/'config.toml').write_text('statusMessage = "Import QA"\npacketProofEnabled = false\n[npcs]\nenabled = false\n')
+        (data/'config.toml').write_text('packetProofEnabled = false\n[npcs]\nenabled = false\n')
         props=instance/'server.properties';lines=props.read_text().splitlines()
         overrides={'server-ip':'127.0.0.1','online-mode':'false','white-list':'true','difficulty':'peaceful','pause-when-empty-seconds':'-1','view-distance':'2','simulation-distance':'2','max-players':'1','spawn-protection':'0','level-type':'minecraft:flat','generate-structures':'false','generator-settings':json.dumps({'layers':[{'block':'minecraft:bedrock','height':1},{'block':'minecraft:stone','height':59},{'block':'minecraft:grass_block','height':1}],'biome':'minecraft:plains'},separators=(',',':'))}
         props.write_text('\n'.join(x for x in lines if x.partition('=')[0] not in overrides)+'\n'+'\n'.join(k+'='+v for k,v in overrides.items())+'\n')

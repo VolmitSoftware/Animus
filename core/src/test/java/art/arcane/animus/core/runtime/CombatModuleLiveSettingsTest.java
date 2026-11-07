@@ -65,7 +65,7 @@ class CombatModuleLiveSettingsTest {
     }
     private void hotload(CombatBudgets combat) throws IOException {
         PluginSettings s = PluginSettings.load(runtime.documents());
-        runtime.applySettings(new PluginSettings(s.statusMessage(), s.packetProofEnabled(), s.npcs(), s.files(), s.modules(), s.behaviors(), combat,
+        runtime.applySettings(new PluginSettings(s.packetProofEnabled(), s.npcs(), s.files(), s.modules(), s.behaviors(), combat,
                 s.builds(), s.shops(), s.relay(), s.editor(), s.rigs(), s.navigation(), s.hotload(), s.recordings()));
     }
 
@@ -124,7 +124,7 @@ class CombatModuleLiveSettingsTest {
 
     @Test void startingDisabledCanBeEnabledLive() throws IOException {
         Files.createDirectories(directory);
-        Files.writeString(directory.resolve("config.toml"), "statusMessage = \"test\"\n\n[combat]\nenabled = false\n");
+        Files.writeString(directory.resolve("config.toml"), "\n[combat]\nenabled = false\n");
         try (CombatModule module = module()) {
             tick(module, 3);
             assertFalse(module.active());

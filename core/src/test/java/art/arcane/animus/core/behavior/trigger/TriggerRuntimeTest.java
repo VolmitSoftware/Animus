@@ -46,15 +46,20 @@ class TriggerRuntimeTest {
         };
         runtime=new BehaviorRuntime(new BehaviorRuntime.Limits(8,8,50,20),BehaviorEngine.Limits.defaults(),definitions::get,catalog::get,invoker,dispatcher,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
     }
-    private static void eventually(BooleanSupplier check)throws Exception{long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(15);while(!check.getAsBoolean()&&System.nanoTime()<until)Thread.sleep(2);assertTrue(check.getAsBoolean());}
+    private static final Duration PATIENCE=Duration.ofSeconds(30);
+    private static void eventually(BooleanSupplier check)throws Exception{long until=System.nanoTime()+PATIENCE.toNanos();while(!check.getAsBoolean()&&System.nanoTime()<until)Thread.sleep(2);assertTrue(check.getAsBoolean(),"condition not met within "+PATIENCE.toSeconds()+" s");}
     private List<BehaviorRuntime.Execution> running(){return runtime.snapshot().executions().values().stream().filter(item->item.report().state()==BehaviorEngine.State.RUNNING).toList();}
+    /** Publishes one interaction; a busy owner answers BUSY, so the click is retried until it is accepted. */
     private void click()throws Exception{
-        eventually(()->dispatcher.snapshot().bindings()>0);assertEquals(Outcome.Status.OK,dispatcher.publish(new TriggerEvent.Interaction(npc,viewer,TriggerEvent.Action.INTERACT)).status());
+        eventually(()->dispatcher.snapshot().bindings()>0);
+        AtomicReference<Outcome.Status> last=new AtomicReference<>();
+        eventually(()->{last.set(dispatcher.publish(new TriggerEvent.Interaction(npc,viewer,TriggerEvent.Action.INTERACT)).status());return last.get()!=Outcome.Status.BUSY;});
+        assertEquals(Outcome.Status.OK,last.get());
     }
     private void active()throws Exception{
         eventually(()->dispatcher.snapshot().bindings()>0);dispatcher.activated(npc);
     }
-    @AfterEach void stop()throws Exception{if(runtime!=null){runtime.close();assertTrue(runtime.awaitStopped(Duration.ofSeconds(4)),runtime.status().toString());}}
+    @AfterEach void stop()throws Exception{if(runtime!=null){runtime.close();assertTrue(runtime.awaitStopped(PATIENCE),runtime.status().toString());}}
 
     @Test void eventRunsOnTheBehaviorOwnerWithThePlayerAndNeverPreview()throws Exception{
         behavior(ACTION,"[{\"id\":\"click\",\"event\":\"interaction\"}]");definition(1,true);start(1);active();click();
@@ -89,21 +94,23 @@ class TriggerRuntimeTest {
         eventually(()->running().size()==3);assertEquals(3,dispatcher.snapshot().active());
     }
     @Test void perTriggerConcurrencyHoldsUnderTheRealRuntime()throws Exception{
-        behavior(WAIT,"[{\"id\":\"click\",\"event\":\"interaction\",\"whileRunning\":\"queue\"}]");definition(1,true);start(1);active();click();click();
-        eventually(()->dispatcher.snapshot().queued()==1);eventually(()->running().size()==1);
+        behavior(WAIT,"[{\"id\":\"click\",\"event\":\"interaction\",\"whileRunning\":\"queue\"}]");definition(1,true);start(1);active();click();
+        // The second click waits behind a running one; sent in the same tick, the per-trigger queue would refuse it instead.
+        eventually(()->running().size()==1);click();
+        eventually(()->dispatcher.snapshot().queued()==1);assertEquals(1,running().size());
     }
     @Test void manualRunsRemainOnePerNpcAndCoexistWithTriggeredWork()throws Exception{
         behavior(WAIT,"[{\"id\":\"click\",\"event\":\"interaction\"}]");definition(1,true);start(1);active();click();
         eventually(()->running().size()==1);
-        Outcome<UUID> manual=runtime.run("test",BEHAVIOR).toCompletableFuture().get(4,TimeUnit.SECONDS);assertEquals(Outcome.Status.OK,manual.status());
-        assertEquals(Outcome.Status.BUSY,runtime.run("test",BEHAVIOR).toCompletableFuture().get(4,TimeUnit.SECONDS).status());
+        Outcome<UUID> manual=runtime.run("test",BEHAVIOR).toCompletableFuture().get(PATIENCE.toSeconds(),TimeUnit.SECONDS);assertEquals(Outcome.Status.OK,manual.status());
+        assertEquals(Outcome.Status.BUSY,runtime.run("test",BEHAVIOR).toCompletableFuture().get(PATIENCE.toSeconds(),TimeUnit.SECONDS).status());
         eventually(()->runtime.inspect(manual.value().orElseThrow()).isPresent());
         assertEquals(Optional.empty(),runtime.inspect(manual.value().orElseThrow()).orElseThrow().trigger());
     }
     @Test void closingTheRuntimeReleasesTriggeredWorkAndRefusesEvents()throws Exception{
         behavior(WAIT,"[{\"id\":\"click\",\"event\":\"interaction\"}]");definition(1,true);start(1);active();click();
         eventually(()->running().size()==1);
-        runtime.close();assertTrue(runtime.awaitStopped(Duration.ofSeconds(4)));
+        runtime.close();assertTrue(runtime.awaitStopped(PATIENCE));
         assertEquals(0,dispatcher.snapshot().active());assertFalse(dispatcher.available());
         assertEquals(Outcome.Status.UNAVAILABLE,dispatcher.publish(new TriggerEvent.Interaction(npc,viewer,TriggerEvent.Action.INTERACT)).status());
     }

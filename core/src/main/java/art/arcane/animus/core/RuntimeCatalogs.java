@@ -36,6 +36,8 @@ public final class RuntimeCatalogs implements CatalogReloads {
         }
     }
 
+    /** How a reported NPC reload failure begins; a hotload refuses its NPC edits with it, since none of them applied. */
+    public static final String NPC_RELOAD_FAILED = "NPC reload failed: ";
     private static final Set<DocumentKind> NPCS = Set.of(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.ROUTE, DocumentKind.RECORDING, DocumentKind.GROUP);
     private static final Set<DocumentKind> BEHAVIORS = Set.of(DocumentKind.BEHAVIOR, DocumentKind.PACK, DocumentKind.SERVER_BEHAVIORS);
     private static final Set<DocumentKind> SHOPS = Set.of(DocumentKind.SHOP, DocumentKind.INVENTORY);
@@ -61,9 +63,10 @@ public final class RuntimeCatalogs implements CatalogReloads {
                 List<String> problems = change.rollback() ? parts.runtime().npcs().reloadAfterRollback() : parts.runtime().npcs().reload();
                 problems.stream().limit(8).forEach((String problem) -> parts.log().accept("Catalog reload: NPC file refused: " + problem));
                 problems.forEach(reported);
-            } catch (IOException failure) {
-                parts.log().accept("Catalog reload: NPC reload failed: " + failure.getMessage());
-                reported.accept(String.valueOf(failure.getMessage()));
+            } catch (IOException | RuntimeException failure) {
+                String problem = NPC_RELOAD_FAILED + (failure instanceof IOException ? failure.getMessage() : AnimusLog.cause(failure));
+                parts.log().accept("Catalog reload: " + problem);
+                reported.accept(problem);
             }
             parts.refresh().run();
         }

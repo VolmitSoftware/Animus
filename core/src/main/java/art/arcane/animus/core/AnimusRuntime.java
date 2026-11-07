@@ -126,6 +126,7 @@ public final class AnimusRuntime implements AutoCloseable {
     public synchronized void closeAsync() {
         if (settings == null || closing) return;
         closing = true;
+        AnimusLog.shared().flush();
         definitions.close();
         fileWork.close();
     }
@@ -185,7 +186,7 @@ public final class AnimusRuntime implements AutoCloseable {
         PluginSettings active = settings;
         if (active == null) throw new IllegalStateException(BuildIdentity.NAME + " is not running");
         return BuildIdentity.NAME + " " + BuildIdentity.VERSION + " | " + environment.platform()
-                + " | Minecraft " + environment.minecraftVersion() + " | " + active.statusMessage();
+                + " | Minecraft " + environment.minecraftVersion();
     }
 
     /** Internal access stays available to the already-running operation during asynchronous close. */

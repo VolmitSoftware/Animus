@@ -388,8 +388,10 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         if (session == null || session.viewer != viewer || !current(session)) return unwatched("Viewer is not watched");
         Presentation presentation = session.visible.get(body.entityId);
         if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
+        Map<EquipmentSlot, ItemStack> shown = BodyRules.shownEquipment(body.typeKey(), items);
+        if (shown.isEmpty()) return CompletableFuture.completedFuture(null);
         Object packet;
-        try { packet = nativeApi.equipment.packet(body.entityId, items); }
+        try { packet = nativeApi.equipment.packet(body.entityId, shown); }
         catch (ReflectiveOperationException | RuntimeException failure) { return CompletableFuture.failedFuture(failure); }
         CompletableFuture<Void> result = new CompletableFuture<>();
         submit(session, result, false, () -> {

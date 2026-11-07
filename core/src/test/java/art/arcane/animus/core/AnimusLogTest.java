@@ -51,6 +51,28 @@ class AnimusLogTest {
         assertEquals("2 NPCs hit blocked route legs in the last 5m; /animus debug mode for details", lines.getLast());
     }
 
+    @Test void theSummaryNamesTheLatestCaseAndPrintsWhenTheWindowEnds() {
+        log.routine("NPCs hit route legs blocked by terrain", "guard", "detail", java.util.Optional.of("guard at waypoint 3, failed: UNREACHABLE"), lines::add);
+        log.routine("NPCs hit route legs blocked by terrain", "smith", "detail", java.util.Optional.of("smith at waypoint 1, failed: UNREACHABLE"), lines::add);
+        log.poll();
+        assertTrue(lines.isEmpty(), "nothing before the window ends: " + lines);
+        minutes(5);
+        log.poll();
+        assertEquals(List.of("2 NPCs hit route legs blocked by terrain (last: smith at waypoint 1, failed: UNREACHABLE) in the last 5m; /animus debug mode for details"), lines,
+                "the window end prints without another routine line");
+        log.poll();
+        assertEquals(1, lines.size());
+    }
+
+    @Test void shutdownFlushesTheLastBatch() {
+        log.routine("NPCs hit route legs the planner could not path", "guard", "detail", java.util.Optional.of("guard, failed: PARTIAL"), lines::add);
+        minutes(1);
+        log.flush();
+        assertEquals(List.of("1 NPCs hit route legs the planner could not path (last: guard, failed: PARTIAL) in the last 1m; /animus debug mode for details"), lines);
+        log.flush();
+        assertEquals(1, lines.size(), "a flush with nothing pending prints nothing");
+    }
+
     @Test void switchingModesDropsPendingCounts() {
         log.routine("kind", "a", "detail", lines::add);
         log.debug(true);

@@ -6,8 +6,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class HotloadDiffTest {
     @Test void tomlDiffNamesEachChangedKey() {
-        String before = "statusMessage = 'Hello'\n[npcs]\nviewDistance = 48\nmaximumVisible = 64\n[shops.messages]\nbought = '&aBought'\n";
-        String after = "statusMessage = 'Hello'\n[npcs]\nviewDistance = 32\n[shops.messages]\nbought = '&bBought'\n[hotload]\nsound = false\n";
+        String before = "packetProofEnabled = false\n[npcs]\nviewDistance = 48\nmaximumVisible = 64\n[shops.messages]\nbought = '&aBought'\n";
+        String after = "packetProofEnabled = false\n[npcs]\nviewDistance = 32\n[shops.messages]\nbought = '&bBought'\n[hotload]\nsound = false\n";
         assertEquals(List.of(
                 new HotloadDiff.Change("hotload.sound", HotloadDiff.MISSING, "false"),
                 new HotloadDiff.Change("npcs.maximumVisible", "64", HotloadDiff.REMOVED),

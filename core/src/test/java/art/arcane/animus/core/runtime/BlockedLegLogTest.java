@@ -16,6 +16,8 @@ class BlockedLegLogTest {
                 PersistedNpcService.blockedLeg("guard", 3, FROM, TO, "failed: UNREACHABLE", true, true));
         assertEquals("NPC guard stopped: the planner found no path for its route leg from 1 64 2 to 20 65 -4 in world (failed: PARTIAL); later blocked legs of this NPC are not logged",
                 PersistedNpcService.blockedLeg("guard", -1, FROM, TO, "failed: PARTIAL", false, false));
+        assertEquals("guard at waypoint 3, failed: UNREACHABLE", PersistedNpcService.blockedLegCase("guard", 3, "failed: UNREACHABLE"));
+        assertEquals("guard, failed: PARTIAL", PersistedNpcService.blockedLegCase("guard", -1, "failed: PARTIAL"));
         assertEquals("NPCs hit route legs blocked by terrain", PersistedNpcService.blockedLegs(true));
         assertEquals("NPCs hit route legs the planner could not path", PersistedNpcService.blockedLegs(false));
     }

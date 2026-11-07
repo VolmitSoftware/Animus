@@ -2897,7 +2897,8 @@
                         "chest",
                         "legs",
                         "feet",
-                        "body"
+                        "body",
+                        "saddle"
                       ]
                     },
                     "item": {

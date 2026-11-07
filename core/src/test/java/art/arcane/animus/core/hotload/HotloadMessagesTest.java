@@ -26,7 +26,7 @@ class HotloadMessagesTest {
     @Test void restartOnlyKeysSaySoAndLiveKeysDoNot() {
         List<String> lines = HotloadMessages.applied("config.toml", List.of(
                 new HotloadDiff.Change("npcs.enabled", "true", "false"),
-                new HotloadDiff.Change("statusMessage", "\"a\"", "\"b\"")), (String key) -> SettingsLiveness.restartRequired(key, false));
+                new HotloadDiff.Change("packetProofEnabled", "false", "true")), (String key) -> SettingsLiveness.restartRequired(key, false));
         assertTrue(RichText.plain(lines.get(0)).endsWith("[true -> false] [restart required]"), lines.get(0));
         assertFalse(RichText.plain(lines.get(1)).contains("restart"), lines.get(1));
     }

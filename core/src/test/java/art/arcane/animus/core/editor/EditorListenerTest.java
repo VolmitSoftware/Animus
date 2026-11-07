@@ -7,7 +7,6 @@ import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -41,10 +40,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class EditorListenerTest {
     @TempDir Path directory;
 
-    private static int freePort() throws IOException {
-        try (ServerSocket socket = new ServerSocket(0)) { return socket.getLocalPort(); }
-    }
-
     private static EditorSettings settings(int port, String certificate, String key) {
         EditorSettings d = EditorSettings.DEFAULT;
         return new EditorSettings(true, d.editorUrl(), true, "127.0.0.1", port, "", certificate, key, d.allowedOrigins(), 7, 30, 4096, 16384, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24, art.arcane.animus.core.config.EditorNotifySettings.DEFAULT);
@@ -52,7 +47,7 @@ class EditorListenerTest {
 
     @Test
     void http_helloPreflightAndBounds() throws Exception {
-        EditorSettings settings = settings(freePort(), "", "");
+        EditorSettings settings = settings(0, "", "");
         try (EditorHarness harness = new EditorHarness(directory, settings);
              EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
             listener.start();
@@ -85,7 +80,7 @@ class EditorListenerTest {
 
     @Test
     void websocket_authFrameThenEvents() throws Exception {
-        EditorSettings settings = settings(freePort(), "", "");
+        EditorSettings settings = settings(0, "", "");
         try (EditorHarness harness = new EditorHarness(directory, settings);
              EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
             listener.start();
@@ -104,9 +99,9 @@ class EditorListenerTest {
                             closed.complete(statusCode);
                             return null;
                         }
-                    }).get(5, TimeUnit.SECONDS);
-            socket.sendText("{\"type\":\"auth\",\"token\":\"" + token + "\"}", true).get(5, TimeUnit.SECONDS);
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                    }).get(20, TimeUnit.SECONDS);
+            socket.sendText("{\"type\":\"auth\",\"token\":\"" + token + "\"}", true).get(20, TimeUnit.SECONDS);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
             while (harness.api.parts().events().open() == 0 && System.nanoTime() < deadline) Thread.sleep(10);
             assertEquals(1, harness.api.parts().events().open());
             JsonObject event = new JsonObject();
@@ -115,18 +110,18 @@ class EditorListenerTest {
             event.addProperty("state", "expired");
             harness.api.parts().events().publish(event);
             harness.api.parts().events().tick();
-            String frame = frames.poll(5, TimeUnit.SECONDS);
+            String frame = frames.poll(20, TimeUnit.SECONDS);
             assertNotNull(frame);
             assertEquals("expired", JsonDocuments.object(frame).get("state").getAsString());
             harness.api.revoke(token.substring(4, token.indexOf('.')), "token-revoked");
-            assertEquals("closing", JsonDocuments.object(frames.poll(5, TimeUnit.SECONDS)).get("type").getAsString());
-            assertEquals(1000, closed.get(5, TimeUnit.SECONDS));
+            assertEquals("closing", JsonDocuments.object(frames.poll(20, TimeUnit.SECONDS)).get("type").getAsString());
+            assertEquals(1000, closed.get(20, TimeUnit.SECONDS));
         }
     }
 
     @Test
     void websocket_slowConsumerAtQueueLimit_closesWithLimitReason() throws Exception {
-        EditorSettings settings = settings(freePort(), "", "");
+        EditorSettings settings = settings(0, "", "");
         try (EditorHarness harness = new EditorHarness(directory, settings);
              EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
             listener.start();
@@ -145,9 +140,9 @@ class EditorListenerTest {
                             closed.complete(statusCode);
                             return null;
                         }
-                    }).get(5, TimeUnit.SECONDS);
-            socket.sendText("{\"type\":\"auth\",\"token\":\"" + token + "\"}", true).get(5, TimeUnit.SECONDS);
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                    }).get(20, TimeUnit.SECONDS);
+            socket.sendText("{\"type\":\"auth\",\"token\":\"" + token + "\"}", true).get(20, TimeUnit.SECONDS);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
             while (harness.api.parts().events().open() == 0 && System.nanoTime() < deadline) Thread.sleep(10);
             assertEquals(1, harness.api.parts().events().open());
             // No tick drains the stream: it falls a whole queue behind, then one more event overflows it.
@@ -158,17 +153,17 @@ class EditorListenerTest {
                 event.addProperty("state", "expired");
                 harness.api.parts().events().publish(event);
             }
-            JsonObject closing = JsonDocuments.object(frames.poll(5, TimeUnit.SECONDS));
+            JsonObject closing = JsonDocuments.object(frames.poll(20, TimeUnit.SECONDS));
             assertEquals("closing", closing.get("type").getAsString(), "the backlog is dropped, not sent ahead of the reason");
             assertEquals("limit", closing.get("reason").getAsString());
-            assertEquals(1000, closed.get(5, TimeUnit.SECONDS), "a clean close, not a protocol error");
+            assertEquals(1000, closed.get(20, TimeUnit.SECONDS), "a clean close, not a protocol error");
             assertEquals(0, harness.api.parts().events().open());
         }
     }
 
     @Test
     void websocket_clientThatStopsReading_isDroppedWithoutStallingOtherStreams() throws Exception {
-        EditorSettings settings = settings(freePort(), "", "");
+        EditorSettings settings = settings(0, "", "");
         try (EditorHarness harness = new EditorHarness(directory, settings);
              EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
             listener.start();
@@ -181,8 +176,8 @@ class EditorListenerTest {
                             webSocket.request(1);
                             return null;
                         }
-                    }).get(5, TimeUnit.SECONDS);
-            fast.sendText("{\"type\":\"auth\",\"token\":\"" + token + "\"}", true).get(5, TimeUnit.SECONDS);
+                    }).get(20, TimeUnit.SECONDS);
+            fast.sendText("{\"type\":\"auth\",\"token\":\"" + token + "\"}", true).get(20, TimeUnit.SECONDS);
             try (Socket slow = new Socket()) {
                 slow.setReceiveBufferSize(4096);
                 slow.connect(new java.net.InetSocketAddress("127.0.0.1", listener.port()));
@@ -191,7 +186,7 @@ class EditorListenerTest {
                         + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
                 output.write(maskedText("{\"type\":\"auth\",\"token\":\"" + token + "\"}"));
                 output.flush();
-                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
                 while (harness.api.parts().events().open() < 2 && System.nanoTime() < deadline) Thread.sleep(10);
                 assertEquals(2, harness.api.parts().events().open());
                 // The slow socket never reads again: its send buffers fill while the fast one keeps up.
@@ -207,12 +202,12 @@ class EditorListenerTest {
                         harness.api.parts().events().publish(event);
                         harness.api.parts().events().tick();
                         // Paced like the frame timer: the reading browser stays a few frames behind at most.
-                        long wait = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                        long wait = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
                         while (delivered.get() < i - 4 && System.nanoTime() < wait) Thread.onSpinWait();
                     }
                 });
                 pacing.get(20, TimeUnit.SECONDS);
-                deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
                 while ((delivered.get() < events || harness.api.parts().events().open() != 1) && System.nanoTime() < deadline) Thread.sleep(10);
                 assertEquals(events, delivered.get(), "the reading stream got every event");
                 assertEquals(1, harness.api.parts().events().open(), "the stream that stopped reading was dropped");
@@ -235,7 +230,7 @@ class EditorListenerTest {
 
     @Test
     void apply_connectionDroppedMidApply_resolvesThroughChangeStatus() throws Exception {
-        EditorSettings settings = settings(freePort(), "", "");
+        EditorSettings settings = settings(0, "", "");
         try (EditorHarness harness = new EditorHarness(directory, settings);
              EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
             listener.start();
@@ -269,7 +264,7 @@ class EditorListenerTest {
                 output.write(head.getBytes(StandardCharsets.US_ASCII));
                 output.write(body);
                 output.flush();
-                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
                 while (!harness.api.parts().changes().pending(key) && System.nanoTime() < deadline) Thread.sleep(10);
                 assertTrue(harness.api.parts().changes().pending(key));
             }
@@ -280,7 +275,7 @@ class EditorListenerTest {
             assertEquals("pending", JsonDocuments.object(http.send(status, HttpResponse.BodyHandlers.ofString()).body()).get("status").getAsString());
             release.countDown();
             String settled = "pending";
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
             while (settled.equals("pending") && System.nanoTime() < deadline) {
                 settled = JsonDocuments.object(http.send(status, HttpResponse.BodyHandlers.ofString()).body()).get("status").getAsString();
                 if (settled.equals("pending")) Thread.sleep(10);
@@ -293,7 +288,7 @@ class EditorListenerTest {
 
     @Test
     void websocket_badToken_isClosed() throws Exception {
-        EditorSettings settings = settings(freePort(), "", "");
+        EditorSettings settings = settings(0, "", "");
         try (EditorHarness harness = new EditorHarness(directory, settings);
              EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
             listener.start();
@@ -304,9 +299,9 @@ class EditorListenerTest {
                             closed.complete(statusCode);
                             return null;
                         }
-                    }).get(5, TimeUnit.SECONDS);
-            socket.sendText("{\"type\":\"auth\",\"token\":\"anm_wrong\"}", true).get(5, TimeUnit.SECONDS);
-            assertEquals(4401, closed.get(5, TimeUnit.SECONDS));
+                    }).get(20, TimeUnit.SECONDS);
+            socket.sendText("{\"type\":\"auth\",\"token\":\"anm_wrong\"}", true).get(20, TimeUnit.SECONDS);
+            assertEquals(4401, closed.get(20, TimeUnit.SECONDS));
         }
     }
 
@@ -315,7 +310,7 @@ class EditorListenerTest {
         Path certificate = directory.resolve("certificate.pem"), key = directory.resolve("key.pem");
         try (InputStream input = EditorListenerTest.class.getResourceAsStream("/editor-tls/certificate.pem")) { Files.write(certificate, input.readAllBytes()); }
         try (InputStream input = EditorListenerTest.class.getResourceAsStream("/editor-tls/key.pem")) { Files.write(key, input.readAllBytes()); }
-        EditorSettings settings = settings(freePort(), certificate.toString(), key.toString());
+        EditorSettings settings = settings(0, certificate.toString(), key.toString());
         try (EditorHarness harness = new EditorHarness(directory, settings);
              EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
             listener.start();

@@ -24,8 +24,7 @@ class NpcAppearanceTest {
 
     @Test void declaredEquipmentHologramPoseAndOwnerParse() throws IOException {
         NpcDefinition parsed = NpcDefinition.parse(JsonDocuments.write(definition("minecraft:player", """
-                "equipment":{"main_hand":{"id":"minecraft:iron_sword"},"head":{"id":"minecraft:player_head","count":1,"components":"[profile={name:\\"Steve\\"}]"},
-                             "saddle":{"id":"minecraft:saddle"}},
+                "equipment":{"main_hand":{"id":"minecraft:iron_sword"},"head":{"id":"minecraft:player_head","count":1,"components":"[profile={name:\\"Steve\\"}]"}},
                 "hologram":{"lines":["&6Quest giver","Right-click to talk"]},
                 "nameplate":{"visible":true},
                 "pose":"sitting",
@@ -33,8 +32,7 @@ class NpcAppearanceTest {
                 """)));
         NpcAppearance appearance = NpcAppearance.of(parsed);
         assertEquals(Map.of(EquipmentSlot.MAIN_HAND, new NpcItem("minecraft:iron_sword", 1, Optional.empty(), Optional.empty()),
-                EquipmentSlot.HEAD, new NpcItem("minecraft:player_head", 1, Optional.of("[profile={name:\"Steve\"}]"), Optional.empty()),
-                EquipmentSlot.SADDLE, new NpcItem("minecraft:saddle", 1, Optional.empty(), Optional.empty())), appearance.equipment());
+                EquipmentSlot.HEAD, new NpcItem("minecraft:player_head", 1, Optional.of("[profile={name:\"Steve\"}]"), Optional.empty())), appearance.equipment());
         assertEquals(List.of("&6Quest giver", "Right-click to talk"), appearance.hologram());
         assertTrue(appearance.nameplateVisible());
         assertEquals(NpcPose.SITTING, appearance.pose());
@@ -67,6 +65,18 @@ class NpcAppearanceTest {
         assertEquals(NpcPose.STANDING, appearance.pose());
         assertEquals(Optional.empty(), parsed.owner());
         assertTrue(NpcInventory.of(parsed).slots().isEmpty());
+    }
+
+    @Test void equipmentSlotsAreThoseTheBodyShows() {
+        String horse = "\"equipment\":{\"head\":{\"id\":\"minecraft:iron_helmet\"},\"saddle\":{\"id\":\"minecraft:saddle\"},\"body\":{\"id\":\"minecraft:iron_horse_armor\"}}";
+        assertEquals(List.of("$.equipment.head: minecraft:horse bodies cannot show head; they show body and saddle"), errors("minecraft:horse", horse));
+        assertEquals(List.of("$.equipment.head: minecraft:horse bodies cannot show head; they show body and saddle"), errors("horse", horse), "a bare type is the same body");
+        assertEquals(List.of("$.equipment.saddle: minecraft:player bodies cannot show saddle; they show main_hand, off_hand, head, chest, legs and feet",
+                "$.equipment.body: minecraft:player bodies cannot show body; they show main_hand, off_hand, head, chest, legs and feet"),
+                errors("minecraft:player", "\"equipment\":{\"saddle\":{\"id\":\"minecraft:saddle\"},\"body\":{\"id\":\"minecraft:diamond_horse_armor\"}}"));
+        assertEquals(List.of("$.equipment.body: minecraft:turtle bodies show no equipment"), errors("minecraft:turtle", "\"equipment\":{\"body\":{\"id\":\"minecraft:stone\"}}"));
+        assertEquals(List.of(), errors("minecraft:llama", "\"equipment\":{\"body\":{\"id\":\"minecraft:red_carpet\"}}"));
+        assertEquals(List.of(), errors("minecraft:zombie", horse), "a body Animus does not present keeps every slot");
     }
 
     @Test void equipmentErrorsNameTheExactField() {

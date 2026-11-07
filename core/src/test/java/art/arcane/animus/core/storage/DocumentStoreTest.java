@@ -19,7 +19,8 @@ class DocumentStoreTest {
         try (DocumentStore store = new DocumentStore(root)) {
             tx = store.commit(List.of(new DocumentStore.Change("npcs/test/a.json", "missing", "{\"n\":1}"), new DocumentStore.Change("skins/a.json", "missing", "{}")));
             assertEquals("{\"n\":1}", store.read("npcs/test/a.json"));
-            assertThrows(IOException.class, () -> store.commit(List.of(new DocumentStore.Change("npcs/test/a.json", "missing", "{}"))));
+            IOException conflict = assertThrows(IOException.class, () -> store.commit(List.of(new DocumentStore.Change("npcs/test/a.json", "missing", "{}"))));
+            assertEquals("Conflict: npcs/test/a.json changed since Animus read it; fix the file or /animus reload", conflict.getMessage());
         }
         try (DocumentStore store = new DocumentStore(root)) {
             store.rollback(tx);

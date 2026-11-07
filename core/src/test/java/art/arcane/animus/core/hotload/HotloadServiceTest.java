@@ -57,21 +57,41 @@ class HotloadServiceTest {
         runtime.close();
     }
 
-    /** Two polls: the first starts the stability window, the second applies. */
-    private void settle() { hotload.cycle(); hotload.cycle(); }
+    /** Polls until a new notice reaches operators. */
+    private void settle() throws InterruptedException {
+        int before = lines.size();
+        settle(() -> lines.size() > before, "a hotload notice");
+    }
+
+    /**
+     * Polls until {@code done} holds. A change applies on the second poll that reads it the same, but a busy file lane
+     * or a slow activation check retries it on a later poll, so the wait is bounded by time rather than poll count.
+     */
+    private void settle(java.util.function.BooleanSupplier done, String expected) throws InterruptedException {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+        hotload.cycle();
+        while (true) {
+            hotload.cycle();
+            if (done.getAsBoolean()) return;
+            if (System.nanoTime() > deadline) fail("expected " + expected + " within 30 s; notices: " + shown());
+            Thread.sleep(10);
+        }
+    }
+
+    /** Polls where nothing should be reported: the first starts the stability window, the second would apply. */
+    private void quiet() { hotload.cycle(); hotload.cycle(); }
 
     private List<String> shown() { return lines.stream().map((String line) -> RichText.sectionRuns(line).stream().map(RichText.Run::text).reduce("", String::concat)).toList(); }
 
     @Test void configEditAppliesEveryKeyLiveWithoutARestartMarker() throws Exception {
         Path config = root.resolve("config.toml");
         String text = Files.readString(config);
-        Files.writeString(config, text.replace("statusMessage = \"Hello from Animus\"", "statusMessage = \"Hotloaded hello\"")
-                .replace("viewDistance = 48", "viewDistance = 40"));
+        Files.writeString(config, text.replace("packetProofEnabled = false", "packetProofEnabled = true").replace("viewDistance = 48", "viewDistance = 40"));
         settle();
-        assertTrue(runtime.status().endsWith("Hotloaded hello"), runtime.status());
+        assertTrue(runtime.packetProofEnabled());
         assertEquals(40, runtime.npcSettings().viewDistance());
         List<String> shown = shown();
-        assertTrue(shown.contains("[Animus]: Hotloaded [config.toml] [statusMessage] [\"Hello from Animus\" -> \"Hotloaded hello\"]"), shown.toString());
+        assertTrue(shown.contains("[Animus]: Hotloaded [config.toml] [packetProofEnabled] [false -> true]"), shown.toString());
         assertTrue(shown.contains("[Animus]: Hotloaded [config.toml] [npcs.viewDistance] [48 -> 40]"), shown.toString());
         assertTrue(shown.stream().noneMatch((String line) -> line.contains("restart required")), shown.toString());
         assertTrue(dings.stream().allMatch(Boolean::booleanValue));
@@ -99,7 +119,7 @@ class HotloadServiceTest {
         assertEquals(48, runtime.npcSettings().viewDistance());
         assertEquals(List.of("[Animus]: Hotload refused [config.toml] npcs: viewDistance must be an integer [kept the last valid version]"), shown());
         lines.clear();
-        settle();
+        quiet();
         assertTrue(lines.isEmpty(), "a refused edit is reported once");
     }
 
@@ -137,6 +157,28 @@ class HotloadServiceTest {
         assertEquals(List.of("[Animus]: Hotloaded [npcs/town/guard.json] [name] [\"Guard\" -> \"Captain Guard\"]"), shown());
     }
 
+    @Test void anEditAndADeleteAfterAHotloadRefusalReplaceTheRefusedFile() throws Exception {
+        Path file = root.resolve("npcs/town/guard.json");
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, NPC);
+        settle();
+        Files.writeString(file, NPC.replace("\"y\":64", "\"y\":\"high\""));
+        settle();
+        assertTrue(shown().stream().anyMatch((String line) -> line.startsWith("[Animus]: Hotload refused [npcs/town/guard.json]")), shown().toString());
+
+        NpcRepository.Draft draft = runtime.npcs().draft("guard");
+        JsonObject edited = draft.document();
+        edited.addProperty("name", "Watchman");
+        String saved = runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), edited));
+        assertTrue(saved.endsWith("; replaced the refused hand edits in npcs/town/guard.json"), saved);
+        assertTrue(Files.readString(file).contains("\"Watchman\""));
+
+        Files.writeString(file, NPC.replace("\"y\":64", "\"y\":\"low\""));
+        settle();
+        assertTrue(runtime.npcs().delete("guard").endsWith("; removed the refused hand edits in npcs/town/guard.json"));
+        assertFalse(Files.exists(file));
+    }
+
     @Test void aValidNpcEditAppliesWhileAnotherNpcFileIsInvalid() throws Exception {
         Path guard = root.resolve("npcs/town/guard.json");
         Files.createDirectories(guard.getParent());
@@ -165,13 +207,13 @@ class HotloadServiceTest {
     @Test void animusOwnWritesProduceNoHotloadMessage() throws Exception {
         runtime.documents().commit(List.of(new DocumentStore.Change("npcs/town/guard.json", JsonDocuments.hash(null), NPC)));
         runtime.npcs().reload();
-        settle();
+        quiet();
         NpcRepository.Draft draft = runtime.npcs().draft("guard");
         JsonObject edited = draft.document();
         edited.addProperty("name", "Edited in the editor");
         runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), edited));
-        settle();
-        settle();
+        quiet();
+        quiet();
         assertTrue(lines.isEmpty(), lines.toString());
     }
 
@@ -182,7 +224,8 @@ class HotloadServiceTest {
         Path shop = root.resolve("shops/town/baker.json");
         Files.createDirectories(shop.getParent());
         Files.writeString(shop, "{\"title\":");
-        settle();
+        settle(() -> shown().stream().anyMatch((String line) -> line.contains("[behaviors/town/greeter.json]"))
+                && shown().stream().anyMatch((String line) -> line.contains("[shops/town/baker.json]")), "a notice for each file");
         List<String> shown = shown();
         assertTrue(shown.stream().anyMatch((String line) -> line.startsWith("[Animus]: Hotloaded [behaviors/town/greeter.json] [entry]")), shown.toString());
         assertTrue(shown.stream().anyMatch((String line) -> line.startsWith("[Animus]: Hotload refused [shops/town/baker.json] ")), shown.toString());
@@ -248,7 +291,7 @@ class HotloadServiceTest {
             extensions.start();
             until(() -> behaviors.statusLines().getFirst().startsWith("Behaviors READY"), replies);
             Files.writeString(behavior, source.replace("REV", "2").replace("\"ticks\":1", "\"ticks\":2"));
-            settle();
+            settle(() -> !atNotice.isEmpty(), "the behavior notice");
             assertEquals(1, atNotice.size(), atNotice.toString());
             assertTrue(atNotice.getFirst().contains("catalog-generation=2"), atNotice.getFirst());
             until(() -> runs.stream().anyMatch((String line) -> line.startsWith("Behavior run:")), replies);
@@ -287,7 +330,7 @@ class HotloadServiceTest {
         Files.writeString(root.resolve("backups/y.json"), "{}");
         Files.createDirectories(root.resolve("npcs/town"));
         Files.writeString(root.resolve("npcs/town/.guard.json.swp"), "{}");
-        settle();
+        quiet();
         assertTrue(lines.isEmpty(), lines.toString());
     }
 }

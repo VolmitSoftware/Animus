@@ -138,7 +138,7 @@ class ModuleHotloadTest {
     void runtimeFollowsModulesSwitch_andReloadsBehaviors() throws Exception {
         Path data = directory.resolve("server");
         Files.createDirectories(data);
-        String on = "statusMessage = \"Hello\"\n[modules]\nenabled = true\n", off = "statusMessage = \"Hello\"\n[modules]\nenabled = false\n";
+        String on = "[modules]\nenabled = true\n", off = "[modules]\nenabled = false\n";
         Files.writeString(data.resolve("config.toml"), off);
         AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(art.arcane.animus.core.Platform.BUKKIT, "26.2", data));
         runtime.start();

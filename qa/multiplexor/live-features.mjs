@@ -136,7 +136,7 @@ class Server {
     this.config();
   }
   config(extra = '') {
-    writeFileSync(path.join(data, 'config.toml'), `statusMessage = "Live QA"\n${extra}`);
+    writeFileSync(path.join(data, 'config.toml'), extra);
   }
   async properties() {
     this.port = await freePort();

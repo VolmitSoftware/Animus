@@ -29,8 +29,7 @@ FROZEN_WRAPPER = '72d33c176a349aeebe306276328d92304eff1aa505215baf54139c3e678985
 DIAGNOSTIC_STATUS_GATES = {'logical-final-wait', 'manual-cancel-raw-retention', 'explicit-release-quiescence', 'invocation-capacity-after-cancel'}
 ANSI = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
 UUID = re.compile(r'[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}')
-CONFIG = '''statusMessage = "Behavior QA"
-packetProofEnabled = false
+CONFIG = '''packetProofEnabled = false
 [npcs]
 enabled = false
 [modules]

@@ -12,7 +12,7 @@ public final class DefinitionBatch {
         Set<String> paths=new HashSet<>();Set<UUID> identities=new HashSet<>();Set<String> ids=new HashSet<>();
         for(NpcDefinition definition:definitions) {
             if(!paths.add(definition.path()) || !identities.add(definition.uuid()) || !ids.add(definition.id()))throw new IOException("Duplicate batch definition identity");
-            if(!store.hash(definition.path()).equals(expected.get(definition.path())))throw new IOException("Conflict: "+definition.path());
+            if(!store.hash(definition.path()).equals(expected.get(definition.path())))throw DocumentStore.conflict(definition.path());
         }
         DefinitionCheckpoints checkpoints=new DefinitionCheckpoints(store);
         List<DocumentStore.Change> changes=new ArrayList<>(otherChanges);

@@ -1,5 +1,7 @@
 package art.arcane.animus.core.npc;
 
+import art.arcane.animus.core.platform.MinecraftIds;
+import art.arcane.animus.core.presentation.BodyRules;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -62,6 +64,11 @@ public record NpcAppearance(Map<EquipmentSlot, NpcItem> equipment, List<String> 
                 Optional<EquipmentSlot> slot = EquipmentSlot.fromKey(entry.getKey());
                 if (slot.isEmpty()) {
                     errors.add("$.equipment." + entry.getKey() + ": unknown slot; expected main_hand, off_hand, head, chest, legs, feet, body or saddle");
+                    continue;
+                }
+                String body = MinecraftIds.normalize(type);
+                if (!BodyRules.equipmentSlots(body).contains(slot.get())) {
+                    errors.add("$.equipment." + entry.getKey() + ": " + BodyRules.slotRefusal(body, slot.get()));
                     continue;
                 }
                 NpcItem.parse(entry.getValue(), "$.equipment." + entry.getKey(), errors).ifPresent((NpcItem item) -> equipment.put(slot.get(), item));

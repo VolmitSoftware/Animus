@@ -30,8 +30,8 @@ class AnimusRuntimeTest {
 
         assertAll(
                 () -> assertTrue(runtime.isRunning()),
-                () -> assertTrue(runtime.status().contains("Hello from " + BuildIdentity.NAME)),
-                () -> assertTrue(Files.readString(dataDirectory.resolve("config.toml")).contains("Hello from " + BuildIdentity.NAME))
+                () -> assertTrue(runtime.status().startsWith(BuildIdentity.NAME + " " + BuildIdentity.VERSION + " | "), runtime.status()),
+                () -> assertFalse(Files.readString(dataDirectory.resolve("config.toml")).contains("statusMessage"))
         );
     }
 
@@ -80,7 +80,7 @@ class AnimusRuntimeTest {
     @Test
     void preservesExistingSettingsAndCachesStatus() throws IOException {
         Path config = directory.resolve("config.toml");
-        String original = "# Keep my comments\nstatusMessage = \"Configured message\"\n";
+        String original = "# Keep my comments\n[npcs]\nviewDistance = 40\n";
         Files.writeString(config, original);
         AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.NEOFORGE, "26.3", directory));
 
@@ -88,26 +88,23 @@ class AnimusRuntimeTest {
 
         assertEquals(original, Files.readString(config));
         Files.delete(config);
-        assertTrue(runtime.status().contains("Configured message"));
+        assertEquals(40, runtime.npcSettings().viewDistance());
         assertFalse(Files.exists(config));
     }
 
     @ParameterizedTest
     @ValueSource(strings = {
             "null",
-            "{}",
-            "{\"statusMessage\":null}",
-            "{\"statusMessage\":\"\"}",
-            "{\"statusMessage\":\"   \"}",
-            "{\"statusMessage\":42}",
-            "{\"statusMessage\":true}",
-            "{\"statusMessage\":[]}",
-            "{\"statusMessage\":\"broken\"",
-            "{statusMessage:\"unquoted key\"}",
-            "{\"statusMessage\":'single quotes'}",
-            "{\"statusMessage\":\"valid\"} trailing",
-            "{\"statusMessage\":\"valid\",}",
-            "// comment\n{\"statusMessage\":\"valid\"}",
+            "{\"packetProofEnabled\":null}",
+            "{\"packetProofEnabled\":\"\"}",
+            "{\"packetProofEnabled\":42}",
+            "{\"packetProofEnabled\":[]}",
+            "{\"packetProofEnabled\":\"broken\"",
+            "{packetProofEnabled:\"unquoted key\"}",
+            "{\"packetProofEnabled\":'single quotes'}",
+            "{\"packetProofEnabled\":true} trailing",
+            "{\"packetProofEnabled\":true,}",
+            "// comment\n{\"packetProofEnabled\":true}",
             "[]",
             ""
     })
@@ -148,25 +145,25 @@ class AnimusRuntimeTest {
 
         assertFalse(runtime.isRunning());
         assertThrows(IllegalStateException.class, runtime::status);
-        Files.writeString(directory.resolve("config.toml"), "statusMessage = \"Restarted\"\n");
+        Files.writeString(directory.resolve("config.toml"), "[npcs]\nviewDistance = 40\n");
         assertTrue(runtime.awaitFileQuiescence(java.time.Duration.ofSeconds(5)));
         runtime.start();
         assertTrue(runtime.isRunning());
-        assertTrue(runtime.status().contains("Restarted"));
+        assertEquals(40, runtime.npcSettings().viewDistance());
     }
 
     @Test
     void canStartAfterConfigurationFailureIsCorrected() throws IOException {
         Path config = directory.resolve("config.json");
-        Files.writeString(config, "{}");
+        Files.writeString(config, "[]");
         AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.NEOFORGE, "26.2", directory));
         assertThrows(IOException.class, runtime::start);
-        Files.writeString(config, "{\"statusMessage\":\"Recovered\"}");
+        Files.writeString(config, "{\"npcs\":{\"viewDistance\":40}}");
 
         runtime.start();
 
         assertTrue(runtime.isRunning());
-        assertTrue(runtime.status().contains("Recovered"));
+        assertEquals(40, runtime.npcSettings().viewDistance());
     }
 
     @Test

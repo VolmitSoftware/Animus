@@ -2,6 +2,7 @@ package art.arcane.animus.core.hotload;
 
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.CatalogChange;
+import art.arcane.animus.core.RuntimeCatalogs;
 import art.arcane.animus.core.building.schematic.NbtReader;
 import art.arcane.animus.core.building.schematic.SchematicReader;
 import art.arcane.animus.core.config.BuildSettings;
@@ -9,6 +10,7 @@ import art.arcane.animus.core.config.HotloadSettings;
 import art.arcane.animus.core.editor.DocumentKind;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.runtime.NpcRuntime;
+import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.storage.WriteNotices;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -166,6 +168,9 @@ public final class HotloadService implements AutoCloseable {
             if (!settled.verdict().valid()) {
                 engine.settle(item.snapshot(), HotloadEngine.Outcome.REJECTED);
                 String error = settled.verdict().error().orElse("invalid");
+                // An explicit edit or delete of this NPC replaces the refused file instead of answering a conflict.
+                if (item.target().kind().filter((DocumentKind kind) -> kind == DocumentKind.NPC).isPresent() && item.snapshot().content() != null)
+                    parts.runtime().npcs().refused(file, JsonDocuments.hash(item.snapshot().content()));
                 parts.log().accept("Hotload refused " + file + ": " + error);
                 String kept = item.target().area() == HotloadTargets.Area.SCHEMATIC ? "builds cannot use it until it is fixed" : HotloadMessages.KEPT;
                 parts.operators().notifyOperators(List.of(HotloadMessages.refused(file, error, kept)), settings().sound());
@@ -227,13 +232,15 @@ public final class HotloadService implements AutoCloseable {
 
     /**
      * An NPC reload applies each definition file on its own, so only a problem that names this file refuses it; another
-     * file's error never refuses a valid edit of the same batch. A rig refusal names its file too.
+     * file's error never refuses a valid edit of the same batch. A rig refusal names its file too. A reload that failed as
+     * a whole applied none of the batch's NPC edits, so it refuses each of them.
      */
     private static Item reloadRefusal(Item item, List<String> problems) {
         if (!item.verdict().valid() || problems.isEmpty() || item.verdict().kind().isEmpty()) return item;
         DocumentKind kind = item.verdict().kind().get();
         String path = item.target().path();
-        Optional<String> own = problems.stream().filter((String problem) -> problem.startsWith(path) || problem.contains(" " + path)).findFirst()
+        Optional<String> own = problems.stream().filter((String problem) -> problem.startsWith(path) || problem.contains(" " + path)
+                        || problem.startsWith(RuntimeCatalogs.NPC_RELOAD_FAILED) && NPC_GROUP.contains(kind)).findFirst()
                 .map((String problem) -> problem.startsWith(path + ": ") ? problem.substring(path.length() + 2) : problem);
         if (own.isPresent() && (NPC_GROUP.contains(kind) || kind == DocumentKind.RIG || kind == DocumentKind.ANIMATION)) return item.refused(own.get());
         return item;

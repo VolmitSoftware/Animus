@@ -996,6 +996,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     @Override public void setEquipment(String id, EquipmentSlot slot, I item) {
         Value value = navigable(id);
         if (!packets.equipmentAvailable()) throw new IllegalStateException("Equipment packets are unavailable on this server version");
+        if (!BodyRules.equipmentSlots(value.spec.type()).contains(slot)) throw new IllegalArgumentException(BodyRules.slotRefusal(value.spec.type(), slot));
         value.equipment.put(slot, item);
         value.equipmentRevision++;
     }
@@ -1282,7 +1283,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             if (once) value.blockedWarned = true;
             boolean terrain = route.longLeg.terrainBlocks();
             AnimusLog.shared().routine(blockedLegs(terrain), id, blockedLeg(id, route.waypoint, route.origin, route.goal, reason,
-                    route.leg != null && value.movement.teleportsWhenStuck(), terrain), host::warn);
+                    route.leg != null && value.movement.teleportsWhenStuck(), terrain), Optional.of(blockedLegCase(id, route.waypoint, reason)), host::warn);
         }
         failLeg(route, reason);
     }
@@ -1301,6 +1302,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         return "NPC " + npc + (teleports ? " teleported" : " stopped") + (terrain ? ": terrain blocks its route leg" : ": the planner found no path for its route leg")
                 + (waypoint < 0 ? "" : " to waypoint " + waypoint)
                 + " from " + block(from) + " to " + block(to.point()) + " in " + to.world() + " (" + reason + "); later blocked legs of this NPC are not logged";
+    }
+    /** The latest blocked leg as the summary repeats it: the NPC, the waypoint the leg led to and the reason. */
+    public static String blockedLegCase(String npc, int waypoint, String reason) {
+        return npc + (waypoint < 0 ? "" : " at waypoint " + waypoint) + ", " + reason;
     }
     private static String block(Vec3 point) {
         return (int) Math.floor(point.x()) + " " + (int) Math.floor(point.y()) + " " + (int) Math.floor(point.z());
@@ -2404,6 +2409,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private void watchFailed(Viewer viewer, Throwable failure) {
         if (!current(viewer)) return;
         if (!RuntimeFailures.viewerGone(failure)) { fail(viewer, "watch", null, failure); return; }
+        failures.watchEnded(host.name(viewer.player), failure);
         if (viewerFailures.size() < settings.maximumViewers()) viewerFailures.put(host.id(viewer.player), "connection closed");
         disconnect(viewer.player);
     }

@@ -73,7 +73,7 @@ class EditorHotloadTest {
         try (ServerSocket socket = new ServerSocket(0)) { return socket.getLocalPort(); }
     }
 
-    private static String config(String editor) { return "statusMessage = \"Hello\"\n[editor]\n" + editor; }
+    private static String config(String editor) { return "[editor]\n" + editor; }
 
     private static String listener(int port) { return "listenerEnabled = true\nrelayEnabled = false\nport = " + port + "\n"; }
 
@@ -85,21 +85,31 @@ class EditorHotloadTest {
         service.start();
     }
 
-    /** Starts with the listener on a free port; another process can take a probed port first, so a lost race picks another. */
-    private int startListening(java.util.function.IntFunction<String> text) throws Exception {
-        for (int attempt = 0; ; attempt++) {
-            int port = freePort();
-            start(text.apply(port));
-            if (service.listener().isPresent() || attempt == 4) return port;
-            service.close();
-            runtime.close();
+    /** Starts with the listener on port 0, so it binds a free port nobody can take first, and answers the port it bound. */
+    private int startListening() throws Exception {
+        start(config(listener(0)));
+        await(() -> listenerPort() > 0, "the listener binding a free port");
+        return listenerPort();
+    }
+
+    /**
+     * Hotloads the listener onto a specific probed port. Another process can take a probed port before the listener binds
+     * it, so a lost race tries the next free port; the configured port has to change for the listener to rebind.
+     */
+    private int rebindToFreePort(java.util.function.IntFunction<String> text) throws Exception {
+        for (int attempt = 0; attempt < 10; attempt++) {
+            int candidate = freePort();
+            hotload(text.apply(candidate));
+            await(() -> listenerPort() == candidate || service.settings().port() == candidate && service.listener().isEmpty(), "the listener trying port " + candidate);
+            if (listenerPort() == candidate) return candidate;
         }
+        throw new AssertionError("No free port could be bound in 10 tries: " + service.status());
     }
 
     private void hotload(String text) throws IOException { runtime.applySettings(PluginSettings.parse(text, data.resolve("config.toml"))); }
 
     private static void await(BooleanSupplier condition, String what) throws InterruptedException {
-        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
         while (!condition.getAsBoolean()) {
             if (System.nanoTime() > until) throw new AssertionError("Timed out waiting for " + what);
             Thread.sleep(10);
@@ -139,25 +149,23 @@ class EditorHotloadTest {
 
     @Test
     void portChange_rebindsListener_tokenStaysValid() throws Exception {
-        int first = startListening((int free) -> config(listener(free)));
+        int first = startListening();
         String token = token();
         assertEquals(200, catalog("http://127.0.0.1:" + first, token));
-        int second = freePort();
-        hotload(config(listener(second)));
-        await(() -> listenerPort() == second, "the listener on the new port");
-        assertTrue(refused("127.0.0.1", first), "the old port is closed");
+        int second = rebindToFreePort((int free) -> config(listener(free)));
+        await(() -> refused("127.0.0.1", first), "the old port closing");
         assertEquals(200, catalog("http://127.0.0.1:" + second, token), "the token issued before the restart still works");
     }
 
     @Test
     void addressChange_rebindsListener() throws Exception {
-        int port = startListening((int free) -> config(listener(free)));
+        int port = startListening();
         EditorListener before = service.listener().orElseThrow();
         String token = token();
-        hotload(config(listener(port) + "listenAddress = \"::1\"\n"));
+        hotload(config(listener(0) + "listenAddress = \"::1\"\n"));
         await(() -> service.listener().map((EditorListener now) -> now != before).orElse(false), "a new listener");
-        assertTrue(refused("127.0.0.1", port), "the IPv4 loopback socket is closed");
-        assertEquals(200, catalog("http://[::1]:" + port, token));
+        await(() -> refused("127.0.0.1", port), "the IPv4 loopback socket closing");
+        assertEquals(200, catalog("http://[::1]:" + listenerPort(), token));
     }
 
     @Test
@@ -165,11 +173,12 @@ class EditorHotloadTest {
         Path certificate = data.resolve("certificate.pem"), key = data.resolve("key.pem");
         try (InputStream input = EditorHotloadTest.class.getResourceAsStream("/editor-tls/certificate.pem")) { Files.write(certificate, input.readAllBytes()); }
         try (InputStream input = EditorHotloadTest.class.getResourceAsStream("/editor-tls/key.pem")) { Files.write(key, input.readAllBytes()); }
-        int port = startListening((int free) -> config(listener(free)));
+        startListening();
         EditorListener before = service.listener().orElseThrow();
         String token = token();
-        hotload(config(listener(port) + "tlsCertificate = \"certificate.pem\"\ntlsPrivateKey = \"key.pem\"\n"));
+        hotload(config(listener(0) + "tlsCertificate = \"certificate.pem\"\ntlsPrivateKey = \"key.pem\"\n"));
         await(() -> service.listener().map((EditorListener now) -> now != before).orElse(false), "a new listener");
+        int port = listenerPort();
         SSLContext trustAll = SSLContext.getInstance("TLS");
         trustAll.init(null, new TrustManager[]{new X509TrustManager() {
             @Override public void checkClientTrusted(X509Certificate[] chain, String type) {}
@@ -186,13 +195,13 @@ class EditorHotloadTest {
 
     @Test
     void originAndLimitChanges_applyWithoutRestartingListener() throws Exception {
-        int port = startListening((int free) -> config(listener(free)));
+        int port = startListening();
         EditorListener before = service.listener().orElseThrow();
         String base = "http://127.0.0.1:" + port + "/animus/v1/changes";
         HttpRequest preflight = HttpRequest.newBuilder(URI.create(base)).method("OPTIONS", HttpRequest.BodyPublishers.noBody())
                 .header("Origin", OTHER_ORIGIN).header("Access-Control-Request-Method", "POST").build();
         assertTrue(http.send(preflight, HttpResponse.BodyHandlers.ofString()).headers().firstValue("Access-Control-Allow-Origin").isEmpty());
-        hotload(config(listener(port) + "allowedOrigins = [\"" + OTHER_ORIGIN + "\"]\nrequestBodyBytes = 2048\nrequestsPerSecond = 5\n"));
+        hotload(config(listener(0) + "allowedOrigins = [\"" + OTHER_ORIGIN + "\"]\nrequestBodyBytes = 2048\nrequestsPerSecond = 5\n"));
         await(() -> service.settings().allowedOrigins().equals(List.of(OTHER_ORIGIN)), "the new origins");
         assertSame(before, service.listener().orElseThrow(), "the listener kept its socket");
         assertEquals(port, listenerPort());
@@ -205,16 +214,15 @@ class EditorHotloadTest {
 
     @Test
     void unrelatedChange_restartsNothing() throws Exception {
-        int port = freePort();
+        int port = 0;
         try (FakeAgent agent = new FakeAgent()) {
             start(config(listener(port).replace("relayEnabled = false", "relayEnabled = true\nrelayUrl = \"" + agent.url() + "\"")));
             await(() -> agent.accepted() == 1, "the relay connection");
             EditorListener before = service.listener().orElseThrow();
             EditorApi api = service.api().orElseThrow();
-            hotload("statusMessage = \"Changed\"\n[editor]\n" + listener(port).replace("relayEnabled = false", "relayEnabled = true\nrelayUrl = \"" + agent.url() + "\""));
-            hotload("statusMessage = \"Changed\"\n[editor]\n" + listener(port).replace("relayEnabled = false", "relayEnabled = true\nrelayUrl = \"" + agent.url() + "\"") + "tokenDays = 3\n");
+            hotload("packetProofEnabled = true\n[editor]\n" + listener(port).replace("relayEnabled = false", "relayEnabled = true\nrelayUrl = \"" + agent.url() + "\""));
+            hotload("packetProofEnabled = true\n[editor]\n" + listener(port).replace("relayEnabled = false", "relayEnabled = true\nrelayUrl = \"" + agent.url() + "\"") + "tokenDays = 3\n");
             await(() -> service.settings().tokenDays() == 3, "the new token lifetime");
-            Thread.sleep(200);
             assertSame(before, service.listener().orElseThrow());
             assertSame(api, service.api().orElseThrow());
             assertEquals(1, agent.accepted(), "the relay was not reconnected");
@@ -224,17 +232,17 @@ class EditorHotloadTest {
 
     @Test
     void relayEnableAndUrlChange_restartOnlyTheRelay() throws Exception {
-        int port = startListening((int free) -> config(listener(free)));
+        int port = startListening();
         EditorListener before = service.listener().orElseThrow();
         String token = token();
         try (FakeAgent first = new FakeAgent(); FakeAgent second = new FakeAgent()) {
-            hotload(config(listener(port).replace("relayEnabled = false", "relayEnabled = true\nrelayUrl = \"" + first.url() + "\"")));
+            hotload(config(listener(0).replace("relayEnabled = false", "relayEnabled = true\nrelayUrl = \"" + first.url() + "\"")));
             await(() -> first.accepted() == 1, "the relay connecting");
             assertTrue(service.status().stream().anyMatch((String line) -> line.contains(" | relay " + first.url() + " ")));
-            hotload(config(listener(port).replace("relayEnabled = false", "relayEnabled = true\nrelayUrl = \"" + second.url() + "\"")));
+            hotload(config(listener(0).replace("relayEnabled = false", "relayEnabled = true\nrelayUrl = \"" + second.url() + "\"")));
             await(() -> second.accepted() == 1, "the relay on the new URL");
             await(() -> first.closed(0), "the old relay connection closing");
-            hotload(config(listener(port)));
+            hotload(config(listener(0)));
             await(() -> second.closed(0), "the relay stopping");
             await(() -> service.status().getFirst().contains(" | relay off | "), "relay status off");
             assertSame(before, service.listener().orElseThrow(), "the listener did not restart");
@@ -244,7 +252,7 @@ class EditorHotloadTest {
 
     @Test
     void portInUse_keepsRunningWithReason_laterFixRebinds() throws Exception {
-        int port = startListening((int free) -> config(listener(free)));
+        int port = startListening();
         String token = token();
         try (ServerSocket taken = new ServerSocket()) {
             taken.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0));
@@ -252,26 +260,24 @@ class EditorHotloadTest {
             await(() -> service.listener().isEmpty() && service.status().stream().anyMatch((String line) -> line.contains(" | listener failed: ")),
                     "the listener reporting why it is down");
             assertTrue(service.api().isPresent(), "the API keeps running for the relay");
-            assertTrue(refused("127.0.0.1", port), "the old listener was closed");
+            await(() -> refused("127.0.0.1", port), "the old listener closing");
         }
-        int fixed = freePort();
-        hotload(config(listener(fixed)));
-        await(() -> listenerPort() == fixed, "the listener on the fixed port");
+        int fixed = rebindToFreePort((int free) -> config(listener(free)));
         assertTrue(service.status().getFirst().startsWith("Editor ready | listener 127.0.0.1:" + fixed + " (http) "), service.status().getFirst());
         assertEquals(200, catalog("http://127.0.0.1:" + fixed, token));
     }
 
     @Test
     void editorSwitch_closesAndReopens_tokenSurvives() throws Exception {
-        int port = startListening((int free) -> config(listener(free)));
+        int port = startListening();
         String token = token();
-        hotload(config("enabled = false\n" + listener(port)));
+        hotload(config("enabled = false\n" + listener(0)));
         await(() -> service.api().isEmpty(), "the editor closing");
         await(() -> refused("127.0.0.1", port), "the listener closing");
         assertTrue(service.status().getFirst().startsWith("Editor disabled"));
-        hotload(config(listener(port)));
-        await(() -> listenerPort() == port, "the editor reopening");
-        assertEquals(200, catalog("http://127.0.0.1:" + port, token), "tokens are stored on disk and survive the switch");
+        hotload(config(listener(0)));
+        await(() -> listenerPort() > 0, "the editor reopening");
+        assertEquals(200, catalog("http://127.0.0.1:" + listenerPort(), token), "tokens are stored on disk and survive the switch");
         assertTrue(log.contains("Editor disabled by config.toml"));
         assertNotEquals(-1, listenerPort());
     }

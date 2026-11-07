@@ -210,7 +210,7 @@ class ModuleAuditor(imports.ImportAuditor):
         for relative in ['npcs','state/npc-definitions/last-valid/npcs']:
             root = data / relative; require(not root.is_symlink() and not list(root.rglob('*.json')), 'Unclean definition/checkpoint tree')
         self.file(data / 'config.toml', kind='final-plugin-config')
-        require((data/'config.toml').read_text() == 'statusMessage = \"Module QA\"\npacketProofEnabled = false\n[npcs]\nenabled = false\n[modules]\nenabled = false\nmaximumInvocations = 8\ninvocationTimeoutMillis = 1500\ndeliveryBudgetMillis = 250\n', 'Final module/runtime setting differs')
+        require((data/'config.toml').read_text() == 'packetProofEnabled = false\n[npcs]\nenabled = false\n[modules]\nenabled = false\nmaximumInvocations = 8\ninvocationTimeoutMillis = 1500\ndeliveryBudgetMillis = 250\n', 'Final module/runtime setting differs')
         return {'project':project,'minecraftVersion':version,'report':str(path),'port':report['port'],'checks':12,'commands':command_count,
                 'managedLockRetries':retries,'phases':PHASES,'serverBuild':report['serverBuild'],'serverChannel':report['serverChannel'],'serverSha256':report['serverSha256'],'absentNow':absent}
 

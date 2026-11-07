@@ -377,7 +377,6 @@ class CitizensDropInTest {
         Path config = root.resolve("plugins/Animus/config.toml");
         String original = """
                 # Server notes stay.
-                statusMessage = "Hello"
 
                 [behaviors.actions]
                 # Who may run commands.
@@ -410,8 +409,8 @@ class CitizensDropInTest {
     }
 
     @Test void acceptCommandsAddsTheActionsTableWhenConfigHasNone() throws Exception {
-        assertEquals("statusMessage = \"Hi\"\n\n[behaviors.actions]\ncommandNamespaces = [\"citizens\", \"denizen\"]\n",
-                CommandAllowList.with("statusMessage = \"Hi\"\n", List.of("citizens", "denizen")));
+        assertEquals("packetProofEnabled = false\n\n[behaviors.actions]\ncommandNamespaces = [\"citizens\", \"denizen\"]\n",
+                CommandAllowList.with("packetProofEnabled = false\n", List.of("citizens", "denizen")));
         assertEquals("[behaviors.actions]\ncommandNamespaces = []\nqueuedActions = 9\n",
                 CommandAllowList.with("[behaviors.actions]\ncommandNamespaces = [\n  \"citizens\",\n]\nqueuedActions = 9\n", List.of()));
         assertEquals(List.of("citizens", "denizen"), CommandAllowList.namespaces(List.of("denizen:a", "citizens:commands-1", "denizen:b")));

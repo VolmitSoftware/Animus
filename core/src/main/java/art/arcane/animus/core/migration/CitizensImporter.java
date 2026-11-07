@@ -22,10 +22,10 @@ public final class CitizensImporter {
     public static final int CONVERTER_VERSION = 14;
     /**
      * A staged or installed imported definition path: {@code <source prefix>-<source number>}. Citizens uses the
-     * {@code citizens} prefix; module converters use theirs. Groups other than {@code citizens} come from converter version 7.
+     * {@code citizens} prefix; module converters use theirs. The folder is the NPC group, empty for {@code npcs/} itself.
      */
-    static final String NPC_PATH = "npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,62}-[0-9]+\\.json";
-    static final String BUNDLE_PATH = "(?:npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,62}-[0-9]+|skins/[a-f0-9]{64}|behaviors/citizens/(?:text|commands)-[0-9]+|groups/citizens-[a-f0-9]{8})\\.json";
+    static final String NPC_PATH = "npcs/(?:" + NpcPaths.SEGMENT + "/){0," + NpcPaths.MAX_FOLDERS + "}[a-z0-9][a-z0-9_-]{0,62}-[0-9]+\\.json";
+    static final String BUNDLE_PATH = "(?:npcs/(?:" + NpcPaths.SEGMENT + "/){0," + NpcPaths.MAX_FOLDERS + "}[a-z0-9][a-z0-9_-]{0,62}-[0-9]+|skins/[a-f0-9]{64}|behaviors/citizens/(?:text|commands)-[0-9]+|groups/citizens-[a-f0-9]{8})\\.json";
     /** A generated behavior of converter version 8 and later. */
     static final String BEHAVIOR_PATH = "behaviors/citizens/(?:text|commands)-[0-9]+\\.json";
     public enum Status { CONVERTED, REQUIRES_INTEGRATION, REQUIRES_REVIEW, UNSUPPORTED_PRESERVED }
@@ -284,7 +284,7 @@ public final class CitizensImporter {
                     if (!errors.isEmpty()) issues.add("citizens-" + key + ": " + String.join("; ", errors));
                     else valid++;
 
-                    String npcPath = "npcs/" + definition.get("group").getAsString() + "/citizens-" + key + ".json";
+                    String npcPath = NpcPaths.path(definition.get("group").getAsString(), "citizens-" + key);
                     if (factorGroups) deferred.put(npcPath, definition);
                     else writeBundle(temporary, npcPath, JsonDocuments.write(definition), manifest);
                     DocumentStore.atomic(temporary.resolve("records/" + key + ".json"), JsonDocuments.write(record));

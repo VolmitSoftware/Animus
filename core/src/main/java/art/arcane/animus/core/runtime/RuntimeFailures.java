@@ -27,13 +27,26 @@ public final class RuntimeFailures {
 
     public void record(String operation, String context, String error) {
         last = error;
-        String key = operation + "|" + error;
+        once(operation, error, "NPC runtime " + operation + " failed" + (context == null || context.isEmpty() ? "" : " (" + context + ")") + ": " + error);
+    }
+
+    /**
+     * A viewer the transport could not watch because its connection closed. It is not a runtime error, so status keeps
+     * its last error, but the first time each reason happens the line names the player and the reason.
+     */
+    public void watchEnded(String player, Throwable failure) {
+        String reason = PersistedNpcService.concise(failure);
+        once("watch", reason, "NPC runtime stopped showing NPCs to " + player + ": " + reason + "; they show again when the player rejoins, respawns or changes world");
+    }
+
+    private void once(String operation, String cause, String line) {
+        String key = operation + "|" + cause;
         if (reported.contains(key)) return;
         if (reported.size() >= MAX_CAUSES) {
             if (!saturated) { saturated = true; warn.accept("NPC runtime: " + MAX_CAUSES + " different failures logged; further new failures show only in status"); }
             return;
         }
-        if (reported.add(key)) warn.accept("NPC runtime " + operation + " failed" + (context == null || context.isEmpty() ? "" : " (" + context + ")") + ": " + error);
+        if (reported.add(key)) warn.accept(line);
     }
 
     /** True when the failure only says the viewer's transport watch has ended: its work is dropped, not an error. */

@@ -57,7 +57,7 @@ class BehaviorStateRuntimeTest {
     @Test
     void attachedLaneFlushesOnceTheConfiguredIntervalPasses() throws Exception {
         Files.createDirectories(root);
-        AnimusRuntime runtime = runtime("statusMessage = 'Test'\n[behaviors.state]\nflushMillis = 100\n");
+        AnimusRuntime runtime = runtime("[behaviors.state]\nflushMillis = 100\n");
         try {
             BehaviorStateStore state = runtime.behaviorState();
             state.write(SUBJECT, Map.of("v", new Value(Type.INTEGER, 1L)), Map.of("v", DECLARATION));

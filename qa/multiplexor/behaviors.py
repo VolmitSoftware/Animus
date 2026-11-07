@@ -305,8 +305,7 @@ class Scenario:
         return receipt
 
     def configuration(self):
-        (self.data / 'config.toml').write_text('''statusMessage = "Behavior QA"
-packetProofEnabled = false
+        (self.data / 'config.toml').write_text('''packetProofEnabled = false
 [npcs]
 enabled = false
 [modules]

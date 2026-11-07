@@ -80,7 +80,7 @@ class BehaviorSettingsTest {
     private static String config(Budget budget,String literal){
         Map<String,String> coordinator=new LinkedHashMap<>();coordinator.put("maximumOperations","256");coordinator.put("operationsPerTick","1");
         if(budget.table().equals("behaviors"))coordinator.put(budget.field(),literal);
-        StringBuilder source=new StringBuilder("# Exact operator text\nstatusMessage = 'Test'\n[behaviors]\n");coordinator.forEach((key,value)->source.append(key).append(" = ").append(value).append('\n'));
+        StringBuilder source=new StringBuilder("# Exact operator text\n[behaviors]\n");coordinator.forEach((key,value)->source.append(key).append(" = ").append(value).append('\n'));
         if(!budget.table().equals("behaviors"))source.append('[').append(budget.table()).append("]\n").append(budget.field()).append(" = ").append(literal).append('\n');
         return source.toString();
     }
@@ -103,7 +103,7 @@ class BehaviorSettingsTest {
         }
     }
     @Test void partialExistingSettingsPreserveCommentsUnknownDataAndJsonBehaviorSources()throws Exception{
-        String source="# Administrator comments\nstatusMessage = 'Configured'\n[behaviors]\nenabled = false\nmaximumOperations = 5\noperationsPerTick = 2\ntickMillis = 100\ndeliveryBudgetMillis = 300\n"
+        String source="# Administrator comments\n[behaviors]\nenabled = false\nmaximumOperations = 5\noperationsPerTick = 2\ntickMillis = 100\ndeliveryBudgetMillis = 300\n"
                 +"[behaviors.engine]\nexecutions = 3\n[behaviors.catalog]\nmaximumDocuments = 7\n[behaviors.future]\nkeep = 'untouched'\n";
         Files.writeString(root.resolve("config.toml"),source);
         try(DocumentStore store=new DocumentStore(root)){
@@ -116,21 +116,21 @@ class BehaviorSettingsTest {
             "[behaviors]\nmaximumOperations = '64'","[behaviors]\noperationsPerTick = 1.5","[behaviors.engine]\nexecutions = [1]","[behaviors.engine]\nworkPerTick = '256'",
             "[behaviors.catalog]\nmaximumAggregateBytes = '16777216'","[behaviors.catalog]\nmaximumAggregateBytes = 1.5","[behaviors.catalog]\nmaximumDepth = true"})
     void malformedBehaviorSettingsNeverFallBackOrRewriteExistingToml(String body)throws Exception{
-        String source="statusMessage = 'Test'\n"+body+"\n";Files.writeString(root.resolve("config.toml"),source);Files.writeString(root.resolve("config.json"),"{\"statusMessage\":\"Fallback forbidden\"}");
+        String source=body+"\n";Files.writeString(root.resolve("config.toml"),source);Files.writeString(root.resolve("config.json"),"{\"packetProofEnabled\":true}");
         try(DocumentStore store=new DocumentStore(root)){assertTrue(assertThrows(IOException.class,()->PluginSettings.load(store)).getMessage().contains("behaviors"));assertEquals(source,Files.readString(root.resolve("config.toml")));}
     }
     @Test void perTickAdmissionCannotExceedMaximumOperationsEvenWhenDisabled()throws Exception{
-        String source="statusMessage = 'Test'\n[behaviors]\nenabled = false\nmaximumOperations = 2\noperationsPerTick = 3\n";Files.writeString(root.resolve("config.toml"),source);
+        String source="[behaviors]\nenabled = false\nmaximumOperations = 2\noperationsPerTick = 3\n";Files.writeString(root.resolve("config.toml"),source);
         try(DocumentStore store=new DocumentStore(root)){assertTrue(assertThrows(IOException.class,()->PluginSettings.load(store)).getMessage().contains("must not exceed maximumOperations"));assertEquals(source,Files.readString(root.resolve("config.toml")));}
     }
     @Test void legacyMigrationPreservesBehaviorValuesAndUnknownJsonExactly()throws Exception{
-        String source="{\"statusMessage\":\"Legacy\",\"behaviors\":{\"enabled\":false,\"maximumOperations\":8,\"operationsPerTick\":2,\"engine\":{\"executions\":4},\"future\":{\"keep\":true}}}";Files.writeString(root.resolve("config.json"),source);
+        String source="{\"behaviors\":{\"enabled\":false,\"maximumOperations\":8,\"operationsPerTick\":2,\"engine\":{\"executions\":4},\"future\":{\"keep\":true}}}";Files.writeString(root.resolve("config.json"),source);
         try(DocumentStore store=new DocumentStore(root)){
             var settings=PluginSettings.load(store).behaviors();assertFalse(settings.enabled());assertEquals(8,settings.maximumOperations());assertEquals(2,settings.operationsPerTick());assertEquals(4,settings.engine().executions());assertEquals(source,store.read("config.json"));assertEquals(source,store.read("backups/config-"+JsonDocuments.hash(source)+".json"));assertTrue(store.read("config.toml").contains("keep"));assertTrue(store.read("config.toml").contains("[behaviors.engine]"));
         }
     }
     @Test void runtimeAccessorCachesSettingsAndRejectsBeforeStartAndAfterClose()throws Exception{
-        String source="statusMessage = 'Test'\n[behaviors]\nenabled = false\nmaximumOperations = 4\noperationsPerTick = 2\n";Files.writeString(root.resolve("config.toml"),source);
+        String source="[behaviors]\nenabled = false\nmaximumOperations = 4\noperationsPerTick = 2\n";Files.writeString(root.resolve("config.toml"),source);
         try(AnimusRuntime runtime=new AnimusRuntime(RuntimeEnvironment.bukkit("26.3",root))){
             assertThrows(IllegalStateException.class,runtime::behaviorSettings);runtime.start();var settings=runtime.behaviorSettings();assertFalse(settings.enabled());assertEquals(4,settings.maximumOperations());
             Files.writeString(root.resolve("config.toml"),source.replace("enabled = false","enabled = true"));assertSame(settings,runtime.behaviorSettings());runtime.closeAsync();assertThrows(IllegalStateException.class,runtime::behaviorSettings);runtime.close();assertTrue(runtime.awaitFileQuiescence(Duration.ofSeconds(3)));runtime.start();assertTrue(runtime.behaviorSettings().enabled());

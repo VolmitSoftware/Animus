@@ -72,6 +72,18 @@ class ModuleImportsTest {
         }
     }
 
+    @Test void anNpcForTheRootFolderImportsIntoNpcsItself(@TempDir Path root) throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            CitizensImporter.Preview preview = ModuleImports.preview(store, SOURCE, converter("legacy:npcs", true, (ImportConverters.Source source) ->
+                    new ImportConverters.Conversion(List.of(new ImportConverters.Record(3, NPC.formatted("Root", 1, "").replace("\"group\":\"legacy\"", "\"group\":\"\""), List.of())), List.of())));
+            assertEquals(1, preview.valid(), preview.summary().toString());
+            assertTrue(Files.isRegularFile(preview.directory().resolve("npcs/legacy-npcs-3.json")));
+            new CitizensImporter().apply(store, preview.id());
+            NpcDefinition installed = NpcDefinition.parse(JsonDocuments.read(root.resolve("npcs/legacy-npcs-3.json")));
+            assertEquals("", installed.group());
+        }
+    }
+
     @Test void stagedApplicationsDuplicateModuleImportsLikeCitizensImports(@TempDir Path root) throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             CitizensImporter.Preview preview = ModuleImports.preview(store, SOURCE, converter("legacy:npcs", true, ModuleImportsTest::twoGuards));

@@ -660,6 +660,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     private void watchFailed(RegionViewer viewer, Throwable failure) {
         if (!current(viewer)) return;
         if (!RuntimeFailures.viewerGone(failure)) { fail(viewer, "watch", null, failure); return; }
+        failures.watchEnded(viewer.player.getName(), failure);
         if (viewerFailures.size() < settings().maximumViewers()) viewerFailures.put(viewer.id, "connection closed");
         disconnect(viewer);
     }

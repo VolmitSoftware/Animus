@@ -33,6 +33,18 @@ class RuntimeCatalogsTest {
         }
     }
 
+    @Test void anNpcReloadThatThrowsIsReportedAndTheRuntimeStillRefreshes() {
+        List<String> ran = new ArrayList<>(), reported = new ArrayList<>(), logged = new ArrayList<>();
+        try (AnimusRuntime stopped = new AnimusRuntime(RuntimeEnvironment.bukkit("26.3", root))) {
+            RuntimeCatalogs catalogs = new RuntimeCatalogs(new RuntimeCatalogs.Parts(stopped, () -> ran.add("refresh"), () -> null,
+                    () -> queued(ran, "shops"), () -> queued(ran, "holograms"), logged::add));
+            assertTrue(catalogs.reloaded(new CatalogChange(Set.of(DocumentKind.NPC), Set.of(), false), reported::add).isDone());
+            assertEquals(List.of("refresh"), ran);
+            assertEquals(List.of(RuntimeCatalogs.NPC_RELOAD_FAILED + "IllegalStateException: Animus is not running"), reported);
+            assertEquals(List.of("Catalog reload: " + RuntimeCatalogs.NPC_RELOAD_FAILED + "IllegalStateException: Animus is not running"), logged);
+        }
+    }
+
     private static CompletableFuture<?> queued(List<String> ran, String name) {
         ran.add(name);
         return CompletableFuture.completedFuture(null);

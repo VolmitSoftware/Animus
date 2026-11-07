@@ -32,7 +32,6 @@ class EditorRelaySettingsTest {
     @Test
     void shouldReadRelayKeysAndIgnoreTheOtherEditorKeys() throws IOException {
         Files.writeString(root.resolve("config.toml"), """
-                statusMessage = "x"
                 [editor]
                 listenerEnabled = false
                 relayEnabled = false
@@ -52,7 +51,7 @@ class EditorRelaySettingsTest {
 
     @Test
     void shouldNameTheEditorTableWhenAValueIsOutOfRange() throws IOException {
-        Files.writeString(root.resolve("config.toml"), "statusMessage = \"x\"\n[editor]\nrelayReconnectMinSeconds = 10\nrelayReconnectMaxSeconds = 5\n");
+        Files.writeString(root.resolve("config.toml"), "[editor]\nrelayReconnectMinSeconds = 10\nrelayReconnectMaxSeconds = 5\n");
         try (DocumentStore store = new DocumentStore(root)) {
             IOException failure = assertThrows(IOException.class, () -> PluginSettings.load(store));
             assertTrue(failure.getMessage().contains("editor: relayReconnectMaxSeconds"), failure.getMessage());
