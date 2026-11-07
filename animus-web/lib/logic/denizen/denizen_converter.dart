@@ -24,7 +24,7 @@ part 'denizen_commands.dart';
 part 'denizen_events.dart';
 part 'denizen_expressions.dart';
 
-const int denizenConverterVersion = 5;
+const int denizenConverterVersion = 6;
 
 /// The author a converted book gets when its Denizen author is blank.
 const String _blankBookAuthor = 'Server';
@@ -220,6 +220,10 @@ class _Doc {
   final SplayTreeMap<String, String> variables = SplayTreeMap<String, String>();
   int temporaries = 0;
   int loops = 0;
+
+  /// The longest `cooldown` an interact script's steps set, in ticks: per player, and `global` for everyone.
+  int playerCooldown = -1;
+  int globalCooldown = -1;
 }
 
 /// Where the commands being converted come from and what they may read.
@@ -1400,6 +1404,9 @@ class _Converter {
           ..addString('event', 'interaction')
           ..addString('routine', routine);
         cooldown(trigger, container, 'click');
+        final JElement? existing = trigger.get('cooldownTicks');
+        if (doc.globalCooldown >= 0 && (existing == null || existing.asPrimitive.asDouble < doc.globalCooldown)) trigger.addInt('cooldownTicks', doc.globalCooldown);
+        if (doc.playerCooldown >= 0) trigger.addInt('playerCooldownTicks', doc.playerCooldown);
       } else {
         trigger
           ..addString('event', 'proximity')
@@ -1473,7 +1480,7 @@ class _Converter {
           preserveNode(kept, entry.value, 'inside a world event that is kept');
           continue;
         }
-        final _Mapped mapped = _denizenEvent(key, notes, _mentions(sequence, '<context.entity.is_npc>'));
+        final _Mapped mapped = _denizenEvent(key, notes, _mentions(sequence, '<context.entity.is_npc'), _mentions(sequence, '<player.target.is_npc'));
         String? reason = mapped.reason;
         final _Doc doc = mapped.npc ? clicks : server;
         final JArray triggers = mapped.npc ? clickTriggers : serverTriggers;
@@ -1504,7 +1511,14 @@ class _Converter {
         for (final MapEntry<String, JElement> field in mapped.trigger!.entries) {
           trigger.add(field.key, field.value);
         }
+        // A click event that leaves non-sneaking clicks at a plain guard takes sneaking clicks only, so it needs the sneak action.
+        final JElement? action = trigger.get('action');
+        if (mapped.npc && action != null && (action.asPrimitive.asString == 'interact' || action.asPrimitive.asString == 'attack') && _sneakingOnly(sequence)) {
+          trigger.addString('action', 'sneak_${action.asPrimitive.asString}');
+        }
         if (consume != null) trigger.addString(mapped.npc ? 'consume' : 'cancel', consume.condition);
+        // A drop or swap an NPC trigger matches is consumed unless the trigger says otherwise; Denizen let it happen.
+        if (consume == null && mapped.context.containsKey(_denizenTarget)) trigger.addString('consume', 'false');
         trigger.addString('routine', routine);
         triggers.add(trigger);
       }
@@ -1519,6 +1533,17 @@ class _Converter {
   }
 
   /// Whether a command line, or one inside it, contains [text], ignoring case.
+  /// The event's leading plain guards (`if ...: - stop`) include one that stops when the player is not sneaking.
+  static bool _sneakingOnly(DenizenSequence sequence) {
+    for (final DenizenItem item in sequence.items) {
+      final DenizenSequence? children = item.children;
+      if (denizenCommand(item.text).name != 'if' || children == null || children.items.length != 1 || denizenCommand(children.items.first.text).name != 'stop') return false;
+      final String condition = item.text.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+      if (condition == 'if!<player.is_sneaking>:' || condition == 'if!<player.is_sneaking>') return true;
+    }
+    return false;
+  }
+
   static bool _mentions(DenizenSequence sequence, String text) {
     for (final DenizenItem item in sequence.items) {
       if (item.text.toLowerCase().contains(text)) return true;

@@ -1,6 +1,7 @@
 package art.arcane.animus.core.runtime;
 
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
+import art.arcane.animus.core.behavior.trigger.TriggerEvent;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcDefinition;
@@ -53,6 +54,11 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     void interactions(InteractionListener<P> listener);
     /** Connect during startup. A later call replaces the observer. */
     void observeInteractions(InteractionObserver observer);
+    /**
+     * On the player's owner, from the platform's drop or swap-hands event: publishes the key press to the NPC the player
+     * looks at in interaction reach. True when a behavior consumes it, so the platform cancels the vanilla action.
+     */
+    boolean pressed(P player, TriggerEvent.Action key);
     String status();
     /**
      * On the caller's owner: cosmetic updates such as hologram text animation may send now. False while NPC moves and

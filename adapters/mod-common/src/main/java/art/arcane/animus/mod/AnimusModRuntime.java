@@ -326,6 +326,10 @@ public final class AnimusModRuntime {
         if (transport != null && transport.interact(player, entityId, attack, hand, secondary)) return true;
         return active != null && active.displays != null && active.displays.interact(player, entityId, attack, hand, secondary);
     }
+    boolean pressed(ServerPlayer player, art.arcane.animus.core.behavior.trigger.TriggerEvent.Action key) {
+        Running active = running;
+        return active != null && active.living != null && active.living.pressed(player, key);
+    }
     void swung(ServerPlayer player, net.minecraft.world.InteractionHand hand) {
         Running active = running;
         if (active != null && active.recordings != null) active.recordings.swung(player, hand);

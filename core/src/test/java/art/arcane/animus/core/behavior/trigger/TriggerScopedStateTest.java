@@ -67,7 +67,7 @@ class TriggerScopedStateTest {
         documents = new DocumentStore(root);
         state = BehaviorStateStore.open(documents, new BehaviorStateStore.Limits(64, 64, 4096, 65536, 100));
         state.attach(lane);
-        dispatcher = new TriggerDispatcher(new TriggerSettings(true, 16, 32, 8, 64, 4, 4, 1000, 32, 4, 4, 0, 0, 4096, 1024, 1, 32, 5, 16, 32, 64), definitions::get, catalog::get);
+        dispatcher = new TriggerDispatcher(new TriggerSettings(true, 16, 32, 8, 64, 4, 4, 1000, 32, 4, 4, 0, 0, 4096, 1024, 1, 32, 5, 16, 32, 64, 0), definitions::get, catalog::get);
         dispatcher.connect();
         BehaviorInvoker invoker = new BehaviorInvoker() {
             @Override public boolean available(Capabilities.Key key, Capabilities.Kind kind) { return true; }

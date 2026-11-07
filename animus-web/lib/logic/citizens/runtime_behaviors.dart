@@ -515,8 +515,8 @@ class _Runtime {
       final JObject? data = _object(entry.value);
       if (data == null || !data.has('command') || data.get('command') is! JPrimitive) continue;
       final String hand = _string(data.get('hand'), 'BOTH').toUpperCase();
-      if (hand != 'LEFT' && hand != 'RIGHT' && hand != 'BOTH') {
-        warnings.add('$at/hand: $hand needs a sneaking click, which Animus does not tell apart; not converted');
+      if (!_hands.contains(hand)) {
+        warnings.add('$at/hand: $hand is not a Citizens click; not converted');
         continue;
       }
       if (_bool(data.get('npc'), false)) {
@@ -585,15 +585,22 @@ class _Runtime {
       warnings.add('$base/executionMode: $mode is not known; commands run in order');
       mode = 'LINEAR';
     }
-    final List<_Command> right = commands.where((_Command command) => command.hand != 'LEFT').toList();
-    final List<_Command> left = commands.where((_Command command) => command.hand != 'RIGHT').toList();
+    final List<_Command> right = _clicks(commands, 'RIGHT', 'BOTH');
+    final List<_Command> left = _clicks(commands, 'LEFT', 'BOTH');
+    final List<_Command> sneakRight = _clicks(commands, 'SHIFT_RIGHT', 'SHIFT_BOTH');
+    final List<_Command> sneakLeft = _clicks(commands, 'SHIFT_LEFT', 'SHIFT_BOTH');
     final JObject routines = JObject();
     final JArray triggers = JArray();
-    if (_sameCommands(right, left)) {
+    if (right.isNotEmpty && _sameCommands(right, left)) {
       _routine('click', 'any', right, mode, routines, triggers);
     } else {
       if (right.isNotEmpty) _routine('right', 'interact', right, mode, routines, triggers);
       if (left.isNotEmpty) _routine('left', 'attack', left, mode, routines, triggers);
+    }
+    if (sneakRight.isNotEmpty) _routine('sneak-right', 'sneak_interact', sneakRight, mode, routines, triggers);
+    if (sneakLeft.isNotEmpty) _routine('sneak-left', 'sneak_attack', sneakLeft, mode, routines, triggers);
+    if ((sneakRight.isNotEmpty || sneakLeft.isNotEmpty) && commands.any((_Command command) => !command.hand.startsWith('SHIFT_'))) {
+      warnings.add('$base: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones');
     }
     final String id = 'commands-$key';
     warnings.add('$base: commands stay denied until $_namespace:$id is on the [behaviors.actions] commandBehaviors list in config.toml');
@@ -648,6 +655,12 @@ class _Runtime {
 final RegExp _newline = RegExp('<br>|\\n');
 final RegExp _untranslated = RegExp(r'<[a-z_]+>|%[a-z_]+%');
 final RegExp _listKey = RegExp(r'^(?:0|[1-9][0-9]{0,8})$');
+
+const Set<String> _hands = <String>{'LEFT', 'RIGHT', 'BOTH', 'SHIFT_LEFT', 'SHIFT_RIGHT', 'SHIFT_BOTH'};
+
+/// The commands one click runs: those for that hand and those for both.
+List<_Command> _clicks(List<_Command> commands, String hand, String both) =>
+    commands.where((_Command command) => command.hand == hand || command.hand == both).toList();
 
 bool _sameCommands(List<_Command> a, List<_Command> b) {
   if (a.length != b.length) return false;

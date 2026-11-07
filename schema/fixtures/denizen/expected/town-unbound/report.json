@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 5,
-  "importId": "23021c7d6d25f7edb7837c95e821d031a2ac6be81ae2720ea5f9eefdcd1a46f1",
+  "converterVersion": 6,
+  "importId": "fd766b6cdec751ae5974924a10f287358bc77848c12c8678d81c344427992591",
   "notice": "Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.",
   "sources": {
     "scripts/broken.dsc": "ed429b9bba7215abe689fb88c25d060937970fdf6b4c75311ad50e5ae0200fd9",
-    "scripts/crier.dsc": "1278614d241da7aa2f3dcfa80d485492c7bb0187487dd23a99c20dc4241aba03",
+    "scripts/crier.dsc": "939ee8652e863f9bba4f06f475985d7844b91114c02581b0e003496d1c8f9269",
     "scripts/extra/again.dsc": "290261c090c3747fdf9603f8538efa040226d80e00ab0e2e71d8ce5795c00b04",
-    "scripts/town.dsc": "2bfdaa81cc74b9cdee9e68c6b530c13ae5f8d93b72ad78e6209f77b5b13bcb1a",
+    "scripts/town.dsc": "aff2ed6aaab4cb12cfb8bec0872fd7d31df6c49bac8b2609eb4a69679839f55b",
     "server_flags.dat": "ed4e388c5f8df0d477b0a1d6ae44cc221e78c72c33b4a9c2693084f1743ed6b4",
     "player_flags/00000000-0000-4000-8000-0000000000a1.dat": "4f38b526b39da412d11984681d07e086360c91741b3af54f576f6ff1429014f9",
     "player_flags/notauuid.dat": "15620b61b6e54a6786a3086bf39f3c4e84bfc4b6e0e4213e8ecbc52cc6753abd"
   },
-  "behaviors": 12,
+  "behaviors": 13,
   "containers": {
     "assignment": {
       "total": 2,
@@ -75,8 +75,8 @@
       "preserved": 0
     },
     "world": {
-      "total": 2,
-      "converted": 1,
+      "total": 3,
+      "converted": 2,
       "partial": 1,
       "preserved": 0
     }
@@ -106,6 +106,10 @@
       "converted": 2,
       "preserved": 0
     },
+    "cooldown": {
+      "converted": 1,
+      "preserved": 0
+    },
     "default": {
       "converted": 1,
       "preserved": 0
@@ -115,11 +119,15 @@
       "preserved": 0
     },
     "determine": {
-      "converted": 4,
+      "converted": 5,
       "preserved": 1
     },
     "else": {
       "converted": 3,
+      "preserved": 0
+    },
+    "engage": {
+      "converted": 1,
       "preserved": 0
     },
     "equip": {
@@ -143,7 +151,7 @@
       "preserved": 0
     },
     "if": {
-      "converted": 11,
+      "converted": 15,
       "preserved": 0
     },
     "inventory": {
@@ -167,7 +175,7 @@
       "preserved": 0
     },
     "ratelimit": {
-      "converted": 1,
+      "converted": 2,
       "preserved": 0
     },
     "repeat": {
@@ -175,11 +183,11 @@
       "preserved": 0
     },
     "run": {
-      "converted": 4,
+      "converted": 5,
       "preserved": 0
     },
     "stop": {
-      "converted": 6,
+      "converted": 10,
       "preserved": 0
     },
     "take": {
@@ -293,7 +301,7 @@
       "preserved": 0
     },
     "world on player right clicks entity bukkit_priority:lowest": {
-      "converted": 1,
+      "converted": 2,
       "preserved": 0
     },
     "world on server start": {
@@ -335,11 +343,11 @@
       "unmapped": 0
     },
     "context.entity": {
-      "mapped": 1,
+      "mapped": 2,
       "unmapped": 0
     },
     "context.hand": {
-      "mapped": 1,
+      "mapped": 2,
       "unmapped": 0
     },
     "context.message": {
@@ -355,11 +363,11 @@
       "unmapped": 1
     },
     "npc.flag": {
-      "mapped": 1,
+      "mapped": 2,
       "unmapped": 0
     },
     "npc.has_flag": {
-      "mapped": 1,
+      "mapped": 2,
       "unmapped": 0
     },
     "npc.is_spawned": {
@@ -375,7 +383,7 @@
       "unmapped": 0
     },
     "player": {
-      "mapped": 8,
+      "mapped": 9,
       "unmapped": 0
     },
     "player.flag": {
@@ -391,7 +399,7 @@
       "unmapped": 0
     },
     "player.is_sneaking": {
-      "mapped": 1,
+      "mapped": 2,
       "unmapped": 0
     },
     "player.name": {
@@ -442,6 +450,7 @@
     "denizen:task/greet_task": "partial",
     "denizen:task/tally_task": "complete",
     "denizen:world-npc/dialogue_starter": "complete",
+    "denizen:world-npc/sneak_story_starter": "complete",
     "denizen:world/lantern_world": "partial"
   },
   "commandBehaviors": [
@@ -462,26 +471,26 @@
   },
   "issues": [
     "broken.dsc: line 4: tabs are not allowed in indentation",
-    "town.dsc:126: script guard_data is defined again; the first definition in extra/again.dsc is used",
+    "town.dsc:128: script guard_data is defined again; the first definition in extra/again.dsc is used",
     "player_flags/notauuid.dat: the file name is not a lowercase player UUID; its flags are kept"
   ],
   "preserved": [
     {
-      "source": "town.dsc:126",
+      "source": "town.dsc:128",
       "container": "guard_data",
       "kind": "container",
       "item": "data",
       "reason": "script name defined twice; Denizen also refuses duplicates"
     },
     {
-      "source": "town.dsc:207",
+      "source": "town.dsc:209",
       "container": "gate_menu",
       "kind": "event",
       "item": "procedural items",
       "reason": "procedural items run a script to fill slots; Animus chest GUIs draw fixed items"
     },
     {
-      "source": "town.dsc:114",
+      "source": "town.dsc:116",
       "container": "greet_task",
       "kind": "command",
       "item": "adjust",
@@ -516,70 +525,70 @@
       "reason": "inside a chat answer that is kept"
     },
     {
-      "source": "town.dsc:64",
+      "source": "town.dsc:66",
       "container": "guard_quest",
       "kind": "event",
       "item": "proximity trigger move",
       "reason": "no Animus trigger for movement inside the radius"
     },
     {
-      "source": "town.dsc:66",
+      "source": "town.dsc:68",
       "container": "guard_quest",
       "kind": "command",
       "item": "narrate",
       "reason": "inside a proximity phase that is kept"
     },
     {
-      "source": "town.dsc:73",
+      "source": "town.dsc:75",
       "container": "guard_quest",
       "kind": "command",
       "item": "zap",
       "reason": "zap to the next step needs a following step"
     },
     {
-      "source": "town.dsc:74",
+      "source": "town.dsc:76",
       "container": "guard_quest",
       "kind": "event",
       "item": "damage trigger",
       "reason": "Animus damage triggers carry no player, so player steps cannot follow them"
     },
     {
-      "source": "town.dsc:76",
+      "source": "town.dsc:78",
       "container": "guard_quest",
       "kind": "command",
       "item": "narrate",
       "reason": "inside a damage trigger that is kept"
     },
     {
-      "source": "town.dsc:210",
+      "source": "town.dsc:212",
       "container": "lantern_format",
       "kind": "container",
       "item": "format",
       "reason": "format scripts shape Denizen's own chat output; Animus messages are written out in full"
     },
     {
-      "source": "town.dsc:143",
+      "source": "town.dsc:145",
       "container": "lantern_world",
       "kind": "event",
       "item": "world on player clicks in town_shop",
       "reason": "no Animus server trigger for the event player clicks in town_shop"
     },
     {
-      "source": "town.dsc:144",
+      "source": "town.dsc:146",
       "container": "lantern_world",
       "kind": "command",
       "item": "determine",
       "reason": "inside a world event that is kept"
     },
     {
-      "source": "town.dsc:145",
+      "source": "town.dsc:147",
       "container": "lantern_world",
       "kind": "event",
       "item": "world on npc spawns",
       "reason": "this event covers every NPC; Animus binds a behavior to each NPC instead"
     },
     {
-      "source": "town.dsc:146",
+      "source": "town.dsc:148",
       "container": "lantern_world",
       "kind": "command",
       "item": "announce",
@@ -610,12 +619,13 @@
     "behaviors/denizen/book/notice_board.json": "0f9027882f80b883228d91d3a8c40d534dd892631d636b48a40806094d1f68fc",
     "behaviors/denizen/book/town_guide.json": "7537e7ae94d6b3c93ad75ff19ed71068f4f1d730b904099ecd2c1dd1a6253e1e",
     "behaviors/denizen/command/reset_command.json": "668be2e7f755825e365f2dfee924aebb3f6a3dd05873f4a0ec63a85247870f71",
-    "behaviors/denizen/interact/guard_quest.json": "b5b6e5a86270dc9c309dd3656fe8b15696b03de888f596ea643781628b1ff6ed",
+    "behaviors/denizen/interact/guard_quest.json": "66be0c02e26f9bbf48629241464cfa2834107dbce14f70c34d0cf6de03500a77",
     "behaviors/denizen/task/crier_story.json": "16c70701943a8e20666ba5054792769a4a3fe0971a686f0e36f4a09e0b837b62",
     "behaviors/denizen/task/gate_task.json": "e9034dc663e4f676543b625ca6c2c5c58eeb781b89bdf6f293c28e8a559c2ccf",
     "behaviors/denizen/task/greet_task.json": "c6aa03283f78747d75e3ac6cb66324375fac0ecd27bdc4efc4fcdf7155a0a635",
     "behaviors/denizen/task/tally_task.json": "0a54e9a73a65ea40eafe895cd0995fd8fc0213600d01b909222b89b5169b5785",
     "behaviors/denizen/world-npc/dialogue_starter.json": "ab40a413045c6e2ed35de20b9e3021fcb3e3cf3618abf7a9e4e1228244cd14dd",
+    "behaviors/denizen/world-npc/sneak_story_starter.json": "43c091bc17499b02edb3c11c840b712f24b9f59638beaa9ab30f4d6b5540fd57",
     "behaviors/denizen/world/lantern_world.json": "346919c19786cdf0133b694aa5712072878ffe39f63280b30880bba10ba46bab",
     "guis/denizen/gate_menu.json": "fe8a3600f831d43d9dba48a1ee883f09818b3ef57bebb177ef9867b33f0f3d17",
     "state/behavior-state/global/animus/flags/denizen.json": "ad0ffdae740dc03415dde5b62533e1bfe364ccce56e2d022be544dfcfaa1d1fd",

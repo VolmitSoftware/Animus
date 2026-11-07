@@ -215,7 +215,8 @@
       "id": "click",
       "event": "interaction",
       "routine": "click",
-      "cooldownTicks": 40
+      "cooldownTicks": 40,
+      "playerCooldownTicks": 200
     },
     {
       "id": "enter",

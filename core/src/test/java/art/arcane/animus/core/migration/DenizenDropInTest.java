@@ -54,7 +54,7 @@ class DenizenDropInTest {
             CitizensDropIn flow = dropIn(store, npcs);
             assertTrue(flow.startupNotice().orElseThrow().contains("plugins/Denizen/scripts"));
             String staged = joined(flow.preview("reject", Optional.empty(), Map.of(), false));
-            assertTrue(staged.contains("Denizen plugins/Denizen: 17 scripts; 12 behaviors for 4 NPCs; 16 flag values imported, 2 kept"), staged);
+            assertTrue(staged.contains("Denizen plugins/Denizen: 18 scripts; 13 behaviors for 4 NPCs; 16 flag values imported, 2 kept"), staged);
             assertTrue(staged.contains("commandNamespaces = [\"denizen\"]"), staged);
             assertTrue(staged.endsWith("Next: /animus import citizens apply"), staged);
 
@@ -87,7 +87,7 @@ class DenizenDropInTest {
             String accepted = joined(flow.acceptCategories(List.of("denizen")));
             assertTrue(accepted.contains("denizen 4"), accepted);
             guard = npcs.all().stream().filter((NpcDefinition npc) -> npc.id().equals("citizens-0")).findFirst().orElseThrow();
-            assertEquals(List.of("denizen:assignment/guard_assignment", "denizen:interact/guard_quest", "denizen:world-npc/dialogue_starter"), guard.behaviors());
+            assertEquals(List.of("denizen:assignment/guard_assignment", "denizen:interact/guard_quest", "denizen:world-npc/dialogue_starter", "denizen:world-npc/sneak_story_starter"), guard.behaviors());
             assertTrue(guard.json().getAsJsonObject("modules").getAsJsonObject(DenizenImporter.MODULE).get("reviewAccepted").getAsBoolean());
 
             flow.rollbackApplied();

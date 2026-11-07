@@ -80,6 +80,20 @@ async function run(browser, viewport, label, theme) {
   const tab = page.locator('.animus-conv');
   await tab.locator('[data-block="main"]').waitFor();
 
+  // The start picker offers every click and key; a key start is written as its action.
+  await page.locator('[id="conv-start"]').click();
+  const listbox = page.locator('[id="conv-start-listbox"]');
+  await listbox.getByRole('option', {name: 'Walk near'}).waitFor();
+  const starts = await listbox.getByRole('option').allTextContents();
+  for (const label of ['Right-click', 'Sneak + right-click', 'Left-click', 'Sneak + left-click', 'Drop key (Q)', 'Sneak + drop key', 'Swap hands (F)', 'Sneak + swap hands', 'Walk near', 'Command'])
+    assert(starts.some(text => text.includes(label)), `start picker lacks ${label}: ${starts.join(', ')}`);
+  await listbox.getByRole('option', {name: 'Sneak + drop key'}).click();
+  await page.getByRole('tab', {name: 'Code'}).click();
+  assert.equal(JSON.parse(await page.locator('.animus-code textarea').inputValue()).triggers[0].action, 'sneak_drop');
+  await page.getByRole('tab', {name: 'Conversation'}).click();
+  await page.locator('[id="conv-start"]').click();
+  await listbox.getByRole('option', {name: 'Right-click', exact: true}).click();
+
   // Start over: drop the starter question and the blocks it led to.
   const question = tab.locator('[data-block="main"] > .animus-conv-list > .animus-conv-steps > li[data-kind="choices"]');
   await question.locator('.animus-conv-row').first().getByRole('button', {name: 'Step options'}).click();

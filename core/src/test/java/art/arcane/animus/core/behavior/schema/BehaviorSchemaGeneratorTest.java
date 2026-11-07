@@ -98,7 +98,7 @@ class BehaviorSchemaGeneratorTest {
         assertEquals(Set.of("execution", "npc", "player", "relationship", "global"), names(language.getAsJsonArray("variableScopes")));
         assertEquals(Set.of("transient", "persistent"), names(language.getAsJsonArray("variableLifetimes")));
         assertEquals(Set.of("boolean", "integer", "decimal", "string", "list", "map", "any"), names(language.getAsJsonArray("variableTypes")));
-        assertEquals(Set.of("interact", "attack", "any"), names(completions.getAsJsonObject("triggers").getAsJsonObject("interaction").getAsJsonObject("fields").getAsJsonObject("action").getAsJsonArray("enum")));
+        assertEquals(Set.copyOf(art.arcane.animus.core.behavior.trigger.TriggerCompiler.ACTIONS), names(completions.getAsJsonObject("triggers").getAsJsonObject("interaction").getAsJsonObject("fields").getAsJsonObject("action").getAsJsonArray("enum")));
     }
 
     @Test void schemaCarriesEveryLanguageElement() {
@@ -135,6 +135,7 @@ class BehaviorSchemaGeneratorTest {
                 assertTrue(documentation.contains("`" + capability.descriptor().key() + "`"), capability.descriptor().key() + " is undocumented");
         }
         for (TriggerKind kind : TriggerKind.values()) assertTrue(documentation.contains("| `" + kind.jsonName() + "` |"), kind.jsonName() + " is undocumented");
+        for (String action : art.arcane.animus.core.behavior.trigger.TriggerCompiler.ACTIONS) assertTrue(documentation.contains("| `" + action + "` |"), "interaction action " + action + " is undocumented");
         for (BehaviorNodeType node : BehaviorNodeType.values()) assertTrue(documentation.contains("| `" + node.jsonName() + "` |"), node.jsonName() + " is undocumented");
     }
 }

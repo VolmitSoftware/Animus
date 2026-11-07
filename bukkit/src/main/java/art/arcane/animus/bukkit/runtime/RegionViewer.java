@@ -437,24 +437,10 @@ final class RegionViewer {
         // Preview bodies are inert: no event, trigger, listener, selection, GUI, shop or damage.
         if (preview.owns(input.body().uuid())) return;
         Presented body = visible.get(input.body().uuid());
-        if (body == null || body.body != input.body() || !body.bound || body.retired || !eligibleNow(body.actor)) { host.rejected.incrementAndGet(); return; }
+        if (body == null || body.body != input.body()) { host.rejected.incrementAndGet(); return; }
+        ViewerSession.Validation validated = hit(body);
+        if (validated == null) return;
         RegionActor actor = body.actor;
-        // The NPC's mutable state may be read only by its owner: the player's region must hold the NPC as well.
-        if (!actor.owner.owned()) { host.rejected.incrementAndGet(); return; }
-        if (!actor.presentable()) { host.rejected.incrementAndGet(); retire(body); return; }
-        guard.updateSnapshot(body.body.entityId(), actor.state.snapshot());
-        Location eye = player.getEyeLocation(); Vector direction = eye.getDirection();
-        World viewerWorld = player.getWorld();
-        ViewerSession.HitShape shape = actor.spec.type().equals(DragonBody.TYPE) ? DragonBody.hitShape(actor.yaw) : ViewerSession.HitShape.BOUNDS;
-        ViewerSession.Validation validated = guard.validate(new ViewerSession.Request(id, guard.sessionId(), input.body().entityId(),
-                position(eye), new Vec3(direction.getX(), direction.getY(), direction.getZ()), System.nanoTime()), (from, to, distance) -> {
-            int minX = ((int) Math.floor(Math.min(eye.getX(), to.x()))) >> 4, maxX = ((int) Math.floor(Math.max(eye.getX(), to.x()))) >> 4;
-            int minZ = ((int) Math.floor(Math.min(eye.getZ(), to.z()))) >> 4, maxZ = ((int) Math.floor(Math.max(eye.getZ(), to.z()))) >> 4;
-            if (!host.regions.owns(viewerWorld, minX, minZ, maxX, maxZ)) return false;
-            for (int x = minX; x <= maxX; x++) for (int z = minZ; z <= maxZ; z++) if (!viewerWorld.isChunkLoaded(x, z)) return false;
-            return distance <= 0.000001 || viewerWorld.rayTraceBlocks(eye, direction, Math.max(0, distance - 0.0001), FluidCollisionMode.NEVER, true) == null;
-        }, shape);
-        if (!validated.accepted()) { host.rejected.incrementAndGet(); return; }
         VirtualNpcInteractionEvent.Action action = input.action() == NativePacketAdapter.Action.ATTACK ? VirtualNpcInteractionEvent.Action.ATTACK : VirtualNpcInteractionEvent.Action.INTERACT;
         VirtualNpcInteractionEvent event = new VirtualNpcInteractionEvent(player, actor.uuid, action, validated.distance(), false);
         host.plugin.getServer().getPluginManager().callEvent(event);
@@ -463,9 +449,10 @@ final class RegionViewer {
                 || !actor.owner.owned() || actor.state.snapshot().revision() != validated.npc().revision() || !actor.presentable()) return;
         host.accepted.incrementAndGet();
         TriggerDispatcher dispatcher = host.triggers;
+        // An attack packet carries no sneaking flag, so a left click reads the player's own state.
+        boolean attack = action == VirtualNpcInteractionEvent.Action.ATTACK;
         boolean consumed = dispatcher != null && dispatcher.click(new TriggerEvent.Interaction(actor.uuid, id,
-                action == VirtualNpcInteractionEvent.Action.ATTACK ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT,
-                input.secondaryAction(), TriggerEvent.Interaction.hand(input.hand())));
+                attack ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT, attack ? player.isSneaking() : input.secondaryAction(), TriggerEvent.Interaction.hand(input.hand())));
         NpcRuntime.InteractionObserver observer = host.observer;
         if (observer != null) observer.accepted(actor.uuid, id, action == VirtualNpcInteractionEvent.Action.ATTACK, validated.distance(), false);
         // A behavior that consumes the click owns it: modules, riding and selection never see it.
@@ -481,6 +468,51 @@ final class RegionViewer {
         }
         // Click selection tells an administrator once; clicking the selected NPC again, as play does, stays quiet.
         if (player.hasPermission("animus.admin") && !actor.id.equals(host.selections.put(id, actor.id))) player.sendMessage(Palette.reply("Selected " + actor.id));
+    }
+
+    /**
+     * Player owner only: the drop or swap-hands key, aimed along the server ray at an NPC this region also owns, validated
+     * as a click is. Only triggers see it. True when a behavior consumes it and the vanilla action must not happen.
+     */
+    boolean pressed(TriggerEvent.Action key) {
+        TriggerDispatcher dispatcher = host.triggers;
+        if (dispatcher == null || !host.current(this) || !host.regions.owns(player) || player.isDead()) return false;
+        Location eye = player.getEyeLocation(); Vector direction = eye.getDirection();
+        ViewerSession.HitShape inert = (VirtualNpcState.Snapshot npc, Vec3 origin, Vec3 ray, double reach) -> java.util.OptionalDouble.empty();
+        java.util.OptionalInt aimed = guard.aim(position(eye), new Vec3(direction.getX(), direction.getY(), direction.getZ()), (VirtualNpcState.Snapshot npc) -> {
+            Presented seen = visible.get(npc.npcId());
+            return seen == null || preview.owns(npc.npcId()) ? inert : shape(seen.actor);
+        });
+        if (aimed.isEmpty()) return false;
+        Presented body = null;
+        for (Presented seen : visible.values()) if (seen.body.entityId() == aimed.getAsInt()) { body = seen; break; }
+        if (body == null || hit(body) == null) return false;
+        host.accepted.incrementAndGet();
+        return dispatcher.click(new TriggerEvent.Interaction(body.actor.uuid, id, key, player.isSneaking(), TriggerEvent.Hand.MAIN_HAND));
+    }
+    /** Validates the player's current server ray against a presented body; null after counting the rejection. */
+    private ViewerSession.Validation hit(Presented body) {
+        if (!body.bound || body.retired || !eligibleNow(body.actor)) { host.rejected.incrementAndGet(); return null; }
+        RegionActor actor = body.actor;
+        // The NPC's mutable state may be read only by its owner: the player's region must hold the NPC as well.
+        if (!actor.owner.owned()) { host.rejected.incrementAndGet(); return null; }
+        if (!actor.presentable()) { host.rejected.incrementAndGet(); retire(body); return null; }
+        guard.updateSnapshot(body.body.entityId(), actor.state.snapshot());
+        Location eye = player.getEyeLocation(); Vector direction = eye.getDirection();
+        World viewerWorld = player.getWorld();
+        ViewerSession.Validation validated = guard.validate(new ViewerSession.Request(id, guard.sessionId(), body.body.entityId(),
+                position(eye), new Vec3(direction.getX(), direction.getY(), direction.getZ()), System.nanoTime()), (from, to, distance) -> {
+            int minX = ((int) Math.floor(Math.min(eye.getX(), to.x()))) >> 4, maxX = ((int) Math.floor(Math.max(eye.getX(), to.x()))) >> 4;
+            int minZ = ((int) Math.floor(Math.min(eye.getZ(), to.z()))) >> 4, maxZ = ((int) Math.floor(Math.max(eye.getZ(), to.z()))) >> 4;
+            if (!host.regions.owns(viewerWorld, minX, minZ, maxX, maxZ)) return false;
+            for (int x = minX; x <= maxX; x++) for (int z = minZ; z <= maxZ; z++) if (!viewerWorld.isChunkLoaded(x, z)) return false;
+            return distance <= 0.000001 || viewerWorld.rayTraceBlocks(eye, direction, Math.max(0, distance - 0.0001), FluidCollisionMode.NEVER, true) == null;
+        }, shape(actor));
+        if (!validated.accepted()) { host.rejected.incrementAndGet(); return null; }
+        return validated;
+    }
+    private static ViewerSession.HitShape shape(RegionActor actor) {
+        return actor.spec.type().equals(DragonBody.TYPE) ? DragonBody.hitShape(actor.yaw) : ViewerSession.HitShape.BOUNDS;
     }
 
     /** Player owner only: this viewer presents the NPC now. */

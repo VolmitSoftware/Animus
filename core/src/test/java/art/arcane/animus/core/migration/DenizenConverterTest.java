@@ -606,7 +606,7 @@ class DenizenConverterTest {
         assertEquals("a.dsc:4", kept.get("source").getAsString());
         assertEquals("tag player.money has no Animus expression", kept.get("reason").getAsString());
         assertEquals("partial", output.report().getAsJsonObject("behaviorStatus").get("denizen:task/t").getAsString());
-        assertEquals(5, output.report().get("converterVersion").getAsInt());
+        assertEquals(6, output.report().get("converterVersion").getAsInt());
     }
 
     @Test void limitsCountLoopBodiesAndMissingElses() {
@@ -741,7 +741,7 @@ class DenizenConverterTest {
     }
 
     private static String fields(String key) {
-        DenizenEvents.Mapped mapped = DenizenEvents.event(key, Map.of(), false);
+        DenizenEvents.Mapped mapped = DenizenEvents.event(key, Map.of(), false, false);
         return mapped.reason() != null ? mapped.reason() : mapped.trigger() + (mapped.cancellable() ? " cancellable" : "");
     }
 
@@ -761,7 +761,7 @@ class DenizenConverterTest {
         assertTrue(fields("on projectile hits entity:npc").startsWith("Animus NPCs are virtual bodies"));
         assertEquals("switch with: has no Animus equivalent on this event", fields("on projectile hits with:bow"));
         assertEquals("switch entity: has no Animus equivalent on this event", fields("on arrow launched entity:zombie"));
-        assertEquals(List.of(new DenizenExpressions.Atom("same_world(context.world, 'world_nether')")), DenizenEvents.event("on projectile hits in:world_nether", Map.of(), false).guards());
+        assertEquals(List.of(new DenizenExpressions.Atom("same_world(context.world, 'world_nether')")), DenizenEvents.event("on projectile hits in:world_nether", Map.of(), false, false).guards());
     }
 
     @Test void projectileEventsReadTheirContextAndCancel() throws IOException {
@@ -787,6 +787,86 @@ class DenizenConverterTest {
         assertTrue(text.contains("context.projectile_uuid"), text);
         assertTrue(text.contains("replace(context.entity, 'minecraft:', '')"), text);
         assertTrue(text.contains("replace(context.block, 'minecraft:', '')") && text.contains("context.x"), text);
+    }
+
+    @Test void aSneakingOnlyClickOnTheNpcBecomesASneakInteractTrigger() throws IOException {
+        JsonObject behavior = behavior("""
+                w:
+                    type: world
+                    events:
+                        on player right clicks entity:
+                        - if !<context.entity.is_npc||false>:
+                            - stop
+                        - if !<player.is_sneaking>:
+                            - stop
+                        - narrate "Psst."
+                        on player damages entity:
+                        - if !<context.entity.is_npc||false>:
+                            - stop
+                        - narrate "Ow."
+                """, "denizen:world-npc/w");
+        JsonArray triggers = behavior.getAsJsonArray("triggers");
+        assertEquals("sneak_interact", triggers.get(0).getAsJsonObject().get("action").getAsString());
+        assertEquals("attack", triggers.get(1).getAsJsonObject().get("action").getAsString(), "is_npc with a fallback still marks the entity as the NPC");
+        JsonObject shown = behavior("""
+                w:
+                    type: world
+                    events:
+                        on player right clicks entity:
+                        - if !<player.is_sneaking>:
+                            - narrate "Sneak to talk"
+                            - stop
+                        - narrate "Psst."
+                """, "denizen:world-npc/w");
+        assertEquals("interact", shown.getAsJsonArray("triggers").get(0).getAsJsonObject().get("action").getAsString(), "a plain click still does something");
+    }
+
+    @Test void interactCooldownsAndEngageBecomeTriggerSettings() throws IOException {
+        DenizenConverter.Output output = convert("""
+                q:
+                    type: interact
+                    steps:
+                        start*:
+                            click trigger:
+                                script:
+                                - engage
+                                - cooldown 10s
+                                - narrate "Hello."
+                                - disengage
+                """);
+        JsonObject click = document(output, "denizen:interact/q").getAsJsonArray("triggers").get(0).getAsJsonObject();
+        assertEquals(200, click.get("playerCooldownTicks").getAsInt());
+        assertFalse(click.has("cooldownTicks"));
+        JsonObject global = document(convert("q:\n    type: interact\n    steps:\n        start*:\n            click trigger:\n                script:\n                - cooldown 3s global\n                - narrate \"Hi\"\n"),
+                "denizen:interact/q").getAsJsonArray("triggers").get(0).getAsJsonObject();
+        assertEquals(60, global.get("cooldownTicks").getAsInt());
+    }
+
+    @Test void dropAndSwapEventsAtATargetedNpcBecomeNpcKeyTriggers() throws IOException {
+        JsonObject behavior = behavior("""
+                w:
+                    type: world
+                    events:
+                        on player drops item:
+                        - if !<player.target.is_npc||false>:
+                            - stop
+                        - if !<player.is_sneaking>:
+                            - stop
+                        - determine cancelled
+                        on player swaps items:
+                        - if !<player.target.is_npc||false>:
+                            - stop
+                        - narrate "Swapped at <player.target.name>"
+                """, "denizen:world-npc/w");
+        JsonArray triggers = behavior.getAsJsonArray("triggers");
+        JsonObject drop = triggers.get(0).getAsJsonObject();
+        assertEquals("interaction", drop.get("event").getAsString());
+        assertEquals("drop", drop.get("action").getAsString());
+        assertTrue(drop.get("consume").getAsString().contains("context.sneaking"), drop.toString());
+        assertEquals("swap_hands", triggers.get(1).getAsJsonObject().get("action").getAsString());
+        assertEquals("false", triggers.get(1).getAsJsonObject().get("consume").getAsString(), "Denizen let the swap happen");
+        assertTrue(behavior.getAsJsonObject("routines").toString().contains("npc.name"), behavior.toString());
+        assertEquals("{\"event\":\"player_item_drop\"} cancellable", fields("on player drops item"), "without a targeted NPC a drop stays a server event");
     }
 
     @Test void playerListTargetsFanOutWithinOneHundredPlayers() throws IOException {

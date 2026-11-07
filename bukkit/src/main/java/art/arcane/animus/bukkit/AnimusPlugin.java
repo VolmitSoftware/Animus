@@ -34,6 +34,7 @@ import art.arcane.animus.bukkit.recording.BukkitRecordings;
 import art.arcane.animus.core.gui.HoloService;
 import art.arcane.animus.core.presentation.DisplayTransport;
 import art.arcane.animus.bukkit.runtime.BukkitRuntimeHost;
+import art.arcane.animus.bukkit.runtime.NpcKeyPresses;
 import art.arcane.animus.bukkit.runtime.RegionBuildNpcs;
 import art.arcane.animus.bukkit.runtime.RegionNpcRuntime;
 import art.arcane.animus.core.AnimusRuntime;
@@ -183,6 +184,7 @@ public final class AnimusPlugin extends JavaPlugin {
             DisplayTransport<Player> displays = NativeDisplayAdapter.create(this, environment.minecraftVersion(), (Player player, Runnable task) -> replies.reply(player, task));
             guis = new HoloService<>(runtime, shops, displays, living, commands, BukkitGlossBridge.load(this), message -> getLogger().info(message));
             getServer().getPluginManager().registerEvents(new BukkitHoloEvents(guis), this);
+            getServer().getPluginManager().registerEvents(new NpcKeyPresses(living), this);
             HireService<Player, ItemStack> hireDesk = new HireService<>(runtime, shops.screens(), living, commands, combat.hireGuarding(), message -> getLogger().info(message));
             hireTicks = ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, hireDesk::tick));
             ShopService<Player, ItemStack> screenService = shops;

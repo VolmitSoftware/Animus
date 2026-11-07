@@ -500,6 +500,9 @@ final class DenizenCommands {
             case "note" -> DenizenConverter.noteOf(command).isPresent() ? Converted.of()
                     : Converted.kept("only a literal cuboid or ellipsoid noted as:name has an Animus equivalent, as the bounds of area triggers");
             case "narrate" -> narrate(command, scope, pending);
+            // An interaction trigger already drops a player's clicks while their run of it is going, which is what engaging guards against.
+            case "engage", "disengage" -> scope.server ? Converted.kept(command.name() + " needs an NPC") : Converted.of();
+            case "cooldown" -> cooldown(command, scope);
             case "announce" -> announce(command, scope, pending);
             case "chat" -> chat(command, scope, pending);
             case "wait" -> waitFor(command);
@@ -691,6 +694,23 @@ final class DenizenCommands {
         action.text("text", text.value());
         if (!trigger) action.put("audience", "nearby");
         return Converted.of(action.node("animus:say"));
+    }
+
+    /** {@code cooldown <duration> (global)} in an interact script becomes its click trigger's player or global cooldown. */
+    private static Converted cooldown(Command command, Scope scope) {
+        if (scope.interact.isEmpty()) return Converted.kept("cooldown belongs to an interact script");
+        boolean global = false;
+        OptionalLong ticks = OptionalLong.empty();
+        for (Arg arg : command.args()) {
+            if (arg.prefix().isEmpty() && arg.value().equalsIgnoreCase("global")) global = true;
+            else if (arg.prefix().isEmpty() || arg.prefix().equals("duration")) ticks = DenizenArgs.ticks(arg.value());
+            else return Converted.kept("cooldown " + arg.prefix() + ": has no Animus equivalent");
+        }
+        if (ticks.isEmpty()) return Converted.kept("cooldown needs a literal duration");
+        if (ticks.getAsLong() > 72_000) return Converted.kept("cooldown longer than an hour");
+        if (global) scope.doc.globalCooldown = Math.max(scope.doc.globalCooldown, ticks.getAsLong());
+        else scope.doc.playerCooldown = Math.max(scope.doc.playerCooldown, ticks.getAsLong());
+        return Converted.of();
     }
 
     private static Converted waitFor(Command command) {

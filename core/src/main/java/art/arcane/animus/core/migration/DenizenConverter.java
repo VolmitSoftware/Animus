@@ -42,7 +42,7 @@ import java.util.UUID;
  * accepts them.
  */
 final class DenizenConverter {
-    static final int CONVERTER_VERSION = 5;
+    static final int CONVERTER_VERSION = 6;
     /** The author a converted book gets when its Denizen author is blank. */
     static final String BLANK_BOOK_AUTHOR = "Server";
     static final String NAMESPACE = "denizen";
@@ -81,6 +81,8 @@ final class DenizenConverter {
         final LinkedHashMap<String, JsonObject> routines = new LinkedHashMap<>();
         final TreeMap<String, String> variables = new TreeMap<>();
         int temporaries, loops;
+        /** The longest {@code cooldown} an interact script's steps set, in ticks: per player, and {@code global} for everyone. */
+        long playerCooldown = -1, globalCooldown = -1;
 
         Doc(boolean server) { this.server = server; }
     }
@@ -981,6 +983,8 @@ final class DenizenConverter {
                 trigger.addProperty("event", "interaction");
                 trigger.addProperty("routine", routine);
                 cooldown(trigger, container, "click");
+                if (doc.globalCooldown >= 0 && (!trigger.has("cooldownTicks") || trigger.get("cooldownTicks").getAsLong() < doc.globalCooldown)) trigger.addProperty("cooldownTicks", doc.globalCooldown);
+                if (doc.playerCooldown >= 0) trigger.addProperty("playerCooldownTicks", doc.playerCooldown);
             } else {
                 trigger.addProperty("event", "proximity");
                 trigger.addProperty("phase", phase.equals("enter") ? "enter" : "leave");
@@ -1059,7 +1063,7 @@ final class DenizenConverter {
                     preserveNode(kept, entry.value(), "inside a world event that is kept");
                     continue;
                 }
-                DenizenEvents.Mapped mapped = DenizenEvents.event(key, notes, mentions(sequence, "<context.entity.is_npc>"));
+                DenizenEvents.Mapped mapped = DenizenEvents.event(key, notes, mentions(sequence, "<context.entity.is_npc"), mentions(sequence, "<player.target.is_npc"));
                 String reason = mapped.reason();
                 Doc doc = mapped.npc() ? clicks : server;
                 JsonArray triggers = mapped.npc() ? clickTriggers : serverTriggers;
@@ -1085,7 +1089,12 @@ final class DenizenConverter {
                 JsonObject trigger = new JsonObject();
                 trigger.addProperty("id", routine);
                 for (Map.Entry<String, JsonElement> field : mapped.trigger().entrySet()) trigger.add(field.getKey(), field.getValue());
+                // A click event that leaves non-sneaking clicks at a plain guard takes sneaking clicks only, so it needs the sneak action.
+                if (mapped.npc() && trigger.has("action") && List.of("interact", "attack").contains(trigger.get("action").getAsString()) && sneakingOnly(sequence))
+                    trigger.addProperty("action", "sneak_" + trigger.get("action").getAsString());
                 consume.ifPresent((DenizenCommands.Consume found) -> trigger.addProperty(mapped.npc() ? "consume" : "cancel", found.condition()));
+                // A drop or swap an NPC trigger matches is consumed unless the trigger says otherwise; Denizen let it happen.
+                if (consume.isEmpty() && mapped.context().containsKey(DenizenEvents.TARGET)) trigger.addProperty("consume", "false");
                 trigger.addProperty("routine", routine);
                 triggers.add(trigger);
             }
@@ -1093,6 +1102,18 @@ final class DenizenConverter {
         otherKeys(container, List.of("type", "events", "debug", "enabled"), "world");
         if (!server.routines.isEmpty()) document(behaviorId("world", container), server, container, serverTriggers, documents);
         if (!clicks.routines.isEmpty() && document(behaviorId("world-npc", container), clicks, container, clickTriggers, documents)) clickBehaviors.add(behaviorId("world-npc", container));
+    }
+
+    /** The event's leading plain guards ({@code if ...: - stop}) include one that stops when the player is not sneaking. */
+    private static boolean sneakingOnly(Sequence sequence) {
+        for (Item item : sequence.items()) {
+            Command command = DenizenArgs.command(item.text());
+            if (!command.name().equals("if") || item.children().isEmpty() || item.children().get().items().size() != 1
+                    || !DenizenArgs.command(item.children().get().items().getFirst().text()).name().equals("stop")) return false;
+            String condition = item.text().toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
+            if (condition.equals("if!<player.is_sneaking>:") || condition.equals("if!<player.is_sneaking>")) return true;
+        }
+        return false;
     }
 
     /** Whether a command line, or one inside it, contains {@code text}, ignoring case. */

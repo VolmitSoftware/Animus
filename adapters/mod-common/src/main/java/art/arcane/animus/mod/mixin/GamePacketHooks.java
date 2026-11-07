@@ -1,5 +1,6 @@
 package art.arcane.animus.mod.mixin;
 
+import art.arcane.animus.core.behavior.trigger.TriggerEvent;
 import art.arcane.animus.mod.ModHooks;
 import java.util.Set;
 import net.minecraft.network.chat.PlayerChatMessage;
@@ -7,6 +8,7 @@ import net.minecraft.network.protocol.game.ServerboundAttackPacket;
 import net.minecraft.network.protocol.game.ServerboundClientTickEndPacket;
 import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
 import net.minecraft.network.protocol.game.ServerboundInteractPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
@@ -34,6 +36,15 @@ public abstract class GamePacketHooks {
     @Inject(method = "handleAttack", at = @At("HEAD"), cancellable = true)
     private void animus$attack(ServerboundAttackPacket packet, CallbackInfo callback) {
         if (ModHooks.owner(player) && ModHooks.interact(player, packet.entityId(), true, "none", false)) callback.cancel();
+    }
+
+    /** The swap-hands key, under vanilla's own spectator check; the drop key reaches ServerPlayer.drop. */
+    @Inject(method = "handlePlayerAction", at = @At("HEAD"), cancellable = true)
+    private void animus$action(ServerboundPlayerActionPacket packet, CallbackInfo callback) {
+        if (packet.getAction() != ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND || !ModHooks.owner(player) || player.isSpectator()
+                || !ModHooks.pressed(player, TriggerEvent.Action.SWAP_HANDS)) return;
+        callback.cancel();
+        player.inventoryMenu.sendAllDataToRemote();
     }
 
     @Inject(method = "handlePlayerInput", at = @At("HEAD"))

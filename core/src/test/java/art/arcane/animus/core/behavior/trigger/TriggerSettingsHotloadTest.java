@@ -25,10 +25,10 @@ class TriggerSettingsHotloadTest {
 
     /** eventQueue, maximumQueued, queueLifetimeTicks, concurrentTotal and the proximity interval vary; the rest stay generous. */
     private static TriggerSettings settings(boolean enabled, int eventQueue, int maximumQueued, int lifetime, int concurrentTotal, int proximityInterval) {
-        return new TriggerSettings(enabled, eventQueue, 32, 8, maximumQueued, 64, 64, lifetime, concurrentTotal, 16, 16, 0, 0, 4096, 1024, 1, 32, proximityInterval, 16, 32, 64);
+        return new TriggerSettings(enabled, eventQueue, 32, 8, maximumQueued, 64, 64, lifetime, concurrentTotal, 16, 16, 0, 0, 4096, 1024, 1, 32, proximityInterval, 16, 32, 64, 0);
     }
     @BeforeEach void setUp() throws Exception {
-        String source = "{\"schemaVersion\":1,\"id\":\"" + BEHAVIOR + "\",\"entry\":\"main\",\"routines\":{\"main\":{\"type\":\"sequence\",\"steps\":[]}},\"triggers\":[{\"id\":\"click\",\"event\":\"interaction\"}]}";
+        String source = "{\"schemaVersion\":1,\"id\":\"" + BEHAVIOR + "\",\"entry\":\"main\",\"routines\":{\"main\":{\"type\":\"sequence\",\"steps\":[]}},\"triggers\":[{\"id\":\"click\",\"event\":\"interaction\",\"whileRunning\":\"queue\"}]}";
         BehaviorCatalog.Accepted accepted = new BehaviorCatalog.Accepted(1, String.format("%064x", 1), 100, BehaviorCompiler.compile(source).program().orElseThrow(), Set.of());
         catalog.set(new BehaviorCatalog.Snapshot(1, Map.of(), Map.of(BEHAVIOR, new BehaviorCatalog.Resolution(BEHAVIOR, true, Optional.of(accepted), List.of())), List.of()));
         definitions.set(Map.of("test", NpcDefinition.parse("{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"" + npc + "\",\"id\":\"test\",\"group\":\"test\",\"name\":\"Test\",\"type\":\"minecraft:player\",\"spawned\":true,\"behaviors\":[\"" + BEHAVIOR + "\"],\"position\":{\"world\":\"world\",\"x\":0,\"y\":61,\"z\":0,\"yaw\":0,\"pitch\":0}}")));

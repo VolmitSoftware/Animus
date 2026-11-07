@@ -37,7 +37,7 @@ class TriggerRuntimeTest {
         definitions.set(Map.of("test",NpcDefinition.parse("{\"schemaVersion\":1,\"revision\":"+version+",\"uuid\":\""+npc+"\",\"id\":\"test\",\"group\":\"test\",\"name\":\"Test\",\"type\":\"minecraft:player\",\"spawned\":"+spawned+",\"behaviors\":[\""+BEHAVIOR+"\"],\"position\":{\"world\":\"world\",\"x\":0,\"y\":61,\"z\":0,\"yaw\":0,\"pitch\":0}}")));
     }
     private void start(int perTrigger){
-        TriggerSettings settings=new TriggerSettings(true,16,32,8,64,4,4,1000,32,4,perTrigger,0,0,4096,1024,1,32,5,16,32,64);
+        TriggerSettings settings=new TriggerSettings(true,16,32,8,64,4,4,1000,32,4,perTrigger,0,0,4096,1024,1,32,5,16,32,64,0);
         dispatcher=new TriggerDispatcher(settings,definitions::get,catalog::get);dispatcher.connect();
         BehaviorInvoker invoker=new BehaviorInvoker(){
             public boolean available(Capabilities.Key key,Capabilities.Kind kind){return true;}
@@ -85,11 +85,11 @@ class TriggerRuntimeTest {
         assertFalse(invocations.getFirst().sourceCurrent().getAsBoolean());
     }
     @Test void severalExecutionsOfOneNpcHoldIndependentAuthority()throws Exception{
-        behavior(WAIT,"[{\"id\":\"click\",\"event\":\"interaction\"}]");definition(1,true);start(3);active();click();click();click();
+        behavior(WAIT,"[{\"id\":\"click\",\"event\":\"interaction\",\"whileRunning\":\"queue\"}]");definition(1,true);start(3);active();click();click();click();
         eventually(()->running().size()==3);assertEquals(3,dispatcher.snapshot().active());
     }
     @Test void perTriggerConcurrencyHoldsUnderTheRealRuntime()throws Exception{
-        behavior(WAIT,"[{\"id\":\"click\",\"event\":\"interaction\"}]");definition(1,true);start(1);active();click();click();
+        behavior(WAIT,"[{\"id\":\"click\",\"event\":\"interaction\",\"whileRunning\":\"queue\"}]");definition(1,true);start(1);active();click();click();
         eventually(()->dispatcher.snapshot().queued()==1);eventually(()->running().size()==1);
     }
     @Test void manualRunsRemainOnePerNpcAndCoexistWithTriggeredWork()throws Exception{

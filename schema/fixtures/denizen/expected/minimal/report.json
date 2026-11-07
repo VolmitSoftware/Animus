@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 5,
-  "importId": "4d94585df723f8efcbf24cb52b1a4f9e4b43b744e71719cfa41ec36a0621a26d",
+  "converterVersion": 6,
+  "importId": "4645c55f108c5c7561dd0a0ed0cf36cfb2f8f57bec5506a2d2ab8a716377d85d",
   "notice": "Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.",
   "sources": {
     "scripts/hello.yml": "9cbb647a2894c1e8bc0b731849ea11747520373965ffce4c263e963e5d96330b"

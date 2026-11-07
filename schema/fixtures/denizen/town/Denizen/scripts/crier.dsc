@@ -35,3 +35,21 @@ crier_story:
     script:
     - narrate "Extra, extra! The gate opens at dawn, <player.name>."
     - flag player crier_heard
+
+# The shape of a converted newsboy: the story starts only on a sneaking right click on the NPC itself.
+sneak_story_starter:
+    type: world
+    debug: false
+    events:
+        on player right clicks entity bukkit_priority:LOWEST:
+        - if !<context.entity.is_npc||false>:
+            - stop
+        - if <context.hand> == offhand:
+            - stop
+        - if !<player.is_sneaking>:
+            - stop
+        - if !<npc.has_flag[dialogue_script]||false>:
+            - stop
+        - ratelimit <player> 2t
+        - determine passively cancelled
+        - run <npc.flag[dialogue_script]>

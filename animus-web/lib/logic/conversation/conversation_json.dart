@@ -123,7 +123,13 @@ class _Reader {
       return ConversationStart(ConversationStartKind.proximity, radius: trigger['radius'] is num ? trigger['radius']! as num : 6, trigger: trigger);
     }
     final String action = asString(trigger['action']) ?? 'interact';
-    if (action != 'interact') throw _Misfit('$path.action', 'Starts on $action.');
+    final ConversationStartKind? kind = ConversationStartKind.values.where((ConversationStartKind kind) => kind.action == action).firstOrNull;
+    if (kind == null) throw _Misfit('$path.action', 'Starts on $action.');
+    if (kind == ConversationStartKind.sneakClick && (trigger['consume'] == null || trigger['consume'] == 'true')) return ConversationStart(kind, trigger: trigger);
+    if (kind != ConversationStartKind.click) {
+      if (trigger.containsKey('consume')) throw _Misfit('$path.consume', 'Claims clicks.');
+      return ConversationStart(kind, trigger: trigger);
+    }
     final String? routine = asString(trigger['routine']);
     final JsonMap gate = asMap(routines[routine]);
     final JsonMap call = asMap(gate['then']);
@@ -309,19 +315,11 @@ class _Reader {
 JsonMap writeConversation(Conversation conversation, JsonMap behavior) {
   final JsonMap routines = <String, Object?>{};
   final ConversationStart start = conversation.start;
-  final String? gate = start.kind == ConversationStartKind.sneakClick ? (start.gate ?? _free('sneak-start', conversation.blocks.keys)) : null;
-  if (gate != null) {
-    routines[gate] = <String, Object?>{
-      'type': 'condition',
-      'expression': sneakingExpression,
-      'then': <String, Object?>{'type': 'call', 'routine': conversation.entry},
-    };
-  }
   for (final MapEntry<String, StepList> block in conversation.blocks.entries) {
     routines[block.key] = _writeList(block.value);
   }
   final List<Object?> triggers = <Object?>[
-    if (start.kind != ConversationStartKind.manual) _writeStart(start, gate, conversation.entry),
+    if (start.kind != ConversationStartKind.manual) _writeStart(start, conversation.entry),
     for (final StepList block in conversation.blocks.values)
       for (final ConversationChoices choices in choicesIn(block))
         for (final ConversationOption option in choices.options)
@@ -354,30 +352,23 @@ JsonMap writeConversation(Conversation conversation, JsonMap behavior) {
   return out;
 }
 
-String _free(String base, Iterable<String> taken) {
-  final Set<String> used = taken.toSet();
-  if (!used.contains(base)) return base;
-  for (int index = 2;; index++) {
-    if (!used.contains('$base-$index')) return '$base-$index';
-  }
-}
-
-JsonMap _writeStart(ConversationStart start, String? gate, String entry) {
+JsonMap _writeStart(ConversationStart start, String entry) {
   final JsonMap raw = start.trigger;
   final bool proximity = start.kind == ConversationStartKind.proximity;
   final bool sameEvent = raw['event'] == (proximity ? 'proximity' : 'interaction');
+  final String? action = start.kind.action;
   final JsonMap out = <String, Object?>{
     'id': asString(raw['id']) ?? 'start',
     'event': proximity ? 'proximity' : 'interaction',
+    if (action != null && action != 'interact') 'action': action,
     if (sameEvent)
       for (final MapEntry<String, Object?> entry in raw.entries)
-        if (!const <String>{'id', 'event', 'routine', 'phase', 'radius', 'consume'}.contains(entry.key)) entry.key: entry.value,
+        if (!const <String>{'id', 'event', 'action', 'routine', 'phase', 'radius', 'consume'}.contains(entry.key)) entry.key: entry.value,
     if (!sameEvent && raw['cooldownTicks'] != null) 'cooldownTicks': raw['cooldownTicks'],
   };
-  if (gate != null) {
-    out['routine'] = gate;
-    out['consume'] = sneakingExpression;
-  } else if (raw.containsKey('routine') && raw['routine'] != start.gate) {
+  // A sneak start claims the click, so a shop or GUI on the NPC opens only without sneaking.
+  if (start.kind == ConversationStartKind.sneakClick) out['consume'] = 'true';
+  if (raw.containsKey('routine') && raw['routine'] != start.gate) {
     out['routine'] = entry;
   }
   if (proximity) {

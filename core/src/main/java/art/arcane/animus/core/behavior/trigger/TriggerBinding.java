@@ -9,7 +9,23 @@ import java.util.OptionalInt;
 
 /** One compiled entry of a behavior document's {@code triggers} array. */
 public record TriggerBinding(String id, Spec spec, Optional<String> routine, OptionalInt cooldownTicks) {
-    public enum InteractionFilter { INTERACT, ATTACK, ANY }
+    /**
+     * The inputs an interaction trigger takes. {@code any} takes either click; the plain names take their input with or
+     * without sneaking, the {@code sneak_} names only while sneaking.
+     */
+    public enum InteractionFilter {
+        INTERACT(TriggerEvent.Action.INTERACT, false), ATTACK(TriggerEvent.Action.ATTACK, false), ANY(null, false),
+        SNEAK_INTERACT(TriggerEvent.Action.INTERACT, true), SNEAK_ATTACK(TriggerEvent.Action.ATTACK, true),
+        DROP(TriggerEvent.Action.DROP, false), SNEAK_DROP(TriggerEvent.Action.DROP, true),
+        SWAP_HANDS(TriggerEvent.Action.SWAP_HANDS, false), SNEAK_SWAP_HANDS(TriggerEvent.Action.SWAP_HANDS, true);
+        private final TriggerEvent.Action action;
+        private final boolean sneaking;
+        InteractionFilter(TriggerEvent.Action action, boolean sneaking) { this.action = action; this.sneaking = sneaking; }
+        boolean accepts(TriggerEvent.Interaction input) {
+            if (sneaking && !input.sneaking()) return false;
+            return action == null ? !input.action().key() : action == input.action();
+        }
+    }
     public enum Phase { ENTER, LEAVE }
 
     public TriggerBinding {
@@ -17,12 +33,20 @@ public record TriggerBinding(String id, Spec spec, Optional<String> routine, Opt
     }
 
     public sealed interface Spec { TriggerKind kind(); }
-    /** {@code consume}, when present, is checked at click time: when it holds, the click is this behavior's and Animus's default handling is skipped. */
-    public record Interaction(InteractionFilter action, Optional<BehaviorExpression> consume) implements Spec {
-        public Interaction { Objects.requireNonNull(action); Objects.requireNonNull(consume); }
-        public Interaction(InteractionFilter action) { this(action, Optional.empty()); }
+    /**
+     * {@code consume} is checked as the input arrives: when it holds, the input is this behavior's and its default handling
+     * is skipped, Animus's for a click and the vanilla drop or swap for a key press. A key press without it is consumed.
+     */
+    /**
+     * {@code playerCooldownTicks} spaces one player's runs of this trigger; empty uses the configured default unless
+     * {@code cooldownTicks} is set. {@code queue} lets a player's input wait while their earlier run of this trigger is
+     * queued or running; by default it is dropped.
+     */
+    public record Interaction(InteractionFilter action, Optional<BehaviorExpression> consume, OptionalInt playerCooldownTicks, boolean queue) implements Spec {
+        public Interaction { Objects.requireNonNull(action); Objects.requireNonNull(consume); Objects.requireNonNull(playerCooldownTicks); }
+        public Interaction(InteractionFilter action) { this(action, Optional.empty(), OptionalInt.empty(), false); }
         @Override public TriggerKind kind() { return TriggerKind.INTERACTION; }
-        boolean accepts(TriggerEvent.Action input) { return action == InteractionFilter.ANY || action.name().equals(input.name()); }
+        boolean accepts(TriggerEvent.Interaction input) { return action.accepts(input); }
     }
     public record Proximity(Phase phase, double radius) implements Spec {
         @Override public TriggerKind kind() { return TriggerKind.PROXIMITY; }
@@ -100,7 +124,7 @@ public record TriggerBinding(String id, Spec spec, Optional<String> routine, Opt
     /** key is the {@code behavior#trigger} name proximity events use to select one binding. */
     boolean matches(TriggerEvent event, String key) {
         return switch (spec) {
-            case Interaction interaction -> event instanceof TriggerEvent.Interaction input && interaction.accepts(input.action());
+            case Interaction interaction -> event instanceof TriggerEvent.Interaction input && interaction.accepts(input);
             case Proximity ignored -> event instanceof TriggerEvent.Proximity input && input.binding().equals(key);
             case Lifecycle lifecycle -> event.kind() == lifecycle.kind();
             case Waypoint waypoint -> event instanceof TriggerEvent.Waypoint input

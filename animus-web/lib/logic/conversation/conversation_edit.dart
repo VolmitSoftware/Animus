@@ -234,13 +234,6 @@ void duplicateOption(Conversation conversation, StepAt at, int index) {
 /// cooldown.
 void setStart(Conversation conversation, ConversationStartKind kind, {num? radius}) {
   final ConversationStart start = conversation.start;
-  if (kind == ConversationStartKind.sneakClick) {
-    start.gate ??= freeId('sneak-start', conversation.blocks.keys);
-  } else if (start.gate != null) {
-    start.gate = null;
-    start.trigger.remove('routine');
-    start.trigger.remove('consume');
-  }
   if (start.kind == ConversationStartKind.manual && kind != ConversationStartKind.manual && !start.trigger.containsKey('id')) {
     start.trigger = <String, Object?>{'id': freeId('start', conversation.triggerIds)};
   }

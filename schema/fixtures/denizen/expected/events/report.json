@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 5,
-  "importId": "59ac818d06efb84cffef52df0ed37974eec673c0e27f845ec98b375dad20c9f4",
+  "converterVersion": 6,
+  "importId": "f36236122363147d67f059cf51d80ec6fead4b48a6d580f293ef85f1b24c2375",
   "notice": "Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.",
   "sources": {
-    "scripts/events.dsc": "38a0c955a816652d4863a9b85846706a887b2cb0594f015a78afcf728c1db544",
+    "scripts/events.dsc": "53524fbb9ceff17a581c6c2205fadc4456b9c5871152a955e56d5969aed806d8",
     "citizens": "e24c0193d3be211d5b0e122b24e44dbb6b2419d16e05b7e0725d25cd819188a0",
     "server_flags.dat": "b7065edb7528ec537a6da528f089d788e787620e5e532f2d1722c4c331654609",
     "notables.yml": "75b1e7fda8bc2585dfb27d1b3b91187938546d87dc859e4ab0b704211542fb61",
     "player_flags/00000000-0000-4000-8000-0000000000b1.dat": "67c7d17fc3a03a61642eac6b06315cc1acf9e703b1834d7e582eaf9bcdd77d54"
   },
-  "behaviors": 9,
+  "behaviors": 10,
   "containers": {
     "assignment": {
       "total": 1,
@@ -25,8 +25,8 @@
       "preserved": 0
     },
     "world": {
-      "total": 6,
-      "converted": 2,
+      "total": 7,
+      "converted": 3,
       "partial": 4,
       "preserved": 0
     }
@@ -37,7 +37,7 @@
       "preserved": 0
     },
     "determine": {
-      "converted": 10,
+      "converted": 11,
       "preserved": 2
     },
     "flag": {
@@ -49,11 +49,11 @@
       "preserved": 0
     },
     "if": {
-      "converted": 13,
+      "converted": 16,
       "preserved": 0
     },
     "narrate": {
-      "converted": 24,
+      "converted": 25,
       "preserved": 5
     },
     "note": {
@@ -69,7 +69,7 @@
       "preserved": 0
     },
     "stop": {
-      "converted": 11,
+      "converted": 14,
       "preserved": 0
     },
     "title": {
@@ -151,7 +151,7 @@
       "preserved": 0
     },
     "world on player drops item": {
-      "converted": 1,
+      "converted": 2,
       "preserved": 0
     },
     "world on player enters area": {
@@ -211,6 +211,10 @@
       "preserved": 0
     },
     "world on player shoots target": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player swaps items": {
       "converted": 1,
       "preserved": 0
     },
@@ -344,6 +348,14 @@
       "mapped": 6,
       "unmapped": 0
     },
+    "player.is_sneaking": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "player.target": {
+      "mapped": 3,
+      "unmapped": 0
+    },
     "server.flag": {
       "mapped": 1,
       "unmapped": 0
@@ -365,7 +377,8 @@
   "bindings": {
     "citizens-7": [
       "denizen:assignment/npc_story",
-      "denizen:world-npc/combat"
+      "denizen:world-npc/combat",
+      "denizen:world-npc/npc_keys"
     ]
   },
   "npcUuids": {
@@ -375,6 +388,7 @@
     "denizen:assignment/npc_story": "complete",
     "denizen:task/broadcasts": "complete",
     "denizen:world-npc/combat": "partial",
+    "denizen:world-npc/npc_keys": "complete",
     "denizen:world/archery": "partial",
     "denizen:world/areas": "partial",
     "denizen:world/blocks": "partial",
@@ -488,6 +502,7 @@
     "behaviors/denizen/assignment/npc_story.json": "cb424340f3794a0e91062e52d96e4dd3a31585e03595572b124f277160bd7335",
     "behaviors/denizen/task/broadcasts.json": "77c650872e21a4c92354f2cca80208e3489af577ff1fe6fb4859c658eb09faf3",
     "behaviors/denizen/world-npc/combat.json": "00635bb196904d0cb3543be0cf61e291d930140ddd3a577feba3262abe5a3fd8",
+    "behaviors/denizen/world-npc/npc_keys.json": "e0e37a6dc493894a056c5de4fe361225616a92eef6cc831a1fa0f22572dc4845",
     "behaviors/denizen/world/archery.json": "5349eb264f09f31211bf7589dc4d0ba79353924b12ccfe58a5486ed2dd87a931",
     "behaviors/denizen/world/areas.json": "e4a8326ae9e56cf9d12757b18eb368c275e65f16fcf6004fcc1200a9fd573f56",
     "behaviors/denizen/world/blocks.json": "b1d8a473bbe830362213777db76e66583b13f5db80aac0aa8a4008b93400586a",

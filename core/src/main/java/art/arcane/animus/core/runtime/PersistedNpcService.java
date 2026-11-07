@@ -2277,31 +2277,19 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         // Preview bodies are inert: no trigger, listener, selection, GUI, shop, ride or damage.
         if (viewer.preview.owns(input.body().uuid())) return;
         Presented body = viewer.visible.get(input.body().uuid());
-        if (body == null || body.body != input.body() || !body.bound || body.retired || !eligibleNow(viewer, body.value)) { rejected++; return; }
-        // A command publication can precede the bounded reconciliation pass: deletion/despawn still revokes hits immediately.
-        if (!DefinitionSpec.spawned(runtime.npcs().snapshot().get(body.value.spec.definition().id()))) { rejected++; retire(viewer, body); return; }
-        // Transport acknowledgment is presentation bookkeeping; hits always use the current authoritative position.
-        viewer.guard.updateSnapshot(body.body.entityId(), body.value.state.snapshot());
-        Vec3 eye = host.eye(viewer.player), direction = host.direction(viewer.player);
-        String world = host.position(viewer.player).world();
-        ViewerSession.HitShape shape = body.value.spec.type().equals(DragonBody.TYPE) ? DragonBody.hitShape(body.value.yaw) : ViewerSession.HitShape.BOUNDS;
-        ViewerSession.Validation validated = viewer.guard.validate(new ViewerSession.Request(host.id(viewer.player), viewer.guard.sessionId(), input.body().entityId(),
-                new WorldPosition(world, eye), direction, System.nanoTime()), (WorldPosition from, Vec3 to, double distance) -> {
-            int minX = ((int) Math.floor(Math.min(eye.x(), to.x()))) >> 4, maxX = ((int) Math.floor(Math.max(eye.x(), to.x()))) >> 4;
-            int minZ = ((int) Math.floor(Math.min(eye.z(), to.z()))) >> 4, maxZ = ((int) Math.floor(Math.max(eye.z(), to.z()))) >> 4;
-            for (int x = minX; x <= maxX; x++) for (int z = minZ; z <= maxZ; z++) if (!host.chunkLoaded(world, x, z)) return false;
-            return distance <= 0.000001 || host.clearSight(viewer.player, eye, direction, Math.max(0, distance - 0.0001));
-        }, shape);
-        if (!validated.accepted()) { rejected++; return; }
+        if (body == null || body.body != input.body()) { rejected++; return; }
+        ViewerSession.Validation validated = hit(viewer, body);
+        if (validated == null) return;
         RuntimeHost.Interaction action = input.action() == BodyTransport.Action.ATTACK ? RuntimeHost.Interaction.ATTACK : RuntimeHost.Interaction.INTERACT;
         boolean allowed = host.interactionAllowed(viewer.player, body.body.uuid(), action, validated.distance());
         if (!allowed || !current(viewer) || host.dead(viewer.player) || viewer.visible.get(body.body.uuid()) != body || !eligibleNow(viewer, body.value)
                 || body.value.state.snapshot().revision() != validated.npc().revision()
                 || !DefinitionSpec.spawned(runtime.npcs().snapshot().get(body.value.spec.definition().id()))) return;
         accepted++;
+        // An attack packet carries no sneaking flag, so a left click reads the player's own state.
         boolean consumed = triggers != null && triggers.interaction(body.body.uuid(), host.id(viewer.player),
                 action == RuntimeHost.Interaction.ATTACK ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT,
-                input.secondaryAction(), TriggerEvent.Interaction.hand(input.hand()), false);
+                action == RuntimeHost.Interaction.ATTACK ? host.sneaking(viewer.player) : input.secondaryAction(), TriggerEvent.Interaction.hand(input.hand()), false);
         InteractionObserver observed = observer;
         if (observed != null) observed.accepted(body.body.uuid(), host.id(viewer.player), action == RuntimeHost.Interaction.ATTACK, validated.distance(), false);
         // A behavior that consumes the click owns it: modules, riding and selection never see it.
@@ -2320,6 +2308,50 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             select(host.id(viewer.player), id);
             host.tell(viewer.player, Palette.reply("Selected " + id));
         }
+    }
+
+    /**
+     * On the owner thread: the drop or swap-hands key, pressed while the player looks at an NPC in interaction reach.
+     * The NPC is found along the server ray and validated as a click is, under the same action budget. Only triggers
+     * see it. True when a behavior consumes it and the vanilla drop or swap must not happen.
+     */
+    @Override public boolean pressed(P player, TriggerEvent.Action key) {
+        if (!key.key()) throw new IllegalArgumentException("not a key press: " + key);
+        Viewer viewer = viewers.get(host.id(player));
+        if (viewer == null || triggers == null || !current(viewer) || host.dead(player)) return false;
+        ViewerSession.HitShape inert = (VirtualNpcState.Snapshot npc, Vec3 origin, Vec3 direction, double reach) -> OptionalDouble.empty();
+        OptionalInt aimed = viewer.guard.aim(new WorldPosition(host.position(player).world(), host.eye(player)), host.direction(player), (VirtualNpcState.Snapshot npc) -> {
+            Presented seen = viewer.visible.get(npc.npcId());
+            return seen == null || viewer.preview.owns(npc.npcId()) ? inert : shape(seen.value);
+        });
+        if (aimed.isEmpty()) return false;
+        Presented body = null;
+        for (Presented seen : viewer.visible.values()) if (seen.body.entityId() == aimed.getAsInt()) { body = seen; break; }
+        if (body == null || hit(viewer, body) == null) return false;
+        accepted++;
+        return triggers.interaction(body.body.uuid(), host.id(player), key, host.sneaking(player), TriggerEvent.Hand.MAIN_HAND, false);
+    }
+    /** Validates the player's current server ray against a presented body; null after counting the rejection. */
+    private ViewerSession.Validation hit(Viewer viewer, Presented body) {
+        if (!body.bound || body.retired || !eligibleNow(viewer, body.value)) { rejected++; return null; }
+        // A command publication can precede the bounded reconciliation pass: deletion/despawn still revokes hits immediately.
+        if (!DefinitionSpec.spawned(runtime.npcs().snapshot().get(body.value.spec.definition().id()))) { rejected++; retire(viewer, body); return null; }
+        // Transport acknowledgment is presentation bookkeeping; hits always use the current authoritative position.
+        viewer.guard.updateSnapshot(body.body.entityId(), body.value.state.snapshot());
+        Vec3 eye = host.eye(viewer.player), direction = host.direction(viewer.player);
+        String world = host.position(viewer.player).world();
+        ViewerSession.Validation validated = viewer.guard.validate(new ViewerSession.Request(host.id(viewer.player), viewer.guard.sessionId(), body.body.entityId(),
+                new WorldPosition(world, eye), direction, System.nanoTime()), (WorldPosition from, Vec3 to, double distance) -> {
+            int minX = ((int) Math.floor(Math.min(eye.x(), to.x()))) >> 4, maxX = ((int) Math.floor(Math.max(eye.x(), to.x()))) >> 4;
+            int minZ = ((int) Math.floor(Math.min(eye.z(), to.z()))) >> 4, maxZ = ((int) Math.floor(Math.max(eye.z(), to.z()))) >> 4;
+            for (int x = minX; x <= maxX; x++) for (int z = minZ; z <= maxZ; z++) if (!host.chunkLoaded(world, x, z)) return false;
+            return distance <= 0.000001 || host.clearSight(viewer.player, eye, direction, Math.max(0, distance - 0.0001));
+        }, shape(body.value));
+        if (!validated.accepted()) { rejected++; return null; }
+        return validated;
+    }
+    private ViewerSession.HitShape shape(Value value) {
+        return value.spec.type().equals(DragonBody.TYPE) ? DragonBody.hitShape(value.yaw) : ViewerSession.HitShape.BOUNDS;
     }
 
     /** Cosmetic work of one viewer failed: an error is recorded and the viewer keeps its session. True when the watch had ended and the viewer was dropped. */

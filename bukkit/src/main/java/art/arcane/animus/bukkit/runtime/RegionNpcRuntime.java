@@ -240,6 +240,10 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     }
     @Override public void interactions(InteractionListener<Player> listener) { interactions = listener; }
     @Override public void observeInteractions(InteractionObserver observer) { this.observer = observer; }
+    @Override public boolean pressed(Player player, TriggerEvent.Action key) {
+        RegionViewer viewer = viewers.get(player.getUniqueId());
+        return viewer != null && viewer.player == player && viewer.pressed(key);
+    }
     @Override public boolean switchesLive() { return false; }
     @Override public void bindTriggers(TriggerDispatcher dispatcher) { dispatcher.hide(previews); triggers = dispatcher; }
     @Override public void animationEvents(art.arcane.animus.core.rig.NpcRig.Events events) { animationEvents = events; }

@@ -12,21 +12,28 @@ import java.util.UUID;
  * only carries the NPC handle and the optional player UUID into its capabilities.
  */
 public sealed interface TriggerEvent {
-    enum Action { INTERACT, ATTACK }
+    /** A click on the NPC, or the drop or swap-hands key pressed while looking at it. */
+    enum Action {
+        INTERACT, ATTACK, DROP, SWAP_HANDS;
+        /** A key press rather than a hit: there is a vanilla drop or swap to cancel. */
+        public boolean key() { return this == DROP || this == SWAP_HANDS; }
+        /** The name runs read as {@code context.action}. */
+        public String jsonName() { return name().toLowerCase(Locale.ROOT); }
+    }
     enum Hand { MAIN_HAND, OFF_HAND }
     UUID npc();
     TriggerKind kind();
     default Optional<UUID> player() { return Optional.empty(); }
 
-    /** {@code sneaking} is the client's secondary-action flag on the click itself, not a player snapshot. */
+    /** {@code sneaking} is the client's secondary-action flag on a right click, and the player's sneaking state for other actions. */
     record Interaction(UUID npc, UUID viewer, Action action, boolean sneaking, Hand hand) implements TriggerEvent {
         public Interaction { Objects.requireNonNull(npc); Objects.requireNonNull(viewer); Objects.requireNonNull(action); Objects.requireNonNull(hand); }
         /** A main-hand click without sneaking. */
         public Interaction(UUID npc, UUID viewer, Action action) { this(npc, viewer, action, false, Hand.MAIN_HAND); }
         @Override public TriggerKind kind() { return TriggerKind.INTERACTION; }
         @Override public Optional<UUID> player() { return Optional.of(viewer); }
-        /** What a run and a consume condition read as {@code context.sneaking} and {@code context.hand} ({@code main_hand} or {@code off_hand}). */
-        public Map<String, Object> context() { return Map.of("sneaking", sneaking, "hand", hand.name().toLowerCase(Locale.ROOT)); }
+        /** What a run and a consume condition read as {@code context.action}, {@code context.sneaking} and {@code context.hand} ({@code main_hand} or {@code off_hand}). */
+        public Map<String, Object> context() { return Map.of("action", action.jsonName(), "sneaking", sneaking, "hand", hand.name().toLowerCase(Locale.ROOT)); }
         /** The platform's hand name: {@code OFF_HAND} is the off hand, anything else the main hand. */
         public static Hand hand(String name) { return "OFF_HAND".equals(name) ? Hand.OFF_HAND : Hand.MAIN_HAND; }
     }

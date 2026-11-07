@@ -474,8 +474,10 @@ public final class BehaviorSchemaGenerator {
             case "event" -> new Field(described(choices(TriggerKind.names()), "What starts the run."), "event", true);
             case "routine" -> new Field(described(reference("identifier"), "Starts this routine instead of entry."), "routine", false);
             case "cooldownTicks" -> new Field(described(range("integer", 0, TriggerCompiler.MAX_COOLDOWN_TICKS), "Overrides the configured cooldown, per trigger on each NPC."), "integer", false);
-            case "action" -> new Field(described(choices(lower(TriggerBinding.InteractionFilter.values())), "Which hit fires it; interact by default."), "string", false);
-            case "consume" -> new Field(described(expressionText(), "An expression checked when the click arrives, over flags, facts, context.sneaking and context.hand. When it holds, the click belongs to this behavior: shops, hiring, GUIs, riding and selection do not see it. Omit to leave the click to them."), "expression", false);
+            case "action" -> new Field(described(choices(lower(TriggerBinding.InteractionFilter.values())), "What fires it: interact (right click), attack (left click), any click, drop (Q) or swap_hands (F) while looking at the NPC, with or without sneaking; the sneak_ forms only while sneaking. interact by default."), "string", false);
+            case "consume" -> new Field(described(expressionText(), "An expression checked as the input arrives, over flags, facts, context.action, context.sneaking and context.hand. When it holds, the input belongs to this behavior: shops, hiring, GUIs, riding and selection do not see a click, and a drop or swap does not happen. Omit to leave a click to them; a drop or swap without it is always consumed, and false lets it happen."), "expression", false);
+            case "playerCooldownTicks" -> new Field(described(range("integer", 0, TriggerCompiler.MAX_COOLDOWN_TICKS), "Ticks between one player's runs of this trigger. Without it the configured playerCooldownTicks applies, unless cooldownTicks is set; 0 turns it off."), "integer", false);
+            case "whileRunning" -> new Field(described(choices(List.of("drop", "queue")), "What a player's input does while their earlier run of this trigger is queued or running: drop it (default) or queue it."), "string", false);
             case "phase" -> new Field(described(choices(lower(TriggerBinding.Phase.values())), "Entering or leaving the radius or area."), "string", true);
             case "radius" -> {
                 JsonObject radius = type("number");
