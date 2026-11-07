@@ -262,27 +262,11 @@ public final class AnimusPlugin extends JavaPlugin {
             startEditor(modulePlatform);
             getLogger().info("Enabled " + BuildIdentity.VERSION + " on " + getServer().getName() + " " + environment.minecraftVersion() + (replies.isFolia() ? " (Folia regions)" : "")
                     + " in " + (System.nanoTime() - started) / 1_000_000 + "ms | " + runtime.npcs().all().size() + " NPCs | editor " + editorState());
-            announceCitizensMigration();
+            BukkitOnboarding.start(this, replies, runtime, commands, () -> stopping);
         } catch (IOException | ReflectiveOperationException | RuntimeException | LinkageError exception) {
             getLogger().log(Level.SEVERE, "Failed to start", exception);
             getServer().getPluginManager().disablePlugin(this);
         }
-    }
-
-    /** After every plugin has enabled, so a Citizens plugin that loads after Animus is seen. Runs the file check off the owner. */
-    private void announceCitizensMigration() {
-        AnimusRuntime active = runtime;
-        java.util.concurrent.Executor files = commands;
-        replies.reply(getServer().getConsoleSender(), () -> {
-            try {
-                files.execute(() -> {
-                    try {
-                        if (!stopping && active.isRunning())
-                            new CitizensDropIn(active.documents(), active.npcs(), active.importHost()).startupNotice().ifPresent(getLogger()::info);
-                    } catch (IOException | RuntimeException failure) { getLogger().warning("Citizens migration check failed: " + failure.getMessage()); }
-                });
-            } catch (java.util.concurrent.RejectedExecutionException busy) { getLogger().warning("Citizens migration check skipped: file queue full"); }
-        });
     }
 
     @Override

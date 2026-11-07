@@ -25,9 +25,12 @@ public final class ChatLine {
     private static final Pattern TRANSACTION = Pattern.compile("\\btx ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\\b");
     private static final Pattern URL = Pattern.compile("https?://[^\\s§]+");
     private static final Pattern HASH = Pattern.compile("\\b[0-9a-f]{64}\\b");
+    /** An Animus command in a {@code Next:} line: words after {@code /animus}, ending at a semicolon, a comma and space, or the line's end. */
+    private static final Pattern COMMAND = Pattern.compile("(?<![A-Za-z0-9_./])/animus(?:\\x20[A-Za-z0-9<>|_=:@./-]+(?:,[A-Za-z0-9<>|_=:@./-]+)*)*");
+    private static final String NEXT = "Next: ";
     private static final int SHORT_ID = 8, SHORT_HASH = 12;
 
-    private enum Click { COPY, OPEN, SUGGEST }
+    private enum Click { COPY, OPEN, SUGGEST, RUN }
 
     /** A clickable label. {@code console} is what the console sees in its place, or null for nothing. */
     private record Chip(String label, Palette tone, Click click, String value, String hover, String console) {}
@@ -52,22 +55,29 @@ public final class ChatLine {
      * A finished reply with its transaction ids, long ids and links made clickable: {@code tx <uuid>} becomes a short id
      * that copies the full one plus {@code [Undo]}, which suggests the rollback command; a 64-character hex id, such as an
      * import id, shows its first 12 characters and copies the full id; a wiki link becomes {@code [Docs]}; any other link
-     * becomes {@code [Open]} and {@code [Click to copy]}. A reply with none of these comes back as one text piece.
+     * becomes {@code [Open]} and {@code [Click to copy]}; after {@code Next: }, each {@code /animus} command goes into the
+     * player's chat box on click, cut before its first {@code <placeholder>}. A reply with none of these comes back as one text piece.
      */
     public static ChatLine parse(String coloured) {
         ChatLine line = new ChatLine();
         if (coloured == null) return line;
-        List<Matcher> matchers = List.of(TRANSACTION.matcher(coloured), HASH.matcher(coloured), URL.matcher(coloured));
+        List<Matcher> matchers = List.of(TRANSACTION.matcher(coloured), HASH.matcher(coloured), URL.matcher(coloured), COMMAND.matcher(coloured));
+        int next = coloured.indexOf(NEXT);
+        int commands = next < 0 ? -1 : next + NEXT.length();
         int index = 0;
         while (true) {
             Matcher match = null;
-            for (Matcher candidate : matchers)
-                if (candidate.find(index) && (match == null || candidate.start() < match.start())) match = candidate;
+            for (Matcher candidate : matchers) {
+                boolean command = candidate.pattern() == COMMAND;
+                if (command && commands < 0) continue;
+                if (candidate.find(command ? Math.max(index, commands) : index) && (match == null || candidate.start() < match.start())) match = candidate;
+            }
             if (match == null) break;
             line.raw(coloured.substring(index, match.start()));
             int end = match.end();
             if (match.pattern() == TRANSACTION) line.raw("tx ").transaction(match.group(1));
             else if (match.pattern() == HASH) line.copy(match.group().substring(0, SHORT_HASH), match.group(), "Click to copy the full id");
+            else if (match.pattern() == COMMAND) line.command(match.group());
             else {
                 String url = trimUrl(match.group());
                 end = match.start() + url.length();
@@ -102,6 +112,16 @@ public final class ChatLine {
 
     /** A bracketed label that puts {@code command} in the player's chat box to edit and send. The console sees nothing. */
     public ChatLine suggest(String label, String command, String hover) { return chip(new Chip("[" + label + "]", Palette.PINK_LIGHT, Click.SUGGEST, command, hover, null)); }
+
+    /** A bracketed label that runs {@code command} as the player. The console sees the command. */
+    public ChatLine run(String label, String command, String hover) { return chip(new Chip("[" + label + "]", Palette.PINK_LIGHT, Click.RUN, command, hover, command)); }
+
+    /** The command as itself in pink; a click puts it, up to its first placeholder, in the chat box. The console sees the command. */
+    private ChatLine command(String command) {
+        int placeholder = command.indexOf(" <");
+        String typed = placeholder < 0 ? command : command.substring(0, placeholder + 1);
+        return chip(new Chip(command, Palette.PINK, Click.SUGGEST, typed, "Click to put it in your chat box", command));
+    }
 
     /** {@code [<label>]} that opens the link and {@code [Click to copy]} that copies it; the console sees the link once. */
     public ChatLine link(String label, String url) {
@@ -169,6 +189,7 @@ public final class ChatLine {
                 case COPY -> ClickEvent.copyToClipboard(chip.value());
                 case OPEN -> ClickEvent.openUrl(chip.value());
                 case SUGGEST -> ClickEvent.suggestCommand(chip.value());
+                case RUN -> ClickEvent.runCommand(chip.value());
             };
             line.append(Component.text(chip.label(), TextColor.color(chip.tone().rgb()))
                     .hoverEvent(HoverEvent.showText(Component.text(chip.hover(), TextColor.color(Palette.GREY.rgb()))))

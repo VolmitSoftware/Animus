@@ -55,6 +55,7 @@ public final class AnimusCommandTree extends CommandGroup {
     DiagnosticCommands.FoliaProof foliaproof;
     RecordCommands record;
     ToolkitCommands tools;
+    SetupCommands setup;
 
     public AnimusCommandTree(CommandServices services) {
         super(services);
@@ -77,7 +78,11 @@ public final class AnimusCommandTree extends CommandGroup {
         foliaproof = new DiagnosticCommands.FoliaProof(services);
         record = new RecordCommands(() -> services.recordings());
         tools = new ToolkitCommands(services);
+        setup = new SetupCommands(services);
     }
+
+    @Director(description = "Show the first steps: import, create an NPC, set its skin, pair the web editor")
+    void setup(@Param(name = "dismiss", defaultValue = "false", description = "Turn the join hint off for every admin") boolean dismiss) { setup.run(actor(), dismiss); }
 
     /** The engine for this tree, with completion values from the running services. */
     public AnimusDirector director() { return new AnimusDirector(this, this::values); }

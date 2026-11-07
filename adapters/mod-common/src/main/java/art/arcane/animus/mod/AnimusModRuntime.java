@@ -97,6 +97,7 @@ public final class AnimusModRuntime {
         ExtensionRuntime extensions;
         volatile BehaviorCommands behaviors;
         ModServerBehaviors serverBehaviors;
+        ModOnboarding onboarding;
         ModRecordings recordings;
         AnimusDirector commands;
         volatile EditorService editor;
@@ -220,11 +221,7 @@ public final class AnimusModRuntime {
             ModHooks.attach(this);
             LOGGER.info("Enabled {} on {} {} in {}ms | {} NPCs | editor {}", BuildIdentity.VERSION, platform.name().toLowerCase(java.util.Locale.ROOT), environment.minecraftVersion(),
                     (System.nanoTime() - startedAt) / 1_000_000, next.runtime.npcs().all().size(), next.editor == null ? "off" : next.editor.reach());
-            AnimusRuntime started = next.runtime;
-            files.execute(() -> {
-                try { new art.arcane.animus.core.migration.CitizensDropIn(started.documents(), started.npcs(), started.importHost()).startupNotice().ifPresent(LOGGER::info); }
-                catch (IOException | RuntimeException failure) { LOGGER.warn("Citizens migration check failed: {}", failure.getMessage()); }
-            });
+            next.onboarding = new ModOnboarding(server, next.ticks, next.runtime, files, () -> owner.stopping, LOGGER::info, LOGGER::warn);
         } catch (IOException | RuntimeException | LinkageError failure) {
             LOGGER.error("Failed to start", failure);
             close(next);
@@ -367,6 +364,7 @@ public final class AnimusModRuntime {
         if (active == null) return;
         active.living.joined(player);
         if (active.serverBehaviors != null) active.serverBehaviors.joined(player);
+        if (active.onboarding != null) active.onboarding.joined(player);
     }
     void quit(ServerPlayer player) {
         Running active = running;

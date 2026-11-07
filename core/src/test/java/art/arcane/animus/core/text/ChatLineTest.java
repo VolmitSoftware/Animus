@@ -58,6 +58,26 @@ class ChatLineTest {
         assertEquals("[Animus]: Review " + id + ", then apply " + id, RichText.plain(twice.console()), "a repeated value is printed each time");
     }
 
+    @Test void aRunChipRunsItsCommandAndTheConsoleSeesTheCommand() {
+        ChatLine line = ChatLine.reply("No NPCs yet").run("Setup", "/animus setup", "Show the first steps");
+        assertEquals("[Animus]: No NPCs yet [Setup]", plain(line.component()));
+        assertEquals(List.of("run_command /animus setup"), clicks(line.component()));
+        assertEquals("[Animus]: No NPCs yet /animus setup", RichText.plain(line.console()));
+    }
+
+    @Test void commandsAfterNextBecomeSuggestionsAndAPlaceholderIsLeftForThePlayer() {
+        ChatLine line = ChatLine.parse(Palette.reply("Next: /animus import citizens accept <categories|all>; accept commands lets them run"));
+        assertEquals("[Animus]: Next: /animus import citizens accept <categories|all>; accept commands lets them run", plain(line.component()));
+        assertEquals(List.of("suggest_command /animus import citizens accept "), clicks(line.component()));
+        assertEquals("[Animus]: Next: /animus import citizens accept <categories|all>; accept commands lets them run", RichText.plain(line.console()));
+        ChatLine two = ChatLine.parse(Palette.reply("Next: place NPCs with /animus tools; edit them with /animus editor pair"));
+        assertEquals(List.of("suggest_command /animus tools", "suggest_command /animus editor pair"), clicks(two.component()));
+        ChatLine list = ChatLine.parse(Palette.reply("Next: /animus import citizens review, then /animus import citizens accept shops,spawn"));
+        assertEquals(List.of("suggest_command /animus import citizens review", "suggest_command /animus import citizens accept shops,spawn"), clicks(list.component()));
+        ChatLine before = ChatLine.parse(Palette.reply("Run /animus status first"));
+        assertFalse(before.interactive(), "only a Next: line makes its commands clickable");
+    }
+
     @Test void aLineWithoutChipsIsPlainText() {
         ChatLine line = ChatLine.parse(Palette.reply("Selected guard"));
         assertFalse(line.interactive());

@@ -102,6 +102,51 @@ class CitizensDropInTest {
         }
     }
 
+    /** Each step ends with one {@code Next:} line; the last accept points at the toolkit and the editor. */
+    @Test void everyStepEndsWithTheNextStepAndProgressFollowsTheFlow() throws Exception {
+        Files.writeString(Files.createDirectories(root.resolve("plugins/Animus/imports")).resolve("saves.yml"), SAVES);
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            CitizensDropIn flow = dropIn(store, npcs);
+            CitizensDropIn.Progress found = flow.progress();
+            assertEquals(CitizensDropIn.Phase.FOUND, found.phase());
+            assertEquals(Optional.of("imports/saves.yml"), found.source());
+
+            List<String> staged = flow.preview("reject", Optional.empty(), Map.of(), false);
+            assertEquals("Next: /animus import citizens apply", staged.getLast());
+            assertEquals(CitizensDropIn.Phase.STAGED, flow.progress().phase());
+
+            List<String> applied = flow.applyStaged();
+            assertEquals("Next: /animus import citizens review", applied.getLast(), joined(applied));
+            assertEquals(1, applied.stream().filter((String line) -> line.startsWith("Next: ")).count(), joined(applied));
+            CitizensDropIn.Progress waiting = flow.progress();
+            assertEquals(CitizensDropIn.Phase.APPLIED, waiting.phase());
+            assertTrue(waiting.waiting() > 0);
+
+            List<String> review = flow.reviewApplied();
+            assertTrue(review.getLast().startsWith("Next: /animus import citizens accept <categories|all>"), joined(review));
+
+            List<String> some = flow.acceptCategories(List.of("combat"));
+            assertTrue(some.getLast().startsWith("Next: /animus import citizens accept <categories|all>;") && some.getLast().contains("still off"), joined(some));
+
+            List<String> all = flow.acceptCategories(List.of("all"));
+            String last = all.getLast();
+            assertTrue(last.startsWith("Next: ") && last.contains("/animus tools") && last.contains("/animus editor pair"), joined(all));
+            assertEquals(CitizensDropIn.Phase.DONE, flow.progress().phase());
+            for (List<String> reply : List.of(staged, applied, review, some, all))
+                for (String line : reply) assertFalse(line.toLowerCase(java.util.Locale.ROOT).startsWith("next ") || line.contains("; next "), line);
+        }
+    }
+
+    @Test void progressIsNoneWithoutData() throws Exception {
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            CitizensDropIn.Progress progress = dropIn(store, npcs).progress();
+            assertEquals(CitizensDropIn.Phase.NONE, progress.phase());
+            assertTrue(progress.source().isEmpty());
+        }
+    }
+
     @Test void stagesAppliesReviewsAcceptsAndRollsBackTheWholeMigration() throws Exception {
         Files.createDirectories(root.resolve("plugins/Animus/imports/dtltraders/shops/Bakery"));
         Files.writeString(root.resolve("plugins/Animus/imports/dtltraders/shops/Bakery/Bakery.yml"), ShopImporterTest.BAKERY);

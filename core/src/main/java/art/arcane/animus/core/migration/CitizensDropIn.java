@@ -115,6 +115,28 @@ public final class CitizensDropIn {
         return Optional.of("Citizens migration: found " + listed(found) + "; /animus import citizens preview checks " + (found.size() == 1 ? "it" : "them") + ", nothing installs until apply");
     }
 
+    /** How far the drop-in flow is, for {@code /animus setup} and the join hint. */
+    public enum Phase { NONE, FOUND, STAGED, APPLIED, DONE }
+
+    /** {@code source} is the first save found, as shown to the operator; {@code waiting} counts imported settings still off. */
+    public record Progress(Phase phase, Optional<String> source, int waiting) {}
+
+    /**
+     * NONE without data; FOUND when a save waits for a preview; STAGED once previewed (and after a rollback); APPLIED while
+     * imported settings wait for accept; DONE when nothing waits.
+     */
+    public Progress progress() throws IOException {
+        JsonObject state = state();
+        Optional<String> source = find().saves().map(Found::label);
+        if (source.isEmpty()) source = ShopkeepersDropIn.find(store, host.pluginsDirectory()).map((ShopkeepersDropIn.Found found) -> found.save().label());
+        if (applied(state) || ShopkeepersDropIn.applied(state)) {
+            int waiting = pending(state).values().stream().mapToInt(Integer::intValue).sum();
+            return new Progress(waiting == 0 ? Phase.DONE : Phase.APPLIED, source, waiting);
+        }
+        if (state.has("applicationId") || ShopkeepersDropIn.staged(state)) return new Progress(Phase.STAGED, source, 0);
+        return new Progress(startupNotice().isPresent() ? Phase.FOUND : Phase.NONE, source, 0);
+    }
+
     /** {@code a}, {@code a and b}, {@code a, b and c}. */
     private static String listed(List<String> items) {
         if (items.size() == 1) return items.getFirst();
@@ -295,7 +317,11 @@ public final class CitizensDropIn {
         writeState(state);
         List<String> errors = npcs.reload();
         if (!errors.isEmpty()) lines.add(problems(errors));
-        if (!citizensPending) lines.add("Shops stay closed and new mob NPCs despawned; next /animus import citizens review, then accept shops,spawn");
+        if (citizensPending) lines.add("Next: /animus import citizens review");
+        else {
+            lines.add("Shops stay closed and new mob NPCs stay despawned until accepted");
+            lines.add("Next: /animus import citizens review, then /animus import citizens accept shops,spawn");
+        }
         return lines;
     }
 
@@ -339,7 +365,6 @@ public final class CitizensDropIn {
         if (!errors.isEmpty()) lines.add(problems(errors));
         int behaviors = imported(state).stream().mapToInt((NpcDefinition definition) -> definition.json().has("behaviors") ? definition.json().getAsJsonArray("behaviors").size() : 0).sum();
         if (behaviors > 0) lines.add("Text and command behaviors in behaviors/citizens/ load now");
-        lines.add("Next: /animus import citizens review, then accept all or one category at a time");
         return lines;
     }
 
@@ -463,6 +488,9 @@ public final class CitizensDropIn {
         problems.stream().limit(10).forEach((String problem) -> lines.add("Not accepted: " + problem));
         if (problems.size() > 10) lines.add((problems.size() - 10) + " more not accepted");
         lines.add("/animus import citizens rollback undoes the import and every accept");
+        int waiting = pending(state()).values().stream().mapToInt(Integer::intValue).sum();
+        lines.add(waiting > 0 ? "Next: /animus import citizens accept <categories|all>; " + waiting + " imported settings still off"
+                : "Next: place and skin NPCs with /animus tools; edit them in your browser with /animus editor pair");
         return lines;
     }
 
