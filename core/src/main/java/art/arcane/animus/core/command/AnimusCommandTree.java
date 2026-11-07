@@ -54,6 +54,7 @@ public final class AnimusCommandTree extends CommandGroup {
     DiagnosticCommands.Proof proof;
     DiagnosticCommands.FoliaProof foliaproof;
     RecordCommands record;
+    ToolkitCommands tools;
 
     public AnimusCommandTree(CommandServices services) {
         super(services);
@@ -75,6 +76,7 @@ public final class AnimusCommandTree extends CommandGroup {
         proof = new DiagnosticCommands.Proof(services);
         foliaproof = new DiagnosticCommands.FoliaProof(services);
         record = new RecordCommands(() -> services.recordings());
+        tools = new ToolkitCommands(services);
     }
 
     /** The engine for this tree, with completion values from the running services. */

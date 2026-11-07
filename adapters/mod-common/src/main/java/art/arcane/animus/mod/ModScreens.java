@@ -13,6 +13,9 @@ import art.arcane.animus.core.inventory.MatchRule;
 import art.arcane.animus.core.inventory.TradeInventory;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.platform.ModWorlds;
+import art.arcane.animus.core.text.ChatLine;
+import art.arcane.animus.core.toolkit.Toolkit;
+import art.arcane.animus.mod.toolkit.ModWand;
 import com.mojang.brigadier.ParseResults;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -324,6 +327,18 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
     }
 
     @Override public Economy economy() { return economy; }
+
+    @Override public boolean holdsWand(ServerPlayer player) { return ModWand.is(player.getMainHandItem()); }
+    @Override public boolean giveWand(ServerPlayer player) {
+        Optional<ItemStack> wand = stack(Toolkit.WAND_ITEM, Optional.of(Toolkit.WAND_NAME), Toolkit.WAND_LORE, new ArrayList<>());
+        if (wand.isEmpty()) return false;
+        ItemStack marked = ModWand.mark(wand.get());
+        if (!player.getInventory().add(marked)) drop(player, marked);
+        return true;
+    }
+    @Override public void chat(ServerPlayer player, ChatLine line) {
+        player.sendSystemMessage(line.interactive() ? ModText.adventure(line.component()) : ModText.component(line.console()));
+    }
 
     /** Server shutdown: closes every Animus window on the server thread. */
     void closeAll() {

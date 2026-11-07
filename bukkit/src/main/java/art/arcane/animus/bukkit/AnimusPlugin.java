@@ -31,6 +31,7 @@ import art.arcane.animus.bukkit.gui.BukkitHoloEvents;
 import art.arcane.animus.bukkit.gui.BukkitScreens;
 import art.arcane.animus.bukkit.packet.NativeDisplayAdapter;
 import art.arcane.animus.bukkit.recording.BukkitRecordings;
+import art.arcane.animus.bukkit.toolkit.BukkitToolkit;
 import art.arcane.animus.core.gui.HoloService;
 import art.arcane.animus.core.presentation.DisplayTransport;
 import art.arcane.animus.bukkit.runtime.BukkitRuntimeHost;
@@ -111,6 +112,7 @@ public final class AnimusPlugin extends JavaPlugin {
     private BuiltinCapabilities builtins;
     private volatile AnimusDirector director;
     private BukkitScreens screens;
+    private BukkitToolkit toolkit;
     private volatile ShopService<Player, ItemStack> shops;
     private volatile HoloService<Player, ItemStack> guis;
     private AutoCloseable screenTicks, hireTicks, triggerTicks;
@@ -189,7 +191,9 @@ public final class AnimusPlugin extends JavaPlugin {
             hireTicks = ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, hireDesk::tick));
             ShopService<Player, ItemStack> screenService = shops;
             HoloService<Player, ItemStack> holoService = guis;
-            living.interactions((Player player, UUID npc, boolean attack, boolean sneaking) ->
+            toolkit = new BukkitToolkit(this, runtime, shops.screens(), living, commands, (Player player) -> { BukkitRecordings current = recordings; return current == null ? Optional.empty() : current.skin(player); }, mainThread, ownerTicks);
+            BukkitToolkit tools = toolkit;
+            living.interactions((Player player, UUID npc, boolean attack, boolean sneaking) -> tools.interacted(player, npc, attack, sneaking) ||
                     hireDesk.interacted(player, npc, attack, sneaking) || screenService.interacted(player, npc, attack, sneaking) || holoService.interacted(player, npc, attack, sneaking));
             NpcRuntime<Player, ItemStack> owners = living;
             screenTicks = ownerTicks.apply(measured.timed(Subsystem.GUI, () -> {
@@ -303,6 +307,7 @@ public final class AnimusPlugin extends JavaPlugin {
             try { ticks.close(); }
             catch (Exception ignored) { /* The scheduler stops with the plugin. */ }
         }
+        if (toolkit != null) { toolkit.close(); toolkit = null; }
         if (screens != null) screens.closeAll();
         if (guis != null) guis.close();
         if (shops != null) shops.close();

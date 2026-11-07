@@ -76,7 +76,7 @@ public final class AnimusDirector {
 
     /** Runs the words after {@code /animus}. Help words, a group name or an unknown command show help instead. */
     public void execute(CommandActor actor, String[] arguments) {
-        List<String> tokens = CommandWords.tokens(arguments);
+        List<String> tokens = ToolkitCommands.expand(CommandWords.tokens(arguments));
         Optional<DirectorMiniMenu.DirectorHelpPage> help = DirectorMiniMenu.resolveHelp(engine, tokens);
         if (help.isPresent()) { help(actor, help.get().node(), help.get().pageIndex()); return; }
         ActorSender sender = new ActorSender(actor);

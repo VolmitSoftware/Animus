@@ -8,6 +8,7 @@ import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.AnimusRuntime;
+import art.arcane.animus.mod.toolkit.ModToolkit;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.Platform;
 import art.arcane.animus.core.RuntimeEnvironment;
@@ -87,6 +88,7 @@ public final class AnimusModRuntime {
         PersistedNpcService<ServerPlayer, ItemStack> living;
         ModCombat combat;
         ModScreens screens;
+        ModToolkit toolkit;
         volatile art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> shops;
         VanillaDisplayTransport displays;
         volatile art.arcane.animus.core.gui.HoloService<ServerPlayer, ItemStack> guis;
@@ -145,7 +147,10 @@ public final class AnimusModRuntime {
             next.ticks.every(measured.timed(Subsystem.BEHAVIORS, hires::tick));
             art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> screenService = next.shops;
             art.arcane.animus.core.gui.HoloService<ServerPlayer, ItemStack> holoService = next.guis;
-            next.living.interactions((ServerPlayer player, UUID npc, boolean attack, boolean sneaking) ->
+            next.toolkit = new ModToolkit(server, next.runtime, next.shops.screens(), next.living, files,
+                    (ServerPlayer player) -> { ModRecordings current = owner.recordings; return current == null ? Optional.empty() : current.skin(player); }, next.ticks::every);
+            ModToolkit tools = next.toolkit;
+            next.living.interactions((ServerPlayer player, UUID npc, boolean attack, boolean sneaking) -> tools.interacted(player, npc, attack, sneaking) ||
                     hires.interacted(player, npc, attack, sneaking) || screenService.interacted(player, npc, attack, sneaking) || holoService.interacted(player, npc, attack, sneaking));
             next.ticks.every(measured.timed(Subsystem.GUI, () -> {
                 for (UUID viewer : screenService.screens().viewing()) {
@@ -244,6 +249,7 @@ public final class AnimusModRuntime {
         if (active.serverBehaviors != null) active.serverBehaviors.close();
         if (active.behaviors != null) active.behaviors.close();
         if (active.builtins != null) active.builtins.close();
+        if (active.toolkit != null) active.toolkit.close();
         if (active.screens != null) active.screens.closeAll();
         if (active.guis != null) active.guis.close();
         if (active.shops != null) active.shops.close();
@@ -366,6 +372,7 @@ public final class AnimusModRuntime {
         Running active = running;
         if (active == null) return;
         if (active.shops != null) active.shops.screens().quit(player);
+        if (active.toolkit != null) active.toolkit.quit(player);
         if (active.guis != null) active.guis.quit(player);
         active.living.quit(player);
         if (active.serverBehaviors != null) active.serverBehaviors.quit(player);

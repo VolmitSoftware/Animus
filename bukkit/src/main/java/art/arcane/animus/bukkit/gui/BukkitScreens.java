@@ -15,6 +15,11 @@ import art.arcane.animus.core.inventory.Economy;
 import art.arcane.animus.core.inventory.ItemOps;
 import art.arcane.animus.core.inventory.TradeInventory;
 import art.arcane.animus.core.npc.NpcItem;
+import art.arcane.animus.bukkit.toolkit.BukkitWand;
+import art.arcane.animus.core.text.ChatLine;
+import art.arcane.animus.core.toolkit.Toolkit;
+import art.arcane.volmlib.util.plugin.ComponentMessenger;
+import art.arcane.volmlib.util.plugin.ComponentText;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -315,6 +320,16 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     @Override public void drop(Player player, ItemStack stack) { player.getWorld().dropItemNaturally(player.getLocation(), stack); }
     @Override public Economy economy() { return economy.get(); }
     @Override public art.arcane.animus.core.shop.ShopStock<ItemStack> stock(art.arcane.animus.core.shop.ShopDocument shop) { return stocks.open(shop); }
+    @Override public boolean holdsWand(Player player) { return BukkitWand.held(player); }
+    @Override public boolean giveWand(Player player) {
+        Optional<ItemStack> wand = stack(Toolkit.WAND_ITEM, Optional.of(Toolkit.WAND_NAME), Toolkit.WAND_LORE, new ArrayList<>());
+        wand.ifPresent((ItemStack stack) -> BukkitWand.give(player, stack));
+        return wand.isPresent();
+    }
+    @Override public void chat(Player player, ChatLine line) {
+        if (line.interactive()) ComponentMessenger.send(player, ComponentText.component(line.component()));
+        else player.sendMessage(line.console());
+    }
 
     private static Optional<Window> window(InventoryView view) {
         return view.getTopInventory().getHolder() instanceof Window window ? Optional.of(window) : Optional.empty();

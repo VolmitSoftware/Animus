@@ -81,4 +81,11 @@ public interface ScreenHost<P, S> {
     default art.arcane.animus.core.shop.ShopStock<S> stock(art.arcane.animus.core.shop.ShopDocument shop) {
         return art.arcane.animus.core.shop.ShopStock.refused("this platform has no container shops");
     }
+
+    /** Whether the player holds the Animus selection wand in the main hand, found by its item marker, not its name. */
+    default boolean holdsWand(P player) { return false; }
+    /** Puts a selection wand in the player's inventory, or drops it at their feet when full. False when the platform has none. */
+    default boolean giveWand(P player) { return false; }
+    /** One chat line with its click chips; a platform without click text sends the console text. */
+    default void chat(P player, art.arcane.animus.core.text.ChatLine line) { message(player, line.console()); }
 }

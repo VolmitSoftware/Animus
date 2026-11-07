@@ -32,6 +32,7 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
         public ScreenHost.Pose pose;
         public final List<String> effects = new ArrayList<>();
         public int opened, closed;
+        public boolean wand;
         public Player(String name) { this.name = name; this.id = UUID.nameUUIDFromBytes(name.getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
     }
 
@@ -96,6 +97,8 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
     }
     @Override public void drop(Player player, Stack stack) { player.dropped.add(stack); }
     @Override public Economy economy() { return economy; }
+    @Override public boolean holdsWand(Player player) { return player.wand; }
+    @Override public boolean giveWand(Player player) { player.wand = true; return true; }
 
     /** The slot of the first item whose plain name contains the text. */
     public static int slot(Player player, String name) {
