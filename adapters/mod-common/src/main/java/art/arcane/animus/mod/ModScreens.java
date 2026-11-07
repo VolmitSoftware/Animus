@@ -1,5 +1,6 @@
 package art.arcane.animus.mod;
 
+import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.PacketKind;
 import art.arcane.animus.core.gui.GuiModel;
@@ -207,7 +208,7 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
         player.connection.send(new ClientboundSetTitleTextPacket(ModText.component(title)));
     }
     @Override public void sound(ServerPlayer player, String sound, String source, float volume, float pitch) {
-        Identifier id = Identifier.tryParse(sound.contains(":") ? sound : "minecraft:" + sound);
+        Identifier id = Identifier.tryParse(MinecraftIds.normalize(sound));
         if (id == null) return;
         Holder<SoundEvent> event = BuiltInRegistries.SOUND_EVENT.get(id).<Holder<SoundEvent>>map((Holder.Reference<SoundEvent> reference) -> reference)
                 .orElseGet(() -> Holder.direct(SoundEvent.createVariableRangeEvent(id)));
@@ -271,13 +272,13 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
     }
 
     @Override public boolean effect(ServerPlayer player, String effect, int ticks, int amplifier) {
-        Identifier id = Identifier.tryParse(effect.contains(":") ? effect : "minecraft:" + effect);
+        Identifier id = Identifier.tryParse(MinecraftIds.normalize(effect));
         Optional<Holder.Reference<MobEffect>> type = id == null ? Optional.empty() : BuiltInRegistries.MOB_EFFECT.get(id);
         return type.isPresent() && player.addEffect(new MobEffectInstance(type.get(), ticks, amplifier), null);
     }
 
     @Override public boolean particle(ServerPlayer player, String particle, int count, double spread, double x, double y, double z) {
-        Identifier id = Identifier.tryParse(particle.contains(":") ? particle : "minecraft:" + particle);
+        Identifier id = Identifier.tryParse(MinecraftIds.normalize(particle));
         if (id == null || !BuiltInRegistries.PARTICLE_TYPE.containsKey(id)) return false;
         if (!(BuiltInRegistries.PARTICLE_TYPE.getValue(id) instanceof SimpleParticleType simple)) return false;
         return player.level().sendParticles(player, simple, false, false, x, y, z, count, spread, spread, spread, 0);

@@ -5,6 +5,7 @@ import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.storage.NpcPaths;
 import art.arcane.animus.core.control.RideSettings;
 import art.arcane.animus.core.mount.MountDeclaration;
+import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.navigation.WaypointSettings;
 import com.google.gson.*;
 import java.io.IOException;
@@ -20,7 +21,7 @@ public final class NpcDefinition {
     private final boolean spawned, imported;
     private final List<String> behaviors, tags, groups;
     private NpcDefinition(JsonObject data) {
-        this.data = data.deepCopy();
+        this.data = normalized(data);
         spawned = data.get("spawned").getAsBoolean();
         imported = data.has("migration");
         List<String> references = new ArrayList<>();
@@ -63,7 +64,8 @@ public final class NpcDefinition {
         return new NpcDefinition(moved);
     }
 
-    public static List<String> validate(JsonObject object) {
+    public static List<String> validate(JsonObject source) {
+        JsonObject object = normalized(source);
         List<String> errors = new ArrayList<>();
         integer(object, "schemaVersion", 1, 1, errors);
         integer(object, "revision", 1, Long.MAX_VALUE, errors);
@@ -165,6 +167,15 @@ public final class NpcDefinition {
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
         }
         return List.copyOf(errors);
+    }
+
+    /** A copy whose entity type is in {@link MinecraftIds#normalize} form, so a bare {@code villager} reads as {@code minecraft:villager}. */
+    private static JsonObject normalized(JsonObject source) {
+        JsonObject copy = source.deepCopy();
+        JsonElement type = copy.get("type");
+        if (type != null && type.isJsonPrimitive() && type.getAsJsonPrimitive().isString() && MinecraftIds.valid(type.getAsString()))
+            copy.addProperty("type", MinecraftIds.normalize(type.getAsString()));
+        return copy;
     }
 
     private static String string(JsonObject data, String key, List<String> errors) {

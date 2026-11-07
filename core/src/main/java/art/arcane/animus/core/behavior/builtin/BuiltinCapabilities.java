@@ -35,6 +35,7 @@ import art.arcane.animus.core.extension.BuiltinPolicy;
 import art.arcane.animus.core.extension.CapabilityRefusal;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcAttributes;
+import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.recording.Playback;
 import art.arcane.animus.core.storage.JsonDocuments;
@@ -83,7 +84,6 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private static final String RECORDING_ID = "[a-z0-9][a-z0-9_-]{0,63}";
     private static final int DEFAULT_WAIT_TICKS = 1200, MINIMUM_WAIT_TICKS = 20, MAXIMUM_WAIT_TICKS = 12_000;
     private static final long OWNER_TICK_MILLIS = 50, LAGGING_OWNER_ALLOWANCE = 2, WAIT_DEADLINE_SLACK_MILLIS = 5000;
-    private static final String RESOURCE_KEY = "[a-z0-9_.-]+:[a-z0-9_./-]+";
     private static final String ANIMATION_ID = "[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}";
     private static final long MAXIMUM_EXPIRY_SECONDS = 31_536_000L;
     private static final int MAXIMUM_ITEMS = 6400;
@@ -410,11 +410,11 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         action("set-equipment", Effect.WORLD, "Shows an item in an equipment slot, or clears the slot when no item is given. Lasts until the runtime restarts or the definition changes.",
                 schema(choice("slot", "main_hand", "off_hand", "head", "chest", "legs", "feet", "body") + "," + string("item", 128), required("slot")),
                 (arguments, problems) -> {
-                    if (arguments.has("item")) matches(arguments, "item", RESOURCE_KEY, problems);
+                    if (arguments.has("item")) matches(arguments, "item", MinecraftIds.PATTERN, problems);
                 },
                 call -> {
                     EquipmentSlot slot = EquipmentSlot.valueOf(text(call.arguments, "slot").orElseThrow().toUpperCase(Locale.ROOT));
-                    Optional<String> item = text(call.arguments, "item");
+                    Optional<String> item = text(call.arguments, "item").map(MinecraftIds::normalize);
                     return onOwner(call, () -> { platform.setEquipment(call.npc(), slot, item); return "{}"; });
                 });
         action("set-attribute", Effect.WORLD, "Sets one vanilla attribute of the NPC, such as scale or movement_speed, or with reset returns it to the definition's value."
@@ -429,9 +429,9 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                 });
         action("play-sound", Effect.PRESENTATION, "Plays a sound at the NPC, or with at: player at the player, for the triggering player or nearby players. Server behaviors play at the player.",
                 schema(string("sound", 128) + "," + number("volume", 0, 4) + "," + number("pitch", 0.5, 2) + "," + AUDIENCE + "," + choice("at", "npc", "player") + "," + PLAYER, required("sound")),
-                (arguments, problems) -> { matches(arguments, "sound", RESOURCE_KEY, problems); checkPlayer(arguments, problems); },
+                (arguments, problems) -> { matches(arguments, "sound", MinecraftIds.PATTERN, problems); checkPlayer(arguments, problems); },
                 call -> {
-                    SoundEffect sound = new SoundEffect(text(call.arguments, "sound").orElseThrow(), (float) decimal(call.arguments, "volume").orElse(1), (float) decimal(call.arguments, "pitch").orElse(1));
+                    SoundEffect sound = new SoundEffect(MinecraftIds.normalize(text(call.arguments, "sound").orElseThrow()), (float) decimal(call.arguments, "volume").orElse(1), (float) decimal(call.arguments, "pitch").orElse(1));
                     if (atPlayer(call)) {
                         UUID anchor = target(call);
                         Audience audience = audience(call);
@@ -442,10 +442,10 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                 });
         action("spawn-particle", Effect.PRESENTATION, "Shows a particle effect at the NPC, or with at: player at the player, to the triggering player or nearby players. Server behaviors show it at the player.",
                 schema(string("particle", 128) + "," + integer("count", 1, 64) + "," + number("spread", 0, 8) + "," + AUDIENCE + "," + choice("at", "npc", "player") + "," + PLAYER, required("particle")),
-                (arguments, problems) -> { matches(arguments, "particle", RESOURCE_KEY, problems); checkPlayer(arguments, problems); },
+                (arguments, problems) -> { matches(arguments, "particle", MinecraftIds.PATTERN, problems); checkPlayer(arguments, problems); },
                 call -> {
                     int count = call.arguments.has("count") ? call.arguments.get("count").getAsInt() : 1;
-                    ParticleEffect particle = new ParticleEffect(text(call.arguments, "particle").orElseThrow(), count, decimal(call.arguments, "spread").orElse(0));
+                    ParticleEffect particle = new ParticleEffect(MinecraftIds.normalize(text(call.arguments, "particle").orElseThrow()), count, decimal(call.arguments, "spread").orElse(0));
                     if (atPlayer(call)) {
                         UUID anchor = target(call);
                         Audience audience = audience(call);
@@ -569,20 +569,20 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                 BuiltinCapabilities::checkTeleport, this::teleport);
         action("give-item", Effect.WORLD, "Gives the triggering player, or the player named by player, amount of an item (1 by default), with an optional name and lore. Reports given.",
                 schema(string("item", 128) + "," + integer("amount", 1, MAXIMUM_ITEMS) + "," + string("name", 256) + "," + texts("lore", 1, 16, 256) + "," + PLAYER, required("item")),
-                (arguments, problems) -> { matches(arguments, "item", RESOURCE_KEY, problems); if (arguments.has("name")) plainText(arguments, "name", problems); checkPlayer(arguments, problems); },
+                (arguments, problems) -> { matches(arguments, "item", MinecraftIds.PATTERN, problems); if (arguments.has("name")) plainText(arguments, "name", problems); checkPlayer(arguments, problems); },
                 call -> {
                     UUID player = target(call);
                     List<String> lore = new ArrayList<>();
                     if (call.arguments.has("lore")) for (JsonElement line : call.arguments.getAsJsonArray("lore")) lore.add(line.getAsString());
-                    BehaviorPlatform.ItemGift gift = new BehaviorPlatform.ItemGift(text(call.arguments, "item").orElseThrow(), amount(call.arguments), text(call.arguments, "name"), lore);
+                    BehaviorPlatform.ItemGift gift = new BehaviorPlatform.ItemGift(MinecraftIds.normalize(text(call.arguments, "item").orElseThrow()), amount(call.arguments), text(call.arguments, "name"), lore);
                     return onPlayer(call, player, () -> result("given", platform.giveItem(player, gift)));
                 });
         action("take-item", Effect.WORLD, "Takes up to amount (1 by default) of an item from the triggering player, or the player named by player. Reports taken, never more than held.",
                 schema(string("item", 128) + "," + integer("amount", 1, MAXIMUM_ITEMS) + "," + PLAYER, required("item")),
-                (arguments, problems) -> { matches(arguments, "item", RESOURCE_KEY, problems); checkPlayer(arguments, problems); },
+                (arguments, problems) -> { matches(arguments, "item", MinecraftIds.PATTERN, problems); checkPlayer(arguments, problems); },
                 call -> {
                     UUID player = target(call);
-                    String item = text(call.arguments, "item").orElseThrow();
+                    String item = MinecraftIds.normalize(text(call.arguments, "item").orElseThrow());
                     int amount = amount(call.arguments);
                     return onPlayer(call, player, () -> result("taken", Math.min(amount, Math.max(0, platform.takeItem(player, item, amount)))));
                 });

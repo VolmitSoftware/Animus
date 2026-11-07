@@ -1,5 +1,6 @@
 package art.arcane.animus.core.config;
 
+import art.arcane.animus.core.platform.MinecraftIds;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.util.EnumMap;
@@ -29,7 +30,7 @@ public record EditorNotifySettings(boolean enabled, boolean chat, boolean action
     public record Sound(String id, double volume, double pitch) {
         public Sound {
             Objects.requireNonNull(id);
-            if (!id.isEmpty() && (id.length() > 128 || !id.matches("([a-z0-9_.-]+:)?[a-z0-9_./-]+"))) throw new IllegalArgumentException("sound must be a sound id such as minecraft:block.note_block.pling, or empty for silence");
+            if (!id.isEmpty() && (id.length() > 128 || !id.matches(MinecraftIds.PATTERN))) throw new IllegalArgumentException("sound must be a sound id such as minecraft:block.note_block.pling, or empty for silence");
             if (!(volume >= 0 && volume <= 2)) throw new IllegalArgumentException("volume must be within 0..2");
             if (!(pitch >= 0.5 && pitch <= 2)) throw new IllegalArgumentException("pitch must be within 0.5..2");
         }

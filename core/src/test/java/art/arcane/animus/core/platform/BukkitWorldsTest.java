@@ -21,6 +21,12 @@ class BukkitWorldsTest {
         assertEquals(Optional.empty(), BukkitWorlds.resolve("missing", LOADED));
     }
 
+    @Test void bareDimensionKeysAreMinecraftKeys() {
+        assertEquals(Optional.of("world"), BukkitWorlds.resolve("overworld", LOADED));
+        assertEquals(Optional.of("world_nether"), BukkitWorlds.resolve("the_nether", LOADED));
+        assertEquals(Optional.of("world_the_end"), BukkitWorlds.resolve("the_end", LOADED));
+    }
+
     @Test void dimensionKeysAndUuidsResolveToTheWorldName() {
         assertEquals(Optional.of("world"), BukkitWorlds.resolve("minecraft:overworld", LOADED));
         assertEquals(Optional.of("world_nether"), BukkitWorlds.resolve("minecraft:the_nether", LOADED));

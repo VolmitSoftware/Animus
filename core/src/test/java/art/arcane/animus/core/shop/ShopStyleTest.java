@@ -79,6 +79,16 @@ class ShopStyleTest {
         assertThrows(IllegalArgumentException.class, () -> new ShopSettings(true, "auto", "villager", "#,##0.##", 2000, Map.of()));
     }
 
+    @Test void bareVillagerTypeAndProfessionAreMinecraftIds() throws Exception {
+        JsonObject definition = JsonDocuments.object("""
+                {"schemaVersion": 1, "revision": 1, "uuid": "1fde8840-5f7a-5a37-bc24-357183d2e276", "id": "farmer", "group": "town", "name": "Farmer",
+                 "type": "villager", "spawned": true, "position": {"world": "world", "x": 0, "y": 64, "z": 0, "yaw": 0, "pitch": 0},
+                 "modules": {"animus:shop": {"shop": "town:market", "villager": {"profession": "farmer", "level": 2}}}}
+                """);
+        ShopBinding binding = ShopBinding.of(NpcDefinition.parse(definition.toString())).orElseThrow();
+        assertEquals(Optional.of(new ShopBinding.Villager("minecraft:farmer", 2)), binding.villager());
+    }
+
     @Test void bindingsOverrideTheStyleAndCarryVillagerLooks() throws Exception {
         JsonObject definition = JsonDocuments.object("""
                 {"schemaVersion": 1, "revision": 1, "uuid": "1fde8840-5f7a-5a37-bc24-357183d2e276", "id": "farmer", "group": "town", "name": "Farmer",

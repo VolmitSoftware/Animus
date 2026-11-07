@@ -12,6 +12,7 @@ library;
 
 import '../../model/animus_document.dart';
 import '../gui/gui_json.dart';
+import '../minecraft_ids.dart';
 
 const String combatModule = 'animus:combat';
 
@@ -349,7 +350,7 @@ List<Diagnostic> validateCombat(Object? settings) {
         check.error(map.path, 'at most 64 entries');
       } else {
         for (final String item in map.object.keys) {
-          if (!_namespaced.hasMatch(item)) {
+          if (!validMinecraftId(item)) {
             check.error(map.field(item), 'expected namespace:item key');
           } else {
             map.number(item, combatRange('weaponDamage', item)!);
@@ -469,7 +470,6 @@ bool combatRulesScan(Map<String, Object?> rules) {
       rules.containsKey('healthBelow');
 }
 
-final RegExp _namespaced = RegExp(r'^[a-z0-9_.-]+:[a-z0-9_./-]+$');
 final RegExp _permission = RegExp(r'^[A-Za-z0-9_.*-]{1,128}$');
 final RegExp _group = RegExp(r'^[A-Za-z0-9_.-]{1,64}$');
 final RegExp _region = RegExp(r"^[A-Za-z0-9_,'+/-]{1,64}$");
@@ -545,7 +545,7 @@ void _rules(_Reader rules, _Level level) {
       items.patterns(key);
     }
   }
-  rules.matching('effects', _namespaced, 'expected namespace:effect');
+  rules.ids('effects', 'expected namespace:effect');
   rules.matching('permissions', _permission, 'expected a permission node');
   rules.matching('groups', _group, 'expected a group name');
   if (!refused.contains('all')) {
@@ -720,10 +720,10 @@ class _Reader {
     }
   }
 
-  /// A `namespace:id` string at [key]; absent reads as empty and fails, as core's `string(key, "")` does.
+  /// A registry id at [key], bare meaning `minecraft:`; absent reads as empty and fails, as core's `string(key, "")` does.
   void namespaced(String key, String expected) {
     final String? value = object.containsKey(key) ? string(key) : '';
-    if (value != null && !_namespaced.hasMatch(value)) check.error(field(key), expected);
+    if (value != null && !validMinecraftId(value)) check.error(field(key), expected);
   }
 
   /// Whether [key] holds a canonical UUID; reports anything else that is present.
@@ -765,6 +765,16 @@ class _Reader {
       }
     }
     return result;
+  }
+
+  /// Registry ids at [key], bare meaning `minecraft:`, as core's `ids` reads them.
+  void ids(String key, String expected) {
+    final List<Object?> values = asList(object[key]);
+    final List<String> strings = this.strings(key);
+    if (strings.length != values.length) return;
+    for (int index = 0; index < strings.length; index++) {
+      if (!validMinecraftId(strings[index])) check.error('${field(key)}[$index]', expected);
+    }
   }
 
   void matching(String key, RegExp form, String expected) {

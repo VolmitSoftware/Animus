@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.packet;
 
+import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.Load;
@@ -398,7 +399,7 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
 
         private Object state(String key) throws ReflectiveOperationException {
             Object id;
-            try { id = identifierParse.invoke(null, key.contains(":") ? key : "minecraft:" + key); }
+            try { id = identifierParse.invoke(null, MinecraftIds.normalize(key)); }
             catch (java.lang.reflect.InvocationTargetException invalid) { return barrier; }
             if (!(boolean) registryContains.invoke(blockRegistry, id)) return barrier;
             return defaultState.invoke(registryValue.invoke(blockRegistry, id));

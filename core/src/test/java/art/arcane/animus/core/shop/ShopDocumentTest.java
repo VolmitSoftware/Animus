@@ -19,6 +19,12 @@ class ShopDocumentTest {
         assertEquals(Optional.of(ShopDocument.Type.SELL), shop.entry("wheat").map(ShopDocument.Entry::type));
     }
 
+    @Test void bareOfferItemsAreMinecraftItems() {
+        ShopDocument shop = ShopDocument.parse("town:baker", ShopScreenTest.BAKERY.replace("\"minecraft:bread\"", "\"bread\"")).shop().orElseThrow();
+        assertEquals("minecraft:bread", shop.entry("bread").orElseThrow().item().id());
+        assertEquals(List.of(), problems(ShopScreenTest.BAKERY.replace("\"minecraft:cake\"", "\"cake\"")));
+    }
+
     @Test void problemsNameTheirField() {
         assertTrue(problems(ShopScreenTest.BAKERY.replace("\"price\": 12,", "\"price\": -1,")).contains("$.pages[0].buy.10.price: expected a price from 0 to 1000000000000 with at most 4 decimal places"));
         assertTrue(problems(ShopScreenTest.BAKERY.replace("\"id\": \"cake\"", "\"id\": \"bread\"")).contains("$.pages[1].buy.0.id: entry id bread is used twice in this shop"));

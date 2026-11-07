@@ -35,7 +35,7 @@
       "additionalProperties": false,
       "required": ["id"],
       "properties": {
-        "id": {"type": "string", "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"},
+        "id": {"type": "string", "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"},
         "count": {"type": "integer", "minimum": 1, "maximum": 99},
         "components": {"type": "string", "maxLength": 4096, "pattern": "^\\[[\\s\\S]*\\]$"}
       }
@@ -56,7 +56,7 @@
                                  "itemDisplay": {"enum": ["none", "thirdperson_lefthand", "thirdperson_righthand", "firstperson_lefthand", "firstperson_righthand", "head", "gui", "ground", "fixed"]}}}},
         {"if": {"properties": {"type": {"const": "block"}}},
          "then": {"required": ["block"], "propertyNames": {"enum": ["type", "translation", "rotation", "scale", "block"]},
-                  "properties": {"block": {"type": "string", "maxLength": 1024, "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+(\\[[^\\]]*\\])?$"}}}},
+                  "properties": {"block": {"type": "string", "maxLength": 1024, "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+(\\[[^\\]]*\\])?$"}}}},
         {"if": {"properties": {"type": {"const": "text"}}},
          "then": {"required": ["text"], "propertyNames": {"enum": ["type", "translation", "rotation", "scale", "text", "billboard", "background", "shadow", "lineWidth"]},
                   "properties": {"text": {"type": "string", "maxLength": 1024},
