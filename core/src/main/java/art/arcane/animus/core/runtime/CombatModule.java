@@ -251,7 +251,7 @@ public final class CombatModule implements AutoCloseable {
                 try {
                     CombatDeletions.delete(runtime.npcs(), npc).ifPresent((CombatDeletions.Deleted deleted) -> {
                         deletedOnDeath.incrementAndGet();
-                        warnings.accept("Combat NPC " + deleted.id() + " died and was deleted (respawn.deleteOnDeath); undo with /animus rollback " + deleted.transaction());
+                        warnings.accept("Combat NPC " + deleted.id() + " died and was deleted (respawn.deleteOnDeath); tx " + deleted.transaction());
                     });
                 } catch (java.io.IOException failure) {
                     warnings.accept("Combat could not delete dead NPC " + npc + ": " + failure.getMessage());

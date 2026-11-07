@@ -31,6 +31,8 @@ class SuggestInput extends StatefulWidget {
     super.key,
   });
 
+  /// The text field's element id, so a row label can name it with `for`.
+  final String? id;
   final String value;
   final void Function(String value) onChanged;
   final List<FieldOption> suggestions;
@@ -42,9 +44,6 @@ class SuggestInput extends StatefulWidget {
 
   /// The document kind the text names, which adds the footer rows.
   final DocumentKind? references;
-
-  /// The text field's element id, for a row label's `for`.
-  final String? id;
 
   @override
   State<SuggestInput> createState() => _SuggestInputState();

@@ -46,10 +46,11 @@ Object? conditionValue(String text) {
 /// Easings a menu button or toggle may hover with (core's MenuDocument).
 const List<String> hoverEasings = <String>['linear', 'ease_out_cubic', 'ease_in_out_cubic', 'back_out'];
 
-/// A labelled row whose label points at the control by a path-based id.
-Widget guiFieldRow(String label, String path, List<Diagnostic> diagnostics, Widget Function(String id) child, {String? help, bool nested = false}) {
+/// A labelled row whose label points at the control by a path-based id;
+/// with [labelled] false (a list of lines) the label is plain text.
+Widget guiFieldRow(String label, String path, List<Diagnostic> diagnostics, Widget Function(String id) child, {String? help, bool nested = false, bool labelled = true}) {
   final String id = guiPathId(path);
-  return GuiRow(label: label, forId: id, help: help, problems: diagnosticsAt(diagnostics, path, nested: nested), child: child(id));
+  return GuiRow(label: label, forId: labelled ? id : null, help: help, problems: diagnosticsAt(diagnostics, path, nested: nested), child: child(id));
 }
 
 class IconEditor extends StatelessWidget {
@@ -171,6 +172,7 @@ class IconEditor extends StatelessWidget {
             childPath(path, 'lore'),
             diagnostics,
             nested: true,
+            labelled: false,
             (String _) => GuiLinesEditor(lines: stringList(icon['lore']), names: names, onChanged: (List<String> lines) => onChanged(withField(icon, 'lore', lines))),
           ),
         ],
@@ -426,7 +428,7 @@ class ComponentEditor extends StatelessWidget {
     }
 
     return GuiSection(title: 'Tooltip', open: tooltip.isNotEmpty, children: <Widget>[
-      guiFieldRow('Lines', childPath(tooltipPath, 'lines'), diagnostics, nested: true,
+      guiFieldRow('Lines', childPath(tooltipPath, 'lines'), diagnostics, nested: true, labelled: false,
           (String _) => GuiLinesEditor(lines: stringList(tooltip['lines']), names: names, onChanged: (List<String> lines) => setTooltip('lines', lines))),
       guiFieldRow('Delay', childPath(tooltipPath, 'delayTicks'), diagnostics, help: 'Ticks before showing, default 10',
           (String id) => GuiNumberInput(id: id, value: asInt(tooltip['delayTicks']), label: 'Tooltip delay in ticks', onChanged: (num? v) => setTooltip('delayTicks', v))),

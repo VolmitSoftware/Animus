@@ -1,5 +1,6 @@
 package art.arcane.animus.core.recording;
 
+import art.arcane.animus.core.text.Palette;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -106,7 +107,7 @@ class RecordingSessionsTest {
         Player player = join();
         Actor actor = new Actor(Optional.of(player.id));
         sessions.start(actor, "demo");
-        assertTrue(actor.last().startsWith("Recording demo: sampling every 2 ticks"), actor.last());
+        assertTrue(actor.last().contains("Recording demo: every 2 ticks, up to "), actor.last());
         for (int tick = 0; tick < 40; tick++) {
             player.x += 0.2;
             player.sneaking = tick >= 20;
@@ -152,7 +153,7 @@ class RecordingSessionsTest {
         Actor actor = new Actor(Optional.of(player.id));
         sessions.start(actor, "jump");
         sessions.start(actor, "again");
-        assertTrue(actor.last().contains("already recording"), actor.last());
+        assertTrue(actor.last().contains("Already recording; /animus record stop or cancel first"), actor.last());
         for (int tick = 0; tick < 30; tick++) { player.x += 0.1; host.tick(); }
         player.x += 20;
         host.tick();
@@ -162,7 +163,7 @@ class RecordingSessionsTest {
 
         Actor console = new Actor(Optional.empty());
         sessions.start(console, "console");
-        assertEquals("Only a player can start a recording.", console.last());
+        assertEquals(Palette.error("Players only"), console.last());
         assertTrue(sessions.status(console).getFirst().startsWith("Recordings enabled | sessions 0/4"), sessions.status(console).toString());
     }
 
@@ -170,6 +171,6 @@ class RecordingSessionsTest {
         Player player = join();
         Actor actor = new Actor(Optional.of(player.id));
         sessions.preview(actor, "demo");
-        assertEquals("Previews are unavailable: no packets in tests", actor.last());
+        assertEquals(Palette.error("Previews unavailable: no packets in tests"), actor.last());
     }
 }

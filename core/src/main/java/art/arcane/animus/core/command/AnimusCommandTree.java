@@ -11,6 +11,8 @@ import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.text.ChatLine;
+import art.arcane.animus.core.text.DocsLink;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
@@ -105,10 +107,26 @@ public final class AnimusCommandTree extends CommandGroup {
             case "style" -> List.of("native", "chest");
             case "recording" -> services.recordings().ids();
             case "action" -> List.of("play", "stop");
+            case "type" -> TYPES;
+            case "world" -> runtime().npcs().all().stream().map((NpcDefinition definition) -> definition.json().getAsJsonObject("position"))
+                    .filter((JsonObject position) -> position != null && position.has("world")).map((JsonObject position) -> position.get("world").getAsString()).distinct().limit(100).toList();
+            case "group" -> runtime().npcs().all().stream().map(NpcDefinition::group).filter((String group) -> !group.isEmpty()).distinct().limit(100).toList();
+            case "mob" -> List.of("stop");
+            case "anchor" -> List.of("center", "corner", "schematic");
+            case "rotation" -> List.of("0", "90", "180", "270");
+            case "mirror" -> List.of("none", "x", "z");
+            case "pattern" -> List.of("spiral", "reversespiral", "linear", "reverselinear");
+            case "materials" -> List.of("creative", "donate", "container");
+            case "groupall", "ignoreair", "ignoreliquids", "excavate", "hold", "silent", "scaffolding" -> List.of("true", "false");
+            case "format" -> List.of("folder", "bundle");
             case "categories" -> { List<String> categories = new ArrayList<>(CitizensDropIn.CATEGORIES); categories.add("all"); categories.add(CitizensDropIn.COMMANDS); yield categories; }
             default -> List.of();
         };
     }
+
+    /** Common entity types offered for {@code type}; any {@code namespace:type} is accepted. */
+    private static final List<String> TYPES = List.of("minecraft:player", "minecraft:villager", "minecraft:wandering_trader", "minecraft:zombie",
+            "minecraft:skeleton", "minecraft:iron_golem", "minecraft:armor_stand", "minecraft:horse", "minecraft:wolf", "minecraft:cat");
 
     private Administration administration() { return new Administration(runtime()); }
 
@@ -116,7 +134,32 @@ public final class AnimusCommandTree extends CommandGroup {
     @AnimusPermission("animus.status")
     void status() {
         CommandActor actor = actor();
-        files(actor, administration()::status, () -> actor.tell(living().status()));
+        Administration administration = administration();
+        try {
+            services.files().execute(() -> {
+                List<String> lines;
+                try { lines = administration.status(); }
+                catch (RuntimeException failure) { reply(actor, Palette.error("Status unavailable: " + failure.getMessage())); return; }
+                if (!stopping()) actor.reply(() -> { if (!stopping()) status(actor, lines, living().status()); });
+            });
+        } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
+    }
+
+    /**
+     * A player gets one line, the headline and the runtime state, with the runtime counters and the settings in effect
+     * behind {@code [Details]}; the console gets the headline, the runtime counters and the settings line.
+     */
+    static void status(CommandActor actor, List<String> lines, String runtime) {
+        int split = runtime.indexOf(" | ");
+        String state = split < 0 ? runtime : runtime.substring(0, split);
+        List<String> details = new ArrayList<>(List.of(runtime));
+        details.addAll(lines.subList(1, lines.size()));
+        if (actor.player().isEmpty()) {
+            actor.tell(lines.getFirst());
+            details.subList(0, Math.min(2, details.size())).forEach(actor::tell);
+            return;
+        }
+        actor.rich(ChatLine.reply(lines.getFirst() + " | " + state).details("Details", details).docs(DocsLink.COMMANDS));
     }
 
     @Director(description = "List NPC definitions")
@@ -126,9 +169,9 @@ public final class AnimusCommandTree extends CommandGroup {
         try {
             services.files().execute(() -> {
                 List<String> rows = administration.rows();
-                if (!stopping()) actor.reply(() -> listing(actor, "NPC definitions (" + rows.size() + ")", "/" + BuildIdentity.ID + " list", rows, page, "No NPC definitions yet; /animus create adds one."));
+                if (!stopping()) actor.reply(() -> listing(actor, "NPCs (" + rows.size() + ")", "/" + BuildIdentity.ID + " list", rows, page, "No NPCs yet; /animus create adds one"));
             });
-        } catch (RejectedExecutionException full) { actor.tell(Palette.error("The Animus file queue is full; retry shortly.")); }
+        } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
     @Director(description = "Create a dormant NPC definition")
@@ -147,7 +190,40 @@ public final class AnimusCommandTree extends CommandGroup {
     @Director(description = "Show an NPC's definition and runtime state")
     void inspect(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
         CommandActor actor = actor();
-        npc(actor, npc).ifPresent((String id) -> files(actor, () -> administration().inspect(id), () -> actor.tell(living().inspect(id))));
+        Administration administration = administration();
+        npc(actor, npc).ifPresent((String id) -> {
+            try {
+                services.files().execute(() -> {
+                    Administration.Inspection inspection;
+                    try { inspection = administration.inspect(id); }
+                    catch (IOException | RuntimeException failure) { reply(actor, Palette.error(String.valueOf(failure.getMessage()))); return; }
+                    if (!stopping()) actor.reply(() -> { if (!stopping()) inspect(actor, inspection, living().inspect(id)); });
+                });
+            } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
+        });
+    }
+
+    /**
+     * Two lines. A player gets the summary with the id and position as copy chips and the JSON behind a copy chip, then the
+     * runtime state with its counters behind {@code [Details]}; the console gets the summary and the full runtime line.
+     */
+    static void inspect(CommandActor actor, Administration.Inspection inspection, String runtime) {
+        String summary = inspection.summary(), id = inspection.effective().qualifiedId(), position = inspection.position();
+        String problem = inspection.problem().map((String text) -> " | group problem: " + text).orElse("");
+        if (actor.player().isEmpty()) {
+            actor.tell(summary + (position.isEmpty() ? "" : " | " + position) + problem);
+            actor.tell(runtime);
+            return;
+        }
+        ChatLine head = ChatLine.reply("").copyable(id).text(Palette.GREY + summary.substring(id.length()));
+        if (!position.isEmpty()) head.text(Palette.GREY + " | ").copyable(position);
+        head.text(Palette.GREY + problem).copy("[JSON]", inspection.stored(), "Copy the stored JSON");
+        if (!inspection.provenance().isEmpty()) head.copy("[Merged]", inspection.merged(), "Copy the JSON after trait groups");
+        actor.rich(head);
+        int split = runtime.indexOf(';');
+        List<String> details = new ArrayList<>(List.of(runtime));
+        details.addAll(inspection.provenance());
+        actor.rich(ChatLine.reply(split < 0 ? runtime : runtime.substring(0, split)).details("Details", details));
     }
 
     @Director(description = "Merge a JSON object into an NPC's definition")
@@ -212,15 +288,16 @@ public final class AnimusCommandTree extends CommandGroup {
         CommandActor actor = actor();
         try {
             living().select(actor.player().orElseThrow(), npc);
-            actor.tell(Palette.success("Selected " + npc));
+            actor.rich(ChatLine.success("Selected ").copyable(npc));
         } catch (RuntimeException refused) { actor.tell(Palette.error(String.valueOf(refused.getMessage()))); }
     }
 
     @Director(description = "Show your selected NPC", origin = DirectorOrigin.PLAYER)
     void selection() {
         CommandActor actor = actor();
-        actor.tell(living().selection(actor.player().orElseThrow()).map((String id) -> "Selected " + id)
-                .orElse("No NPC selected. Use /animus select <npc> or interact with a visible NPC."));
+        Optional<String> selected = living().selection(actor.player().orElseThrow());
+        if (selected.isPresent()) actor.rich(ChatLine.reply("Selected ").copyable(selected.get()));
+        else actor.tell("No NPC selected; /animus select <npc> or right-click one");
     }
 
     @Director(description = "Walk, swim or fly an NPC to a point; whole-number x and z mean the block centre")
@@ -231,9 +308,9 @@ public final class AnimusCommandTree extends CommandGroup {
                   @Param(name = "mode", defaultValue = "walk", description = "walk, swim or fly") MovementProfile.Mode mode,
                   @Param(name = "speed", defaultValue = "2.0", description = "Blocks per second") double speed) {
         CommandActor actor = actor();
-        npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Animus navigation", () -> {
+        npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Navigation", () -> {
             WorldPosition destination = new WorldPosition(living().navigationOrigin(id).world(), new Vec3(blockCenter(x), y, blockCenter(z)));
-            return "Navigation requested for " + id + "; route=" + living().navigate(id, destination, mode, speed);
+            return id + " heading to " + blockCenter(x) + " " + y + " " + blockCenter(z) + " (" + mode.name().toLowerCase(java.util.Locale.ROOT) + "); route " + living().navigate(id, destination, mode, speed);
         }));
     }
 
@@ -249,9 +326,9 @@ public final class AnimusCommandTree extends CommandGroup {
               @Param(name = "y", description = "Target Y") double y,
               @Param(name = "z", description = "Target Z") double z) {
         CommandActor actor = actor();
-        npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Animus navigation", () -> {
+        npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Navigation", () -> {
             living().lookAt(id, new WorldPosition(living().navigationOrigin(id).world(), new Vec3(x, y, z)));
-            return "Look target set for " + id;
+            return id + " looks at " + x + " " + y + " " + z;
         }));
     }
 
@@ -298,23 +375,27 @@ public final class AnimusCommandTree extends CommandGroup {
                     if (!stopping()) actor.reply(() -> commit(actor, candidate, draft, patch.isEmpty()));
                 } catch (IOException | RuntimeException e) { reply(actor, Palette.error(String.valueOf(e.getMessage()))); }
             });
-        } catch (RejectedExecutionException e) { actor.tell(Palette.error("The Animus file queue is full; retry shortly.")); }
+        } catch (RejectedExecutionException e) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
     private void commit(CommandActor actor, NpcDefinition candidate, NpcRepository.Draft draft, boolean spawn) {
         if (stopping() || !actor.permitted(AnimusDirector.ADMIN)) return;
         JsonElement spawned = draft.document().get("spawned");
         List<String> errors = spawned != null && spawned.isJsonPrimitive() && spawned.getAsBoolean() ? living().validateActivation(candidate) : List.of();
-        if (!errors.isEmpty()) { errors.stream().limit(12).forEach((String error) -> actor.tell(Palette.error("Cannot activate: " + error))); return; }
+        if (!errors.isEmpty()) {
+            actor.rich(ChatLine.error("Cannot spawn " + candidate.id() + ": " + errors.getFirst() + (errors.size() == 1 ? "" : " (+" + (errors.size() - 1) + " more)"))
+                    .details("All", errors).docs(DocsLink.ACTIVATION));
+            return;
+        }
         try {
             services.files().execute(() -> {
                 try {
                     String tx = runtime().npcs().apply(draft);
                     living().refresh();
-                    reply(actor, Palette.success((spawn ? "Spawn requested for " + candidate.id() : "Saved") + "; transaction " + tx));
+                    reply(actor, Palette.success((spawn ? "Spawning " : "Saved ") + candidate.id() + "; tx " + tx));
                 } catch (IOException | RuntimeException e) { reply(actor, Palette.error(String.valueOf(e.getMessage()))); }
             });
-        } catch (RejectedExecutionException e) { actor.tell(Palette.error("The Animus file queue is full; no edit was applied. Retry shortly.")); }
+        } catch (RejectedExecutionException e) { actor.tell(Palette.error(CommandActor.BUSY + "; nothing was saved")); }
     }
 
     /** Builds this tree without services and renders its help, so a packaged jar proves Director loads without a server. */

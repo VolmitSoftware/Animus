@@ -39,9 +39,9 @@ abstract class CommandGroup {
     Optional<String> npc(CommandActor actor, String id) {
         if (id.indexOf('/') >= 0) return qualified(actor, id);
         if (!id.equalsIgnoreCase(SELECTED)) return Optional.of(id);
-        if (actor.player().isEmpty()) { actor.tell(Palette.error("The console has no selection; name the NPC id.")); return Optional.empty(); }
+        if (actor.player().isEmpty()) { actor.tell(Palette.error("The console has no selection; give the NPC id")); return Optional.empty(); }
         Optional<String> selected = living().selection(actor.player().get());
-        if (selected.isEmpty()) actor.tell(Palette.error("No NPC selected; use /animus select <npc> or interact with a visible NPC."));
+        if (selected.isEmpty()) actor.tell(Palette.error("No NPC selected; /animus select <npc> or right-click one"));
         return selected;
     }
 
@@ -77,11 +77,11 @@ abstract class CommandGroup {
                 if (!stopping()) actor.reply(() -> {
                     if (stopping()) return;
                     result.stream().limit(MAXIMUM_LINES).map(CommandGroup::clip).forEach(actor::tell);
-                    if (result.size() > MAXIMUM_LINES) actor.tell("Showing " + MAXIMUM_LINES + " of " + result.size() + " results; inspect the files for the complete report.");
+                    if (result.size() > MAXIMUM_LINES) actor.tell("Showing " + MAXIMUM_LINES + " of " + result.size() + " lines; the full report is in the files");
                     after.run();
                 });
             });
-        } catch (RejectedExecutionException full) { actor.tell(Palette.error("The Animus file queue is full; retry shortly.")); }
+        } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
     void files(CommandActor actor, Work work) { files(actor, work, () -> {}); }
@@ -92,7 +92,7 @@ abstract class CommandGroup {
     }
 
     static String clip(String message) {
-        return message.length() > MAXIMUM_LINE ? message.substring(0, MAXIMUM_LINE) + " … (truncated; inspect the JSON file for full details)" : message;
+        return message.length() > MAXIMUM_LINE ? message.substring(0, MAXIMUM_LINE) + " (cut; the full text is in the JSON file)" : message;
     }
 
     /** Runs NPC work on the NPC's owner, which on a regionized server is its region, and replies on the actor's own owner. */
@@ -104,7 +104,7 @@ abstract class CommandGroup {
             catch (RuntimeException e) { message = label + ": " + e.getMessage(); }
             for (String line : message.split("\n")) reply(actor, line);
         }, (String reason) -> reply(actor, label + ": " + reason));
-        if (!accepted) actor.tell(label + ": " + (living.available() ? "NPC " + id + " is not active; it starts when its chunk loads or a player is near" : living.status()));
+        if (!accepted) actor.tell(Palette.error(label + ": " + (living.available() ? id + " is not active; it starts when its chunk loads or a player comes near" : living.status())));
     }
 
     /** A paged list in the help look. {@code command} is the command that shows it, without {@code page=}. */

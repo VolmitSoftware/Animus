@@ -296,7 +296,6 @@ class _NpcInspectorState extends State<NpcInspector> {
           child: GuiTextInput(
             value: owner ?? '',
             label: 'Owner UUID',
-            placeholder: '0f6a3b8e-6a55-4b1e-9d8a-1f2e3d4c5b6a',
             onChanged: (String text) => _write(<JsonStep>['owner'], text.trim().isEmpty ? null : text.trim()),
           ),
         ),

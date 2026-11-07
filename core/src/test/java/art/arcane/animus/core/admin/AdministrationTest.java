@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import art.arcane.animus.core.*;
+import art.arcane.animus.core.text.RichText;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
@@ -82,22 +83,29 @@ class AdministrationTest {
         try (AnimusRuntime runtime = new AnimusRuntime(environment)) {
             runtime.start(); Administration admin = new Administration(runtime);
             Path input = runtime.documents().resolve("imports/inbox/sample.yml"); Files.createDirectories(input.getParent()); Files.writeString(input, source);
-            String original = admin.preview("sample.yml", Optional.empty(), Map.of()).getFirst().substring("Preview ".length());
-            String application = admin.stage(original, "reject", Optional.empty()).getFirst().substring("Application ".length());
+            List<String> previewed = admin.preview("sample.yml", Optional.empty(), Map.of());
+            String original = id("Preview ", previewed.getFirst());
+            assertEquals("Preview " + original + ": 1 records, 1 valid, 0 skins; nothing installed", previewed.getFirst());
+            assertTrue(previewed.get(1).startsWith("Review imports/" + original + "/report.json, then /animus import apply " + original + " https://docs."), previewed.get(1));
+            List<String> staged = admin.stage(original, "reject", Optional.empty());
+            String application = id("Application ", staged.getFirst());
             assertTrue(runtime.npcs().all().isEmpty());
-            assertEquals("Application " + application, admin.stage(original, "reject", Optional.empty()).getFirst());
-            initialTransaction = transaction(admin.applyPlan(original, application).getFirst());
-            assertEquals("already-applied", transaction(admin.applyPlan(original, application).getFirst()));
+            assertEquals("Application " + application + ": reject, 1 records, 0 replacements", admin.stage(original, "reject", Optional.empty()).getFirst());
+            assertTrue(staged.get(1).startsWith("Review imports/") && staged.get(1).endsWith(", then /animus import apply-plan " + original + " " + application), staged.get(1));
+            List<String> installed = admin.applyPlan(original, application);
+            assertTrue(RichText.plain(installed.getFirst()).startsWith("[Animus]: Installed dormant NPCs; tx "), installed.getFirst());
+            initialTransaction = transaction(installed.getFirst());
+            assertEquals(List.of("Already installed; nothing changed"), admin.applyPlan(original, application));
             assertEquals(1, runtime.npcs().all().size());
             assertFalse(runtime.npcs().find("citizens-1").orElseThrow().json().get("spawned").getAsBoolean());
-            String copy = admin.stage(original, "duplicate", Optional.of("backup")).getFirst().substring("Application ".length());
+            String copy = id("Application ", admin.stage(original, "duplicate", Optional.of("backup")).getFirst());
             copyTransaction = transaction(admin.applyPlan(original, copy).getFirst());
             assertEquals(2, runtime.npcs().all().size());
             assertNotEquals(runtime.npcs().find("citizens-1").orElseThrow().uuid(), runtime.npcs().find("citizens-1-backup").orElseThrow().uuid());
             Files.writeString(input, source.replace("Guard", "Captain"));
-            String updated = admin.preview("sample.yml", Optional.empty(), Map.of()).getFirst().substring("Preview ".length());
+            String updated = id("Preview ", admin.preview("sample.yml", Optional.empty(), Map.of()).getFirst());
             assertThrows(IOException.class, () -> admin.stage(updated, "reject", Optional.empty()));
-            String replace = admin.stage(updated, "replace", Optional.empty()).getFirst().substring("Application ".length());
+            String replace = id("Application ", admin.stage(updated, "replace", Optional.empty()).getFirst());
             assertEquals("Guard", runtime.npcs().find("citizens-1").orElseThrow().name());
             replacementTransaction = transaction(admin.applyPlan(updated, replace).getFirst());
             assertEquals("Captain", runtime.npcs().find("citizens-1").orElseThrow().name());
@@ -106,7 +114,7 @@ class AdministrationTest {
         try (AnimusRuntime runtime = new AnimusRuntime(environment)) {
             runtime.start(); Administration admin = new Administration(runtime);
             assertEquals("Captain", runtime.npcs().find("citizens-1").orElseThrow().name());
-            admin.rollback(replacementTransaction);
+            assertTrue(RichText.plain(admin.rollback(replacementTransaction).getFirst()).matches("\\[Animus]: Rolled back " + replacementTransaction + "; tx [0-9a-f-]{36}"));
             assertEquals("Guard", runtime.npcs().find("citizens-1").orElseThrow().name());
             assertEquals(1, runtime.npcs().find("citizens-1").orElseThrow().revision());
             admin.rollback(copyTransaction);
@@ -116,5 +124,11 @@ class AdministrationTest {
         try (AnimusRuntime runtime = new AnimusRuntime(environment)) { runtime.start(); assertTrue(runtime.npcs().all().isEmpty()); }
     }
 
-    private static String transaction(String receipt) { return receipt.substring(receipt.lastIndexOf(' ') + 1); }
+    private static String transaction(String receipt) { return receipt.substring(receipt.lastIndexOf("tx ") + 3); }
+
+    /** The id after {@code lead} in a {@code <lead><id>: ...} receipt. */
+    private static String id(String lead, String receipt) {
+        assertTrue(receipt.startsWith(lead), receipt);
+        return receipt.substring(lead.length(), receipt.indexOf(':'));
+    }
 }

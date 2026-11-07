@@ -240,8 +240,8 @@ class Server {
   }
   async npc(id, type, x, y, z, display, edit = {}, spawned = true) {
     await this.cmd(`animus create ${id} ${type} world ${x} ${y} ${z} live ${display}`, new RegExp(`Created dormant ${id}`));
-    if (Object.keys(edit).length) await this.cmd(`animus edit ${id} ${JSON.stringify(edit)}`, /Saved; transaction/);
-    if (spawned) await this.cmd(`animus spawn ${id}`, new RegExp(`Spawn requested for ${id}`));
+    if (Object.keys(edit).length) await this.cmd(`animus edit ${id} ${JSON.stringify(edit)}`, /Saved[^;]*; tx /);
+    if (spawned) await this.cmd(`animus spawn ${id}`, new RegExp(`Spawning ${id}`));
     return JSON.parse(readFileSync(path.join(data, 'npcs/live', `${id}.json`), 'utf8')).uuid;
   }
   async finish(execution, timeout = 30_000) {
@@ -618,7 +618,7 @@ async function actions() {
   await server.reload();
   await server.cmd('animus despawn act', /./); await delay(300);
   await server.cmd('animus edit act {"behaviors":["live:choice"]}', /Saved/);
-  await server.cmd('animus spawn act', /Spawn requested/);
+  await server.cmd('animus spawn act', /Spawning /);
   await delay(800);
   const ask = async () => {
     const from = owner.events.length;
@@ -911,9 +911,9 @@ async function mounts() {
   });
   await check('cycle refused, self refused, missing vehicle reported', async () => {
     const cycle = await server.capture('animus edit mhorse {"modules":{"animus:mount":{"vehicle":"mrider"}}}', /Saved|cycle|Cannot|Conflict|rror|refus/i);
-    assert(!/Saved; transaction/.test(cycle), cycle.slice(0, 300));
+    assert(!/Saved[^;]*; tx /.test(cycle), cycle.slice(0, 300));
     const self = await server.capture('animus edit mrider {"modules":{"animus:mount":{"vehicle":"mrider"}}}', /Saved|itself|Cannot|Conflict|rror|refus/i);
-    assert(!/Saved; transaction/.test(self), self.slice(0, 300));
+    assert(!/Saved[^;]*; tx /.test(self), self.slice(0, 300));
     await server.npc('mdetached', 'minecraft:player', 8, 61, 4, 'Detached', { modules: { 'animus:mount': { vehicle: 'nobody' } } });
     await delay(500);
     const missing = await server.capture('animus inspect mdetached', /Runtime mdetached:[^\n]*/);
@@ -1221,7 +1221,7 @@ async function dragon() {
   await check('moving dragon uses flight phase and returns to sitting', async () => {
     await go(0, 61, -20);
     const from = owner.events.length;
-    const reply = await server.capture('animus navigate drake 0 61 16 mode=walk speed=2', /Navigation[^\n]*|Animus navigation[^\n]*/, 2500);
+    const reply = await server.capture('animus navigate drake 0 61 16 mode=walk speed=2', /heading to[^\n]*|Navigation[^\n]*/, 2500);
     const status = await server.capture('animus navigation status drake', /Navigation[^\n]*|Animus navigation[^\n]*/);
     note(reply + status);
     const phases = () => owner.events.slice(from).filter(e => e.event === 'metadata' && e.id === body.id).map(e => JSON.stringify(e.fields)).join(' ');
@@ -2727,7 +2727,7 @@ async function worlds() {
     await server.cmd('execute in minecraft:the_nether run fill -3 99 -3 3 99 3 minecraft:netherrack', /Successfully filled|No blocks were filled/);
     await server.cmd('execute in minecraft:the_nether run fill -3 100 -3 3 103 3 minecraft:air', /Successfully filled|No blocks were filled/);
     await server.cmd('animus create wnether minecraft:player minecraft:the_nether 2 100 2 live Netherling', /Created dormant wnether/);
-    await server.cmd('animus spawn wnether', /Spawn requested for wnether/);
+    await server.cmd('animus spawn wnether', /Spawning wnether/);
     const nether = JSON.parse(readFileSync(path.join(data, 'npcs/live', 'wnether.json'), 'utf8')).uuid;
     await delay(800);
     assert(!owner.current(nether), 'nether NPC presented in the overworld');

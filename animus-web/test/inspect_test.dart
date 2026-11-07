@@ -24,6 +24,14 @@ FieldSpec _field(List<FieldSpec> fields, String key) => fields.firstWhere((Field
 
 void main() {
   group('schema fields', () {
+    test('should size a number field to the widest value its range allows', () {
+      expect(const FieldSpec(key: 'afterTicks', kind: FieldKind.integer, minimum: 1, maximum: 12000).digits, 5);
+      expect(const FieldSpec(key: 'x', kind: FieldKind.number, minimum: -30000000, maximum: 30000000).digits, 12);
+      expect(const FieldSpec(key: 'speed', kind: FieldKind.number, minimum: 0, maximum: 1.5).digits, 6);
+      expect(const FieldSpec(key: 'open', kind: FieldKind.integer, minimum: 0).digits, isNull);
+      expect(const FieldSpec(key: 'long', kind: FieldKind.integer, minimum: 0, maximum: 9007199254740991).digits, isNull);
+    });
+
     test('npc fields carry kinds, required markers, bounds and descriptions', () {
       final JsonMap npc = _fixture('npcs/examples/greeter.json');
       final List<FieldSpec> fields = schemas.npc.fields(schemas.npc.root, npc);

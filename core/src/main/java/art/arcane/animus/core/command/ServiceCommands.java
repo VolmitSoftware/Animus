@@ -32,7 +32,10 @@ final class ServiceCommands {
         void status() { actor().tell(services.shops().status()); }
 
         @Director(description = "List the loaded shops")
-        void list() { services.shops().list(actor()); }
+        void list(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
+            List<String> rows = services.shops().rows();
+            listing(actor(), "Shops (" + rows.size() + ")", "/" + BuildIdentity.ID + " shop list", rows, page, "No shops; save one under shops/");
+        }
 
         @Director(description = "Open a shop for yourself or a player")
         void open(@Param(name = "shop", description = "The shop id") String shop,
@@ -51,7 +54,10 @@ final class ServiceCommands {
         }
 
         @Director(description = "List shop and chest GUI problems")
-        void problems() { services.shops().problems(actor()); }
+        void problems(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
+            List<String> rows = services.shops().problemRows();
+            listing(actor(), "Shop and GUI problems (" + rows.size() + ")", "/" + BuildIdentity.ID + " shop problems", rows, page, "No shop or GUI problems");
+        }
     }
 
     @Director(name = "import", description = "Import dtlTraders and Shopkeepers shops")
@@ -87,8 +93,10 @@ final class ServiceCommands {
         void status() { guis().statusCommand(actor()); }
 
         @Director(description = "List chest GUIs, menus, holograms or animations")
-        void list(@Param(name = "kind", defaultValue = "all", description = "all, inventory, menu, hologram or animation") HoloService.Listing kind) {
-            guis().list(actor(), kind);
+        void list(@Param(name = "kind", defaultValue = "all", description = "all, inventory, menu, hologram or animation") HoloService.Listing kind,
+                  @Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
+            List<String> rows = guis().rows(kind);
+            listing(actor(), "GUIs (" + rows.size() + ")", "/" + BuildIdentity.ID + " gui list kind=" + kind.name().toLowerCase(java.util.Locale.ROOT), rows, page, "None loaded");
         }
 
         @Director(description = "Open a chest GUI for yourself or a player")
@@ -112,7 +120,10 @@ final class ServiceCommands {
         void reload() { guis().reloadAll(actor()); }
 
         @Director(description = "List GUI, menu and hologram problems")
-        void problems() { guis().problems(actor()); }
+        void problems(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
+            List<String> rows = guis().problemRows();
+            listing(actor(), "GUI problems (" + rows.size() + ")", "/" + BuildIdentity.ID + " gui problems", rows, page, "No GUI problems");
+        }
 
         /** {@code kind} with {@code id}: empty kind is all, and an id needs a kind. */
         static Optional<art.arcane.animus.core.gui.GuiKind> kind(HoloService.Listing kind) {

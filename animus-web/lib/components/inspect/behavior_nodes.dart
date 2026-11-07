@@ -347,7 +347,7 @@ class BehaviorNodeView extends StatelessWidget {
 
   Widget _operandRow(JsonMap value, FieldSpec field, String? type, {String? label, Widget? literal}) => GuiRow(
         label: fieldLabel(field, label: label),
-        help: field.description,
+        help: field.help,
         problems: _problems(field.key),
         child: OperandControl(
           value: value[field.key],
@@ -370,7 +370,6 @@ class BehaviorNodeView extends StatelessWidget {
       literal: GuiNumberInput(
         value: count is num ? count : null,
         label: 'Count of ${caption ?? 'step'}',
-        placeholder: '0 to 128',
         onChanged: (num? next) => context.write(<JsonStep>[...steps, 'count'], (next ?? 0).round().clamp(0, 128)),
       ),
     );
