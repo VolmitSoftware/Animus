@@ -23,6 +23,66 @@ final RegExp _owner = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-
 /// The poses a body of [type] may take.
 List<String> posesFor(String type) => type == 'minecraft:player' ? npcPoses : const <String>['standing'];
 
+/// The body traits a body of [type] shows, in the inspector's order: the
+/// baby flag only where the type has a baby form, the tab list and a raised
+/// item only on players.
+List<String> traitsFor(String type) => <String>[
+      'glowing',
+      'teamColor',
+      if (_babies.contains(type)) 'baby',
+      if (type == 'minecraft:player') ...<String>['usingItem', 'listed'],
+      'gravity',
+    ];
+
+/// Presented bodies with a baby form (`BodyRules.babyFlag`).
+const Set<String> _babies = <String>{'minecraft:horse', 'minecraft:turtle', 'minecraft:frog', 'minecraft:llama', 'minecraft:armadillo'};
+
+/// A definition field a body of another type cannot show, and why.
+final class MisplacedField {
+  const MisplacedField(this.field, this.reason);
+
+  final String field;
+  final String reason;
+}
+
+/// Fields that only another body type shows: what is left behind when an
+/// NPC changes type. The server refuses each of them on this body.
+List<MisplacedField> misplacedBodyFields(JsonMap doc, String type) => <MisplacedField>[
+      if (doc.containsKey('skin') && type != 'minecraft:player') const MisplacedField('skin', 'Skins show only on minecraft:player bodies.'),
+      if (doc['pose'] != null && doc['pose'] != 'standing' && type != 'minecraft:player')
+        MisplacedField('pose', 'The ${asString(doc['pose']) ?? 'pose'} pose shows only on minecraft:player bodies.'),
+      if (doc.containsKey('armorStand') && type != 'minecraft:armor_stand') const MisplacedField('armorStand', 'Only for minecraft:armor_stand bodies.'),
+      for (final MapEntry<String, String> settings in bodySettingsTypes.entries)
+        if (doc.containsKey(settings.key) && settings.value != type) MisplacedField(settings.key, 'Only for ${settings.value} bodies.'),
+    ];
+
+/// [doc] without the fields [misplacedBodyFields] names.
+JsonMap withoutMisplacedBodyFields(JsonMap doc, String type) {
+  final Set<String> drop = <String>{for (final MisplacedField field in misplacedBodyFields(doc, type)) field.field};
+  return <String, Object?>{
+    for (final MapEntry<String, Object?> entry in doc.entries)
+      if (!drop.contains(entry.key)) entry.key: entry.value,
+  };
+}
+
+/// The definition fields holding one body type's own settings
+/// (`BodyVariant.FIELDS`), with that body type.
+const Map<String, String> bodySettingsTypes = <String, String>{
+  'horse': 'minecraft:horse',
+  'llama': 'minecraft:llama',
+  'frog': 'minecraft:frog',
+  'armadillo': 'minecraft:armadillo',
+  'dragon': 'minecraft:ender_dragon',
+};
+
+/// The field holding [type]'s own settings, or null for bodies without any.
+String? bodySettingsField(String type) {
+  for (final MapEntry<String, String> entry in bodySettingsTypes.entries) {
+    if (entry.value == type) return entry.key;
+  }
+  return null;
+}
+
 /// The text of one `hologram.lines` entry: a string, or an object's `text`.
 String hologramLineText(Object? line) => line is String ? line : (asString(asMap(line)['text']) ?? '');
 

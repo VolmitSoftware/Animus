@@ -368,9 +368,16 @@ public final class AnimusCommandTree extends CommandGroup {
                 try {
                     NpcRepository.Draft before = runtime().npcs().draft(id);
                     JsonObject document = before.document();
-                    if (patch.isEmpty()) document.addProperty("spawned", true);
-                    else for (Map.Entry<String, JsonElement> entry : JsonDocuments.object(patch.get()).entrySet()) document.add(entry.getKey(), entry.getValue());
-                    NpcDefinition candidate = NpcDefinition.parse(JsonDocuments.write(document));
+                    JsonObject fields = patch.isEmpty() ? null : JsonDocuments.object(patch.get());
+                    if (fields == null) document.addProperty("spawned", true);
+                    else Administration.merge(document, fields);
+                    NpcDefinition candidate;
+                    try { candidate = NpcDefinition.parse(JsonDocuments.write(document)); }
+                    catch (IOException refused) {
+                        if (fields == null) throw refused;
+                        reply(actor, Palette.error(Administration.refusal(id, fields, refused.getMessage())));
+                        return;
+                    }
                     NpcRepository.Draft draft = new NpcRepository.Draft(before.path(), before.expectedHash(), before.expectedRevision(), document);
                     if (!stopping()) actor.reply(() -> commit(actor, candidate, draft, patch.isEmpty()));
                 } catch (IOException | RuntimeException e) { reply(actor, Palette.error(String.valueOf(e.getMessage()))); }
@@ -383,7 +390,7 @@ public final class AnimusCommandTree extends CommandGroup {
         JsonElement spawned = draft.document().get("spawned");
         List<String> errors = spawned != null && spawned.isJsonPrimitive() && spawned.getAsBoolean() ? living().validateActivation(candidate) : List.of();
         if (!errors.isEmpty()) {
-            actor.rich(ChatLine.error("Cannot spawn " + candidate.id() + ": " + errors.getFirst() + (errors.size() == 1 ? "" : " (+" + (errors.size() - 1) + " more)"))
+            actor.rich(ChatLine.error((spawn ? "Cannot spawn " : "Cannot save ") + candidate.id() + ": " + errors.getFirst() + (errors.size() == 1 ? "" : " (+" + (errors.size() - 1) + " more)"))
                     .details("All", errors).docs(DocsLink.ACTIVATION));
             return;
         }

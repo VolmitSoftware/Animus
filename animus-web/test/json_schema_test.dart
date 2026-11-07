@@ -19,6 +19,11 @@ void main() {
     );
   });
 
+  test('should keep x- extension keywords as annotations', () {
+    expect(check(<String, Object?>{'type': 'number', 'x-bodies': <Object?>['minecraft:player']}, 2), isEmpty);
+    expect(check(<String, Object?>{'type': 'number', 'x-bodies': <Object?>['minecraft:player']}, 'two'), isNotEmpty);
+  });
+
   test('should distinguish integers, numbers, booleans and null', () {
     expect(check(<String, Object?>{'type': 'integer'}, 3), isEmpty);
     expect(check(<String, Object?>{'type': 'integer'}, 3.0), isEmpty);

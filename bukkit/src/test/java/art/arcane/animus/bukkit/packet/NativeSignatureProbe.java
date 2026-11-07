@@ -82,6 +82,19 @@ public final class NativeSignatureProbe {
         field(entity + "boss/enderdragon/EnderDragon", "DATA_PHASE", "Lnet/minecraft/network/syncher/EntityDataAccessor;");
         // Poses, armor stand parts, text displays and hidden profile names.
         String accessor = "Lnet/minecraft/network/syncher/EntityDataAccessor;";
+        // Settings only one body type has: coats, variants, a chest and the armadillo state.
+        field(entity + "animal/equine/Horse", "DATA_ID_TYPE_VARIANT", accessor);
+        field(entity + "animal/equine/Llama", "DATA_VARIANT_ID", accessor);
+        field(entity + "animal/equine/AbstractChestedHorse", "DATA_ID_CHEST", accessor);
+        field(entity + "animal/armadillo/Armadillo", "ARMADILLO_STATE", accessor);
+        for (String state : List.of("IDLE", "ROLLING", "SCARED", "UNROLLING"))
+            field(entity + "animal/armadillo/Armadillo$ArmadilloState", state, "L" + entity + "animal/armadillo/Armadillo$ArmadilloState;");
+        field(entity + "animal/frog/Frog", "DATA_VARIANT_ID", accessor);
+        for (String variant : List.of("TEMPERATE", "WARM", "COLD"))
+            field(entity + "animal/frog/FrogVariants", variant, "Lnet/minecraft/resources/ResourceKey;");
+        field("net/minecraft/core/registries/Registries", "FROG_VARIANT", "Lnet/minecraft/resources/ResourceKey;");
+        method("net/minecraft/core/HolderLookup$Provider", "lookupOrThrow", "(Lnet/minecraft/resources/ResourceKey;)Lnet/minecraft/core/HolderLookup$RegistryLookup;");
+        method("net/minecraft/core/HolderGetter", "getOrThrow", "(Lnet/minecraft/resources/ResourceKey;)Lnet/minecraft/core/Holder$Reference;");
         field(entity + "Entity", "DATA_SHARED_FLAGS_ID", accessor);
         field(entity + "Entity", "DATA_POSE", accessor);
         for (String pose : List.of("STANDING", "CROUCHING", "SLEEPING", "SWIMMING")) field(entity + "Pose", pose, "L" + entity + "Pose;");

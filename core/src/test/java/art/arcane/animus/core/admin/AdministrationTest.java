@@ -45,6 +45,27 @@ class AdministrationTest {
             assertEquals("Town Guard", runtime.npcs().find("guard").orElseThrow().name());
         }
     }
+    @Test void anEditTurnsAPlayerIntoAHorseByDroppingItsSkinAndPose() throws Exception {
+        RuntimeEnvironment environment = new RuntimeEnvironment(Platform.BUKKIT, "26.3", root);
+        try (AnimusRuntime runtime = new AnimusRuntime(environment)) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            List.of(admin.create("steed", "minecraft:player", "world", 1, 64, 2, "town", "Steed"));
+            List.of(admin.edit("steed", "{\"skin\":\"" + "a".repeat(64) + "\",\"pose\":\"sitting\"}"));
+            List.of(admin.edit("steed", "{\"type\":\"minecraft:horse\",\"skin\":null,\"pose\":null,\"horse\":{\"color\":\"black\"}}"));
+            com.google.gson.JsonObject json = runtime.npcs().find("steed").orElseThrow().json();
+            assertEquals("minecraft:horse", json.get("type").getAsString());
+            assertFalse(json.has("skin"));
+            assertFalse(json.has("pose"));
+            assertEquals("black", json.getAsJsonObject("horse").get("color").getAsString());
+        }
+    }
+    @Test void aRefusedTypeChangeSaysHowToDropWhatTheNewBodyCannotShow() {
+        com.google.gson.JsonObject retype = com.google.gson.JsonParser.parseString("{\"type\":\"minecraft:horse\"}").getAsJsonObject();
+        assertEquals("Cannot save steed: $.pose: sitting is available only for minecraft:player bodies. Set a field to null in the same edit to remove it, such as {\"type\":\"minecraft:horse\",\"pose\":null}",
+                Administration.refusal("steed", retype, "$.pose: sitting is available only for minecraft:player bodies"));
+        com.google.gson.JsonObject rename = com.google.gson.JsonParser.parseString("{\"name\":\"\"}").getAsJsonObject();
+        assertEquals("Cannot save steed: $.name: expected text", Administration.refusal("steed", rename, "$.name: expected text"));
+    }
     @Test void desiredSpawnStatePersistsAndClonesRemainDormant() throws Exception {
         RuntimeEnvironment environment = new RuntimeEnvironment(Platform.BUKKIT, "26.3", root);
         try (AnimusRuntime runtime = new AnimusRuntime(environment)) {

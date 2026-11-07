@@ -1,7 +1,9 @@
 // Opens test/fixtures/groups_recordings in the built site at 1440x900 and
 // 390x844, dark and light, and checks the Attributes part: a group sets
-// gravity through the searched add, an NPC of that group adds scale, sees its
-// range and vanilla default and help, edits it (the preview reports the size,
+// gravity through the add dropdown, picked by keyboard, an NPC of that group
+// sees its rows grouped with ranges and the attributes its body lacks
+// marked, adds scale (then disabled in the list), sees its range and vanilla
+// default and help, edits it (the preview reports the size,
 // an out-of-range value is flagged), the Effective part names the source of
 // each attribute, and the reset removes scale again. No console errors and no
 // sideways scrolling.
@@ -53,11 +55,41 @@ async function settle(page) {
   await page.waitForTimeout(250);
 }
 
+/** The add dropdown's trigger. */
+function addTrigger(attributes) {
+  return attributes.locator('button[role="combobox"][aria-label="Attribute to add"]');
+}
+
+/** Adds [id] from the keyboard: focus the dropdown, open it, search, pick the first match. */
 async function addAttribute(page, attributes, id) {
-  await attributes.getByLabel('Attribute to add').fill(id);
-  await attributes.getByRole('button', {name: 'Add attribute'}).click();
-  await attributes.locator(`[data-attribute="${id.replace('minecraft:', '')}"]`).waitFor();
+  const trigger = addTrigger(attributes);
+  await trigger.focus();
+  await page.keyboard.press('Enter');
+  const listbox = page.locator(`[id="${await trigger.getAttribute('aria-controls')}"]`);
+  await listbox.waitFor();
+  await page.keyboard.type(id);
+  await listbox.locator(`[role="option"][data-value="${id}"]`).waitFor();
+  await page.keyboard.press('Enter');
+  await listbox.waitFor({state: 'detached'});
+  await attributes.locator(`[data-attribute="${id}"]`).waitFor();
   await settle(page);
+}
+
+/** The dropdown's rows as {value, group, disabled, hint}, opening and closing it. */
+async function addRows(page, attributes) {
+  const trigger = addTrigger(attributes);
+  await trigger.click();
+  const listbox = page.locator(`[id="${await trigger.getAttribute('aria-controls')}"]`);
+  await listbox.waitFor();
+  const rows = await listbox.locator('[role="option"]').evaluateAll((options) => options.map((option) => ({
+    value: option.getAttribute('data-value'),
+    group: option.closest('[role="group"]')?.querySelector('.animus-select-group')?.textContent ?? null,
+    disabled: option.getAttribute('aria-disabled') === 'true',
+    hint: option.textContent,
+  })));
+  await page.keyboard.press('Escape');
+  await listbox.waitFor({state: 'detached'});
+  return rows;
 }
 
 async function run(browser, viewport, theme, tag) {
@@ -77,19 +109,25 @@ async function run(browser, viewport, theme, tag) {
   await page.getByRole('heading', {name: 'Every document passes the shared schemas'}).waitFor();
   const workspace = /#\/workspace\/([^/?]+)/.exec(page.url())[1];
 
-  // The group sets gravity, typed with its namespace and written bare.
+  // The group sets gravity from the keyboard, written bare.
   await openDocument(page, workspace, 'group', 'town-guards');
   await page.locator('[aria-label="Group inspector"]').waitFor();
   let attributes = await part(page, 'attributes');
-  assert.equal(await attributes.getByRole('button', {name: 'Add attribute'}).isDisabled(), true, 'nothing to add yet');
-  await addAttribute(page, attributes, 'minecraft:gravity');
+  await addAttribute(page, attributes, 'gravity');
   assert.deepEqual(Object.keys((await codeOf(page)).values.attributes), ['gravity']);
 
   // An NPC of the group adds scale and edits it.
   await openDocument(page, workspace, 'npc', 'town/gate-guard');
   attributes = await part(page, 'attributes');
   await attributes.getByText('No attributes set', {exact: false}).waitFor();
+  const rows = await addRows(page, attributes);
+  assert.deepEqual([...new Set(rows.map((row) => row.group))], ['Size and movement', 'Combat', 'Senses', 'Player only', 'Other'], `${tag}: groups`);
+  assert.equal(rows[0].value, 'scale', `${tag}: scale leads`);
+  assert.ok(rows.find((row) => row.value === 'scale').hint.includes('0.0625..16, vanilla 1'), `${tag}: range and default`);
+  assert.ok(rows.find((row) => row.value === 'flying_speed').hint.includes('no effect on this body'), `${tag}: marked for the body`);
+  assert.equal(rows.length, new Set(rows.map((row) => row.value)).size, `${tag}: one row each`);
   await addAttribute(page, attributes, 'scale');
+  assert.ok((await addRows(page, attributes)).find((row) => row.value === 'scale').disabled, `${tag}: a set attribute is disabled`);
   const scale = attributes.locator('[data-attribute="scale"]');
   assert.equal((await scale.locator('[data-attribute-hint]').textContent()).trim(), '0.0625..16, vanilla 1');
   await scale.getByText('Body size', {exact: false}).waitFor({state: 'attached'});

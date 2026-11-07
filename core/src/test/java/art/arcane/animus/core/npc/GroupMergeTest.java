@@ -61,6 +61,15 @@ class GroupMergeTest {
     }
 
     @Test
+    void aGroupMayHoldOneBodyTypesOwnSettings() {
+        assertEquals(List.of(), GroupDocument.validateValues(com.google.gson.JsonParser.parseString("{\"horse\":{\"color\":\"black\"}}").getAsJsonObject()));
+        assertEquals(List.of("$.values.horse.color: expected white, creamy, chestnut, brown, black, gray or dark_brown"),
+                GroupDocument.validateValues(com.google.gson.JsonParser.parseString("{\"horse\":{\"color\":\"blue\"}}").getAsJsonObject()));
+        assertEquals(List.of("$.values.llama: available only for minecraft:llama bodies"),
+                GroupDocument.validateValues(com.google.gson.JsonParser.parseString("{\"horse\":{},\"llama\":{}}").getAsJsonObject()));
+    }
+
+    @Test
     void npcGroupsListIsValidated() {
         JsonObject npc = SharedFixturesNpc.guard();
         npc.add("groups", com.google.gson.JsonParser.parseString("[\"a\",\"a\"]"));

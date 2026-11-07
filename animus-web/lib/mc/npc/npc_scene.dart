@@ -216,9 +216,18 @@ NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
       key: 'body',
       rig: rig,
       pose: body.rig,
-      textureId: look.isPlayer ? skin.textureId : mcBodyTexture(look.type)!,
+      textureId: look.isPlayer ? skin.textureId : mcSettingsTexture(look.type, look.settings)!,
       transform: root,
     ));
+    final String? markings = look.type == 'minecraft:horse' ? mcHorseMarkingsTexture(look.settings) : null;
+    if (markings != null) nodes.add(McRigNode(key: 'markings', rig: rig, pose: body.rig, textureId: markings, transform: root));
+  }
+  if (look.type == 'minecraft:llama' && look.settings['chest'] == true) notes.add('llama.chest: the preview does not draw the chest.');
+  if (look.type == 'minecraft:armadillo' && look.settings['state'] is String && look.settings['state'] != 'idle') {
+    notes.add('armadillo.state: ${look.settings['state']} shows in game; the preview draws it idle.');
+  }
+  if (look.type == 'minecraft:ender_dragon' && look.settings['phase'] is String) {
+    notes.add('dragon.phase: ${look.settings['phase']} shows in game while it rests; the preview does not animate it.');
   }
 
   final bool humanoid = look.isPlayer || look.type == 'minecraft:armor_stand';

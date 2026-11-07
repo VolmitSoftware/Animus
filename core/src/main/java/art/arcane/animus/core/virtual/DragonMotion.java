@@ -8,15 +8,19 @@ import java.util.Objects;
  */
 public final class DragonMotion {
     public static final int REST_TICKS = 20;
-    private Vec3 resting;
+    private Vec3 still;
     private long lastMotion;
 
-    /** The phase after this tick, given where the dragon stands and whether solid ground is under its feet. */
-    public int observe(long tick, Vec3 point, boolean grounded) {
+    /**
+     * The phase after this tick, given where the dragon stands and whether solid ground is under its feet.
+     * {@code resting} is the phase a still dragon shows, or {@link DragonBody#AUTOMATIC} to pick it from the ground.
+     */
+    public int observe(long tick, Vec3 point, boolean grounded, int resting) {
         Objects.requireNonNull(point);
-        if (resting == null) resting = point;
-        else if (!point.equals(resting)) { resting = point; lastMotion = tick; }
+        if (still == null) still = point;
+        else if (!point.equals(still)) { still = point; lastMotion = tick; }
         boolean moving = lastMotion != 0 && tick - lastMotion < REST_TICKS;
+        if (!moving && resting != DragonBody.AUTOMATIC) return resting;
         return DragonBody.phase(moving, grounded);
     }
 }

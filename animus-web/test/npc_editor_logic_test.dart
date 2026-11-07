@@ -126,6 +126,46 @@ void main() {
       expect(posesFor('minecraft:villager'), <String>['standing']);
     });
 
+    test('should name the fields a horse cannot show after a player becomes one', () {
+      final JsonMap converted = <String, Object?>{
+        ..._npc('steed', skin: 'a' * 64),
+        'type': 'minecraft:horse',
+        'pose': 'sitting',
+        'armorStand': <String, Object?>{'small': true},
+        'llama': <String, Object?>{'chest': true},
+        'horse': <String, Object?>{'color': 'black'},
+        'equipment': <String, Object?>{
+          'main_hand': <String, Object?>{'id': 'minecraft:iron_sword'},
+          'saddle': <String, Object?>{'id': 'minecraft:saddle'},
+        },
+      };
+      expect(<String>[for (final MisplacedField field in misplacedBodyFields(converted, 'minecraft:horse')) field.field], <String>['skin', 'pose', 'armorStand', 'llama']);
+      expect(misplacedBodyFields(converted, 'minecraft:horse').first.reason, 'Skins show only on minecraft:player bodies.');
+      expect(withoutMisplacedBodyFields(converted, 'minecraft:horse').keys, isNot(anyElement(isIn(<String>['skin', 'pose', 'armorStand', 'llama']))));
+      expect(withoutMisplacedBodyFields(converted, 'minecraft:horse')['horse'], <String, Object?>{'color': 'black'});
+      expect(misplacedBodyFields(_npc('hero', skin: 'a' * 64), 'minecraft:player'), isEmpty);
+      expect(misplacedBodyFields(<String, Object?>{'pose': 'standing'}, 'minecraft:frog'), isEmpty);
+    });
+
+    test('should offer each body only the traits it shows', () {
+      expect(traitsFor('minecraft:player'), <String>['glowing', 'teamColor', 'usingItem', 'listed', 'gravity']);
+      expect(traitsFor('minecraft:armor_stand'), <String>['glowing', 'teamColor', 'gravity']);
+      expect(traitsFor('minecraft:turtle'), <String>['glowing', 'teamColor', 'baby', 'gravity']);
+      expect(traitsFor('minecraft:ender_dragon'), <String>['glowing', 'teamColor', 'gravity']);
+    });
+
+    test('should check body settings against the shared schema', () {
+      List<String> problems(Map<String, Object?> extra) => <String>[
+            for (final Diagnostic problem in _document(DocumentKind.npc, 'steed', 'npcs/town/steed.json', <String, Object?>{..._npc('steed'), ...extra}).diagnostics)
+              if (problem.severity == DiagnosticSeverity.error) problem.path,
+          ];
+      expect(problems(<String, Object?>{'type': 'minecraft:horse', 'horse': <String, Object?>{'color': 'chestnut', 'markings': 'white'}}), isEmpty);
+      expect(problems(<String, Object?>{'type': 'minecraft:horse', 'skin': 'a' * 64}), isNotEmpty);
+      expect(problems(<String, Object?>{'horse': <String, Object?>{'color': 'chestnut'}}), isNotEmpty);
+      expect(problems(<String, Object?>{'type': 'minecraft:llama', 'llama': <String, Object?>{'variant': 'pink'}}), isNotEmpty);
+      expect(problems(<String, Object?>{'type': 'minecraft:frog', 'frog': <String, Object?>{'variant': 'cold'}}), isEmpty);
+    });
+
     test('should read and write hologram line text in either form', () {
       final List<Object?> lines = <Object?>[
         'Hi',

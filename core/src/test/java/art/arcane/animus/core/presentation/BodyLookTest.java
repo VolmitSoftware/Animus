@@ -2,6 +2,7 @@ package art.arcane.animus.core.presentation;
 
 import art.arcane.animus.core.npc.ArmorStandLook;
 import art.arcane.animus.core.npc.BodyTraits;
+import art.arcane.animus.core.npc.BodyVariant;
 import art.arcane.animus.core.npc.NpcAttributes;
 import art.arcane.animus.core.npc.HologramStyle;
 import art.arcane.animus.core.npc.NpcAppearance;
@@ -130,7 +131,7 @@ class BodyLookTest {
 
     @Test void bodyTraitsSetGlowColourBabyUseAndListing() {
         NpcAppearance traits = new NpcAppearance(Map.of(), List.of(), true, NpcPose.STANDING, Optional.empty(), HologramStyle.DEFAULT,
-                new BodyTraits(true, Optional.of("dark_red"), true, true, true, false, NpcAttributes.NONE));
+                new BodyTraits(true, Optional.of("dark_red"), true, true, true, false, NpcAttributes.NONE, BodyVariant.NONE));
         BodyLook horse = BodyLook.of(ID, "minecraft:horse", "Old Bess", traits);
         assertEquals(Optional.of("§4Old Bess"), horse.text());
         assertEquals(0x40, BodyLook.sharedFlags(NpcPose.STANDING, false, true));

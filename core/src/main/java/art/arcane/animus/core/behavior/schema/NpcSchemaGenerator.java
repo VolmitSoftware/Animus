@@ -13,6 +13,7 @@ import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.navigation.MovementSettings;
 import art.arcane.animus.core.navigation.WaypointSettings;
 import art.arcane.animus.core.npc.ArmorStandLook;
+import art.arcane.animus.core.npc.BodyVariant;
 import art.arcane.animus.core.npc.BodyTraits;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.HologramStyle;
@@ -33,6 +34,8 @@ import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * The NPC definition schema, read from the same bounds {@link NpcDefinition#validate} enforces. Unknown root fields and
@@ -74,7 +77,7 @@ public final class NpcSchemaGenerator {
         position.add("properties", coordinates);
         properties.add("position", position);
         properties.add("owner", described(pattern(UUID), "The owning player's UUID, canonical and lowercase. Modules may use it for their own permission rules."));
-        properties.add("skin", described(pattern("^[a-f0-9]{64}$"), "SHA-256 of a skin document under skins/."));
+        properties.add("skin", described(pattern("^[a-f0-9]{64}$"), "minecraft:player bodies only: SHA-256 of a skin document under skins/."));
         properties.add("equipment", equipment());
         properties.add("pose", described(choices(Arrays.stream(NpcPose.values()).map(NpcPose::key).toList()), "The body pose. Only standing applies to bodies other than minecraft:player."));
         properties.add("hologram", hologram());
@@ -82,6 +85,7 @@ public final class NpcSchemaGenerator {
         nameplate.add("properties", property("visible", described(type("boolean"), "True by default.")).getAsJsonObject("properties"));
         properties.add("nameplate", nameplate);
         properties.add("armorStand", armorStand());
+        for (BodyVariant.Field field : BodyVariant.FIELDS.values()) properties.add(field.field(), variant(field));
         properties.add("glowing", described(type("boolean"), "An outline glow in the team colour."));
         properties.add("teamColor", described(choices(BodyTraits.TEAM_COLORS), "The colour of the glow and the name."));
         properties.add("baby", described(type("boolean"), "A baby body, for types that have one."));
@@ -148,6 +152,14 @@ public final class NpcSchemaGenerator {
         JsonObject noArmorStand = new JsonObject();
         noArmorStand.add("not", required("armorStand"));
         rules.add(onlyForType("minecraft:armor_stand", noArmorStand));
+        JsonObject noSkin = new JsonObject();
+        noSkin.add("not", required("skin"));
+        rules.add(onlyForType(BodyRules.PLAYER, noSkin));
+        for (BodyVariant.Field field : BodyVariant.FIELDS.values()) {
+            JsonObject absent = new JsonObject();
+            absent.add("not", required(field.field()));
+            rules.add(onlyForType(field.type(), absent));
+        }
         root.add("allOf", rules);
         return root;
     }
@@ -233,6 +245,15 @@ public final class NpcSchemaGenerator {
         return stand;
     }
 
+    private static JsonObject variant(BodyVariant.Field field) {
+        JsonObject variant = described(closed(), field.description());
+        JsonObject fields = new JsonObject();
+        for (BodyVariant.Setting setting : field.settings())
+            fields.add(setting.key(), described(setting.flag() ? type("boolean") : choices(setting.values()), setting.description()));
+        variant.add("properties", fields);
+        return variant;
+    }
+
     private static JsonObject inventory() {
         JsonObject inventory = described(closed(), "A stored inventory for behaviors and modules to read. Nothing draws it.");
         inventory.add("required", strings("size", "slots"));
@@ -274,6 +295,9 @@ public final class NpcSchemaGenerator {
             JsonObject value = described(range("number", attribute.minimum(), attribute.maximum()),
                     "Vanilla default " + NpcAttributes.format(attribute.defaultValue()) + ". " + NpcAttributes.note(attribute.id()) + since);
             value.addProperty("default", attribute.defaultValue());
+            // The bodies a viewer is sent this attribute for; the editor marks it as having no effect on the others.
+            value.add("x-bodies", strings(VanillaAttributes.BODIES.entrySet().stream().filter((Map.Entry<String, Set<String>> body) -> body.getValue().contains(attribute.id()))
+                    .map(Map.Entry::getKey).sorted().toArray(String[]::new)));
             fields.add(attribute.id(), value);
             fields.add(NpcAttributes.NAMESPACE + attribute.id(), value.deepCopy());
         }

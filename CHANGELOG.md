@@ -274,6 +274,9 @@
 - Web editor: shop checks for offers a window style cannot show exactly, missing items, zero counts and limits that conflict.
 - Web editor: New shop starts blank or from villager trades, a money shop or a command shop.
 - Web editor: an NPC's shop module has Edit shop and + New shop.
+- NPC definitions take `horse` (coat colour and markings), `llama` (variant and chest), `frog` (variant), `armadillo` (state) and `dragon` (resting phase) settings for those bodies, and groups may hold them.
+- Web editor: the Body part edits the settings of the NPC's body type with dropdowns, and the 3D stage draws horse coats and markings and llama and frog variants.
+- The NPC schema lists the body types each attribute applies to.
 
 ### Changed
 
@@ -390,6 +393,8 @@
 - Web editor: a Sneak + right-click conversation start is saved as a `sneak_interact` trigger instead of a routine that checks sneaking. Older conversations open unchanged and are rewritten on save.
 - Interaction triggers without `cooldownTicks` rate-limit each player on their own, and drop a player's input while that player's run of the trigger is queued or running. Spamming a click starts a dialogue once.
 - Web editor: the shop editor's slot inspector became the offers board; slots are picked from the chest window preview or set per offer.
+- Web editor: attributes are added from a grouped, searchable dropdown ordered for the body type, with ranges, vanilla defaults and a note on attributes the body does not have.
+- Web editor: the Body and Appearance parts show only the pose, traits, skin and equipment slots the body type can show.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
@@ -570,7 +575,13 @@
 - A left-click on an NPC reads `context.sneaking` from the player, since the attack packet carries no sneaking flag; it was always false.
 - The Denizen converter reads `<context.entity.is_npc||false>` as marking the NPC, as it already read `<context.entity.is_npc>`.
 - Web editor: text typed faster than the browser stores it shows at once everywhere, so a field left with Escape, Tab or a click, and a Code view opened right after, hold every keystroke. Before, the open document lagged behind the queued saves, a field fell back to older text when it lost focus, and a Code view opened in that window started from the older text. A collapsible part opened while an edit lands stays open.
+- Web editor: changing a player NPC to another body type now flags its skin, pose, armor stand and other body settings and offers to remove them, instead of reporting the definition valid until the server refused it.
+- Web editor: the 3D stage drew a horse with no coat setting as brown; it now shows the white coat the client shows.
+- `/animus edit` removes a field set to `null`, so a skinned or seated player NPC can become a horse in one edit; before, the skin could not be dropped without editing the file.
+- A refused `/animus edit` says `Cannot save` instead of `Cannot spawn` or a bare field error, and a refused type change shows the `null` that removes the field in the same edit.
 
 ### Notes
 
 Riding, mounts and combat on Folia, protection integrations on mod servers, and the browser editor remain unfinished. Packet proofs do not establish feature parity or performance improvements.
+
+The web editor asset pack now holds the horse coat and markings and the llama and frog variant textures; re-run `tool/extract_minecraft_world_assets.dart` before building the editor.
