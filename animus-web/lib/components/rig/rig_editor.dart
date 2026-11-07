@@ -131,7 +131,7 @@ class _RigEditorState extends State<RigEditor> {
 
   AnimusDocument? get _animationDocument {
     if (_animation == _restPose) return null;
-    return component.store.document(DocumentKind.animation, _animation);
+    return component.store.shown(DocumentKind.animation, _animation);
   }
 
   JsonMap? get _animationJson {

@@ -114,6 +114,13 @@ class EditorStore {
   Future<void> _queue = Future<void>.value();
   int _pending = 0;
   String? _coalesce;
+
+  /// The document changes of commits not yet in [_workspace] (queued, or
+  /// waiting on the browser's storage), oldest first; [shown] lays them over.
+  final List<List<DocumentChange>> _unsettled = <List<DocumentChange>>[];
+  int _unsettledVersion = 0;
+  final Map<String, ({AnimusDocument base, int version, AnimusDocument shown})> _shownCache =
+      <String, ({AnimusDocument base, int version, AnimusDocument shown})>{};
   List<WorkspaceSummary> _workspaces = const <WorkspaceSummary>[];
   bool _listed = false;
   String? _listProblem;
@@ -350,6 +357,39 @@ class EditorStore {
     return null;
   }
 
+  /// The document as the editor should draw it: [document] with every
+  /// commit asked for so far applied, even those still waiting their turn
+  /// to be stored. Typing faster than the browser stores never shows (or
+  /// lets a Code view start from) text older than the last keystroke.
+  /// Removal is not shown before it lands.
+  AnimusDocument? shown(DocumentKind kind, String id) {
+    final AnimusDocument? stored = document(kind, id);
+    if (stored == null || _unsettled.isEmpty) return stored;
+    final String key = '${kind.wireName}:$id';
+    final ({AnimusDocument base, int version, AnimusDocument shown})? cached = _shownCache[key];
+    if (cached != null && identical(cached.base, stored) && cached.version == _unsettledVersion) return cached.shown;
+    AnimusDocument current = stored;
+    for (final List<DocumentChange> changes in _unsettled) {
+      for (final DocumentChange change in changes) {
+        if (change.kind != kind || change.id != id) continue;
+        final JsonUpdate? update = change.update;
+        final Object? updated = update?.call(current.json);
+        if (update != null && jsonEquals(updated, current.json)) continue;
+        final String? source = update != null ? prettyJson(updated) : change.source;
+        if (source == null || source == current.source) continue;
+        current = validateSource(DocumentLocation(kind, id), current.path, source, schemas);
+      }
+    }
+    _shownCache[key] = (base: stored, version: _unsettledVersion, shown: current);
+    return current;
+  }
+
+  void _settle(List<DocumentChange> changes) {
+    if (!_unsettled.remove(changes)) return;
+    _unsettledVersion++;
+    if (_unsettled.isEmpty) _shownCache.clear();
+  }
+
   /// Replaces a document's text, revalidates it and saves the workspace.
   Future<void> editSource(DocumentKind kind, String id, String source) {
     if (document(kind, id) == null) return Future<void>.value();
@@ -369,7 +409,33 @@ class EditorStore {
     ServerBinding Function(ServerBinding binding)? server,
     bool undoable = true,
     String? label,
-  }) => _enqueue(() async {
+  }) {
+    final List<DocumentChange> changes = List<DocumentChange>.of(documents);
+    if (changes.isNotEmpty) {
+      _unsettled.add(changes);
+      _unsettledVersion++;
+      _changed();
+    }
+    return _enqueue(() async {
+      try {
+        await _commit(changes, resources, coalesce, server, undoable, label);
+      } finally {
+        if (_unsettled.contains(changes)) {
+          _settle(changes);
+          _changed();
+        }
+      }
+    });
+  }
+
+  Future<void> _commit(
+    List<DocumentChange> documents,
+    Map<String, Uint8List?> resources,
+    String? coalesce,
+    ServerBinding Function(ServerBinding binding)? server,
+    bool undoable,
+    String? label,
+  ) async {
     final WorkspaceSnapshot? current = _workspace;
     if (current == null) return;
     final ServerBinding? binding = current.server == null || server == null ? current.server : server(current.server!);
@@ -443,11 +509,12 @@ class EditorStore {
       current,
       current.next(documents: next, resources: nextResources, server: binding),
       record: undoable && !merge ? HistoryStep(description, current) : null,
+      lands: documents,
     );
     if (!saved) return;
     if (changed) await _clearRedo(current.id);
     _coalesce = undoable ? coalesce : null;
-  });
+  }
 
   /// Completes once every commit, undo and redo asked for so far has run.
   Future<void> settled() => _enqueue(() async {});
@@ -521,22 +588,27 @@ class EditorStore {
   /// Saves [next] over [current]; true when the edit stands (stored, or kept
   /// in memory after the browser refused it), false when another tab won and
   /// this tab reloaded.
-  Future<bool> _save(WorkspaceSnapshot current, WorkspaceSnapshot next, {HistoryStep? record}) async {
+  /// [lands] are the commit's changes, settled as [next] (or the reloaded
+  /// copy) takes their place.
+  Future<bool> _save(WorkspaceSnapshot current, WorkspaceSnapshot next, {HistoryStep? record, List<DocumentChange>? lands}) async {
     try {
       await repository.save(next);
     } on WorkspaceConflict {
+      if (lands != null) _settle(lands);
       await _reload(current.id, lost: true);
       return false;
     } on Object catch (failure) {
       // The edit stays on screen at the stored generation, so the next save
       // (or Save again) writes it on top of the stored copy.
       _keep(current, next.atGeneration(current.generation), record);
+      if (lands != null) _settle(lands);
       _unsaved = true;
       _problem = saveFailureMessage(failure);
       _changed();
       return true;
     }
     _keep(current, next, record);
+    if (lands != null) _settle(lands);
     if (record != null) await _persistHistory(() => repository.pushHistory(current.id, HistoryStack.undo, record, undoLimit));
     _unsaved = false;
     _problem = null;

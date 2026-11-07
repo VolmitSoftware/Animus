@@ -9,6 +9,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
 import '../../logic/help_text.dart';
+import '../gui/gui_fields.dart' show takeSummaryClick;
 import '../info_tip.dart';
 
 /// Whether the page is phone width, where the inspector starts collapsed.
@@ -42,7 +43,11 @@ class NpcSection extends StatelessWidget {
       },
     },
     <Widget>[
-      dom.summary(<Widget>[
+      dom.summary(events: <String, void Function(web.Event)>{
+        'click': (web.Event event) {
+          if (takeSummaryClick(event)) onToggle?.call(!open);
+        },
+      }, <Widget>[
         dom.span(classes: 'animus-npc-section-title', <Widget>[Component.text(title)]),
         if (summary.isNotEmpty) dom.span(classes: 'animus-npc-section-summary', <Widget>[Component.text(summary)]),
       ]),

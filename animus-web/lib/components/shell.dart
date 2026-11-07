@@ -487,7 +487,7 @@ class _EditorShellState extends State<EditorShell> {
   Widget _workspace(WorkspaceSnapshot workspace) {
     final EditorRoute route = component.route;
     final DocumentRoute? selected = route is DocumentRoute ? route : null;
-    final AnimusDocument? document = selected == null ? null : component.store.document(selected.kind, selected.documentId);
+    final AnimusDocument? document = selected == null ? null : component.store.shown(selected.kind, selected.documentId);
     final LiveSession? session = workspace.server == null ? null : component.session;
     return PickerScope(
       workspaceId: workspace.id,
