@@ -10,6 +10,7 @@ import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.mod.toolkit.ModToolkit;
 import art.arcane.animus.core.BuildIdentity;
+import art.arcane.animus.core.SplashScreen;
 import art.arcane.animus.core.Platform;
 import art.arcane.animus.core.RuntimeEnvironment;
 import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
@@ -219,12 +220,27 @@ public final class AnimusModRuntime {
             startEditor(server, next, files);
             running = next;
             ModHooks.attach(this);
+            if (next.runtime.splashScreen()) splash(environment.minecraftVersion(), true);
             LOGGER.info("Enabled {} on {} {} in {}ms | {} NPCs | editor {}", BuildIdentity.VERSION, platform.name().toLowerCase(java.util.Locale.ROOT), environment.minecraftVersion(),
                     (System.nanoTime() - startedAt) / 1_000_000, next.runtime.npcs().all().size(), next.editor == null ? "off" : next.editor.reach());
             next.onboarding = new ModOnboarding(server, next.ticks, next.runtime, files, () -> owner.stopping, LOGGER::info, LOGGER::warn);
         } catch (IOException | RuntimeException | LinkageError failure) {
             LOGGER.error("Failed to start", failure);
+            splash(environment.minecraftVersion(), false);
             close(next);
+        }
+    }
+
+    /** log4j has no Bukkit colour codes, so an interactive terminal gets ANSI escapes and anything else plain text. */
+    private void splash(String minecraftVersion, boolean ready) {
+        try {
+            java.io.Console console = System.console();
+            SplashScreen.Colors colors = SplashScreen.Colors.forTerminal(console != null && console.isTerminal(), System.getenv("NO_COLOR"));
+            String loader = switch (platform) { case FABRIC -> "Fabric"; case FORGE -> "Forge"; case NEOFORGE -> "NeoForge"; case BUKKIT -> "Bukkit"; };
+            String server = loader + " " + minecraftVersion;
+            LOGGER.info(SplashScreen.render(SplashScreen.Details.current(server, ready), colors));
+        } catch (RuntimeException | LinkageError failure) {
+            LOGGER.warn("Splash screen failed to render", failure);
         }
     }
 

@@ -27,6 +27,16 @@ class PluginSettingsTest {
             assertEquals(source, Files.readString(root.resolve("config.toml")));
         }
     }
+    @Test void theSplashScreenIsOnByDefaultAndCanBeTurnedOff() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            assertTrue(PluginSettings.load(store).splashScreen());
+            assertTrue(Files.readString(root.resolve("config.toml")).contains("\nsplashScreen = true\n"));
+            assertFalse(PluginSettings.parse("splashScreen = false\n", root.resolve("config.toml")).splashScreen());
+            assertTrue(PluginSettings.parse("packetProofEnabled = true\n", root.resolve("config.toml")).splashScreen());
+            IOException wrong = assertThrows(IOException.class, () -> PluginSettings.parse("splashScreen = \"yes\"\n", root.resolve("config.toml")));
+            assertTrue(wrong.getMessage().contains("splashScreen must be a boolean"), wrong.getMessage());
+        }
+    }
     @Test void anOlderConfigWithTheRetiredStatusMessageStillLoads() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             String source = "statusMessage = \"Hello from Animus\"\npacketProofEnabled = false\n[npcs]\nviewDistance = 40\n";

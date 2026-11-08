@@ -39,8 +39,11 @@ import art.arcane.animus.bukkit.runtime.NpcKeyPresses;
 import art.arcane.animus.bukkit.runtime.RegionBuildNpcs;
 import art.arcane.animus.bukkit.runtime.RegionNpcRuntime;
 import art.arcane.animus.core.AnimusRuntime;
+import art.arcane.volmlib.util.plugin.ComponentLog;
+import art.arcane.volmlib.util.plugin.SplashScreenSupport;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.RuntimeEnvironment;
+import art.arcane.animus.core.SplashScreen;
 import art.arcane.animus.bukkit.building.BukkitBuildPlatform;
 import art.arcane.animus.bukkit.protection.RegionBuildProtection;
 import art.arcane.animus.bukkit.protection.RegionFlags;
@@ -260,11 +263,13 @@ public final class AnimusPlugin extends JavaPlugin {
             director = new AnimusCommandTree(commandServices).director();
             extensions.start();
             startEditor(modulePlatform, regions);
+            if (runtime.splashScreen()) splash(true);
             getLogger().info("Enabled " + BuildIdentity.VERSION + " on " + getServer().getName() + " " + environment.minecraftVersion() + (replies.isFolia() ? " (Folia regions)" : "")
                     + " in " + (System.nanoTime() - started) / 1_000_000 + "ms | " + runtime.npcs().all().size() + " NPCs | editor " + editorState());
             BukkitOnboarding.start(this, replies, runtime, commands, () -> stopping);
         } catch (IOException | ReflectiveOperationException | RuntimeException | LinkageError exception) {
             getLogger().log(Level.SEVERE, "Failed to start", exception);
+            splash(false);
             getServer().getPluginManager().disablePlugin(this);
         }
     }
@@ -423,6 +428,16 @@ public final class AnimusPlugin extends JavaPlugin {
         Player player = getServer().getPlayer(choice.player());
         if (player != null) getServer().getPluginManager().callEvent(new VirtualNpcDialogueChoiceEvent(
                 player, choice.npc().uuid(), choice.behavior(), choice.prompt(), choice.option()));
+    }
+
+    /** Paper and Folia take the banner through their component logger; Spigot gets it as plain text. */
+    private void splash(boolean ready) {
+        try {
+            String server = getServer().getName() + " " + SplashScreenSupport.serverVersionWithoutMcSuffix(getServer().getVersion());
+            ComponentLog.logMarkup(this, getLogger(), null, Level.INFO, SplashScreen.render(SplashScreen.Details.current(server, ready), SplashScreen.Colors.MINIMESSAGE), null);
+        } catch (RuntimeException | LinkageError failure) {
+            getLogger().log(Level.WARNING, "Splash screen failed to render", failure);
+        }
     }
 
     private Platform modulePlatform() {

@@ -31,7 +31,7 @@ tasks.named('shadowJar').configure {
         'art/arcane/volmlib/util/config/ConfigDescription', 'art/arcane/volmlib/util/config/ConfigDoc', 'art/arcane/volmlib/util/config/ConfigExposePolicy',
         'art/arcane/volmlib/util/config/ConfigJson', 'art/arcane/volmlib/util/config/TomlCodec', 'art/arcane/volmlib/util/format/ColorFormatter',
         'art/arcane/volmlib/util/io/AtomicFileIO', 'art/arcane/volmlib/util/plugin/ComponentText',
-        'art/arcane/volmlib/util/plugin/ComponentMessenger']
+        'art/arcane/volmlib/util/plugin/ComponentMessenger', 'art/arcane/volmlib/util/plugin/ComponentLog', 'art/arcane/volmlib/util/plugin/SplashScreenSupport']
     exclude { FileTreeElement entry ->
         String path = entry.relativePath.pathString
         path.startsWith('art/arcane/volmlib/') && !entry.directory && !volmLibKept.any { String kept -> path.startsWith(kept) }
