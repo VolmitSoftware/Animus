@@ -79,7 +79,7 @@ public final class NativeProtocolClient {
         "keep_alive", "ping", "disconnect", "chunk_batch_finished", "set_entity_data",
         "set_entity_motion", "set_equipment", "set_passengers", "animate", "rotate_head", "set_health",
         "login", "sound", "level_particles", "boss_event", "move_entity_rot", "move_entity_pos_rot",
-        "open_screen", "container_set_content", "container_set_slot", "container_close", "merchant_offers", "block_update", "section_blocks_update");
+        "command_suggestions", "open_screen", "container_set_content", "container_set_slot", "container_close", "merchant_offers", "block_update", "section_blocks_update");
 
     private NativeProtocolClient(int port, String username) throws Exception {
         this.username = username;
@@ -306,6 +306,8 @@ public final class NativeProtocolClient {
             for (var pair : p.getSlots()) slots.put(pair.getFirst().getName(), pair.getSecond().isEmpty() ? "empty" : BuiltInRegistries.ITEM.getKey(pair.getSecond().getItem()).toString());
             event("equipment", "id", p.getEntity(), "slots", slots);
         }
+        else if (packet instanceof net.minecraft.network.protocol.game.ClientboundCommandSuggestionsPacket p)
+            event("suggestions", "id", p.id(), "texts", p.suggestions().stream().map(net.minecraft.network.protocol.game.ClientboundCommandSuggestionsPacket.Entry::text).toList());
         else if (packet instanceof ClientboundSoundPacket p) event("sound", "sound", p.getSound().unwrapKey().map(key -> key.identifier().toString()).orElse(p.getSound().value().location().toString()), "volume", p.getVolume(), "pitch", p.getPitch());
         else if (packet instanceof ClientboundLevelParticlesPacket p) event("particle", "particle", BuiltInRegistries.PARTICLE_TYPE.getKey(ProtocolRevision.particle(p).getType()).toString(), "count", ProtocolRevision.particleCount(p));
         else if (packet instanceof ClientboundBossEventPacket) event("boss_event");
@@ -419,6 +421,7 @@ public final class NativeProtocolClient {
     private void control(JsonObject command) throws Exception {
         switch (command.get("op").getAsString()) {
             case "command" -> send(new ServerboundChatCommandPacket(command.get("text").getAsString().replaceFirst("^/", "")));
+            case "suggest" -> send(new net.minecraft.network.protocol.game.ServerboundCommandSuggestionPacket(command.get("id").getAsInt(), command.get("text").getAsString()));
             case "respawn" -> {
                 if (!loaded) throw new IllegalStateException("Respawn requires an active game connection");
                 send(new ServerboundClientCommandPacket(ServerboundClientCommandPacket.Action.PERFORM_RESPAWN));

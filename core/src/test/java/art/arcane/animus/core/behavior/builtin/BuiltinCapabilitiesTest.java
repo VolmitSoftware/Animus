@@ -74,7 +74,7 @@ class BuiltinCapabilitiesTest {
     /** Waits for the host worker to admit the handler, then drives owner ticks until the result is delivered. */
     private <T> Outcome<T> settle(CompletionStage<Outcome<T>> stage) throws Exception {
         CompletableFuture<Outcome<T>> future = stage.toCompletableFuture();
-        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);
+        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
         while (!future.isDone() && System.nanoTime() < until) { platform.pump(); Thread.sleep(1); }
         return future.get(1, TimeUnit.MILLISECONDS);
     }

@@ -38,8 +38,6 @@ import java.util.function.*;
  */
 public final class BehaviorCommands implements AutoCloseable {
     public enum State { DISABLED, WAITING_MODULES, LOADING, READY, FAILED, CLOSED }
-    /** Rows per page of a behavior listing, so a page with its banner and arrows fits in six chat lines. */
-    static final int PAGE_SIZE=4;
     private static final int MAX_LINE_CHARS=2048,LISTED=1000;
     private static final BehaviorCatalog.Snapshot EMPTY_CATALOG=new BehaviorCatalog.Snapshot(0,Map.of(),Map.of(),List.of());
     private final Path dataDirectory;
@@ -189,7 +187,7 @@ public final class BehaviorCommands implements AutoCloseable {
     private void listed(CommandActor sender,String title,String verb,List<String> rows,int page,String empty,Function<String,String> click){
         if(sender==null||closed.get())return;
         List<String> bounded=rows.stream().map(BehaviorCommands::boundedLine).toList();
-        if(!sender.reply(()->{if(!closed.get()&&sender.permitted("animus.admin"))CommandGroup.paged(sender,title,"/animus behaviors "+verb,bounded,page,empty,click,PAGE_SIZE);}))
+        if(!sender.reply(()->{if(!closed.get()&&sender.permitted("animus.admin"))CommandGroup.listing(sender,title,"/animus behaviors "+verb,bounded,page,empty,click);}))
             unavailableReplies.incrementAndGet();
     }
     public void stateStatus(CommandActor sender){reply(sender,stateLines());}

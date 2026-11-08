@@ -1,7 +1,8 @@
 package art.arcane.animus.bukkit;
 
-import art.arcane.animus.core.command.AnimusDirector;
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.command.CommandSound;
+import art.arcane.animus.core.command.Coordinates;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.text.RichText;
@@ -15,7 +16,10 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import org.bukkit.Location;
+import org.bukkit.SoundCategory;
+import org.bukkit.block.Block;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
@@ -58,6 +62,28 @@ record BukkitActor(CommandSender sender, ReplyScheduler replies) implements Comm
     }
     private static final double NEARBY = 16;
     private static final int NEARBY_LIMIT = 20;
-    /** Lenient MiniMessage through VolmLib: hover rows and click paging for players. */
-    @Override public void menu(DirectorMiniMenu.ContentMenu menu) { DirectorMiniMenu.deliverContent(sender, menu, AnimusDirector.THEME, AnimusDirector.TEXT); }
+    /** VolmLib's own delivery, as Iris and Adapt use it: the chat window cleared, then each MiniMessage line. */
+    @Override public void page(List<String> lines) { DirectorMiniMenu.deliver(sender, lines); }
+    @Override public Optional<Coordinates.Facing> facing() {
+        if (!(sender instanceof Player player)) return Optional.empty();
+        Location at = player.getLocation();
+        return Optional.of(new Coordinates.Facing(at.getYaw(), at.getPitch()));
+    }
+    /** The block in the crosshair within {@link #REACH} blocks; on Folia a read the region refuses offers nothing. */
+    @Override public Optional<Vec3> target() {
+        if (!(sender instanceof Player player)) return Optional.empty();
+        try {
+            Block block = player.getTargetBlockExact(REACH);
+            return block == null ? Optional.empty() : Optional.of(new Vec3(block.getX(), block.getY(), block.getZ()));
+        } catch (RuntimeException refused) { return Optional.empty(); }
+    }
+    private static final int REACH = 5;
+    /** At the player in the master category, as Iris plays its command sounds; scheduled on the player's own owner, which on Folia is its region. */
+    @Override public void play(CommandSound sound) {
+        if (!(sender instanceof Player player)) return;
+        List<CommandSound.Tone> tones = sound.tones(ThreadLocalRandom.current());
+        replies.reply(player, () -> {
+            for (CommandSound.Tone tone : tones) player.playSound(player.getLocation(), tone.sound(), SoundCategory.MASTER, tone.volume(), tone.pitch());
+        });
+    }
 }

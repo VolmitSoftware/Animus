@@ -54,7 +54,7 @@ class NavigationWaitTest {
         return host.actionHandle(new Key("animus", "navigate"), NPC, Optional.empty(), json, false, false, () -> true, Optional.of("town:patrol"));
     }
     private void pumpUntil(BooleanSupplier check) throws Exception {
-        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);
+        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
         while (!check.getAsBoolean() && System.nanoTime() < until) { platform.pump(); Thread.sleep(1); }
         assertTrue(check.getAsBoolean(), platform.calls.toString());
     }

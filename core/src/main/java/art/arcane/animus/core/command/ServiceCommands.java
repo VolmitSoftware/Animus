@@ -5,6 +5,7 @@ import art.arcane.animus.core.building.BuildCommands;
 import art.arcane.animus.core.gui.HoloService;
 import art.arcane.animus.core.gui.exchange.GlossExchange;
 import art.arcane.animus.core.gui.exchange.GlossIds;
+import art.arcane.animus.core.text.Palette;
 import art.arcane.volmlib.util.director.DirectorOrigin;
 import art.arcane.volmlib.util.director.annotations.Director;
 import art.arcane.volmlib.util.director.annotations.Param;
@@ -207,7 +208,7 @@ final class ServiceCommands {
         @Director(description = "Start an NPC building its saved build or a schematic")
         void start(@Param(name = "npc", description = "The builder NPC id, or @selected") String npc,
                    @Param(name = "schematic", defaultValue = "", description = "The schematic; the NPC's saved build when left out") String schematic,
-                   @Param(name = "at", defaultValue = "", description = "Origin block x,y,z; the NPC's position when left out") String at,
+                   @Param(name = "at", defaultValue = "", description = "Origin block x,y,z, such as ~,~,~; the NPC's position when left out") String at,
                    @Param(name = "anchor", defaultValue = "", description = "center, corner or schematic") String anchor,
                    @Param(name = "rotation", defaultValue = "", description = "0, 90, 180 or 270") String rotation,
                    @Param(name = "mirror", defaultValue = "", description = "none, x or z") String mirror,
@@ -226,16 +227,21 @@ final class ServiceCommands {
                    @Param(name = "hold", defaultValue = "", description = "Show the block being placed in hand") String hold,
                    @Param(name = "silent", defaultValue = "", description = "Place without sounds") String silent,
                    @Param(name = "materials", defaultValue = "", description = "creative, donate or container") String materials,
-                   @Param(name = "container", defaultValue = "", description = "The x,y,z chest materials=container draws from") String container,
+                   @Param(name = "container", defaultValue = "", description = "The x,y,z chest materials=container draws from, such as ~,~-1,~") String container,
                    @Param(name = "scaffolding", defaultValue = "", description = "Build scaffolding to reach high blocks") String scaffolding) {
             CommandActor actor = actor();
+            String origin, chest;
+            try {
+                origin = Coordinates.block(at, Coordinates.origin(actor));
+                chest = Coordinates.block(container, Coordinates.origin(actor));
+            } catch (IllegalArgumentException unreadable) { actor.tell(Palette.error("Build: " + unreadable.getMessage())); return; }
             Map<String, String> options = new LinkedHashMap<>();
             String[] words = {"anchor", "rotation", "mirror", "offset", "yoffset", "pattern", "layers", "groupall", "ignoreair", "ignoreliquids", "excavate",
                     "speed", "interval", "reach", "timeout", "hold", "silent", "materials", "container", "scaffolding"};
             String[] values = {anchor, rotation, mirror, offset, yoffset, pattern, layers, groupall, ignoreair, ignoreliquids, excavate,
-                    speed, interval, reach, timeout, hold, silent, materials, container, scaffolding};
+                    speed, interval, reach, timeout, hold, silent, materials, chest, scaffolding};
             for (int index = 0; index < words.length; index++) if (!values[index].isBlank()) options.put(words[index], values[index]);
-            npc(actor, npc).ifPresent((String id) -> builds().start(actor, id, given(schematic), given(at), options));
+            npc(actor, npc).ifPresent((String id) -> builds().start(actor, id, given(schematic), given(origin), options));
         }
 
         @Director(description = "Pause a build")

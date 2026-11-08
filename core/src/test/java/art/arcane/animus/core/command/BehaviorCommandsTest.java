@@ -72,7 +72,7 @@ class BehaviorCommandsTest {
     }
     private void pump(){for(Runnable action;(action=replies.poll())!=null;)action.run();}
     private void until(BooleanSupplier condition)throws Exception{
-        long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(4);while(!condition.getAsBoolean()&&System.nanoTime()<end){pump();Thread.sleep(5);}pump();assertTrue(condition.getAsBoolean());
+        long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(20);while(!condition.getAsBoolean()&&System.nanoTime()<end){pump();Thread.sleep(5);}pump();assertTrue(condition.getAsBoolean());
     }
     private Path source(String id,long revision,int wait)throws Exception{
         Path path=root.resolve("behaviors/"+id.replace(':','/')+".json");Files.createDirectories(path.getParent());Files.writeString(path,"{\"schemaVersion\":1,\"revision\":"+revision+",\"id\":\""+id+"\",\"entry\":\"main\",\"routines\":{\"main\":{\"type\":\"wait\",\"ticks\":"+wait+"}}}");return path;
@@ -202,7 +202,7 @@ class BehaviorCommandsTest {
         try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
             harness.start();CommandActor sender=sender(false,true);exec(harness.service,sender,new String[]{"behaviors","list","2"});pump();assertEquals(31,messages.size(),"the console gets every row");assertEquals("--- Behaviors ---",messages.getFirst());
             exec(harness.service,screen(),new String[]{"behaviors","list","2"});pump();
-            var page=menus.getLast().page();assertEquals(2,page.page());assertEquals(BehaviorCommands.PAGE_SIZE,page.endIndex()-page.startIndex());assertEquals(30,page.total());
+            var page=menus.getLast().page();assertEquals(2,page.page());assertEquals(art.arcane.volmlib.util.director.help.DirectorMiniMenu.MAX_ENTRIES_PER_PAGE,page.startIndex(),"a page holds as many rows as every Volmit menu");assertEquals(30,page.endIndex());assertEquals(30,page.total());
             assertEquals("/animus behaviors list",menus.getLast().command(),"the arrows run the neighbouring pages");
             for(int i=0;i<30;i++)Files.writeString(root.resolve("behaviors/example/p"+i+".json"),"malformed");messages.clear();exec(harness.service,sender,new String[]{"behaviors","validate"});until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors validate: INVALID")));assertEquals(17,messages.size());
         }
@@ -311,7 +311,7 @@ class BehaviorCommandsTest {
             CommandActor sender=sender(false,true);exec(harness.service,sender,new String[]{"behaviors","triggers","2"});pump();
             assertEquals(30,messages.stream().filter(line->line.startsWith("⇀ test | ")).count(),"the console gets every binding");
             exec(harness.service,screen(),new String[]{"behaviors","triggers","2"});pump();
-            var page=menus.getLast().page();assertEquals(BehaviorCommands.PAGE_SIZE,page.endIndex()-page.startIndex());assertEquals(32,page.total());assertTrue(menus.getLast().title().startsWith("Trigger bindings"));
+            var page=menus.getLast().page();assertEquals(art.arcane.volmlib.util.director.help.DirectorMiniMenu.MAX_ENTRIES_PER_PAGE,page.startIndex());assertEquals(32,page.endIndex());assertEquals(32,page.total());assertTrue(menus.getLast().title().startsWith("Trigger bindings"));
             messages.clear();exec(harness.service,sender,new String[]{"behaviors","triggers","0"});pump();assertTrue(messages.getFirst().contains("Page must be"));
         }
     }

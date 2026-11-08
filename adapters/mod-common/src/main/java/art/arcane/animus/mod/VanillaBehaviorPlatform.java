@@ -207,7 +207,7 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         return deliver(active, audience, at, true, (ServerPlayer viewer) -> viewer.connection.send(new ClientboundSoundPacket(event, SoundSource.NEUTRAL,
                 at.point().x(), at.point().y(), at.point().z(), sound.volume(), sound.pitch(), seed)));
     }
-    private static Holder<SoundEvent> sound(String key) {
+    static Holder<SoundEvent> sound(String key) {
         Identifier id = Identifier.tryParse(key);
         if (id == null) throw PlatformRefusals.refusal(art.arcane.animus.api.Outcome.Status.INVALID, "unknown-sound", new IllegalArgumentException("Unknown sound: " + key));
         return BuiltInRegistries.SOUND_EVENT.get(id).<Holder<SoundEvent>>map((Holder.Reference<SoundEvent> reference) -> reference)

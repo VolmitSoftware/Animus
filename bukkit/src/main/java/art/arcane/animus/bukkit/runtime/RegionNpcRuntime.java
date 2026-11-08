@@ -405,6 +405,16 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         String id = selections.get(viewer);
         return id != null && runtime.npcs().snapshot().containsKey(id) ? Optional.of(id) : Optional.empty();
     }
+    /** On the player's region: the looked-at or nearest NPC this player sees. */
+    @Override public Optional<String> pick(UUID viewer) {
+        RegionViewer seen = viewers.get(viewer);
+        return seen == null || !regions.owns(seen.player) ? Optional.empty() : seen.pick();
+    }
+    /** On the player's region: the glow is viewer-private metadata, ended by the viewer's own tick. */
+    @Override public boolean highlight(UUID viewer, String id, int ticks) {
+        RegionViewer seen = viewers.get(viewer);
+        return seen != null && regions.owns(seen.player) && seen.highlight(id, ticks);
+    }
     @Override public void select(UUID viewer, String id) {
         if (!available()) throw new IllegalStateException("NPC runtime " + (closed ? "closed" : unavailable));
         if (!runtime.npcs().snapshot().containsKey(id)) throw new IllegalArgumentException("Unknown NPC: " + id);

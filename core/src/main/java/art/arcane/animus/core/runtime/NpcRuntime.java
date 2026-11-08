@@ -76,6 +76,16 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     boolean stopRider(String playerName);
     Optional<String> selection(UUID viewer);
     void select(UUID viewer, String id);
+    /**
+     * On the viewer's owner: the NPC {@code /animus select} without an id means, the one the player looks at or else the
+     * nearest, as {@link SelectionPick} chooses among the NPCs this player sees. Empty when none is within reach.
+     */
+    default Optional<String> pick(UUID viewer) { return Optional.empty(); }
+    /**
+     * On the viewer's owner: the NPC glows for this viewer alone for {@code ticks}, then shows its own look again. False
+     * when the viewer does not see it, so nothing glows.
+     */
+    default boolean highlight(UUID viewer, String id, int ticks) { return false; }
     Optional<ActiveNpc> active(UUID npc);
     /** The NPC's last published state, from any thread, for behavior facts. Empty when it is not active. */
     default Optional<VirtualNpcState.Snapshot> state(UUID npc) { return active(npc).map(ActiveNpc::state); }

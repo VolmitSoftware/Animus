@@ -83,7 +83,7 @@ final class CommandCompletions {
             case "world" -> worlds(actor);
             case "worlds" -> worlds(actor).stream().map((String world) -> world + ":" + world).toList();
             case "x", "y", "z" -> coordinate(actor, parameter);
-            case "at", "container" -> actor.position().map((WorldPosition position) -> block(position.point())).map(List::of).orElse(List.of());
+            case "at", "container" -> blocks(actor);
             case "offset" -> List.of("0,0,0");
             case "yoffset", "dx", "dy", "dz" -> List.of("0", "1", "-1");
             case "speed" -> List.of("1", "2", "3", "5");
@@ -147,13 +147,18 @@ final class CommandCompletions {
         return List.copyOf(worlds);
     }
 
-    /** The player's block coordinate on that axis. */
+    /** {@code ~}, then the looked-at block's coordinate on that axis, or the player's own block; nothing for the console. */
     private static List<String> coordinate(CommandActor actor, String axis) {
-        Optional<WorldPosition> position = actor.position();
-        if (position.isEmpty()) return List.of();
-        Vec3 point = position.get().point();
+        Optional<Vec3> block = actor.target().or(() -> actor.position().map(WorldPosition::point));
+        if (block.isEmpty()) return List.of();
+        Vec3 point = block.get();
         double value = switch (axis) { case "x" -> point.x(); case "y" -> point.y(); default -> point.z(); };
-        return List.of(String.valueOf((long) Math.floor(value)));
+        return List.of("~", String.valueOf((long) Math.floor(value)));
+    }
+
+    /** {@code ~,~,~}, then the looked-at block, or the player's own block; nothing for the console. */
+    private static List<String> blocks(CommandActor actor) {
+        return actor.target().or(() -> actor.position().map(WorldPosition::point)).map((Vec3 point) -> List.of("~,~,~", block(point))).orElse(List.of());
     }
 
     static String block(Vec3 point) { return (long) Math.floor(point.x()) + "," + (long) Math.floor(point.y()) + "," + (long) Math.floor(point.z()); }

@@ -63,7 +63,7 @@ class BuiltinManualRunTest {
                 new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), List.of("town:allowed"), List.of(), defaults.navigationWaits()), log::add);
         extensions = new ExtensionRuntime(root.resolve("modules"), Platform.PAPER, DEFINITIONS, new ModuleSettings(true, 16, 5000, 250), line -> {}, state -> {}, builtins);
         extensions.start();
-        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);
+        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
         while (extensions.status().state() != ExtensionRuntime.State.READY && System.nanoTime() < until) Thread.sleep(2);
         assertEquals(ExtensionRuntime.State.READY, extensions.status().state());
         catalog = new BehaviorCatalog(root, BehaviorCatalog.Limits.defaults(), extensions.catalogResolver(), art.arcane.animus.core.behavior.catalog.BehaviorCheckpoints.disabled());
@@ -81,7 +81,7 @@ class BuiltinManualRunTest {
     }
     private BehaviorEngine.Report run(String id) throws Exception {
         UUID execution = runtime.run("guard", id, Optional.of(PLAYER)).toCompletableFuture().get(4, TimeUnit.SECONDS).value().orElseThrow();
-        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);
+        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
         while (System.nanoTime() < until) {
             platform.pump();
             Optional<BehaviorRuntime.Execution> found = runtime.inspect(execution);

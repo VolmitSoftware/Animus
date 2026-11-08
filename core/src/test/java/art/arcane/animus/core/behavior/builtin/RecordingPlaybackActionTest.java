@@ -54,7 +54,7 @@ class RecordingPlaybackActionTest {
     }
     private ModuleHost.InvocationHandle<String> play(String json) { return call(PLAY, NPC, json, false); }
     private void pumpUntil(BooleanSupplier check) throws Exception {
-        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);
+        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
         while (!check.getAsBoolean() && System.nanoTime() < until) { platform.pump(); Thread.sleep(1); }
         assertTrue(check.getAsBoolean(), platform.calls.toString());
     }

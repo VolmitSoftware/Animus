@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import art.arcane.animus.core.text.ChatLine;
+import art.arcane.volmlib.util.director.help.DirectorMiniMenu;
 import art.arcane.volmlib.util.director.runtime.DirectorRuntimeNode;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -13,12 +13,14 @@ import java.util.Set;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.junit.jupiter.api.Test;
 
-/** {@code /animus} help: topics, inline descriptions, hover and click on every entry, and pages that fit the chat. */
+/** {@code /animus} help in VolmLib's shared menu: topics, VolmLib's entry lines with hover and click, and pages that fit the chat. */
 class AnimusHelpTest {
     private static final PlainTextComponentSerializer PLAIN = PlainTextComponentSerializer.plainText();
+    private static final MiniMessage MINI = MiniMessage.miniMessage();
     private final AnimusDirector director = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
     private final DirectorRuntimeNode root = director.engine().getRoot();
 
@@ -37,23 +39,22 @@ class AnimusHelpTest {
         assertFalse(page.entries().stream().anyMatch((DirectorRuntimeNode node) -> node.getDescriptor().getName().equals("choice")), "the hidden click target stays out");
     }
 
-    @Test void everyEntryShowsItsDescriptionInlineWithUsageAndExampleOnHover() {
-        ChatLine create = AnimusHelp.entry(child(root, "create"));
-        String text = create.toString();
-        assertTrue(text.startsWith("⇀ create <id> [type=minecraft:player] [name=] [folder=] [+4]"), text);
-        assertTrue(text.endsWith("Save a new despawned NPC where you stand; the console gives world, x, y and z"), text);
-        Component component = create.component();
-        ClickEvent click = first(component);
+    @Test void everyEntryIsDrawnAsVolmLibDrawsItWithTheDescriptionOnHover() {
+        Component create = MINI.deserialize(AnimusHelp.entry(child(root, "create")));
+        assertEquals("⇀ create [id] ⊰type⊱ ⊰name⊱ ⊰folder⊱ ⊰world⊱ ⊰x⊱ ⊰y⊱ ⊰z⊱", PLAIN.serialize(create));
+        ClickEvent click = first(create);
         assertEquals(ClickEvent.Action.SUGGEST_COMMAND, click.action());
         assertEquals("/animus create ", ((ClickEvent.Payload.Text) click.payload()).value());
-        String hover = PLAIN.serialize(hovers(component).getFirst());
-        assertTrue(hover.contains("/animus create <id> [type=minecraft:player] [name=] [folder=] [world=] [x=] [y=] [z=]"), hover);
-        assertTrue(hover.contains("Example: /animus create gate-guard"), hover);
-        ChatLine validate = AnimusHelp.entry(child(root, "validate"));
-        assertEquals(ClickEvent.Action.RUN_COMMAND, first(validate.component()).action(), "a command without parameters runs on click");
-        ChatLine behaviors = AnimusHelp.entry(child(root, "behaviors"));
-        assertEquals("/animus behaviors help", ((ClickEvent.Payload.Text) first(behaviors.component()).payload()).value());
-        assertTrue(behaviors.toString().contains("Load, run, trace and cancel behaviors"), "a group line shows its own description: " + behaviors);
+        String hover = PLAIN.serialize(hovers(create).getFirst());
+        assertTrue(hover.startsWith("create\n✎ Save a new despawned NPC where you stand"), hover);
+        assertTrue(hover.contains("✦ /animus create id=<String>"), hover);
+        assertEquals(ClickEvent.Action.RUN_COMMAND, first(MINI.deserialize(AnimusHelp.entry(child(root, "validate")))).action(), "a command without parameters runs on click");
+        Component behaviors = MINI.deserialize(AnimusHelp.entry(child(root, "behaviors")));
+        assertEquals("/animus behaviors help=1", ((ClickEvent.Payload.Text) first(behaviors).payload()).value());
+        assertEquals("⇀ behaviors - Category of Commands", PLAIN.serialize(behaviors));
+        DirectorRuntimeNode navigation = child(root, "navigation");
+        assertEquals(DirectorMiniMenu.render(new DirectorMiniMenu.DirectorHelpPage(navigation, List.of(child(navigation, "go")), 0, 1), AnimusDirector.THEME, AnimusDirector.TEXT).get(2),
+                AnimusHelp.entry(child(navigation, "go")), "the line is VolmLib's own");
     }
 
     @Test void pagesFitTheChatAndListEveryEntryOnce() {
@@ -61,40 +62,58 @@ class AnimusHelpTest {
         assertTrue(pages > 1, "the root needs several pages: " + pages);
         Set<String> seen = new HashSet<>();
         for (int index = 0; index < pages; index++) {
-            List<ChatLine> lines = AnimusHelp.lines(rootPage(index));
-            int rows = lines.stream().mapToInt(AnimusHelp::rows).sum();
-            assertTrue(rows <= 20, "page " + (index + 1) + " fills " + rows + " rows");
-            assertTrue(lines.getFirst().toString().contains("/animus (" + (index + 1) + "/" + pages + ")"), lines.getFirst().toString());
-            ChatLine bar = lines.getLast();
-            assertTrue(bar.toString().contains("Page " + (index + 1) + " of " + pages), bar.toString());
-            List<String> arrows = runs(bar.component());
-            if (index + 1 < pages) assertTrue(arrows.contains("/animus help=" + (index + 2)), arrows.toString());
-            if (index > 0) assertTrue(arrows.contains("/animus help=" + index), arrows.toString());
-            for (ChatLine line : lines) if (line.toString().startsWith("⇀ ")) assertTrue(seen.add(line.toString().split(" ")[1]), "listed twice: " + line);
+            List<String> lines = AnimusHelp.lines(rootPage(index));
+            int rows = lines.stream().mapToInt(DirectorMiniMenu::chatRows).sum();
+            assertTrue(rows <= DirectorMiniMenu.CHAT_LINE_COUNT, "page " + (index + 1) + " fills " + rows + " rows");
+            assertEquals(DirectorMiniMenu.banner("/animus", AnimusDirector.THEME), lines.getFirst(), "the shared banner");
+            String bar = PLAIN.serialize(MINI.deserialize(lines.getLast()));
+            List<String> arrows = runs(MINI.deserialize(lines.getLast()));
+            if (index + 1 < pages) {
+                assertTrue(bar.endsWith("Page " + (index + 2) + " ❭"), bar);
+                assertTrue(arrows.contains("/animus page=" + (index + 2)), arrows.toString());
+            }
+            if (index > 0) {
+                assertTrue(bar.startsWith("〈 Page " + index), bar);
+                assertTrue(arrows.contains("/animus page=" + index), arrows.toString());
+            }
+            for (String line : lines) {
+                String plain = PLAIN.serialize(MINI.deserialize(line));
+                if (plain.startsWith("⇀ ")) assertTrue(seen.add(plain.split(" ")[1]), "listed twice: " + plain);
+            }
         }
         assertEquals(rootPage(0).entries().size(), seen.size());
-        assertEquals(text(AnimusHelp.lines(rootPage(pages - 1))), text(AnimusHelp.lines(rootPage(pages + 5))), "past the end shows the last page");
+        assertEquals(AnimusHelp.lines(rootPage(pages - 1)), AnimusHelp.lines(rootPage(pages + 5)), "past the end shows the last page");
     }
 
     @Test void aCutTopicRepeatsItsHeadingOnTheNextPage() {
         for (int index = 1; index < AnimusHelp.pageCount(rootPage(0)); index++) {
-            ChatLine second = AnimusHelp.lines(rootPage(index)).get(1);
-            assertTrue(second.visible().endsWith("[Docs]"), "page " + (index + 1) + " starts with a topic heading: " + second.visible());
+            String second = PLAIN.serialize(MINI.deserialize(AnimusHelp.lines(rootPage(index)).get(1)));
+            assertTrue(second.endsWith("[Docs]"), "page " + (index + 1) + " starts with a topic heading: " + second);
         }
     }
 
-    @Test void everyGroupRendersCleanLinesAndEachCommandFitsTwoRows() {
+    @Test void aGroupPageMatchesTheSharedMenuWithItsBackLink() {
+        DirectorRuntimeNode rigs = child(root, "rigs");
+        List<String> lines = AnimusHelp.lines(AnimusHelp.page(rigs, visible(rigs), 0));
+        assertEquals(DirectorMiniMenu.banner("/animus rigs", AnimusDirector.THEME), lines.get(0));
+        assertEquals(DirectorMiniMenu.backLink("/animus help=1", AnimusDirector.THEME, AnimusDirector.TEXT), lines.get(1));
+        assertTrue(PLAIN.serialize(MINI.deserialize(lines.get(2))).startsWith("⇀ "), "entries follow the back link without a heading: " + lines.get(2));
+    }
+
+    @Test void everyGroupRendersCleanLinesThatFitTheChat() {
         List<DirectorRuntimeNode> groups = new ArrayList<>();
         groups(root, groups);
         List<String> broken = new ArrayList<>();
         for (DirectorRuntimeNode group : groups) {
             AnimusHelp.Page page = AnimusHelp.page(group, visible(group), 0);
-            for (int index = 0; index < AnimusHelp.pageCount(page); index++)
-                for (ChatLine line : AnimusHelp.lines(AnimusHelp.page(group, visible(group), index))) {
-                    String plain = PLAIN.serialize(line.component());
-                    if (plain.contains("&") || plain.contains("§") || plain.contains("\n")) broken.add(group.path() + ": " + plain);
-                    if (AnimusHelp.rows(line) > 3) broken.add(group.path() + " too long: " + plain);
+            for (int index = 0; index < AnimusHelp.pageCount(page); index++) {
+                List<String> lines = AnimusHelp.lines(AnimusHelp.page(group, visible(group), index));
+                if (lines.stream().mapToInt(DirectorMiniMenu::chatRows).sum() > DirectorMiniMenu.CHAT_LINE_COUNT) broken.add(group.path() + " page " + (index + 1) + " overflows");
+                for (String line : lines) {
+                    String plain = PLAIN.serialize(MINI.deserialize(line));
+                    if (plain.contains("&") || plain.contains("§") || plain.contains("<#")) broken.add(group.path() + ": " + plain);
                 }
+            }
         }
         assertTrue(broken.isEmpty(), String.join("\n", broken));
     }
@@ -117,8 +136,6 @@ class AnimusHelpTest {
         assertEquals("/animus combat attack <npc> <target> [damage=1]", AnimusDirector.usage(child(child(root, "combat"), "attack")));
         assertEquals("/animus combat status [npc=]", AnimusDirector.usage(child(child(root, "combat"), "status")));
     }
-
-    private static List<String> text(List<ChatLine> lines) { return lines.stream().map(ChatLine::toString).toList(); }
 
     private static DirectorRuntimeNode child(DirectorRuntimeNode group, String name) {
         return group.getChildren().stream().filter((DirectorRuntimeNode node) -> node.getDescriptor().getName().equals(name)).findFirst().orElseThrow();

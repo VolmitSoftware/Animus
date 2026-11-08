@@ -8,7 +8,6 @@ import art.arcane.animus.core.command.AnimusCommandTree;
 import art.arcane.animus.core.command.AnimusDirector;
 import art.arcane.animus.core.command.AnimusHelp;
 import art.arcane.animus.core.command.CommandActor;
-import art.arcane.animus.core.text.ChatLine;
 import java.util.List;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
@@ -34,13 +33,13 @@ class ModTextTest {
 
     @Test void theDirectorTreeLoadsAndRendersItsHelpWithoutBukkit() {
         AnimusDirector director = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
-        List<ChatLine> lines = AnimusHelp.lines(AnimusHelp.page(director.engine().getRoot(), director.engine().getRoot().getChildren(), 0));
+        List<String> lines = AnimusHelp.lines(AnimusHelp.page(director.engine().getRoot(), director.engine().getRoot().getChildren(), 0));
         assertTrue(lines.size() > 5, "a page of entries: " + lines.size());
-        for (ChatLine line : lines) assertEquals(line.visible(), ModText.adventure(line.component()).getString(), "the text a Bukkit player reads");
-        Component list = lines.stream().map((ChatLine line) -> (Component) ModText.adventure(line.component())).filter((Component line) -> line.getString().startsWith("⇀ list")).findFirst().orElseThrow();
-        Style style = styled(list, "list");
+        Component list = lines.stream().map(ModText::miniMessage).filter((Component line) -> line.getString().startsWith("⇀ list")).findFirst().orElseThrow();
+        // VolmLib's gradient splits the name into one styled piece per letter; the click and hover sit on each piece.
+        Style style = list.visit((Style piece, String text) -> piece.getClickEvent() == null ? java.util.Optional.<Style>empty() : java.util.Optional.of(piece), Style.EMPTY).orElseThrow();
         assertInstanceOf(ClickEvent.SuggestCommand.class, style.getClickEvent());
         assertEquals("/animus list ", ((ClickEvent.SuggestCommand) style.getClickEvent()).command());
-        assertTrue(((HoverEvent.ShowText) style.getHoverEvent()).value().getString().contains("Example: /animus list"));
+        assertTrue(((HoverEvent.ShowText) style.getHoverEvent()).value().getString().contains("✦ /animus list page=1"));
     }
 }

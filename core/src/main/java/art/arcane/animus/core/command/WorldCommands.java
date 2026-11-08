@@ -28,17 +28,21 @@ final class WorldCommands {
     static final class Navigation extends CommandGroup {
         Navigation(CommandServices services) { super(services); }
 
-        @Director(description = "Walk, swim or fly an NPC to a point; whole-number x and z mean the block centre")
+        @Director(description = "Walk, swim or fly an NPC to a point, or to you; whole-number x and z mean the block centre")
         void go(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
-                @Param(name = "x", description = "Target X") double x,
-                @Param(name = "y", description = "Target Y") double y,
-                @Param(name = "z", description = "Target Z") double z,
+                @Param(name = "x", defaultValue = "", description = "Target X: a number, ~ or ~N; yours when left out") String x,
+                @Param(name = "y", defaultValue = "", description = "Target Y: a number, ~ or ~N; yours when left out") String y,
+                @Param(name = "z", defaultValue = "", description = "Target Z: a number, ~ or ~N; yours when left out") String z,
                 @Param(name = "mode", defaultValue = "walk", description = "walk, swim or fly") MovementProfile.Mode mode,
                 @Param(name = "speed", defaultValue = "2.0", description = "Blocks per second") double speed) {
             CommandActor actor = actor();
+            Vec3 target;
+            try { target = Coordinates.point(x, y, z, Coordinates.origin(actor)); }
+            catch (IllegalArgumentException unreadable) { actor.tell(Palette.error(unreadable.getMessage())); return; }
             npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Navigation", () -> {
-                WorldPosition destination = new WorldPosition(living().navigationOrigin(id).world(), new Vec3(blockCenter(x), y, blockCenter(z)));
-                return id + " heading to " + blockCenter(x) + " " + y + " " + blockCenter(z) + " (" + mode.name().toLowerCase(Locale.ROOT) + "); route " + living().navigate(id, destination, mode, speed);
+                Vec3 goal = new Vec3(blockCenter(target.x()), target.y(), blockCenter(target.z()));
+                WorldPosition destination = new WorldPosition(living().navigationOrigin(id).world(), goal);
+                return id + " heading to " + goal.x() + " " + goal.y() + " " + goal.z() + " (" + mode.name().toLowerCase(Locale.ROOT) + "); route " + living().navigate(id, destination, mode, speed);
             }));
         }
 
@@ -48,15 +52,18 @@ final class WorldCommands {
          */
         static double blockCenter(double coordinate) { return coordinate == Math.floor(coordinate) ? coordinate + 0.5 : coordinate; }
 
-        @Director(description = "Turn an NPC to look at a point")
+        @Director(description = "Turn an NPC to look at a point, or at you")
         void look(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
-                  @Param(name = "x", description = "Target X") double x,
-                  @Param(name = "y", description = "Target Y") double y,
-                  @Param(name = "z", description = "Target Z") double z) {
+                  @Param(name = "x", defaultValue = "", description = "Target X: a number, ~ or ~N; yours when left out") String x,
+                  @Param(name = "y", defaultValue = "", description = "Target Y: a number, ~ or ~N; yours when left out") String y,
+                  @Param(name = "z", defaultValue = "", description = "Target Z: a number, ~ or ~N; yours when left out") String z) {
             CommandActor actor = actor();
+            Vec3 target;
+            try { target = Coordinates.point(x, y, z, Coordinates.origin(actor)); }
+            catch (IllegalArgumentException unreadable) { actor.tell(Palette.error(unreadable.getMessage())); return; }
             npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Navigation", () -> {
-                living().lookAt(id, new WorldPosition(living().navigationOrigin(id).world(), new Vec3(x, y, z)));
-                return id + " looks at " + x + " " + y + " " + z;
+                living().lookAt(id, new WorldPosition(living().navigationOrigin(id).world(), target));
+                return id + " looks at " + target.x() + " " + target.y() + " " + target.z();
             }));
         }
 

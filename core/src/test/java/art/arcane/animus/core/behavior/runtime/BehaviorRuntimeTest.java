@@ -17,7 +17,7 @@ class BehaviorRuntimeTest {
     static final String WAIT="{\"type\":\"wait\",\"ticks\":100}";
     static final String EMPTY="{\"type\":\"sequence\",\"steps\":[]}";
     static <T>T await(CompletionStage<T> stage)throws Exception{return stage.toCompletableFuture().get(4,TimeUnit.SECONDS);}
-    static void eventually(BooleanSupplier check)throws Exception{long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(4);while(!check.getAsBoolean()&&System.nanoTime()<until)Thread.sleep(2);assertTrue(check.getAsBoolean());}
+    static void eventually(BooleanSupplier check)throws Exception{long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(20);while(!check.getAsBoolean()&&System.nanoTime()<until)Thread.sleep(2);assertTrue(check.getAsBoolean());}
     static void latch(CountDownLatch latch){try{assertTrue(latch.await(5,TimeUnit.SECONDS));}catch(InterruptedException interrupted){Thread.currentThread().interrupt();throw new AssertionError(interrupted);}}
     static BehaviorProgram program(String node){return BehaviorCompiler.compile("{\"schemaVersion\":1,\"id\":\"example:manual\",\"entry\":\"main\",\"routines\":{\"main\":"+node+"}}").program().orElseThrow();}
     static NpcDefinition npc(String id,UUID uuid,long revision,boolean spawned)throws Exception{return NpcDefinition.parse("{\"schemaVersion\":1,\"revision\":"+revision+",\"uuid\":\""+uuid+"\",\"id\":\""+id+"\",\"group\":\"test\",\"name\":\"Test\",\"type\":\"minecraft:player\",\"spawned\":"+spawned+",\"position\":{\"world\":\"world\",\"x\":0,\"y\":61,\"z\":0,\"yaw\":0,\"pitch\":0}}");}

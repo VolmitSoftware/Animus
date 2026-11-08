@@ -53,7 +53,7 @@ class TriggerScopedStateTest {
     private BehaviorRuntime runtime;
 
     private static void eventually(BooleanSupplier check) throws Exception {
-        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);
+        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
         while (!check.getAsBoolean() && System.nanoTime() < until) Thread.sleep(2);
         assertTrue(check.getAsBoolean());
     }

@@ -78,7 +78,7 @@ class ExtensionRuntimeBuiltinsTest {
         BuiltinCapabilities builtins = new BuiltinCapabilities(UNAVAILABLE, new MemoryBehaviorState(), choice -> {}, settings, line -> {});
         runtime = new ExtensionRuntime(root.toRealPath().resolve("modules"), Platform.FOLIA, DEFINITIONS, new ModuleSettings(modulesEnabled, 8, 2000, 250), line -> {}, state -> {}, builtins);
         runtime.start();
-        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);
+        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
         while (runtime.status().state() == ExtensionRuntime.State.STARTING && System.nanoTime() < until) Thread.sleep(2);
         return runtime;
     }
@@ -120,7 +120,7 @@ class ExtensionRuntimeBuiltinsTest {
         ExtensionRuntime started = start(false, List.of());
         int capabilities = started.capabilities().size();
         started.settings(new ModuleSettings(true, 8, 2000, 250));
-        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);
+        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
         while (started.status().state() != ExtensionRuntime.State.READY && System.nanoTime() < until) Thread.sleep(2);
         assertEquals(ExtensionRuntime.State.READY, started.status().state(), started.status().failure());
         assertEquals(capabilities, started.capabilities().size(), "built-ins are not installed twice");

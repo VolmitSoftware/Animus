@@ -26,7 +26,7 @@ class CommandCompletionsTest {
     private static final List<String> FREE_TEXT = List.of("name", "token", "option");
 
     /** A player standing at 10.7 64 -3.2 in town with one mob nearby. */
-    private static final class Standing extends AnimusDirectorTest.Actor {
+    private static class Standing extends AnimusDirectorTest.Actor {
         final UUID mob = UUID.randomUUID();
         Standing() { super(true, AnimusDirector.ADMIN); }
         @Override public Optional<WorldPosition> position() { return Optional.of(new WorldPosition("town", new Vec3(10.7, 64, -3.2))); }
@@ -59,10 +59,13 @@ class CommandCompletionsTest {
     @Test void coordinatesAndTargetsComeFromWhereThePlayerStands() {
         AnimusCommandTree tree = new AnimusCommandTree(null);
         Standing actor = new Standing();
-        assertEquals(List.of("10"), List.copyOf(tree.values("x", actor)));
-        assertEquals(List.of("64"), List.copyOf(tree.values("y", actor)));
-        assertEquals(List.of("-4"), List.copyOf(tree.values("z", actor)), "the block the player stands in");
-        assertEquals(List.of("10,64,-4"), List.copyOf(tree.values("at", actor)));
+        assertEquals(List.of("~", "10"), List.copyOf(tree.values("x", actor)));
+        assertEquals(List.of("~", "64"), List.copyOf(tree.values("y", actor)));
+        assertEquals(List.of("~", "-4"), List.copyOf(tree.values("z", actor)), "the block the player stands in");
+        assertEquals(List.of("~,~,~", "10,64,-4"), List.copyOf(tree.values("at", actor)));
+        Standing looking = new Standing() { @Override public Optional<Vec3> target() { return Optional.of(new Vec3(3, 70, 8)); } };
+        assertEquals(List.of("~", "3"), List.copyOf(tree.values("x", looking)), "the looked-at block comes before the player's own");
+        assertEquals(List.of("~,~,~", "3,70,8"), List.copyOf(tree.values("at", looking)));
         assertEquals(List.of(actor.mob.toString()), List.copyOf(tree.values("target", actor)));
         assertEquals(List.of("stop", actor.mob.toString()), List.copyOf(tree.values("charge", actor)), "guard offers stop");
         assertEquals(List.of("stop", actor.mob.toString()), List.copyOf(tree.values("mob", actor)));

@@ -60,6 +60,12 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
         return new BodyLook(profileName, rows, style, hideProfileName, aboveNativeNameplate, nextPose, armorStand, traits, nextMotion);
     }
 
+    /** This look glowing, as a selected NPC shows to the player who selected it. */
+    public BodyLook glowing() {
+        BodyTraits glow = new BodyTraits(true, traits.teamColor(), traits.baby(), traits.usingItem(), traits.listed(), traits.gravity(), traits.attributes(), traits.variant());
+        return new BodyLook(profileName, rows, style, hideProfileName, aboveNativeNameplate, pose, armorStand, glow, motion);
+    }
+
     /** The shared flags this look sends: its pose, invisibility, glow and motion. */
     public byte sharedFlags(boolean invisible) { return (byte) (sharedFlags(pose, invisible, traits.glowing()) | (motion & (SNEAKING | SPRINTING | GLIDING))); }
 

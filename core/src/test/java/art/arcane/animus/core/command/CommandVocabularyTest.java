@@ -106,17 +106,25 @@ class CommandVocabularyTest {
     }
 
     @Test void createDefaultsToWhereThePlayerStands() {
-        Optional<WorldPosition> standing = Optional.of(new WorldPosition("town", new Vec3(10.257, 64, -3.5)));
+        CommandActor standing = standing(new WorldPosition("town", new Vec3(10.257, 64, -3.5)));
         AnimusCommandTree.Placement here = AnimusCommandTree.placement(standing, "", "", "", "");
-        assertEquals(new AnimusCommandTree.Placement("town", 10.26, 64, -3.5), here);
-        assertEquals(new AnimusCommandTree.Placement("nether", 1, 64, -3.5), AnimusCommandTree.placement(standing, "nether", "1", "", ""));
-        IllegalArgumentException console = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-                () -> AnimusCommandTree.placement(Optional.empty(), "world", "0", "", "0"));
-        assertTrue(console.getMessage().startsWith("The console gives world=, x=, y= and z="), console.getMessage());
-        assertEquals(new AnimusCommandTree.Placement("world", 0, 64, 0), AnimusCommandTree.placement(Optional.empty(), "world", "0", "64", "0"));
+        assertEquals(new AnimusCommandTree.Placement("town", new Vec3(10.26, 64, -3.5)), here);
+        assertEquals(new AnimusCommandTree.Placement("nether", new Vec3(1, 66, -3.5)), AnimusCommandTree.placement(standing, "nether", "1", "~2", ""));
+        CommandActor console = new RecordingActor(false);
+        IllegalArgumentException world = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> AnimusCommandTree.placement(console, "", "0", "64", "0"));
+        assertTrue(world.getMessage().startsWith("The console gives world=, x=, y= and z="), world.getMessage());
+        IllegalArgumentException missing = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> AnimusCommandTree.placement(console, "world", "0", "", "0"));
+        assertEquals(Coordinates.CONSOLE, missing.getMessage());
+        assertEquals(new AnimusCommandTree.Placement("world", new Vec3(0, 64, 0)), AnimusCommandTree.placement(console, "world", "0", "64", "0"));
         IllegalArgumentException word = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
                 () -> AnimusCommandTree.placement(standing, "", "east", "", ""));
-        assertEquals("x must be a number, such as x=12.5", word.getMessage());
+        assertEquals("x must be a number, ~ or ~N, such as x=12.5 or x=~2", word.getMessage());
+    }
+
+    private static CommandActor standing(WorldPosition at) {
+        return new RecordingActor(true) { @Override public Optional<WorldPosition> position() { return Optional.of(at); } };
     }
 
     @Test void createTakesOnlyTheIdAndOffersKeyedDefaults() {
@@ -140,7 +148,7 @@ class CommandVocabularyTest {
     }
 
     /** Keeps plain lines and chip lines apart. */
-    private static final class RecordingActor implements CommandActor {
+    private static class RecordingActor implements CommandActor {
         final List<String> told = new ArrayList<>();
         final List<ChatLine> rich = new ArrayList<>();
         final Optional<UUID> player;

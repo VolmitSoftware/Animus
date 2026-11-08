@@ -462,6 +462,50 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (!selections.containsKey(viewer) && selections.size() >= settings.maximumViewers()) throw new IllegalStateException("Selection capacity reached; raise [npcs] maximumViewers in config.toml");
         selections.put(viewer, id);
     }
+    /** On the owner thread: the looked-at or nearest NPC this player sees. */
+    @Override public Optional<String> pick(UUID id) {
+        Viewer viewer = viewers.get(id);
+        if (viewer == null || !available()) return Optional.empty();
+        owner();
+        List<SelectionPick.Candidate> candidates = new ArrayList<>();
+        for (Presented body : viewer.visible.values())
+            if (body.spawnFinished && !body.retired && !viewer.preview.owns(body.value.spec.definition().uuid()))
+                candidates.add(new SelectionPick.Candidate(body.value.spec.definition().id(), body.value.state.snapshot(), shape(body.value)));
+        WorldPosition at = host.position(viewer.player);
+        return SelectionPick.choose(at.world(), host.eye(viewer.player), host.direction(viewer.player), at.point(), candidates);
+    }
+    /** On the owner thread: viewer-private glowing metadata, ended by the tick after {@code ticks}. */
+    @Override public boolean highlight(UUID id, String npc, int ticks) {
+        Viewer viewer = viewers.get(id);
+        if (viewer == null || !available() || !packets.presentationAvailable()) return false;
+        owner();
+        Presented body = null;
+        for (Presented seen : viewer.visible.values()) if (seen.value.spec.definition().id().equals(npc)) { body = seen; break; }
+        if (body == null || !body.spawnFinished || body.retired) return false;
+        if (viewer.glowing != null && viewer.glowing != body && !unglow(viewer)) return false;
+        if (!glow(viewer, body, base(body.value).glowing())) return false;
+        viewer.glowing = body;
+        viewer.glowEnds = tickNumber + ticks;
+        return true;
+    }
+    /** Shows the glowing body's own look again; false while the outbox has no room, so the next tick tries again. */
+    private boolean unglow(Viewer viewer) {
+        Presented body = viewer.glowing;
+        return body.retired || viewer.visible.get(body.value.spec.definition().uuid()) != body || glow(viewer, body, base(body.value));
+    }
+    private BodyLook base(Value value) {
+        return value.look != null ? value.look : BodyLook.of(value.spec.definition().uuid(), value.spec.type(), value.displayName, value.spec.appearance().withAttributes(value.attributes));
+    }
+    /** Cosmetic: one look sent to this player; a failed send is recorded and not retried. */
+    private boolean glow(Viewer viewer, Presented body, BodyLook look) {
+        if (!admit(viewer, PresentationPressure.Tier.COSMETIC)) return false;
+        try {
+            handOver(viewer, () -> packets.look(viewer.player, body.body, look)).whenComplete((Void nothing, Throwable failure) -> {
+                if (failure != null) enqueue(viewer, () -> { if (current(viewer) && !body.retired) cosmeticFailed(viewer, "glow", body.value, failure); });
+            });
+        } catch (RuntimeException failure) { cosmeticFailed(viewer, "glow", body.value, failure); }
+        return true;
+    }
     @Override public void refresh() { refresh.set(true); }
     /** One owner: work already on the owner thread runs now; anything else is scheduled there. */
     @Override public boolean onOwner(UUID npc, Runnable work, Consumer<String> refused) { return onMain(work, refused); }
@@ -1967,6 +2011,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             mark = metrics.lap(Subsystem.PRESENTATION, mark);
             if (triggers != null) triggers.proximity(viewers.keySet(), this::viewerPosition);
             mark = metrics.lap(Subsystem.BEHAVIORS, mark);
+            for (Viewer viewer : viewers.values()) if (viewer.glowing != null && tickNumber >= viewer.glowEnds && unglow(viewer)) viewer.glowing = null;
             List<Viewer> updated = new ArrayList<>();
             int used = FairViewerWork.run(viewerOrder, settings.updatesPerTick(), settings.packetsPerTick(), this::current, (Viewer viewer, int remaining) -> {
                 if (viewer.failed) { fail(viewer, "packet callbacks", null, "Packet callback queue full"); return 0; }
@@ -2606,6 +2651,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     final class Viewer {
         final P player; final UUID id; final String world; final ViewerSession guard; final PreviewBodies<P, I> preview;
         final Map<UUID, Presented> visible = new HashMap<>(), retiring = new HashMap<>();
+        /** The body glowing for this player alone after a selection, and the tick its glow ends on. */
+        Presented glowing; long glowEnds;
         final Deque<Presented> retirements = new ArrayDeque<>();
         final Deque<Presented> presentationOrder = new ArrayDeque<>();
         /** The same bodies in their own rotation for cosmetic work, which runs after every viewer's authoritative work. */

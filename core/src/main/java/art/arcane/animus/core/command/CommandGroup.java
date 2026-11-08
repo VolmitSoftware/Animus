@@ -145,16 +145,12 @@ abstract class CommandGroup {
         listing(actor, title, command, rows, page, empty, null);
     }
 
-    static void listing(CommandActor actor, String title, String command, List<String> rows, int page, String empty, Function<String, String> click) {
-        paged(actor, title, command, rows, page, empty, click, DirectorMiniMenu.MAX_ENTRIES_PER_PAGE);
-    }
-
     /**
      * A paged list whose rows click: {@code click} turns a row's head, such as an NPC id, into the command a click puts in
-     * the chat box. The page bar's arrows run the neighbouring pages; a page past the end shows the last one.
+     * the chat box. A player gets VolmLib's shared menu page with its page bar; a page past the end shows the last one.
+     * The console gets the title and every whole row.
      */
-    /** The console gets the title and every whole row; a player gets the page that fits the chat, with arrows. */
-    static void paged(CommandActor actor, String title, String command, List<String> rows, int page, String empty, Function<String, String> click, int size) {
+    static void listing(CommandActor actor, String title, String command, List<String> rows, int page, String empty, Function<String, String> click) {
         if (actor.player().isEmpty()) {
             actor.plain("--- " + title + " ---");
             if (rows.isEmpty()) actor.plain(empty);
@@ -162,7 +158,7 @@ abstract class CommandGroup {
             return;
         }
         List<String> entries = rows.stream().map((String row) -> entry(row, click)).toList();
-        actor.menu(new DirectorMiniMenu.ContentMenu(title, command, entries, "<#AAAAAA>" + DirectorMiniMenu.escapeText(empty) + "</#AAAAAA>", page, size));
+        actor.menu(new DirectorMiniMenu.ContentMenu(title, command, entries, "<#AAAAAA>" + DirectorMiniMenu.escapeText(empty) + "</#AAAAAA>", page, DirectorMiniMenu.MAX_ENTRIES_PER_PAGE));
     }
 
     /**

@@ -7,6 +7,7 @@ import art.arcane.animus.core.runtime.NpcPresentation;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.runtime.PresentationPressure;
 import art.arcane.animus.core.runtime.PreviewBodies;
+import art.arcane.animus.core.runtime.SelectionPick;
 import art.arcane.animus.core.runtime.ViewerOutbox;
 import art.arcane.animus.core.presentation.BodyLook;
 import art.arcane.animus.core.presentation.BodyPose;
@@ -30,6 +31,7 @@ import art.arcane.animus.core.virtual.ViewerSession;
 import art.arcane.animus.core.virtual.VirtualNpcState;
 import art.arcane.animus.core.virtual.WorldPosition;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
@@ -73,6 +75,9 @@ final class RegionViewer {
     private ProximityTracker proximity;
     private int nativeIds, pendingSpawns, bones;
     private long ticks, updates;
+    /** The body glowing for this player alone after a selection, and the viewer tick its glow ends on. */
+    private Presented glowing;
+    private long glowEnds;
     private final long phase = java.util.concurrent.ThreadLocalRandom.current().nextLong(1 << 20);
     volatile boolean ready, failed;
     volatile AutoCloseable task;
@@ -120,6 +125,7 @@ final class RegionViewer {
             completion.run();
             if (!host.current(this)) return;
         }
+        if (glowing != null && ticks >= glowEnds && unglow()) glowing = null;
         WorldPosition at = position(player.getLocation());
         TriggerDispatcher dispatcher = host.triggers;
         if (dispatcher != null) {
@@ -513,6 +519,47 @@ final class RegionViewer {
     }
     private static ViewerSession.HitShape shape(RegionActor actor) {
         return actor.spec.type().equals(DragonBody.TYPE) ? DragonBody.hitShape(actor.yaw) : ViewerSession.HitShape.BOUNDS;
+    }
+
+    /** Player owner only: the NPC {@code /animus select} without an id means, among the bodies this player sees. */
+    Optional<String> pick() {
+        List<SelectionPick.Candidate> candidates = new ArrayList<>();
+        for (Presented body : visible.values())
+            if (body.spawnFinished && !body.retired && !preview.owns(body.actor.uuid))
+                candidates.add(new SelectionPick.Candidate(body.actor.id, body.actor.publication.snapshot(), shape(body.actor)));
+        Location eye = player.getEyeLocation(); Vector direction = eye.getDirection();
+        return SelectionPick.choose(position(eye).world(), position(eye).point(), new Vec3(direction.getX(), direction.getY(), direction.getZ()),
+                position(player.getLocation()).point(), candidates);
+    }
+    /** Player owner only: the NPC glows for this player for {@code length} viewer ticks; false when this player does not see it. */
+    boolean highlight(String npc, int length) {
+        Presented body = null;
+        for (Presented seen : visible.values()) if (seen.actor.id.equals(npc)) { body = seen; break; }
+        if (body == null || !body.spawnFinished || body.retired || !host.packets.presentationAvailable()) return false;
+        if (glowing != null && glowing != body && !unglow()) return false;
+        if (!send(body, base(body).glowing())) return false;
+        glowing = body;
+        glowEnds = ticks + length;
+        return true;
+    }
+    /** Shows the glowing body's own look again; false while the outbox has no room, so the next tick tries again. */
+    private boolean unglow() {
+        Presented body = glowing;
+        return body.retired || visible.get(body.actor.uuid) != body || send(body, base(body));
+    }
+    private static BodyLook base(Presented body) {
+        RegionActor.Publication now = body.actor.publication;
+        return now.look() != null ? now.look() : BodyLook.of(now.spec().definition().uuid(), now.spec().type(), now.name(), now.spec().appearance().withAttributes(now.attributes()));
+    }
+    /** Cosmetic: one look sent to this player; a failed send is recorded and not retried. */
+    private boolean send(Presented body, BodyLook look) {
+        if (!admit(PresentationPressure.Tier.COSMETIC)) return false;
+        try {
+            handOver(() -> host.packets.look(player, body.body, look)).whenComplete((nothing, failure) -> {
+                if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) host.cosmeticFailed(this, "glow", body.actor, failure); });
+            });
+        } catch (RuntimeException failure) { host.cosmeticFailed(this, "glow", body.actor, failure); }
+        return true;
     }
 
     /** Player owner only: this viewer presents the NPC now. */

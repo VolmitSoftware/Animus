@@ -8,10 +8,13 @@ import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
+import art.arcane.animus.core.runtime.NpcRuntime;
+import art.arcane.animus.core.runtime.SelectionPick;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.DocsLink;
 import art.arcane.animus.core.text.Palette;
+import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
 import art.arcane.volmlib.util.director.DirectorOrigin;
 import art.arcane.volmlib.util.director.annotations.Director;
@@ -131,22 +134,22 @@ public final class AnimusCommandTree extends CommandGroup {
         } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
-    @Director(description = "Save a new despawned NPC where you stand; the console gives world, x, y and z")
+    @Director(description = "Save a new despawned NPC where you stand, or at x y z; ~ is relative to you")
     void create(@Param(name = "id", description = "The new NPC id; its file is npcs/<folder>/<id>.json") String id,
                 @Param(name = "type", defaultValue = DEFAULT_TYPE, description = "The entity type, such as minecraft:villager") String type,
                 @Param(name = "name", defaultValue = "", description = "Its display name, the id when left out; quote it to use spaces") String name,
                 @Param(name = "folder", defaultValue = "", description = "The folder under npcs/ it lives in, such as world/town; npcs/ itself when left out") String folder,
                 @Param(name = "world", defaultValue = "", description = "The world it stands in; yours when left out") String world,
-                @Param(name = "x", defaultValue = "", description = "X position; yours when left out") String x,
-                @Param(name = "y", defaultValue = "", description = "Y position; yours when left out") String y,
-                @Param(name = "z", defaultValue = "", description = "Z position; yours when left out") String z) {
+                @Param(name = "x", defaultValue = "", description = "X position: a number, ~ or ~N; yours when left out") String x,
+                @Param(name = "y", defaultValue = "", description = "Y position: a number, ~ or ~N; yours when left out") String y,
+                @Param(name = "z", defaultValue = "", description = "Z position: a number, ~ or ~N; yours when left out") String z) {
         CommandActor actor = actor();
         Placement placement;
-        try { placement = placement(actor.position(), world, x, y, z); }
+        try { placement = placement(actor, world, x, y, z); }
         catch (IllegalArgumentException missing) { actor.tell(Palette.error(missing.getMessage())); return; }
         String shown = name.isEmpty() ? id : name;
         files(actor, () -> {
-            String line = administration().create(id, type, placement.world(), placement.x(), placement.y(), placement.z(), folder, shown, actor.player());
+            String line = administration().create(id, type, placement.world(), placement.point().x(), placement.point().y(), placement.point().z(), folder, shown, actor.player());
             living().refresh();
             return List.of(Palette.success(line + "; /" + BuildIdentity.ID + " spawn " + id + " shows it"));
         });
@@ -154,29 +157,17 @@ public final class AnimusCommandTree extends CommandGroup {
 
     static final String DEFAULT_TYPE = "minecraft:player";
 
-    /** Where {@code create} puts an NPC: the given values, each missing one taken from where the player stands. */
-    record Placement(String world, double x, double y, double z) {}
+    /** Where {@code create} puts an NPC. */
+    record Placement(String world, Vec3 point) {}
 
     /**
-     * The given world and coordinates, each left out one from {@code standing}. Without a standing position, as for the
-     * console, every value must be given. Throws with the reply when one is missing or not a number.
+     * The given world and coordinates, read as {@link Coordinates} does; each left out one is the player's own. The console
+     * gives the world and numbers. Throws with the reply when one is missing or cannot be read.
      */
-    static Placement placement(Optional<WorldPosition> standing, String world, String x, String y, String z) {
-        if (standing.isEmpty() && (world.isEmpty() || x.isEmpty() || y.isEmpty() || z.isEmpty()))
-            throw new IllegalArgumentException("The console gives world=, x=, y= and z=, such as world=world x=0 y=64 z=0");
-        return new Placement(world.isEmpty() ? standing.get().world() : world,
-                coordinate("x", x, standing.map((WorldPosition at) -> at.point().x())),
-                coordinate("y", y, standing.map((WorldPosition at) -> at.point().y())),
-                coordinate("z", z, standing.map((WorldPosition at) -> at.point().z())));
-    }
-
-    private static double coordinate(String axis, String given, Optional<Double> standing) {
-        if (given.isEmpty()) return Math.round(standing.orElseThrow() * 100) / 100.0;
-        try {
-            double value = Double.parseDouble(given);
-            if (Double.isFinite(value)) return value;
-        } catch (NumberFormatException notNumber) { /* answered below */ }
-        throw new IllegalArgumentException(axis + " must be a number, such as " + axis + "=12.5");
+    static Placement placement(CommandActor actor, String world, String x, String y, String z) {
+        Optional<WorldPosition> standing = actor.position();
+        if (standing.isEmpty() && world.isEmpty()) throw new IllegalArgumentException("The console gives world=, x=, y= and z=, such as world=world x=0 y=64 z=0");
+        return new Placement(world.isEmpty() ? standing.get().world() : world, Coordinates.point(x, y, z, Coordinates.origin(actor)));
     }
 
     @Director(description = "Show an NPC's definition and whether it is active")
@@ -279,14 +270,23 @@ public final class AnimusCommandTree extends CommandGroup {
         });
     }
 
-    @Director(description = "Select an NPC for the commands that take @selected", origin = DirectorOrigin.PLAYER)
-    void select(@Param(name = "npc", description = "The NPC id") String npc) {
-        CommandActor actor = actor();
-        try {
-            living().select(actor.player().orElseThrow(), npc);
-            actor.rich(ChatLine.success("Selected ").copyable(npc));
-        } catch (RuntimeException refused) { actor.tell(Palette.error(reason(refused) + "; /animus list shows ids")); }
+    @Director(description = "Select an NPC for the commands that take @selected; the one you look at, or the nearest, when left out", origin = DirectorOrigin.PLAYER)
+    void select(@Param(name = "npc", defaultValue = "", description = "The NPC id; the one you look at, or the nearest within 16 blocks, when left out") String npc) {
+        select(actor(), living(), npc);
     }
+
+    /** Selects {@code npc}, or with none the NPC the player looks at or stands nearest, and makes it glow for that player briefly. */
+    static void select(CommandActor actor, NpcRuntime<?, ?> living, String npc) {
+        UUID viewer = actor.player().orElseThrow();
+        Optional<String> chosen = npc.isEmpty() ? living.pick(viewer) : Optional.of(npc);
+        if (chosen.isEmpty()) { actor.tell(Palette.error(NOTHING_IN_VIEW)); return; }
+        try { living.select(viewer, chosen.get()); }
+        catch (RuntimeException refused) { actor.tell(Palette.error(reason(refused) + "; /animus list shows ids")); return; }
+        living.highlight(viewer, chosen.get(), SelectionPick.GLOW_TICKS);
+        actor.rich(ChatLine.success("Selected ").copyable(chosen.get()));
+    }
+
+    static final String NOTHING_IN_VIEW = "No NPC in view or within " + (int) SelectionPick.REACH + " blocks.";
 
     @Director(description = "Show your selected NPC", origin = DirectorOrigin.PLAYER)
     void selection() {
@@ -358,7 +358,7 @@ public final class AnimusCommandTree extends CommandGroup {
     public static int selfCheck() {
         AnimusDirector director = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
         AnimusHelp.Page page = AnimusHelp.page(director.engine().getRoot(), director.engine().getRoot().getChildren(), 0);
-        int lines = AnimusHelp.lines(page).stream().map(ChatLine::component).toList().size();
+        int lines = AnimusHelp.lines(page).size();
         return lines + CommandWords.tokens("edit guard {\"name\":\"A B\"}").size();
     }
 }
