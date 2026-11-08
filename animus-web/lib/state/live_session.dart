@@ -4,7 +4,7 @@ import '../logic/change_sets.dart';
 import '../logic/gui/gui_json.dart';
 import '../logic/json_merge.dart';
 import '../logic/suggest/completion_sources.dart';
-import '../services/terrain/terrain_link.dart';
+import '../services/terrain/terrain_worlds.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import '../model/server_binding.dart';
@@ -305,7 +305,7 @@ class LiveSession {
       final ApiResponse response = await connection.request(const ApiRequest('GET', '/v1/lookups'));
       if (response.ok && response.body is Map<String, Object?>) {
         lookups = ServerLookups.fromJson(response.body);
-        TerrainLink.worlds = lookups!.registries[RegistryKind.world] ?? const <String>[];
+        TerrainWorlds.update(lookups!.registries[RegistryKind.world] ?? const <String>[]);
         _changed();
       }
     } on Object {

@@ -4,6 +4,7 @@
 /// only: answers are cached in IndexedDB (`animus-terrain`).
 library;
 
+import 'terrain_worlds.dart';
 import 'dart:async';
 import 'dart:js_interop';
 
@@ -58,18 +59,16 @@ abstract final class TerrainLink {
   static ServerConnection? _connection;
   static String? _server;
   static TerrainClient? _client;
-  static Set<String>? _worlds;
-
-  /// The server's worlds from `/v1/lookups`; an empty list means unknown.
-  static set worlds(List<String> names) {
-    _worlds = names.isEmpty ? null : names.toSet();
-    _client?.worlds = _worlds;
-  }
+  static bool _listening = false;
   static StreamSubscription<Object?>? _statuses;
   static final List<void Function()> _listeners = <void Function()>[];
 
   /// Follows [connection] as the open workspace's server.
   static void attach(String server, ServerConnection connection) {
+    if (!_listening) {
+      _listening = true;
+      TerrainWorlds.listen((Set<String>? names) => _client?.worlds = names);
+    }
     if (identical(_connection, connection)) return;
     detach();
     _connection = connection;
@@ -84,7 +83,7 @@ abstract final class TerrainLink {
     _connection = null;
     _server = null;
     _client = null;
-    _worlds = null;
+    TerrainWorlds.clear();
     _notify();
   }
 
@@ -92,7 +91,7 @@ abstract final class TerrainLink {
   static TerrainClient? get client {
     final ServerConnection? connection = _connection;
     if (connection == null || !connection.status.online || !_offers(connection)) return null;
-    return _client ??= TerrainClient(server: _server!, send: connection.request, cache: IndexedDbTerrainCache())..worlds = _worlds;
+    return _client ??= TerrainClient(server: _server!, send: connection.request, cache: IndexedDbTerrainCache())..worlds = TerrainWorlds.names;
   }
 
   /// True while the open workspace belongs to a paired server.
