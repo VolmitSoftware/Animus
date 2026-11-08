@@ -52,12 +52,12 @@ public record HealthSettings(boolean killable, CombatSettings.Defense defense, C
         boolean equipment = root.bool("armorFromEquipment", false);
         boolean fromAttributes = !root.has("armor") && !equipment;
         Set<CombatSettings.DamageSource> sources = EnumSet.noneOf(CombatSettings.DamageSource.class);
-        if (!root.has("sources")) sources.addAll(CombatSettings.DamageSource.ALL);
+        if (!root.has("sources")) sources.addAll(CombatSettings.DamageSource.ATTACKS);
         List<String> names = root.strings("sources");
         for (int i = 0; i < names.size(); i++) {
             int index = i;
             sources.add(CombatSettings.DamageSource.parse(names.get(i)).orElseThrow(() ->
-                    new IllegalArgumentException(root.field("sources") + "[" + index + "]: expected players, mobs, npcs or projectiles")));
+                    new IllegalArgumentException(root.field("sources") + "[" + index + "]: expected players, mobs, npcs, projectiles, fire, lava or fall")));
         }
         Optional<String> permission = Optional.empty();
         if (root.has("attackerPermission")) {

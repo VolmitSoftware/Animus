@@ -3,12 +3,15 @@ package art.arcane.animus.bukkit.runtime;
 import art.arcane.animus.core.command.CombatControl;
 import art.arcane.animus.api.Outcome;
 import art.arcane.animus.bukkit.combat.BukkitCombatWorld;
+import art.arcane.animus.bukkit.combat.BukkitShots;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.combat.CombatEngine;
 import art.arcane.animus.core.combat.CombatOperations;
 import art.arcane.animus.core.combat.CombatTarget;
+import art.arcane.animus.core.combat.ProjectileFlight;
 import art.arcane.animus.core.combat.ProtectionAdapter;
+import art.arcane.animus.core.combat.RealShot;
 import art.arcane.animus.core.combat.TargetCategory;
 import art.arcane.animus.core.combat.TargetKind;
 import art.arcane.animus.core.combat.TargetRef;
@@ -49,6 +52,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.ExplosionPrimeEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.world.EntitiesUnloadEvent;
 import org.bukkit.persistence.PersistentDataType;
@@ -68,6 +72,9 @@ import org.bukkit.projectiles.ProjectileSource;
 public final class RegionCombat implements Listener, AutoCloseable {
     /** At most this many owners hear of one fight or chat line; the rest are dropped and counted. */
     private static final int DELIVERIES_PER_EVENT = 64;
+    /** At most this many real projectiles are followed at once across regions, each for at most this many ticks. */
+    private static final int MAXIMUM_FLYING = 2048, FLIGHT_TICKS = 1200;
+    private final java.util.concurrent.atomic.AtomicInteger flying = new java.util.concurrent.atomic.AtomicInteger();
     private final RegionNpcRuntime host;
     /** The budgets in effect; replaced by a hotload, read by each NPC's owner at the start of its combat turn. */
     volatile CombatBudgets budgets;
@@ -393,6 +400,65 @@ public final class RegionCombat implements Listener, AutoCloseable {
     }
     @EventHandler(priority = EventPriority.LOWEST)
     public void helperDamage(EntityDamageByEntityEvent event) { if (helper(event.getDamager())) event.setCancelled(true); }
+    /**
+     * On the projectile's region: a player or mob fired a projectile that can hurt an NPC. It is followed on its own
+     * scheduler, wherever it flies; that region tests each move and hands a strike to the struck NPC's owner.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void launched(ProjectileLaunchEvent event) {
+        Projectile projectile = event.getEntity();
+        if (closed || !enabled() || helper(projectile)) return;
+        Optional<RealShot.Kind> kind = BukkitShots.kind(projectile);
+        TargetRef shooter = BukkitShots.shooter(projectile);
+        if (kind.isEmpty() || shooter == null) return;
+        if (flying.incrementAndGet() > MAXIMUM_FLYING) { flying.decrementAndGet(); return; }
+        Entity source = projectile.getShooter() instanceof Entity entity && owns(entity) ? entity : null;
+        CombatTarget observed = source == null ? null : BukkitCombatWorld.observe(source, this::helper).orElse(null);
+        Flight flight = new Flight(projectile, kind.get(), shooter, observed);
+        flight.task = host.regions.repeat(projectile, flight, flight::end, 1L, 1L);
+    }
+    /** One followed projectile; runs only on the region that owns it. */
+    private final class Flight implements Runnable {
+        final Projectile projectile;
+        final RealShot.Kind kind;
+        final TargetRef shooter;
+        final CombatTarget observed;
+        final ProjectileFlight flight;
+        final java.util.SplittableRandom random = new java.util.SplittableRandom();
+        volatile AutoCloseable task;
+        int age;
+        volatile boolean ended;
+        Flight(Projectile projectile, RealShot.Kind kind, TargetRef shooter, CombatTarget observed) {
+            this.projectile = projectile; this.kind = kind; this.shooter = shooter; this.observed = observed;
+            flight = new ProjectileFlight(BukkitShots.pierce(projectile));
+            flight.launched(BukkitShots.position(projectile));
+        }
+        @Override public void run() {
+            if (ended) return;
+            if (closed || !enabled() || !projectile.isValid() || ++age > FLIGHT_TICKS || projectile instanceof org.bukkit.entity.AbstractArrow arrow && arrow.isInBlock()) { stop(); return; }
+            Optional<ProjectileFlight.Hit> hit = flight.advance(BukkitShots.position(projectile), BukkitShots.velocity(projectile),
+                    (WorldPosition center, double radius, SpatialNpcIndex.Budget budget) -> scan(center, radius, null, budget), RegionCombat.this::shootable);
+            if (hit.isEmpty()) return;
+            RegionActor struck = actor(hit.get().npc());
+            RealShot shot = BukkitShots.shot(projectile, kind, shooter, flight, random);
+            if (struck != null) send(struck, "shot", (ActorCombat combat) -> combat.shot(shot, observed));
+            BukkitShots.land(projectile, kind, hit.get().point(), flight.spent());
+            if (flight.spent()) stop();
+        }
+        void stop() {
+            AutoCloseable running = task;
+            try { if (running != null) running.close(); } catch (Exception ignored) { }
+            end();
+        }
+        void end() { if (!ended) { ended = true; flying.decrementAndGet(); } }
+    }
+    /** Whether a real projectile striking this NPC counts, from the view its owner published. */
+    private boolean shootable(UUID npc) {
+        RegionActor actor = actor(npc);
+        RegionActor.Publication view = actor == null ? null : actor.publication;
+        return view != null && view.combat() != null && view.snapshot().active()
+                && view.combat().settings().defense().takes(art.arcane.animus.core.combat.CombatSettings.DamageSource.PROJECTILES);
+    }
     /** On the victim's region. Guards and witnesses hear of it on their own owners. */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void realDamage(EntityDamageByEntityEvent event) {

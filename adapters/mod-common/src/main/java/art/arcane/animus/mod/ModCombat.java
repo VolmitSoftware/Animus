@@ -7,7 +7,9 @@ import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.combat.AttackProfile;
 import art.arcane.animus.core.combat.CombatTarget;
 import art.arcane.animus.core.combat.CombatWorld;
+import art.arcane.animus.core.combat.ProjectileFlight;
 import art.arcane.animus.core.combat.ProtectionAdapter;
+import art.arcane.animus.core.combat.RealShot;
 import art.arcane.animus.core.combat.TargetCategory;
 import art.arcane.animus.core.combat.TargetKind;
 import art.arcane.animus.core.combat.TargetRef;
@@ -18,9 +20,12 @@ import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.core.virtual.Hitbox;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.SplittableRandom;
 import java.util.UUID;
 import java.util.function.Consumer;
 import net.minecraft.server.MinecraftServer;
@@ -48,6 +53,20 @@ final class ModCombat implements AutoCloseable {
     private final PersistedNpcService<ServerPlayer, ItemStack> living;
     private final VanillaCombatWorld world;
     private final CombatModule module;
+    /** A real projectile from a player or mob, followed past NPC bodies until it lands, strikes or stops ticking. */
+    private static final class Flying {
+        final RealShot.Kind kind;
+        final TargetRef shooter;
+        final ProjectileFlight flight;
+        long seen;
+        int age;
+        Flying(RealShot.Kind kind, TargetRef shooter, ProjectileFlight flight) { this.kind = kind; this.shooter = shooter; this.flight = flight; }
+    }
+    /** At most this many projectiles are followed at once, each for at most this many ticks. */
+    static final int MAXIMUM_FLYING = 2048, FLIGHT_TICKS = 1200;
+    private final Map<UUID, Flying> flying = new HashMap<>();
+    private final SplittableRandom random = new SplittableRandom();
+    private long ticks;
 
     ModCombat(MinecraftServer server, AnimusRuntime runtime, PersistedNpcService<ServerPlayer, ItemStack> living, VanillaTerrain terrain, Consumer<String> warnings) {
         this.runtime = Objects.requireNonNull(runtime); this.living = Objects.requireNonNull(living);
@@ -79,7 +98,38 @@ final class ModCombat implements AutoCloseable {
     String operate(UUID npc, BehaviorPlatform.CombatOperation operation, Optional<UUID> target) { return module.operate(npc, operation, target); }
     CombatGuarding hireGuarding() { return new CombatGuarding(module); }
 
-    void tick() { module.tick(); }
+    void tick() {
+        module.tick();
+        ticks++;
+        if (!flying.isEmpty()) flying.values().removeIf((Flying gone) -> gone.seen < ticks - 1 || !module.running());
+    }
+
+    /**
+     * One tick of a real projectile. A player's or mob's shot is followed from its first tick; each later move is tested
+     * against NPC bodies, and a strike is a projectile hit by its shooter.
+     */
+    void projectileTicked(Projectile projectile) {
+        if (world == null || !module.running() || world.helper(projectile)) return;
+        Flying next = flying.get(projectile.getUUID());
+        if (next == null) {
+            Optional<RealShot.Kind> kind = ModShots.kind(projectile);
+            TargetRef shooter = ModShots.shooter(projectile);
+            if (kind.isEmpty() || shooter == null || flying.size() >= MAXIMUM_FLYING) return;
+            next = new Flying(kind.get(), shooter, new ProjectileFlight(ModShots.pierce(projectile)));
+            next.flight.launched(ModShots.position(projectile));
+            next.seen = ticks;
+            flying.put(projectile.getUUID(), next);
+            return;
+        }
+        next.seen = ticks;
+        if (++next.age > FLIGHT_TICKS || next.flight.spent()) return;
+        Optional<ProjectileFlight.Hit> hit = next.flight.advance(ModShots.position(projectile), ModShots.velocity(projectile),
+                (WorldPosition center, double radius, art.arcane.animus.core.virtual.SpatialNpcIndex.Budget budget) -> world.nearbyNpcs(center, radius, null, budget),
+                module.engine()::shootable);
+        if (hit.isEmpty()) return;
+        module.engine().shot(hit.get().npc(), ModShots.shot(projectile, next.kind, next.shooter, next.flight, random));
+        ModShots.land(projectile, next.kind, hit.get().point(), next.flight.spent());
+    }
     int waiting() { return module.waiting(); }
     int load() { return module.load(); }
 
@@ -160,6 +210,7 @@ final class ModCombat implements AutoCloseable {
     }
 
     @Override public void close() {
+        flying.clear();
         module.close();
         if (world != null) world.clear();
     }

@@ -99,11 +99,17 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
         @Override public Set<DamageSource> sources() { return sources.isEmpty() ? Set.of() : EnumSet.copyOf(sources); }
         /** Whether a hit of this kind from this attacker counts. */
         public boolean accepts(TargetKind attacker, CombatWorld.DamageKind kind) { return sources.contains(DamageSource.of(attacker, kind)); }
+        /** Whether damage from this source can reach the NPC at all. */
+        public boolean takes(DamageSource source) { return !invincible && sources.contains(source); }
     }
-    /** What may hurt an NPC: player and mob melee, another NPC's melee, and shots from combat NPCs. */
+    /**
+     * What may hurt an NPC: player and mob melee, another NPC's melee, projectiles from players, mobs and combat NPCs, and
+     * the environment's fire, lava and falls. The environment counts only where listed.
+     */
     public enum DamageSource {
-        PLAYERS, MOBS, NPCS, PROJECTILES;
-        public static final Set<DamageSource> ALL = Set.of(values());
+        PLAYERS, MOBS, NPCS, PROJECTILES, FIRE, LAVA, FALL;
+        /** Every attack source: what an NPC takes when its module lists none. */
+        public static final Set<DamageSource> ATTACKS = Set.copyOf(EnumSet.of(PLAYERS, MOBS, NPCS, PROJECTILES));
         public String jsonName() { return name().toLowerCase(Locale.ROOT); }
         public static Optional<DamageSource> parse(String name) {
             for (DamageSource source : values()) if (source.jsonName().equals(name)) return Optional.of(source);
@@ -364,7 +370,7 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
                 "armorFromEquipment");
         return new Defense(reader.number("maximumHealth", 20, 1, 2048), reader.number("armor", 0, 0, 1), reader.bool("invincible", false), reader.bool("knockback", true),
                 reader.bool("protectedFromIgnored", false), reader.number("protectFromRange", 0, 0, 256), reader.integer("healRateTicks", 0, 0, 72000),
-                reader.integer("invulnerableTicks", 10, 0, 100), reader.bool("armorFromEquipment", false), 0, 0, 0, DamageSource.ALL, Optional.empty(), false);
+                reader.integer("invulnerableTicks", 10, 0, 100), reader.bool("armorFromEquipment", false), 0, 0, 0, DamageSource.ATTACKS, Optional.empty(), false);
     }
     private static Death death(Reader reader) {
         reader.known("drops", "experience", "victimDrops");

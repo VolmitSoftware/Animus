@@ -28,7 +28,7 @@ class HealthSettingsTest {
         assertTrue(killable.enabled());
         assertFalse(killable.defense().invincible());
         assertEquals(20, killable.defense().maximumHealth());
-        assertEquals(CombatSettings.DamageSource.ALL, killable.defense().sources());
+        assertEquals(CombatSettings.DamageSource.ATTACKS, killable.defense().sources());
         assertFalse(parse("{\"animus:health\":{}}").enabled(), "Killable is off by default");
     }
 
@@ -95,14 +95,14 @@ class HealthSettingsTest {
 
     @Test void aCombatNpcWithoutHealthAcceptsEverySource() {
         CombatSettings settings = parse("{\"animus:combat\":{\"enabled\":true}}");
-        assertEquals(CombatSettings.DamageSource.ALL, settings.defense().sources());
+        assertEquals(CombatSettings.DamageSource.ATTACKS, settings.defense().sources());
         assertFalse(settings.passive());
         assertFalse(settings.respawn().home(), "Combat respawns where the NPC fell");
     }
 
     @Test void mistakesNameTheField() {
-        assertEquals("$.modules.animus:health.sources[0]: expected players, mobs, npcs or projectiles",
-                assertThrows(IllegalArgumentException.class, () -> parse("{\"animus:health\":{\"sources\":[\"fall\"]}}")).getMessage());
+        assertEquals("$.modules.animus:health.sources[0]: expected players, mobs, npcs, projectiles, fire, lava or fall",
+                assertThrows(IllegalArgumentException.class, () -> parse("{\"animus:health\":{\"sources\":[\"drowning\"]}}")).getMessage());
         assertEquals("$.modules.animus:health.respawn.afterDeath: expected respawn or permadeath",
                 assertThrows(IllegalArgumentException.class, () -> parse("{\"animus:health\":{\"respawn\":{\"afterDeath\":\"never\"}}}")).getMessage());
         assertEquals("$.modules.animus:health.death.drops[0].maxCount: must be within 3..99",

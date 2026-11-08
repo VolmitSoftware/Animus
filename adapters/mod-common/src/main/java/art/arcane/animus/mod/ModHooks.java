@@ -104,6 +104,11 @@ public final class ModHooks {
         AnimusModRuntime active = runtime;
         return active != null && !projectile.level().isClientSide() && active.helperHit(projectile, hit);
     }
+    /** One server tick of a projectile, after it moved; a player's or mob's shot may strike an NPC body. */
+    public static void projectileTicked(Projectile projectile) {
+        AnimusModRuntime active = runtime;
+        if (active != null && !projectile.level().isClientSide()) active.projectileTicked(projectile);
+    }
     public static boolean suppressesDrops(LivingEntity entity) {
         AnimusModRuntime active = runtime;
         return active != null && active.suppressesDrops(entity);

@@ -17,12 +17,19 @@ void main() {
       expect(withHealthField(module, const <JsonStep>['respawn', 'points'], <Object?>[]), module);
     });
 
-    test('should treat missing sources as all and drop the key when all are on again', () {
+    test('should treat missing sources as every attack and drop the key when exactly those are on again', () {
       final JsonMap off = withHealthSource(const <String, Object?>{'killable': true}, 'mobs', false);
       expect(off['sources'], <String>['players', 'npcs', 'projectiles']);
       expect(healthSourcesOn(off), <String>{'players', 'npcs', 'projectiles'});
-      expect(healthSourcesOn(const <String, Object?>{}), healthSources.toSet());
+      expect(healthSourcesOn(const <String, Object?>{}), healthAttackSources.toSet());
       expect(withHealthSource(off, 'mobs', true), <String, Object?>{'killable': true});
+    });
+
+    test('should keep environmental sources listed beside every attack', () {
+      final JsonMap burning = withHealthSource(const <String, Object?>{'killable': true}, 'lava', true);
+      expect(burning['sources'], <String>['players', 'mobs', 'npcs', 'projectiles', 'lava']);
+      expect(healthSources, containsAll(<String>['fire', 'lava', 'fall']));
+      expect(withHealthSource(burning, 'lava', false), <String, Object?>{'killable': true});
     });
 
     test('should keep count and components when a drop item changes', () {

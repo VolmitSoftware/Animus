@@ -1,6 +1,7 @@
 package art.arcane.animus.bukkit.runtime;
 
 import art.arcane.animus.bukkit.combat.BukkitCombatWorld;
+import art.arcane.animus.bukkit.combat.BukkitShots;
 import art.arcane.animus.core.behavior.builtin.DialogueFormat;
 import art.arcane.animus.core.combat.CombatEngine;
 import art.arcane.animus.core.combat.CombatLoadout;
@@ -8,6 +9,7 @@ import art.arcane.animus.core.combat.CombatOperations;
 import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.combat.CombatTarget;
 import art.arcane.animus.core.combat.CombatWorld;
+import art.arcane.animus.core.combat.RealShot;
 import art.arcane.animus.core.combat.RangedWeapon;
 import art.arcane.animus.core.combat.TargetKind;
 import art.arcane.animus.core.combat.TargetRef;
@@ -148,6 +150,18 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
         engine.playerAttack(actor.uuid, attacker, RegionViewer.position(at), amount);
     }
 
+    /**
+     * A message from the projectile's owner: a real projectile struck this NPC's body there. {@code observed} is the
+     * shooter as that owner saw it, or null. Dropped when this NPC has changed worlds since.
+     */
+    void shot(RealShot shot, CombatTarget observed) {
+        if (!actor.state.snapshot().position().world().equals(shot.from().world())) return;
+        if (observed != null) delivered.put(shot.shooter(), observed);
+        engine.shot(actor.uuid, shot);
+    }
+    /** An idle fall landed hard enough to hurt. */
+    void fell(double damage) { engine.environment(actor.uuid, CombatSettings.DamageSource.FALL, damage); }
+
     int helpers() { return helpers.size(); }
     @Override public void close() {
         engine.close();
@@ -212,11 +226,18 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
         if (other != null) combat.send(other, "heal", (ActorCombat friend) -> friend.actor.combatHeal(amount));
     }
     @Override public boolean revive(UUID npc, WorldPosition at) { return npc.equals(actor.uuid) && actor.combatRevive(at); }
+    @Override public void burning(UUID npc, boolean burning) { if (npc.equals(actor.uuid)) actor.burning(burning); }
+    @Override public Contact contact(UUID npc) {
+        if (!npc.equals(actor.uuid)) return Contact.NONE;
+        VirtualNpcState.Snapshot self = actor.state.snapshot();
+        World world = combat.world(self.position().world());
+        return world == null ? Contact.NONE : BukkitShots.contact(world, self.bounds(), (int x, int z) -> combat.owns(world, x, z, x, z));
+    }
     @Override public DamageOutcome damageVirtual(UUID npc, TargetRef attacker, double amount) {
         if (!npc.equals(actor.uuid) || !actor.state.snapshot().active()) return new DamageOutcome(DamageStatus.INVALID, 0, false);
         VirtualNpcState.Snapshot before = actor.state.snapshot();
         VirtualNpcState.Snapshot after = actor.state.damage(amount);
-        actor.combatChanged(before, after, Optional.of(art.arcane.animus.core.runtime.RuntimeCombatWorld.attacker(attacker)));
+        actor.combatChanged(before, after, Optional.ofNullable(art.arcane.animus.core.runtime.RuntimeCombatWorld.attacker(attacker)));
         return new DamageOutcome(DamageStatus.APPLIED, before.health() - after.health(), after.health() == 0);
     }
 

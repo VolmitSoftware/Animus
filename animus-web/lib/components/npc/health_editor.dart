@@ -152,7 +152,7 @@ class HealthEditor extends StatelessWidget {
         ]),
         GuiRow(
           label: 'Hurt by',
-          tip: 'What can damage it: player, mob and NPC melee, and shots from combat NPCs. All four by default.',
+          tip: 'What can damage it: melee, any shot, and fire, lava or falls when picked. Attacks only by default.',
           problems: _at(const <JsonStep>['sources'], nested: true),
           child: dom.div(classes: 'animus-combat-chips', attributes: const <String, String>{'role': 'group', 'aria-label': 'Hurt by'}, <Widget>[
             for (final String source in healthSources)

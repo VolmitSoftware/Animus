@@ -13952,13 +13952,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             },
             "sources": {
               "type": "array",
-              "description": "What can hurt it. All by default.",
+              "description": "What can hurt it. Every attack by default; fire, lava and fall only when listed.",
               "items": {
                 "enum": [
                   "players",
                   "mobs",
                   "npcs",
-                  "projectiles"
+                  "projectiles",
+                  "fire",
+                  "lava",
+                  "fall"
                 ]
               },
               "uniqueItems": true

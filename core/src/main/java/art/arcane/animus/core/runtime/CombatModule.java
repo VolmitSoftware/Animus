@@ -98,6 +98,7 @@ public final class CombatModule implements AutoCloseable {
 
     private void start(CombatBudgets budgets) {
         engine = new CombatEngine(budgets, world, adapter, new SplittableRandom(), warnings);
+        living.onLanding((UUID npc, Double damage) -> { if (engine != null) engine.environment(npc, CombatSettings.DamageSource.FALL, damage); });
         protection = engine.protection();
         observed = null; pass = null; refused = 0;
         candidates.clear(); nextCandidates = new HashMap<>();

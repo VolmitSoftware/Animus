@@ -839,6 +839,20 @@ final class CombatBrain {
         return reduced;
     }
 
+    /**
+     * The environment's damage that remains after this NPC's defense, or 0: only a listed source, outside invulnerability
+     * frames. {@code armored} damage is reduced by armor as a hit is; falls and burning are not.
+     */
+    double mitigateEnvironment(CombatSettings.DamageSource source, double amount, boolean armored) {
+        CombatSettings.Defense defense = settings.defense();
+        long now = engine.now();
+        if (!defense.takes(source) || now < invulnerableUntil || state == CombatState.DEAD || !(amount > 0)) return 0;
+        double reduced = !armored ? amount : defense.armorPoints() > 0 ? CombatAttributes.armored(amount, defense.armorPoints(), defense.armorToughness()) : amount * (1 - armor);
+        if (reduced <= 0) return 0;
+        invulnerableUntil = now + defense.invulnerableTicks();
+        return reduced;
+    }
+
     private void heal(long now, VirtualNpcState.Snapshot self) {
         int rate = settings.defense().healRateTicks();
         if (rate <= 0) return;

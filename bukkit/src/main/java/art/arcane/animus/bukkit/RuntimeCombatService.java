@@ -10,6 +10,7 @@ import art.arcane.animus.core.runtime.CombatModule;
 import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.bukkit.combat.BukkitCombatBridge;
 import art.arcane.animus.bukkit.combat.BukkitCombatWorld;
+import art.arcane.animus.bukkit.combat.BukkitShots;
 import art.arcane.animus.bukkit.combat.CombatLimits;
 import art.arcane.animus.bukkit.combat.MobProfile;
 import art.arcane.animus.bukkit.protection.RegionCombatProtection;
@@ -18,7 +19,9 @@ import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.combat.AttackProfile;
+import art.arcane.animus.core.combat.ProjectileFlight;
 import art.arcane.animus.core.combat.ProtectionAdapter;
+import art.arcane.animus.core.combat.RealShot;
 import art.arcane.animus.core.combat.TargetCategory;
 import art.arcane.animus.core.combat.TargetKind;
 import art.arcane.animus.core.combat.TargetRef;
@@ -34,6 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.Set;
+import java.util.SplittableRandom;
 import java.util.UUID;
 import java.util.function.Predicate;
 import org.bukkit.FluidCollisionMode;
@@ -55,6 +59,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.ExplosionPrimeEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.world.EntitiesUnloadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -68,6 +73,10 @@ import org.bukkit.scheduler.BukkitTask;
  */
 final class RuntimeCombatService implements Listener, AutoCloseable {
     private record Registration(String id, VirtualNpcState state, BukkitCombatBridge.Combatant combatant) {}
+    /** A real projectile from a player or mob, followed past NPC bodies until it lands, expires or strikes. */
+    private record Flying(Projectile projectile, RealShot.Kind kind, TargetRef shooter, ProjectileFlight flight, long expires) {}
+    /** At most this many projectiles are followed at once, each for at most this many ticks. */
+    static final int MAXIMUM_FLYING = 2048, FLIGHT_TICKS = 1200;
     /** How often targetable NPCs look for idle mobs, how far, how many mobs one NPC draws at once, and NPCs per pass. */
     static final int TARGETABLE_SCAN_TICKS = 20, TARGETABLE_PER_NPC = 3, TARGETABLE_NPCS_PER_PASS = 32;
     static final double TARGETABLE_RANGE = 16;
@@ -82,6 +91,8 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     private final String protectionName;
     private final Map<UUID, Registration> registrations = new HashMap<>();
     private final Map<UUID, BukkitCombatBridge.MobLease> leases = new HashMap<>();
+    private final Map<UUID, Flying> flying = new HashMap<>();
+    private final SplittableRandom random = new SplittableRandom();
     private BukkitTask task;
     private long ticks;
     private int targetableCursor;
@@ -196,6 +207,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     }
     private void tick() {
         module.tick();
+        flights();
         if (++ticks % TARGETABLE_SCAN_TICKS == 0) drawMobs();
     }
 
@@ -281,6 +293,35 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
         double base = attack == null ? 1 : attack.getValue();
         double charge = player.getAttackCooldown();
         module.engine().playerAttack(event.getNpcId(), new TargetRef(TargetKind.PLAYER, player.getUniqueId()), position(player.getLocation()), base * (.2 + charge * charge * .8));
+    }
+    /** A player or mob fired a projectile that can hurt an NPC; it is followed from where it left. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void launched(ProjectileLaunchEvent event) {
+        Projectile projectile = event.getEntity();
+        if (!module.running() || flying.size() >= MAXIMUM_FLYING || world.helper(projectile)) return;
+        Optional<RealShot.Kind> kind = BukkitShots.kind(projectile);
+        TargetRef shooter = BukkitShots.shooter(projectile);
+        if (kind.isEmpty() || shooter == null) return;
+        ProjectileFlight flight = new ProjectileFlight(BukkitShots.pierce(projectile));
+        flight.launched(BukkitShots.position(projectile));
+        flying.put(projectile.getUniqueId(), new Flying(projectile, kind.get(), shooter, flight, ticks + FLIGHT_TICKS));
+    }
+    /** Each followed projectile's last move is tested against NPC bodies; a strike is a projectile hit by its shooter. */
+    private void flights() {
+        if (flying.isEmpty()) return;
+        if (!module.running()) { flying.clear(); return; }
+        for (java.util.Iterator<Flying> each = flying.values().iterator(); each.hasNext();) {
+            Flying next = each.next();
+            Projectile projectile = next.projectile();
+            if (!projectile.isValid() || ticks > next.expires() || projectile instanceof org.bukkit.entity.AbstractArrow arrow && arrow.isInBlock()) { each.remove(); continue; }
+            Optional<ProjectileFlight.Hit> hit = next.flight().advance(BukkitShots.position(projectile), BukkitShots.velocity(projectile),
+                    (WorldPosition center, double radius, art.arcane.animus.core.virtual.SpatialNpcIndex.Budget budget) -> world.nearbyNpcs(center, radius, null, budget),
+                    module.engine()::shootable);
+            if (hit.isEmpty()) continue;
+            module.engine().shot(hit.get().npc(), BukkitShots.shot(projectile, next.kind(), next.shooter(), next.flight(), random));
+            BukkitShots.land(projectile, next.kind(), hit.get().point(), next.flight().spent());
+            if (next.flight().spent()) each.remove();
+        }
     }
     @EventHandler(priority = EventPriority.LOWEST)
     public void helperHit(ProjectileHitEvent event) {
@@ -403,6 +444,6 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
         if (regionManual != null) regionManual.close();
         if (module.supported()) HandlerList.unregisterAll(this);
         module.close();
-        bridge.close(); registrations.clear(); leases.clear();
+        bridge.close(); registrations.clear(); leases.clear(); flying.clear();
     }
 }

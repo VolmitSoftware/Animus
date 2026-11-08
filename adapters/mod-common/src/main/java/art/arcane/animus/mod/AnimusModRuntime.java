@@ -428,6 +428,7 @@ public final class AnimusModRuntime {
         return false;
     }
     boolean helperHit(Projectile projectile, HitResult hit) { Running active = running; return active != null && active.combat.helperHit(projectile, hit); }
+    void projectileTicked(Projectile projectile) { Running active = running; if (active != null) active.combat.projectileTicked(projectile); }
     boolean suppressesDrops(LivingEntity entity) { Running active = running; return active != null && active.combat.suppressesDrops(entity); }
     boolean helper(Entity entity) { Running active = running; return active != null && active.combat.helper(entity); }
     /** Server behaviors of the running server, or null. */

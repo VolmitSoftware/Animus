@@ -13,6 +13,8 @@ public interface CombatWorld {
     enum Visibility { CLEAR, BLOCKED, UNAVAILABLE }
     enum MoveStatus { ACCEPTED, BUSY, REJECTED }
     enum DamageKind { MELEE, PROJECTILE }
+    /** What the NPC's body touches: lava over water over fire, or nothing that hurts or quenches it. */
+    enum Contact { NONE, FIRE, WATER, LAVA }
     /** {@code SCHEDULED}: handed to the target's owner, which applies it later and reports the fight itself. */
     enum DamageStatus { APPLIED, NO_CHANGE, CANCELLED, PROTECTED, INVALID, FAILED, SCHEDULED }
 
@@ -69,8 +71,12 @@ public interface CombatWorld {
 
     /** Damages a real entity on behalf of an NPC, with no fabricated attacker entity. */
     DamageOutcome damageReal(UUID attacker, CombatTarget target, double amount, DamageKind kind, double reach, double knockback, boolean victimDrops);
-    /** Applies authoritative virtual damage and publishes it to viewers and behavior triggers. */
+    /** Applies authoritative virtual damage and publishes it to viewers and behavior triggers. {@code attacker} is null for the environment. */
     DamageOutcome damageVirtual(UUID npc, TargetRef attacker, double amount);
+    /** What the NPC's body touches now, from loaded blocks this thread owns; {@link Contact#NONE} when unknown. */
+    default Contact contact(UUID npc) { return Contact.NONE; }
+    /** Shows or hides the NPC burning for everyone who sees it. */
+    default void burning(UUID npc, boolean burning) {}
 
     /**
      * Applies a potion's status effect to a real entity on behalf of an NPC. The platform's own potion damage and

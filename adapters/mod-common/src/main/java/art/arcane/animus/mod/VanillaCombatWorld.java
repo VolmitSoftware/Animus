@@ -261,6 +261,12 @@ final class VanillaCombatWorld extends RuntimeCombatWorld<ServerPlayer, ItemStac
         if (experience > 0) ExperienceOrb.award(level, vanilla(point), experience);
     }
 
+    @Override public Contact contact(UUID npc) {
+        Optional<VirtualNpcState.Snapshot> self = npc(npc);
+        ServerLevel level = self.isEmpty() ? null : terrain.level(self.get().position().world());
+        return level == null ? Contact.NONE : ModShots.contact(level, self.get().bounds());
+    }
+
     /** Helpers vanish with the module; no NPC arrow outlives it. */
     void clear() {
         for (UUID helper : List.copyOf(helpers)) removeHelper(helper);

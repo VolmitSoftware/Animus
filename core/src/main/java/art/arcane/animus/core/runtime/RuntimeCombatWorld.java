@@ -166,6 +166,9 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
                 (PersistedNpcService.CombatBinding binding) -> binding.changed().accept(binding.state().heal(amount)));
     }
     @Override public boolean revive(UUID npc, WorldPosition at) { return living.revive(npc, at); }
+    @Override public void burning(UUID npc, boolean burning) {
+        living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> living.burning(active.id(), burning));
+    }
     @Override public DamageOutcome damageVirtual(UUID npc, art.arcane.animus.core.combat.TargetRef attacker, double amount) {
         Optional<NpcRuntime.ActiveNpc> active = living.combatant(npc);
         Optional<PersistedNpcService.CombatBinding> binding = active.flatMap((NpcRuntime.ActiveNpc value) -> living.combat(value.id()));
@@ -177,8 +180,9 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
         return new DamageOutcome(DamageStatus.APPLIED, before - after.health(), after.health() == 0);
     }
 
-    /** How triggers name an attacker. */
+    /** How triggers name an attacker; null for the environment. */
     public static art.arcane.animus.core.behavior.trigger.TriggerEvent.Attacker attacker(art.arcane.animus.core.combat.TargetRef attacker) {
+        if (attacker == null) return null;
         return new art.arcane.animus.core.behavior.trigger.TriggerEvent.Attacker(attacker.kind().name().toLowerCase(java.util.Locale.ROOT), attacker.id());
     }
 

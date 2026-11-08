@@ -73,6 +73,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     private final PriorityQueue<Scheduled> schedule = new PriorityQueue<>(
             Comparator.comparingLong(Scheduled::wake).thenComparingLong(Scheduled::order));
     private final HelperLedger helpers;
+    private final Hazards hazards;
     private final ArrayDeque<Fight> fights = new ArrayDeque<>();
     private final ArrayDeque<Chat> chats = new ArrayDeque<>();
     private final List<UUID> deletions = new ArrayList<>();
@@ -104,6 +105,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         this.protection = new ProtectionGate(adapter, diagnostics);
         this.random = Objects.requireNonNull(random, "random");
         helpers = new HelperLedger(budgets.maximumHelpers(), budgets.helpersPerNpc());
+        hazards = new Hazards(this, world);
     }
 
     /**
@@ -197,6 +199,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         settings.squad().name().ifPresent((String squad) -> squads.computeIfAbsent(squad, (String key) -> new ArrayList<>()).add(brain));
         indexGuard(brain);
         if (brain.watches()) watchers.add(brain);
+        hazards.watch(brain, tick);
         schedule(brain, tick + 1);
         return true;
     }
@@ -209,6 +212,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         vacate(brain);
         removeHelpers(npc);
         watchers.remove(brain);
+        hazards.forget(npc);
         brain.settings().squad().name().ifPresent((String squad) -> {
             List<CombatBrain> members = squads.get(squad);
             if (members != null) {
@@ -229,6 +233,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
             }
             return;
         }
+        hazards.tick(tick);
         Scheduled due = schedule.peek();
         boolean work = due != null && due.wake() <= tick || helpers.size() > 0 || !fights.isEmpty() || !chats.isEmpty();
         if (!work) return;
@@ -575,13 +580,17 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
             defender.die(target.position(), attacker);
             return;
         }
-        if (knockback > 0 && defender.settings().defense().knockback()) {
-            Vec3 away = target.position().point().subtract(from.point());
-            double taken = knockback * (1 - defender.settings().defense().knockbackResistance());
-            if (taken > 0 && Math.abs(away.x()) + Math.abs(away.z()) > .0001) world.knockback(defender.npc(), new Vec3(away.x(), 0, away.z()), taken);
-        }
+        push(defender, from, target, knockback);
         defender.attacked(attacker);
         for (CombatBrain guardian : guardians.getOrDefault(target.ref(), List.of())) guardian.alerted(attacker);
+    }
+
+    /** Knocks the NPC away from {@code from}, less by its knockback resistance, when its defense allows knockback. */
+    private void push(CombatBrain defender, WorldPosition from, CombatTarget target, double knockback) {
+        if (!(knockback > 0) || !defender.settings().defense().knockback()) return;
+        Vec3 away = target.position().point().subtract(from.point());
+        double taken = knockback * (1 - defender.settings().defense().knockbackResistance());
+        if (taken > 0 && Math.abs(away.x()) + Math.abs(away.z()) > .0001) world.knockback(defender.npc(), new Vec3(away.x(), 0, away.z()), taken);
     }
 
     CombatWorld.DamageOutcome melee(CombatBrain brain, VirtualNpcState.Snapshot self, CombatTarget target) {
@@ -749,6 +758,62 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         return hit(player, from, view(brain, snapshot.get()), amount, CombatWorld.DamageKind.MELEE, 0, .4, true);
     }
 
+    /** Whether a real projectile striking this NPC's body counts: it is alive here and takes projectiles. */
+    public boolean shootable(UUID npc) {
+        CombatBrain brain = stopping ? null : brains.get(npc);
+        return brain != null && brain.state() != CombatState.DEAD && brain.settings().defense().takes(CombatSettings.DamageSource.PROJECTILES);
+    }
+
+    /**
+     * A real projectile from a player or mob struck this NPC's body. It is a {@code projectiles} hit by the shooter, so
+     * protection, the attacker permission and kill credit follow the shooter. A snowball or egg only pushes; a potion's
+     * instant damage hurts and its instant health heals; a fireball sets an NPC that takes fire alight.
+     */
+    public CombatWorld.DamageOutcome shot(UUID npc, RealShot shot) {
+        CombatBrain brain = stopping ? null : brains.get(npc);
+        Optional<VirtualNpcState.Snapshot> snapshot = world.npc(npc);
+        CombatWorld.DamageOutcome none = new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.NO_CHANGE, 0, false);
+        if (brain == null || snapshot.isEmpty() || !snapshot.get().active()) return none;
+        CombatTarget target = view(brain, snapshot.get());
+        if (!allowed(shot.shooter(), shot.from(), target)) return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.PROTECTED, 0, false);
+        if (shot.potion().isPresent()) {
+            CombatSettings.Effect effect = shot.potion().get();
+            if (effect.id().equals("minecraft:instant_health")) {
+                if (!brain.settings().defense().takes(CombatSettings.DamageSource.PROJECTILES)) return none;
+                world.heal(npc, 4 << effect.amplifier());
+                return none;
+            }
+            if (!effect.id().equals("minecraft:instant_damage")) return none;
+            return strike(brain, shot.shooter(), shot.from(), target, 6 << effect.amplifier(), 0, CombatWorld.DamageKind.PROJECTILE);
+        }
+        if (shot.damage() <= 0) {
+            if (!brain.settings().defense().accepts(shot.shooter().kind(), CombatWorld.DamageKind.PROJECTILE)) return none;
+            push(brain, shot.from(), target, RealShot.KNOCKBACK);
+            brain.attacked(shot.shooter());
+            return none;
+        }
+        CombatWorld.DamageOutcome outcome = strike(brain, shot.shooter(), shot.from(), target, shot.damage(), RealShot.KNOCKBACK, CombatWorld.DamageKind.PROJECTILE);
+        if (outcome.status() == CombatWorld.DamageStatus.APPLIED && !outcome.killed()) hazards.ignite(npc, shot.igniteTicks());
+        return outcome;
+    }
+
+    /** Damage from fire, lava or a fall, with no attacker. Falls are not reduced by armor. */
+    public CombatWorld.DamageOutcome environment(UUID npc, CombatSettings.DamageSource source, double amount) {
+        CombatBrain brain = stopping ? null : brains.get(npc);
+        if (brain == null) return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.NO_CHANGE, 0, false);
+        return environment(brain, source, amount, false);
+    }
+    CombatWorld.DamageOutcome environment(CombatBrain brain, CombatSettings.DamageSource source, double amount, boolean armored) {
+        Optional<VirtualNpcState.Snapshot> snapshot = world.npc(brain.npc());
+        double mitigated = snapshot.isPresent() && snapshot.get().active() ? brain.mitigateEnvironment(source, amount, armored) : 0;
+        if (mitigated <= 0) return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.NO_CHANGE, 0, false);
+        CombatWorld.DamageOutcome outcome = world.damageVirtual(brain.npc(), null, mitigated);
+        if (outcome.status() != CombatWorld.DamageStatus.APPLIED) return outcome;
+        if (outcome.killed()) brain.die(snapshot.get().position(), null);
+        else wake(brain);
+        return outcome;
+    }
+
     /** Applies this NPC's defense to a hit from outside the engine. Returns the amount to apply, or 0. */
     public double mitigateExternal(UUID npc, TargetRef attacker, WorldPosition from, double amount) {
         CombatBrain brain = stopping ? null : brains.get(npc);
@@ -852,6 +917,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         squads.clear();
         guardians.clear();
         watchers.clear();
+        hazards.clear();
         fights.clear();
         chats.clear();
         schedule.clear();

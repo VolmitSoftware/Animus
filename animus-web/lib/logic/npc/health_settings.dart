@@ -27,8 +27,11 @@ const List<String> healthKeys = <String>[
   'dead',
 ];
 
-/// What may hurt the NPC; a module without `sources` takes all of them.
-const List<String> healthSources = <String>['players', 'mobs', 'npcs', 'projectiles'];
+/// What may hurt the NPC: attacks, then the environment, which counts only when listed.
+const List<String> healthSources = <String>['players', 'mobs', 'npcs', 'projectiles', 'fire', 'lava', 'fall'];
+
+/// The sources a module without `sources` takes: every attack and nothing from the environment.
+const List<String> healthAttackSources = <String>['players', 'mobs', 'npcs', 'projectiles'];
 
 const List<String> healthAfterDeath = <String>['respawn', 'permadeath'];
 const List<String> healthOrders = <String>['in_order', 'random', 'nearest'];
@@ -52,9 +55,9 @@ JsonMap withHealthField(JsonMap module, List<JsonStep> steps, Object? value) {
 
 /// The sources that may hurt the NPC.
 Set<String> healthSourcesOn(JsonMap module) =>
-    module.containsKey('sources') ? <String>{for (final Object? source in asList(module['sources'])) ?asString(source)} : healthSources.toSet();
+    module.containsKey('sources') ? <String>{for (final Object? source in asList(module['sources'])) ?asString(source)} : healthAttackSources.toSet();
 
-/// [module] with [source] on or off; all four on again removes `sources`.
+/// [module] with [source] on or off; every attack and nothing else on again removes `sources`.
 JsonMap withHealthSource(JsonMap module, String source, bool on) {
   final Set<String> chosen = healthSourcesOn(module);
   if (on) {
@@ -62,8 +65,8 @@ JsonMap withHealthSource(JsonMap module, String source, bool on) {
   } else {
     chosen.remove(source);
   }
-  final bool all = healthSources.every(chosen.contains);
-  return withHealthField(module, const <JsonStep>['sources'], all ? null : <String>[
+  final bool plain = chosen.length == healthAttackSources.length && healthAttackSources.every(chosen.contains);
+  return withHealthField(module, const <JsonStep>['sources'], plain ? null : <String>[
     for (final String name in healthSources)
       if (chosen.contains(name)) name,
   ]);

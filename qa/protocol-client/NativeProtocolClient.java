@@ -482,6 +482,18 @@ public final class NativeProtocolClient {
                 send(new ServerboundUseItemOnPacket(InteractionHand.MAIN_HAND, hit, ++blockSequence));
                 event("use_block", "x", at.getX(), "y", at.getY(), "z", at.getZ(), "sequence", blockSequence);
             }
+            case "use_item" -> {
+                // A right click into the air with the main hand: starts drawing a bow or throws a held item.
+                if (!loaded) throw new IllegalStateException("Item use requires an active game connection");
+                send(new net.minecraft.network.protocol.game.ServerboundUseItemPacket(InteractionHand.MAIN_HAND, ++blockSequence, position.yRot(), position.xRot()));
+                event("use_item", "sequence", blockSequence);
+            }
+            case "release_use" -> {
+                // Letting go of the use key: looses a drawn bow.
+                if (!loaded) throw new IllegalStateException("Releasing requires an active game connection");
+                send(new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.RELEASE_USE_ITEM, net.minecraft.core.BlockPos.ZERO, net.minecraft.core.Direction.DOWN));
+                event("release_use");
+            }
             case "swing" -> {
                 if (!loaded) throw new IllegalStateException("Swing requires an active game connection");
                 send(ProtocolRevision.swing());

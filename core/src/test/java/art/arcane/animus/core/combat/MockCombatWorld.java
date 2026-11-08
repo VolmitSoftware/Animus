@@ -35,6 +35,9 @@ class MockCombatWorld implements CombatWorld {
     final Set<String> permissions = new HashSet<>();
     final Map<UUID, Integer> swings = new HashMap<>();
     final Map<UUID, Boolean> drawn = new HashMap<>();
+    /** What each NPC's body touches; missing means nothing. */
+    final Map<UUID, Contact> contacts = new HashMap<>();
+    final Map<UUID, Boolean> burning = new HashMap<>();
     int drawChanges;
     int experience, realScans, npcScans, helperLaunches, stops, teleports, lineChecks;
     boolean blocked, unavailableTerrain, walkInstantly, refuseHelpers, playersAway;
@@ -172,6 +175,8 @@ class MockCombatWorld implements CombatWorld {
         else index.remove(npc);
         return new DamageOutcome(DamageStatus.APPLIED, amount, !after.active());
     }
+    @Override public Contact contact(UUID npc) { return contacts.getOrDefault(npc, Contact.NONE); }
+    @Override public void burning(UUID npc, boolean shown) { burning.put(npc, shown); }
     @Override public void knockback(UUID npc, Vec3 direction, double strength) { knocked.merge(npc, strength, Double::sum); }
     @Override public boolean applyEffect(UUID attacker, CombatTarget target, CombatSettings.Effect effect) {
         effects.computeIfAbsent(target.ref().id(), (UUID key) -> new ArrayList<>()).add(effect);

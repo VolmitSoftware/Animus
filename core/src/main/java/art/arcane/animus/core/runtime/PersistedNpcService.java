@@ -14,6 +14,7 @@ import art.arcane.animus.core.mount.SeatGeometry;
 import art.arcane.animus.core.navigation.BlockPos;
 import art.arcane.animus.core.navigation.BodyMobility;
 import art.arcane.animus.core.navigation.BodyTerrain;
+import art.arcane.animus.core.navigation.FallTracker;
 import art.arcane.animus.core.navigation.CaptureProvenance;
 import art.arcane.animus.core.navigation.DoorPassage;
 import art.arcane.animus.core.navigation.IdleFall;
@@ -102,6 +103,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
@@ -220,6 +222,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private OwnerNavigation navigation;
     private AutoCloseable ticker;
     private TriggerBridge triggers;
+    /** Told the NPC's UUID and the fall damage, on the owner, when an idle fall lands hard enough to hurt. */
+    private volatile BiConsumer<UUID, Double> landings = (UUID npc, Double damage) -> {};
     private volatile NpcRig.Events animationEvents;
     private volatile InteractionListener<P> interactions;
     private volatile InteractionObserver observer;
@@ -371,6 +375,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     /** Connect during startup, before the first runtime tick can activate an NPC. */
     @Override public void interactions(InteractionListener<P> listener) { interactions = listener; }
     @Override public void observeInteractions(InteractionObserver observer) { this.observer = observer; }
+    /** Who hears of falls that hurt, as the combat module applies them. */
+    public void onLanding(BiConsumer<UUID, Double> listener) { landings = Objects.requireNonNull(listener); }
     @Override public void bindTriggers(TriggerDispatcher dispatcher) { owner(); dispatcher.hide(previews); triggers = new TriggerBridge(dispatcher, index); }
     @Override public void animationEvents(NpcRig.Events events) { animationEvents = events; }
     @Override public String status() {
@@ -957,7 +963,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private void styleLook(Value value, StyledLeg.Look look) { changeLook(value, look.pose(), look.motion()); }
     /** The playback's pose and motion; a bow drawn in a fight stays drawn across them. */
     private void changeLook(Value value, NpcPose pose, int motion) {
-        int shown = motion | (value.drawing ? BodyLook.USING_ITEM : 0);
+        int shown = motion | (value.drawing ? BodyLook.USING_ITEM : 0) | (value.burning ? BodyLook.ON_FIRE : 0);
         if (value.lookPose == pose && value.lookMotion == shown) return;
         value.lookPose = pose; value.lookMotion = shown; value.lookRevision++;
         value.look = BodyLook.of(value.spec.definition().uuid(), value.spec.type(), value.displayName, value.spec.appearance()).moving(pose, shown);
@@ -977,6 +983,14 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (value == null || value.drawing == drawing) return;
         value.drawing = drawing;
         changeLook(value, value.lookPose, value.lookMotion & ~BodyLook.USING_ITEM);
+    }
+    /** Shows or hides the NPC burning for everyone who sees it. */
+    public void burning(String id, boolean burning) {
+        if (!available()) return;
+        owner(); Entry entry = entries.get(id); Value value = entry == null ? null : entry.value;
+        if (value == null || value.burning == burning) return;
+        value.burning = burning;
+        changeLook(value, value.lookPose, value.lookMotion & ~BodyLook.ON_FIRE);
     }
     /** Replaces the current route with a reusable route; its read and any read failure are reported in navigation status. */
     @Override public void followRoute(String id, String route) {
@@ -1778,6 +1792,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         IdleFall.Step step = IdleFall.step(at.point(), value.fallSpeed, value.movement.gravity(), moveWidth(value), moveHeight(value), swims, host.collision(at.world()));
         motionCells -= step.sampled();
         value.fallSpeed = step.speed();
+        landed(value, at, step);
         boolean falling = step.outcome() == IdleFall.Outcome.FALLING;
         if (falling || step.outcome() == IdleFall.Outcome.LANDED) {
             value.state.move(new WorldPosition(at.world(), step.to())); index.upsert(value.state.snapshot());
@@ -1799,6 +1814,14 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             value.supportQueued = true; supportOrder.addLast(value);
         }
     }
+    /** Measures the idle fall and reports a landing that hurts. */
+    private void landed(Value value, WorldPosition at, IdleFall.Step step) {
+        if (step.outcome() == IdleFall.Outcome.HELD) { value.fall.reset(); return; }
+        java.util.OptionalDouble distance = value.fall.step(at.point().y(), step.to().y(), step.outcome() != IdleFall.Outcome.FALLING, step.caught());
+        if (distance.isEmpty()) return;
+        double damage = FallTracker.damage(distance.getAsDouble(), value.attributes);
+        if (damage > 0) landings.accept(value.spec.definition().uuid(), damage);
+    }
     private boolean falls(Value value) {
         return valueCurrent(value) && value.state.snapshot().active() && value.route == null && value.routeTask == null
                 && value.falls && mountRuntime.vehicleOf(value.spec.definition().id()) == null
@@ -1809,11 +1832,12 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         for (; visited < waiting && cells > 0 && simulationLeft > 0 && available(); visited++) {
             Value value = supportOrder.removeFirst(); simulationLeft--;
             WorldPosition at = value.state.snapshot().position();
-            if (!falls(value) || !host.worldLoaded(at.world())) { value.supportQueued = false; value.fallSpeed = 0; continue; }
+            if (!falls(value) || !host.worldLoaded(at.world())) { value.supportQueued = false; value.fallSpeed = 0; value.fall.reset(); continue; }
             boolean swims = BodyMobility.forBody(value.spec.type(), moveWidth(value), moveHeight(value)).supports(MovementProfile.Mode.SWIM);
             IdleFall.Step step = IdleFall.step(at.point(), value.fallSpeed, value.movement.gravity(), moveWidth(value), moveHeight(value), swims, host.collision(at.world()));
             cells -= step.sampled();
             value.fallSpeed = step.speed();
+            landed(value, at, step);
             boolean falling = step.outcome() == IdleFall.Outcome.FALLING;
             if (falling || step.outcome() == IdleFall.Outcome.LANDED) {
                 value.state.move(new WorldPosition(at.world(), step.to())); index.upsert(value.state.snapshot());
@@ -2614,7 +2638,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         /** The pose and motion a playback shows; {@link #look} is the body look with them, sent when {@link #lookRevision} moves. */
         NpcPose lookPose; int lookMotion; long lookRevision; BodyLook look;
         /** Attacks so far, sent with moves; and whether a fight holds the bow drawn, shown through {@link #look}. */
-        long attackSwings; boolean drawing;
+        long attackSwings; boolean drawing, burning;
+        /** How far an idle fall has carried the body, for fall damage. */
+        final FallTracker fall = new FallTracker();
         /** Who dealt the health change being applied now, for its damage and death triggers; cleared once they fire. */
         TriggerEvent.Attacker attacker;
         /** A body that just died stays shown, lying down, until this tick. */

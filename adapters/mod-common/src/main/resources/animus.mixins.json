@@ -6,6 +6,7 @@
   "mixins": [
     "AgeableDataAccess",
     "ArmadilloDataAccess",
+    "ArrowDataAccess",
     "AvatarDataAccess",
     "BlockDisplayDataAccess",
     "BlockItemHooks",

@@ -33,6 +33,7 @@ import art.arcane.animus.core.navigation.CaptureProvenance;
 import art.arcane.animus.core.navigation.LongLeg;
 import art.arcane.animus.core.navigation.ChunkOwnership;
 import art.arcane.animus.core.navigation.IdleFall;
+import art.arcane.animus.core.navigation.FallTracker;
 import art.arcane.animus.bukkit.navigation.LiveMovementProbe;
 import art.arcane.animus.core.navigation.NavigationPlan;
 import art.arcane.animus.bukkit.navigation.VirtualNpcWaypointEvent;
@@ -181,8 +182,10 @@ final class RegionActor implements RegionOwner.Body {
     private int lookMotion;
     private long lookRevision;
     private BodyLook look;
-    /** A fight holds the bow drawn, shown through {@link #look}. */
-    private boolean drawing;
+    /** A fight holds the bow drawn, and fire or lava sets the body burning, both shown through {@link #look}. */
+    private boolean drawing, burning;
+    /** How far an idle fall has carried the body, for fall damage. */
+    private final FallTracker fall = new FallTracker();
     private String displayName;
     private BodySkin displaySkin;
     private AppearanceRead appearanceRead;
@@ -236,7 +239,7 @@ final class RegionActor implements RegionOwner.Body {
         waypoints = WaypointSettings.parse(spec.definition()).map((WaypointSettings declared) -> progress(declared, WaypointProgress.INLINE)).orElse(null);
         recordingSource = RecordingSource.parse(spec.definition().json()).orElse(null);
         performance.run = null; performance.held = null; performance.playing = false; stepLeg = null; stepProgress = null;
-        lookPose = spec.appearance().pose(); lookMotion = 0; look = null; lookRevision++; drawing = false;
+        lookPose = spec.appearance().pose(); lookMotion = 0; look = null; lookRevision++; drawing = false; burning = false;
         routeReadWanted = waypoints == null ? routeSource != null || recordingSource != null : !routeReady();
         rigId = RigReference.parse(spec.definition().json()).orElse(null);
         rig = null; rigProblem = null; rigGeneration = -1;
@@ -1079,6 +1082,7 @@ final class RegionActor implements RegionOwner.Body {
         IdleFall.Step step = IdleFall.step(at.point(), fallSpeed, movement.gravity(), hullWidth(), hullHeight(), swims, LiveMovementProbe.owned(world, owned));
         host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted - step.sampled());
         fallSpeed = step.speed();
+        landed(at, step);
         boolean falling = step.outcome() == IdleFall.Outcome.FALLING;
         if (falling || step.outcome() == IdleFall.Outcome.LANDED) {
             state.move(new WorldPosition(at.world(), step.to()));
@@ -1092,7 +1096,7 @@ final class RegionActor implements RegionOwner.Body {
     private void support() {
         supportWanted = false;
         World world = mount || !navigable() || !falls ? null : host.world(state.snapshot().position().world());
-        if (world == null) { fallSpeed = 0; return; }
+        if (world == null) { fallSpeed = 0; fall.reset(); return; }
         if (!host.budget.takeSimulation()) { supportWanted = true; return; }
         int wanted = IdleFall.cells(hullWidth(), hullHeight()), granted = host.budget.take(RegionBudget.Kind.MOTION_CELLS, wanted);
         if (granted < wanted) { host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted); supportWanted = true; return; }
@@ -1102,6 +1106,7 @@ final class RegionActor implements RegionOwner.Body {
         IdleFall.Step step = IdleFall.step(at.point(), fallSpeed, movement.gravity(), hullWidth(), hullHeight(), swims, LiveMovementProbe.owned(world, owned));
         host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted - step.sampled());
         fallSpeed = step.speed();
+        landed(at, step);
         boolean falling = step.outcome() == IdleFall.Outcome.FALLING;
         if (falling || step.outcome() == IdleFall.Outcome.LANDED) {
             state.move(new WorldPosition(at.world(), step.to()));
@@ -1419,7 +1424,7 @@ final class RegionActor implements RegionOwner.Body {
     private void styleLook(StyledLeg.Look shown) { changeLook(shown.pose(), shown.motion()); }
     /** The playback's pose and motion; a bow drawn in a fight stays drawn across them. */
     private void changeLook(NpcPose nextPose, int motion) {
-        int shown = motion | (drawing ? BodyLook.USING_ITEM : 0);
+        int shown = motion | (drawing ? BodyLook.USING_ITEM : 0) | (burning ? BodyLook.ON_FIRE : 0);
         if (lookPose == nextPose && lookMotion == shown) return;
         lookPose = nextPose; lookMotion = shown; lookRevision++;
         look = BodyLook.of(uuid, spec.type(), displayName, spec.appearance()).moving(nextPose, shown);
@@ -1430,6 +1435,21 @@ final class RegionActor implements RegionOwner.Body {
         drawing = drawn;
         changeLook(lookPose, lookMotion & ~BodyLook.USING_ITEM);
         publish(true);
+    }
+    /** Shows or hides the body burning for every viewer. */
+    void burning(boolean shown) {
+        if (burning == shown) return;
+        burning = shown;
+        changeLook(lookPose, lookMotion & ~BodyLook.ON_FIRE);
+        publish(true);
+    }
+    /** Measures the idle fall and hands a landing that hurts to this NPC's combat. */
+    private void landed(WorldPosition at, IdleFall.Step step) {
+        if (step.outcome() == IdleFall.Outcome.HELD) { fall.reset(); return; }
+        java.util.OptionalDouble distance = fall.step(at.point().y(), step.to().y(), step.outcome() != IdleFall.Outcome.FALLING, step.caught());
+        if (distance.isEmpty()) return;
+        double damage = FallTracker.damage(distance.getAsDouble(), attributes);
+        if (damage > 0 && combat != null) combat.fell(damage);
     }
     /** The recording a hotload re-reads: the one playing or kept, else the declared one. */
     private RecordingSource recordingToRead() {

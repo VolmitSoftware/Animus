@@ -313,6 +313,11 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
     }
 
     private World world(String id) { return BukkitWorldLookup.find(plugin.getServer(), id); }
+    @Override public Contact contact(UUID npc) {
+        Optional<VirtualNpcState.Snapshot> self = npc(npc);
+        World world = self.isEmpty() ? null : world(self.get().position().world());
+        return world == null ? Contact.NONE : BukkitShots.contact(world, self.get().bounds(), (int x, int z) -> true);
+    }
     private static Location location(World world, Vec3 point) { return new Location(world, point.x(), point.y(), point.z()); }
     private static Vector vector(Vec3 point) { return new Vector(point.x(), point.y(), point.z()); }
 }
