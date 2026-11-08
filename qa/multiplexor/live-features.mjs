@@ -15,6 +15,7 @@ import { npcKeys } from './live-npc-keys.mjs';
 import { toolkit } from './live-toolkit.mjs';
 import { movementStyles } from './live-movement-styles.mjs';
 import { commandFeel } from './live-command-feel.mjs';
+import { placeholders } from './live-placeholders.mjs';
 
 const args = parseArgs();
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -35,6 +36,9 @@ const MAIN = true;
 const buildHome = args.get('build-home') ? path.resolve(args.get('build-home')) : null;
 const plugin = path.resolve(args.get('plugin'));
 const fixture = args.get('fixture') ? path.resolve(args.get('fixture')) : null;
+// Other plugins a scenario needs beside Animus, such as PlaceholderAPI for the placeholders scenario.
+const extraPlugins = (args.get('extra-plugins') ?? '').split(',').filter(Boolean).map(file => path.resolve(file));
+const papiExpansions = (args.get('papi-expansions') ?? '').split(',').filter(Boolean).map(file => path.resolve(file));
 const javaHome = args.get('java-home') ?? '/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home';
 // Fabric, NeoForge and Forge run the mod jar on a vanilla server: data lives in config/animus and no Bukkit fixture exists.
 const MOD = ['fabric', 'neoforge', 'forge'].includes(project);
@@ -45,7 +49,7 @@ const scenarios = (args.get('scenarios') ?? defaultScenarios).split(',');
 const dashed = version.replaceAll('.', '-');
 const name = args.get('instance-name') ?? (MOD ? `animus-mod-${project}-${dashed}` : `animus-live-${project}-${dashed}`);
 // A Folia run may also use the animus-folia-paper-<version> instance a Folia check was asked to run on.
-assert(new RegExp(MOD ? `^animus-mod-${project}-${dashed}$` : `^animus-(?:live|gate-live|guarddebug|foliafinal|builderscaffold|combatedges|shopstyle|swinglook|npckeys|parity|movestyles|commandfeel)-${project}-${dashed}$`).test(name)
+assert(new RegExp(MOD ? `^animus-mod-${project}-${dashed}$` : `^animus-(?:live|gate-live|guarddebug|foliafinal|builderscaffold|combatedges|shopstyle|swinglook|npckeys|parity|movestyles|commandfeel|placeholders)-${project}-${dashed}$`).test(name)
   || project === 'folia' && name === `animus-folia-paper-${dashed}`, 'Instance name must bind the requested platform/version');
 assert(!MOD || !fixture, 'The QA event fixture is a Bukkit plugin; mod servers run without it');
 const instances = path.join(workspace, `consumers/${MOD ? `${project}-mod` : 'plugin'}-consumers/instances`);
@@ -123,7 +127,7 @@ class Server {
     writeFileSync(path.join(instance, 'eula.txt'), existsSync(path.join(template, 'eula.txt')) ? readFileSync(path.join(template, 'eula.txt')) : 'eula=true\n');
     const plugins = path.join(instance, MOD ? 'mods' : 'plugins');
     // Every run starts from empty plugin data so no earlier revision, checkpoint or state answers for this run.
-    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|guarddebug|foliafinal|builderscaffold|combatedges|shopstyle|swinglook|npckeys|parity|movestyles|commandfeel|mod|folia-paper)-/.test(path.basename(instance)));
+    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|guarddebug|foliafinal|builderscaffold|combatedges|shopstyle|swinglook|npckeys|parity|movestyles|commandfeel|placeholders|mod|folia-paper)-/.test(path.basename(instance)));
     rmSync(data, { recursive: true, force: true });
     mkdirSync(data, { recursive: true });
     mkdirSync(plugins, { recursive: true });
@@ -131,6 +135,7 @@ class Server {
     copyFileSync(plugin, path.join(plugins, path.basename(plugin)));
     // The QA event fixture adds animusqa commands that qa/combat-client.mjs needs.
     if (fixture) copyFileSync(fixture, path.join(plugins, path.basename(fixture)));
+    for (const extra of extraPlugins) copyFileSync(extra, path.join(plugins, path.basename(extra)));
     const cached = path.join(process.env.HOME, '.gradle/caches/fabric-loom', version, 'minecraft-server.jar');
     if (!MOD) mkdirSync(path.join(instance, 'cache'), { recursive: true });
     if (!MOD && existsSync(cached)) copyFileSync(cached, path.join(instance, 'cache', `mojang_${version}.jar`));
@@ -2911,7 +2916,8 @@ const npckeys = () => npcKeys({ server, join, check, sayTo, data, OWNER });
 const toolkitScenario = () => toolkit({ server, join, check, data, OWNER });
 const movestyles = () => movementStyles({ server, join, check, inspect, until, OWNER });
 const commandfeel = () => commandFeel({ server, join, check, data, results, OWNER });
-const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, combatedges, swinglook, npckeys, movestyles, toolkit: toolkitScenario, commandfeel, packs, appearance, building, scaffolding, shops, folia, smoke, worlds, guardsoak };
+const placeholdersScenario = () => placeholders({ server, join, check, data, instance, expansions: papiExpansions, OWNER });
+const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, combatedges, swinglook, npckeys, movestyles, toolkit: toolkitScenario, commandfeel, placeholders: placeholdersScenario, packs, appearance, building, scaffolding, shops, folia, smoke, worlds, guardsoak };
 function finalLogReview(text, label) {
   const lines = text.split('\n');
   const bad = lines.filter(line => /\b(ERROR|SEVERE)\b|Exception|Nag author|Could not pass event/.test(line) || (MOD && /[Mm]ixin[^\n]*(?:fail|error|could not|not applied)/i.test(line)));

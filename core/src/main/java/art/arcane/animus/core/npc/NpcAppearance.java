@@ -32,6 +32,11 @@ public record NpcAppearance(Map<EquipmentSlot, NpcItem> equipment, List<String> 
     }
 
     /** This appearance with other attributes, as a runtime attribute change presents it. */
+    /** The same appearance showing other hologram lines, such as the lines filled for one viewer. */
+    public NpcAppearance withHologram(List<String> lines) {
+        return new NpcAppearance(equipment, lines, nameplateVisible, pose, armorStand, hologramStyle, traits);
+    }
+
     public NpcAppearance withAttributes(NpcAttributes attributes) {
         return new NpcAppearance(equipment, hologram, nameplateVisible, pose, armorStand, hologramStyle, traits.withAttributes(attributes));
     }

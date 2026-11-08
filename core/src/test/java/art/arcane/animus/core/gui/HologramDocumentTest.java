@@ -4,6 +4,7 @@ import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.presentation.DisplayEntity;
 import java.util.List;
 import java.util.Map;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -40,7 +41,7 @@ class HologramDocumentTest {
     @Test void textRowsShareOneDisplayAndObjectsTakeBlankRows() {
         HologramDocument hologram = HologramDocument.parse("town:sign", GLOSS).document().orElseThrow();
         GuiExpression.Scope scope = (String name) -> name.equals("viewer.name") ? "Alex" : null;
-        HologramRender.Render render = HologramRender.build(hologram, hologram.lines(), hologram.style(), scope, 10.5, 65, -4.5);
+        HologramRender.Render render = HologramRender.build(hologram, hologram.lines(), hologram.style(), scope, UnaryOperator.identity(), 10.5, 65, -4.5);
         assertEquals(4, render.rows(), "one text row, two blank rows for a 0.5 block item, one text row");
         DisplayEntity.Text text = (DisplayEntity.Text) render.entities().get("text").content();
         assertEquals("Welcome Alex\n \n \nClick me", RichText.plain(text.text()));
@@ -55,11 +56,21 @@ class HologramDocumentTest {
         assertFalse(box.hit(new double[]{10.5, 65.5, -20}, new double[]{0, 0, 1}, 8, 0.35), "out of reach misses");
     }
 
+    @Test void textLinesAreFilledWithTheViewersPlaceholdersBeforeColouring() {
+        HologramDocument hologram = HologramDocument.parse("town:sign", GLOSS.replace("\"&7Click me\"", "\"Online: %server_online%\"")).document().orElseThrow();
+        GuiExpression.Scope scope = (String name) -> name.equals("viewer.name") ? "Alex" : null;
+        HologramRender.Render render = HologramRender.build(hologram, hologram.lines(), hologram.style(), scope,
+                (String text) -> text.replace("%server_online%", "&a12"), 0, 0, 0);
+        DisplayEntity.Text text = (DisplayEntity.Text) render.entities().get("text").content();
+        assertTrue(text.text().endsWith("§a12"), text.text());
+        assertEquals("Welcome Alex\n \n \nOnline: 12", RichText.plain(text.text()));
+    }
+
     @Test void perLineBoxesAndHiddenLines() {
         String json = GLOSS.replace("\"&7Click me\"", "{\"text\": \"secret\", \"show\": \"viewer.level > 5\"}")
                 .replace("\"viewDistance\": 32", "\"hitbox\": {\"perLine\": true, \"height\": 0.25}");
         HologramDocument hologram = HologramDocument.parse("town:sign", json).document().orElseThrow();
-        HologramRender.Render render = HologramRender.build(hologram, hologram.lines(), hologram.style(), (String name) -> name.equals("viewer.level") ? 1.0 : "Alex", 0, 0, 0);
+        HologramRender.Render render = HologramRender.build(hologram, hologram.lines(), hologram.style(), (String name) -> name.equals("viewer.level") ? 1.0 : "Alex", UnaryOperator.identity(), 0, 0, 0);
         assertEquals(4, render.rows(), "a hidden text line keeps its row while object lines exist");
         assertEquals(4, render.boxes().size());
     }

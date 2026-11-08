@@ -5,7 +5,7 @@ description: 'A Manager for all things NPC.'
 authors: [Volmit Software]
 api-version: '${apiVersion}'
 folia-supported: true
-softdepend: [WorldGuard, Vault, Gloss, React]
+softdepend: [WorldGuard, Vault, Gloss, React, PlaceholderAPI]
 commands:
   ${projectId}:
     description: Manages virtual NPCs, definitions and staged Citizens imports.

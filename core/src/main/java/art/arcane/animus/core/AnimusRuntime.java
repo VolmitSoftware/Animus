@@ -46,6 +46,7 @@ public final class AnimusRuntime implements AutoCloseable {
     private RigLibrary rigs;
     private final art.arcane.animus.core.extension.ModuleHooks moduleHooks = new art.arcane.animus.core.extension.ModuleHooks();
     private volatile CatalogReloads catalogs = CatalogReloads.NONE;
+    private volatile art.arcane.animus.core.text.Placeholders placeholders = art.arcane.animus.core.text.Placeholders.NONE;
     private final java.util.List<Consumer<PluginSettings>> settingsListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     public AnimusRuntime(RuntimeEnvironment environment) {
@@ -226,6 +227,7 @@ public final class AnimusRuntime implements AutoCloseable {
     public synchronized art.arcane.animus.core.config.EditorRelaySettings editorRelaySettings() { return settings().relay(); }
     public synchronized art.arcane.animus.core.config.HotloadSettings hotloadSettings() { return settings().hotload(); }
     public synchronized art.arcane.animus.core.config.RecordingSettings recordingSettings() { return settings().recordings(); }
+    public synchronized art.arcane.animus.core.config.PlaceholderSettings placeholderSettings() { return settings().placeholders(); }
 
     /**
      * Replaces the running settings after a hotload of {@code config.toml}: the file lane takes its new limits here, then
@@ -257,6 +259,9 @@ public final class AnimusRuntime implements AutoCloseable {
     /** What reloads shops, GUIs, holograms, rigs and behaviors after a committed change; the platform sets it once its services exist. */
     public CatalogReloads catalogs() { return catalogs; }
     public void catalogs(CatalogReloads reloads) { catalogs = Objects.requireNonNull(reloads, "reloads"); }
+    /** PlaceholderAPI on Bukkit when it is installed; none elsewhere. The platform sets it during startup. */
+    public art.arcane.animus.core.text.Placeholders placeholders() { return placeholders; }
+    public void placeholders(art.arcane.animus.core.text.Placeholders filler) { placeholders = Objects.requireNonNull(filler, "filler"); }
     private PluginSettings settings() {
         if (!isRunning()) throw new IllegalStateException("Animus is not running");
         return settings;

@@ -1,10 +1,15 @@
 package art.arcane.animus.core.gui;
 
 import art.arcane.animus.core.npc.NpcItem;
+import art.arcane.animus.core.text.Placeholders;
+import art.arcane.animus.core.text.RichText;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.function.UnaryOperator;
 
 /**
  * What one window shows: a title, a size and the display item of every filled slot. Text is already coloured.
@@ -17,6 +22,8 @@ public record ScreenFrame(String title, String resolution, int width, int rows, 
     /** A display item. {@code head} names the player whose head a {@code minecraft:player_head} shows. */
     public record Item(NpcItem item, Optional<String> name, List<String> lore, Optional<String> head) {
         public Item { Objects.requireNonNull(item); Objects.requireNonNull(name); lore = List.copyOf(lore); Objects.requireNonNull(head); }
+
+        Item filled(UnaryOperator<String> fill) { return new Item(item, name.map(fill), lore.stream().map(fill).toList(), head); }
     }
 
     /**
@@ -43,6 +50,36 @@ public record ScreenFrame(String title, String resolution, int width, int rows, 
     /** The trading screen with these offers. */
     public static ScreenFrame merchant(String title, Merchant merchant) {
         return new ScreenFrame(title, MERCHANT, 1, 1, Map.of(), Optional.of(merchant));
+    }
+
+    /**
+     * This frame with a viewer's placeholders filled in its title, item names and lore, then coloured again so a
+     * placeholder's own colour codes render. The same frame when no text holds a placeholder.
+     */
+    public ScreenFrame filled(Placeholders placeholders, UUID viewer) {
+        if (!placeholders.active() || !marked()) return this;
+        UnaryOperator<String> fill = (String text) -> {
+            String result = placeholders.fill(viewer, text);
+            return result.equals(text) ? text : RichText.colorize(result);
+        };
+        Map<Integer, Item> filledItems = new LinkedHashMap<>();
+        for (Map.Entry<Integer, Item> slot : items.entrySet()) filledItems.put(slot.getKey(), slot.getValue().filled(fill));
+        Optional<Merchant> filledMerchant = merchant.map((Merchant shown) -> new Merchant(shown.offers().stream()
+                .map((Offer offer) -> new Offer(offer.costA().filled(fill), offer.costB().map((Item cost) -> cost.filled(fill)), offer.result().filled(fill), offer.uses(), offer.maxUses()))
+                .toList()));
+        return new ScreenFrame(fill.apply(title), resolution, width, rows, filledItems, filledMerchant);
+    }
+
+    private boolean marked() {
+        if (Placeholders.marked(title)) return true;
+        for (Item item : items.values()) if (marked(item)) return true;
+        if (merchant.isPresent()) for (Offer offer : merchant.get().offers())
+            if (marked(offer.costA()) || offer.costB().map(ScreenFrame::marked).orElse(false) || marked(offer.result())) return true;
+        return false;
+    }
+
+    private static boolean marked(Item item) {
+        return item.name().map(Placeholders::marked).orElse(false) || item.lore().stream().anyMatch(Placeholders::marked);
     }
 
     /** Slots a click may name: the chest's slots, or the trading screen's offers. */

@@ -44,6 +44,9 @@ abstract class ToolScreen<P, S> implements Screen {
     abstract int rows();
     abstract void draw();
 
+    /** The toolkit edits text, so it shows placeholders as written. */
+    @Override public final boolean fillsPlaceholders() { return false; }
+
     @Override public final ScreenFrame render() {
         items.clear();
         handlers.clear();

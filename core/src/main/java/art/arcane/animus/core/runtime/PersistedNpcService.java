@@ -1158,6 +1158,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (!viewer.ready || !viewer.retirements.isEmpty() || !pressure.allows(PresentationPressure.Tier.COSMETIC, tickNumber, viewer.turns)) return 0;
         int sent = 0;
         int[] rigBudget = {rigSettings.updatesPerTick()};
+        int refresh = runtime.placeholders().refreshTicks();
         for (int i = 0, count = viewer.cosmeticOrder.size(); i < count && (sent < packetBudget || rigBudget[0] > 0); i++) {
             Presented body = viewer.cosmeticOrder.removeFirst();
             if (body.retired) continue;
@@ -1174,10 +1175,34 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                     sent++;
                 }
             }
+            if (body.spawnFinished && body.labels != null && refresh > 0 && sent < packetBudget && tickNumber - body.labelledAt >= refresh) {
+                if (!relabel(viewer, body)) return sent;
+                sent++;
+                if (!current(viewer)) return sent;
+                if (body.retired) continue;
+            }
             sent += presentRig(viewer, body, packetBudget - sent, rigBudget);
             if (!current(viewer)) return sent;
         }
         return sent + mountRuntime.updateDragonPhases(viewer, packetBudget - sent);
+    }
+    /**
+     * Cosmetic, every {@code [placeholders] refreshTicks}: the body's name and hologram lines filled again for this viewer.
+     * Changed text goes out in place; a body whose rows changed shape, or whose transport cannot relabel, respawns.
+     */
+    private boolean relabel(Viewer viewer, Presented body) {
+        body.labelledAt = tickNumber;
+        List<String> rows = NpcPresentation.label(body.value.spec, body.value.displayName, body.value.attributes, runtime.placeholders(), viewer.id).rows();
+        if (rows.equals(body.labels)) return true;
+        if (rows.size() != body.labels.size()) { retire(viewer, body); return true; }
+        if (!admit(viewer, PresentationPressure.Tier.COSMETIC)) return false;
+        body.labels = rows;
+        try {
+            handOver(viewer, () -> packets.relabel(viewer.player, body.body, rows)).whenComplete((Void nothing, Throwable failure) -> {
+                if (failure != null) enqueue(viewer, () -> { if (current(viewer) && !body.retired) retire(viewer, body); });
+            });
+        } catch (RuntimeException failure) { retire(viewer, body); }
+        return true;
     }
     /** A swing shown later than this would not match what the NPC did. */
     private static final int STALE_SWING_TICKS = 10;
@@ -2288,8 +2313,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     }
     private void spawn(Viewer viewer, Value value) {
         try {
-            BodyTransport.Body body = NpcPresentation.body(packets, value.spec, value.displayName, value.displaySkin, value.attributes);
+            NpcPresentation.Label label = NpcPresentation.label(value.spec, value.displayName, value.attributes, runtime.placeholders(), viewer.id);
+            BodyTransport.Body body = NpcPresentation.body(packets, label, value.displaySkin);
             Presented presented = new Presented(value, body); viewer.visible.put(body.uuid(), presented); showing.shown(body.uuid(), viewer);
+            if (runtime.placeholders().active() && NpcPresentation.placeholdered(value.spec, value.displayName)) { presented.labels = label.rows(); presented.labelledAt = tickNumber; }
             presented.deliveredSwings = value.swings; presented.deliveredAttackSwings = value.attackSwings; presented.deliveredAttributeRevision = value.attributeRevision;
             viewer.presentationOrder.addLast(presented); viewer.cosmeticOrder.addLast(presented);
             viewer.nativeIds += body.entityIds().length; viewer.pendingSpawns++;
@@ -2718,6 +2745,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         List<Integer> sentRoster = List.of();
         int sentDragonPhase = DragonBody.PHASE_HOVERING;
         BodyTransport.Bones bones; RigView view; long rigIdentity, socketRevision; boolean bonesShown, rigFailed;
+        /** The filled text rows this viewer was sent, when the name or a hologram line holds a placeholder; otherwise null. */
+        List<String> labels; long labelledAt;
         Presented(Value value, BodyTransport.Body body) { this.value = value; this.body = body; }
     }
     final class Viewer {

@@ -334,6 +334,7 @@ public final class NativeProtocolClient {
                 if (item.value() instanceof Number || item.value() instanceof Boolean) field.put("value", item.value());
                 else if (item.value() instanceof Enum<?> constant) field.put("value", constant.name());
                 else if (item.value() instanceof ItemStack stack) field.put("item", stack.isEmpty() ? "empty" : BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+                else if (item.value() instanceof net.minecraft.network.chat.Component text) field.put("text", text.getString());
                 fields.add(field);
             }
             event("metadata", "id", p.id(), "entries", p.packedItems().size(), "fields", fields);

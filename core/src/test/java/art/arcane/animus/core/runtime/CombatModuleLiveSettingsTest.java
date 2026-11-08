@@ -66,7 +66,7 @@ class CombatModuleLiveSettingsTest {
     private void hotload(CombatBudgets combat) throws IOException {
         PluginSettings s = PluginSettings.load(runtime.documents());
         runtime.applySettings(new PluginSettings(s.packetProofEnabled(), s.splashScreen(), s.npcs(), s.files(), s.modules(), s.behaviors(), combat,
-                s.builds(), s.shops(), s.relay(), s.editor(), s.rigs(), s.navigation(), s.hotload(), s.recordings()));
+                s.builds(), s.shops(), s.relay(), s.editor(), s.rigs(), s.navigation(), s.hotload(), s.recordings(), s.placeholders()));
     }
 
     private CombatModule module() throws IOException {

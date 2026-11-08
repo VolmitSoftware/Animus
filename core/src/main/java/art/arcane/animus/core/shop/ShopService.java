@@ -74,6 +74,7 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
         store = new ShopStateStore(data.resolve("state/shops"), data.resolve("logs/shops"), settings.flushMillis(), log);
         context = context(settings);
         screens = new ScreenManager<>(host, (UUID npc) -> living.active(npc).isPresent(), log);
+        screens.placeholders(runtime::placeholders);
         settingsListener = runtime.onSettings((art.arcane.animus.core.config.PluginSettings next) -> applySettings(next.shops()));
     }
 

@@ -1,6 +1,7 @@
 package art.arcane.animus.core.gui;
 
 import art.arcane.animus.core.AnimusLog;
+import art.arcane.animus.core.text.Placeholders;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -16,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 /**
  * Every open Animus window, one per player. The server is authoritative: a click only runs a screen's own handler,
@@ -32,6 +34,7 @@ public final class ScreenManager<P, S> {
     private final Predicate<UUID> npcActive;
     private final Consumer<String> warn;
     private final Map<UUID, Viewer> viewers = new ConcurrentHashMap<>();
+    private volatile Supplier<Placeholders> placeholders = () -> Placeholders.NONE;
 
     public ScreenManager(ScreenHost<P, S> host, Predicate<UUID> npcActive, Consumer<String> warn) {
         this.host = Objects.requireNonNull(host);
@@ -40,6 +43,8 @@ public final class ScreenManager<P, S> {
     }
 
     public ScreenHost<P, S> host() { return host; }
+    /** Where each frame's placeholders are filled from; none until the platform connects them. */
+    public void placeholders(Supplier<Placeholders> source) { placeholders = Objects.requireNonNull(source, "source"); }
 
     /** One player's open screen and what it remembers between clicks. */
     public final class Viewer {
@@ -62,6 +67,8 @@ public final class ScreenManager<P, S> {
         public UUID id() { return id; }
         public Optional<UUID> npc() { return npc; }
         public ScreenHost<P, S> host() { return host; }
+    /** Where each frame's placeholders are filled from; none until the platform connects them. */
+    public void placeholders(Supplier<Placeholders> source) { placeholders = Objects.requireNonNull(source, "source"); }
         public Map<String, String> session() { return session; }
         public long tick() { return tick; }
         public boolean open() { return !closed; }
@@ -113,7 +120,7 @@ public final class ScreenManager<P, S> {
         private void render(boolean reopen) {
             if (window == null && !reopen) return;
             ScreenFrame next;
-            try { next = screen.render(); }
+            try { next = screen.fillsPlaceholders() ? screen.render().filled(placeholders.get(), id) : screen.render(); }
             catch (RuntimeException failure) { warn.accept("Screen failed to render for " + id + ": " + failure); close(); return; }
             if (!reopen && next.equals(frame)) return;
             Optional<Object> shown = host.show(player, next, window);

@@ -3,6 +3,7 @@ package art.arcane.animus.bukkit;
 import art.arcane.animus.core.behavior.ServerNpc;
 import art.arcane.animus.core.behavior.builtin.DialogueFormat;
 import art.arcane.animus.core.runtime.PersistedNpcService;
+import art.arcane.animus.core.text.Placeholders;
 import art.arcane.animus.core.text.RichText;
 import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
@@ -60,11 +61,13 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     private final Supplier<HoloService<Player, ItemStack>> guis;
     private final BukkitOwners owners;
     private final PersistedNpcService<Player, ItemStack> relocator;
+    private final Placeholders placeholders;
 
     /** {@code relocator} is the main-thread runtime that can move NPCs; null on Folia. */
     BukkitBehaviorPlatform(JavaPlugin plugin, NpcRuntime<Player, ItemStack> living, RuntimeCombatService combat, BuildService<Player, ItemStack> builds,
                            Supplier<String> buildsUnavailable, Function<Runnable, AutoCloseable> ticks, Supplier<HoloService<Player, ItemStack>> guis,
-                           BukkitOwners owners, PersistedNpcService<Player, ItemStack> relocator) {
+                           BukkitOwners owners, PersistedNpcService<Player, ItemStack> relocator, Placeholders placeholders) {
+        this.placeholders = placeholders;
         this.guis = guis;
         server = plugin.getServer();
         this.living = living;
@@ -111,19 +114,26 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     @Override public int say(NpcHandle npc, Audience audience, String text) {
         NpcRuntime.ActiveNpc active = requireVoice(npc);
         String line = DialogueFormat.speech(active.name(), text);
-        return deliver(living.players(), living.previews(), active, audience, active.state().position(), false, (Player viewer) -> viewer.sendMessage(line));
+        boolean personal = personal(active.name()) || personal(text);
+        return deliver(living.players(), living.previews(), active, audience, active.state().position(), false,
+                (Player viewer) -> viewer.sendMessage(personal ? DialogueFormat.speech(fill(viewer, active.name()), fill(viewer, text)) : line));
     }
 
     @Override public int presentChoices(NpcHandle npc, UUID player, String prompt, String token, List<ChoiceOption> options) {
         NpcRuntime.ActiveNpc active = require(npc);
         if (living.previews().hides(player, active)) return 0;
-        String line = DialogueFormat.speech(active.name(), prompt);
-        net.md_5.bungee.api.chat.BaseComponent[] buttons = BukkitChoiceMessages.components(DialogueFormat.buttons(BuildIdentity.ID, token, List.copyOf(options)));
         return living.players().deliver(player, online -> {
-            online.sendMessage(line);
-            online.spigot().sendMessage(buttons);
+            List<ChoiceOption> shown = options.stream().map((ChoiceOption option) -> new ChoiceOption(option.id(), fill(online, option.text()), option.colour(),
+                    option.hover().map((String hover) -> fill(online, hover)), option.style())).toList();
+            online.sendMessage(DialogueFormat.speech(fill(online, active.name()), fill(online, prompt)));
+            online.spigot().sendMessage(BukkitChoiceMessages.components(DialogueFormat.buttons(BuildIdentity.ID, token, shown)));
         }) ? 1 : 0;
     }
+
+    /** Whether the text holds a placeholder worth filling for each recipient. */
+    private boolean personal(String text) { return placeholders.active() && Placeholders.marked(text); }
+    /** On the viewer's owner: the text with the viewer's placeholders filled. */
+    private String fill(Player viewer, String text) { return placeholders.fill(viewer.getUniqueId(), text); }
 
     /** Online players by their current name; others by the server's cached profile. */
     @Override public Optional<String> playerName(UUID player) {
@@ -339,16 +349,17 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     /** Chat and console text is thread-safe to send; WORLD reads the NPC's world on its owner, or the player's in a server run. */
     @Override public int message(NpcHandle npc, Optional<UUID> player, MessageTarget to, String text) {
         String line = RichText.colorize(text);
+        boolean personal = personal(text);
         switch (to) {
             case CONSOLE -> { server.getConsoleSender().sendMessage(line); return 1; }
             case ALL -> {
                 int reached = 0;
-                for (Player online : server.getOnlinePlayers()) { online.sendMessage(line); reached++; }
+                for (Player online : server.getOnlinePlayers()) { if (send(online, text, line, personal)) reached++; }
                 return reached;
             }
             case PLAYER -> {
                 Optional<Player> online = player.isEmpty() ? Optional.empty() : here(player.get());
-                online.ifPresent((Player target) -> target.sendMessage(line));
+                online.ifPresent((Player target) -> target.sendMessage(personal ? RichText.colorize(fill(target, text)) : line));
                 return online.isPresent() ? 1 : 0;
             }
             case WORLD -> {
@@ -360,23 +371,33 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
                     world = online.get().getWorld();
                 }
                 int reached = 0;
-                for (Player viewer : world.getPlayers()) { viewer.sendMessage(line); reached++; }
+                for (Player viewer : world.getPlayers()) { if (send(viewer, text, line, personal)) reached++; }
                 return reached;
             }
             default -> throw new IllegalArgumentException("Unknown message target " + to);
         }
     }
 
+    /**
+     * One broadcast line. Text with a placeholder is filled on the recipient's own owner, since PlaceholderAPI may read
+     * the player's state; on Folia that is the player's region, which may not be this thread.
+     */
+    private boolean send(Player recipient, String text, String line, boolean personal) {
+        if (!personal) { recipient.sendMessage(line); return true; }
+        return living.players().deliver(recipient.getUniqueId(), (Player owned) -> owned.sendMessage(RichText.colorize(fill(owned, text))));
+    }
+
     @Override public int title(UUID player, Title title) {
         Optional<Player> online = here(player);
-        online.ifPresent((Player target) -> target.sendTitle(title.title().map(RichText::colorize).orElse(""), title.subtitle().map(RichText::colorize).orElse(""),
+        online.ifPresent((Player target) -> target.sendTitle(title.title().map((String text) -> RichText.colorize(fill(target, text))).orElse(""),
+                title.subtitle().map((String text) -> RichText.colorize(fill(target, text))).orElse(""),
                 ticks(title.fadeIn()), ticks(title.stay()), ticks(title.fadeOut())));
         return online.isPresent() ? 1 : 0;
     }
 
     @Override public int actionbar(UUID player, String text) {
         Optional<Player> online = here(player);
-        online.ifPresent((Player target) -> target.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(RichText.colorize(text))));
+        online.ifPresent((Player target) -> target.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(RichText.colorize(fill(target, text)))));
         return online.isPresent() ? 1 : 0;
     }
 

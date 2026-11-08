@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 
 /**
  * Lays out one hologram for one viewer as Gloss does: every text row in one text display whose bottom sits on the
@@ -39,8 +40,9 @@ final class HologramRender {
 
     record Render(Map<String, DisplayEntity> entities, Map<String, Box> boxes, int rows) {}
 
+    /** {@code fill} fills the viewer's placeholders in each rendered text line, before it is coloured. */
     static Render build(HologramDocument document, List<HologramDocument.Line> lines, HoloParts.Style style, GuiExpression.Scope scope,
-                        double x, double y, double z) {
+                        UnaryOperator<String> fill, double x, double y, double z) {
         double rowHeight = HologramDocument.ROW_HEIGHT * style.scaleY();
         boolean objects = lines.stream().anyMatch((HologramDocument.Line line) -> !(line instanceof HologramDocument.TextLine));
         List<String> rows = new ArrayList<>();
@@ -49,7 +51,7 @@ final class HologramRender {
         for (HologramDocument.Line line : lines) {
             boolean shown = line.show().test(scope);
             if (line instanceof HologramDocument.TextLine text) {
-                String rendered = RichText.colorize(text.text().render(scope));
+                String rendered = RichText.colorize(fill.apply(text.text().render(scope)));
                 String[] parts = rendered.split("\n", -1);
                 if (shown) for (String part : parts) rows.add(part);
                 else if (objects) for (int index = 0; index < parts.length; index++) rows.add("");

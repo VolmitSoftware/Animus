@@ -335,7 +335,7 @@ class RecordingPlaybackRuntimeTest {
                 on.maximumFileBytes(), on.maximumSessions(), on.ghostEnabled(), on.ghostIntervalTicks(), on.ghostStretchTicks(), on.ghostGlow(), on.ghostColor(), on.maximumPreviews());
         art.arcane.animus.core.config.PluginSettings next = new art.arcane.animus.core.config.PluginSettings(base.packetProofEnabled(), base.splashScreen(), base.npcs(),
                 base.files(), base.modules(), base.behaviors(), base.combat(), base.builds(), base.shops(), base.relay(), base.editor(), base.rigs(), base.navigation(),
-                base.hotload(), off);
+                base.hotload(), off, base.placeholders());
         Thread lane = new Thread(() -> harness.runtime.applySettings(next), "file-lane");
         lane.start();
         try { lane.join(); } catch (InterruptedException interrupted) { throw new IllegalStateException(interrupted); }

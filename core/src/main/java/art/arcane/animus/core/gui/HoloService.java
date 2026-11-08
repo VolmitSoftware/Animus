@@ -268,12 +268,15 @@ public final class HoloService<P, S> implements AutoCloseable {
             if (variant.style().isPresent()) style = variant.style().get();
             break;
         }
-        HologramRender.Render render = HologramRender.build(document, lines, style, base, at[0], at[1], at[2]);
+        HologramRender.Render render = HologramRender.build(document, lines, style, base, (String text) -> fill(viewer, text), at[0], at[1], at[2]);
         view.displays.apply(viewer.player, render.entities());
         view.boxes = render.boxes();
         view.renderedAt = viewer.tick;
         view.shown = true;
     }
+
+    /** Text with the viewer's placeholders filled; on the viewer's owner. */
+    String fill(Viewer viewer, String text) { return runtime.placeholders().fill(viewer.id, text); }
 
     /** The viewer's page, or the first page they may read. */
     private HologramDocument.Page page(HologramView view, GuiExpression.Scope scope) {

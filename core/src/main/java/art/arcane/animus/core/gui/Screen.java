@@ -7,4 +7,6 @@ public interface Screen {
     /** Called every owner tick while open; true asks for a new frame. */
     default boolean tick(long tick) { return false; }
     default boolean closeOnTeleport() { return true; }
+    /** Whether the frame's text is filled with the viewer's PlaceholderAPI placeholders; editing tools show text as written. */
+    default boolean fillsPlaceholders() { return true; }
 }

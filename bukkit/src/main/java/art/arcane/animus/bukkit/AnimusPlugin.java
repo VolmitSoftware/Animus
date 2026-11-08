@@ -47,6 +47,7 @@ import art.arcane.animus.core.SplashScreen;
 import art.arcane.animus.bukkit.building.BukkitBuildPlatform;
 import art.arcane.animus.bukkit.protection.RegionBuildProtection;
 import art.arcane.animus.bukkit.protection.RegionFlags;
+import art.arcane.animus.core.text.CachedPlaceholders;
 import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
 import art.arcane.animus.core.building.BuildCommands;
 import art.arcane.animus.core.building.BuildProtection;
@@ -143,6 +144,10 @@ public final class AnimusPlugin extends JavaPlugin {
                     getServer().getBukkitVersion(), getDataFolder().toPath());
             runtime = new AnimusRuntime(environment, failure -> getLogger().log(Level.SEVERE, "Animus file cleanup failed", failure));
             runtime.start();
+            CachedPlaceholders placeholders = BukkitPlaceholders.install(this);
+            placeholders.refreshTicks(runtime.placeholderSettings().refreshTicks());
+            runtime.onSettings((art.arcane.animus.core.config.PluginSettings next) -> placeholders.refreshTicks(next.placeholders().refreshTicks()));
+            runtime.placeholders(placeholders);
             java.util.function.BooleanSupplier citizens = () -> {
                 org.bukkit.plugin.Plugin plugin = getServer().getPluginManager().getPlugin("Citizens");
                 return plugin != null && plugin.isEnabled();
@@ -208,7 +213,7 @@ public final class AnimusPlugin extends JavaPlugin {
             startBuilds(mainThread, living instanceof RegionNpcRuntime regionized ? regionized : null, regions);
             BukkitOwners scheduling = new BukkitOwners(this, regions);
             builtins = new BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, builds, this::buildsRefusal,
-                    (Runnable tick) -> ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, tick)), () -> guis, scheduling, mainThread),
+                    (Runnable tick) -> ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, tick)), () -> guis, scheduling, mainThread, runtime.placeholders()),
                     runtime.behaviorState(), this::publishChoice,
                     runtime.behaviorSettings().actions(), message -> getLogger().info(message));
             extensions = new ExtensionRuntime(runtime.documents().resolve("modules"),

@@ -152,6 +152,20 @@ class PluginSettingsTest {
             assertTrue(error.getMessage().contains("navigation: planningJobs must be within 1..256"), error.getMessage());
         }
     }
+    @Test void placeholderRefreshIsOffByDefaultAndBounded() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            assertEquals(0, PluginSettings.load(store).placeholders().refreshTicks());
+            assertTrue(Files.readString(root.resolve("config.toml")).contains("[placeholders]"));
+            Files.writeString(root.resolve("config.toml"), "[placeholders]\nrefreshTicks = 40\n");
+            assertEquals(40, PluginSettings.load(store).placeholders().refreshTicks());
+            Files.writeString(root.resolve("config.toml"), "[placeholders]\nrefreshTicks = 5\n");
+            IOException error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("placeholders: refreshTicks must be 0 or within 20..72000"), error.getMessage());
+            Files.writeString(root.resolve("config.toml"), "[placeholders]\ninterval = 40\n");
+            error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("interval is not a placeholders setting"), error.getMessage());
+        }
+    }
     @Test void recordingSettingsAreReadFromTomlAndBounded() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             assertEquals(RecordingSettings.DEFAULT, PluginSettings.load(store).recordings());

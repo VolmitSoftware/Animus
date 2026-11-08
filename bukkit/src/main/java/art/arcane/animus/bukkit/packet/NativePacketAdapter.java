@@ -405,6 +405,25 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         return result;
     }
 
+    /** New text on each of the body's text display rows; refused when the row count differs from the body's. */
+    @Override public CompletionStage<Void> relabel(Player viewer, BodyTransport.Body presented, List<String> rows) {
+        Body body = checkBody(presented);
+        if (nativeApi.presentation == null || rows.size() != body.displayIds.length) return failed("Body text rows changed shape");
+        Session session = sessions.get(viewer.getUniqueId());
+        if (session == null || session.viewer != viewer || !current(session)) return unwatched("Viewer is not watched");
+        Presentation presentation = session.visible.get(body.entityId);
+        if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
+        List<Object> packets = new ArrayList<>(rows.size());
+        try { for (int row = 0; row < rows.size(); row++) packets.add(nativeApi.metadataPacket.newInstance(body.displayIds[row], List.of(nativeApi.presentation.textValue(rows.get(row))))); }
+        catch (ReflectiveOperationException | RuntimeException failure) { return failed("Body relabel failed: " + failure.getClass().getSimpleName()); }
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        submit(session, result, false, () -> {
+            if (session.visible.get(body.entityId) != presentation) throw new CancellationException("Body was despawned");
+            write(session, body, PacketKind.METADATA, packets).whenComplete((nothing, failure) -> complete(result, failure));
+        });
+        return result;
+    }
+
     @Override public boolean equipmentAvailable() { return nativeApi.equipment != null; }
 
     /** Viewer-local items on a visible body. An empty stack clears its slot. Call on the viewer's owner: stacks convert here. */

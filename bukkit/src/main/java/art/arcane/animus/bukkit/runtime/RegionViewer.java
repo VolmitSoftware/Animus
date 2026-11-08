@@ -223,8 +223,10 @@ final class RegionViewer {
     }
     private void spawn(RegionActor actor, RegionActor.Publication now) {
         try {
-            NativePacketAdapter.Body body = host.packets.createBody(now.spec().definition().uuid(), now.spec().type(), now.name(), now.spec().appearance().withAttributes(now.attributes()), now.skin());
+            NpcPresentation.Label label = NpcPresentation.label(now.spec(), now.name(), now.attributes(), host.runtime.placeholders(), id);
+            NativePacketAdapter.Body body = (NativePacketAdapter.Body) NpcPresentation.body(host.packets, label, now.skin());
             Presented presented = new Presented(actor, body, now);
+            if (host.runtime.placeholders().active() && NpcPresentation.placeholdered(now.spec(), now.name())) { presented.labels = label.rows(); presented.labelledAt = ticks; }
             visible.put(actor.uuid, presented); presentationOrder.addLast(presented); cosmeticOrder.addLast(presented);
             nativeIds += presented.ids; pendingSpawns++; shown.incrementAndGet();
             handOver(() -> host.packets.spawn(player, body, pose(now))).whenComplete((nothing, failure) -> enqueue(() -> {
@@ -348,6 +350,7 @@ final class RegionViewer {
         if (!ready || !retirements.isEmpty()) return 0;
         int sent = 0;
         int[] rigBudget = {host.rigs().updatesPerTick()};
+        int refresh = host.runtime.placeholders().refreshTicks();
         for (int i = 0, count = cosmeticOrder.size(); i < count && (sent < packetBudget || rigBudget[0] > 0); i++) {
             Presented body = cosmeticOrder.removeFirst();
             if (body.retired) continue;
@@ -365,10 +368,33 @@ final class RegionViewer {
                 if (!swing(body, now.swings())) return sent;
                 sent++; if (!host.current(this)) return sent;
             }
+            if (body.spawnFinished && body.labels != null && refresh > 0 && sent < packetBudget && ticks - body.labelledAt >= refresh) {
+                if (!relabel(body, now)) return sent;
+                sent++; if (!host.current(this)) return sent;
+                if (body.retired) continue;
+            }
             if (now.rig() != null || body.rigIdentity != 0) sent += presentRig(body, now, packetBudget - sent, rigBudget);
             if (!host.current(this)) return sent;
         }
         return sent;
+    }
+    /**
+     * Cosmetic, every {@code [placeholders] refreshTicks}: the body's name and hologram lines filled again for this player.
+     * Changed text goes out in place; a body whose rows changed shape, or whose relabel failed, respawns.
+     */
+    private boolean relabel(Presented body, RegionActor.Publication now) {
+        body.labelledAt = ticks;
+        List<String> rows = NpcPresentation.label(now.spec(), now.name(), now.attributes(), host.runtime.placeholders(), id).rows();
+        if (rows.equals(body.labels)) return true;
+        if (rows.size() != body.labels.size()) { retire(body); return true; }
+        if (!admit(PresentationPressure.Tier.COSMETIC)) return false;
+        body.labels = rows;
+        try {
+            handOver(() -> host.packets.relabel(player, body.body, rows)).whenComplete((nothing, failure) -> {
+                if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) retire(body); });
+            });
+        } catch (RuntimeException failure) { retire(body); }
+        return true;
     }
     /** A body farther than half the view distance moves on fewer turns while a budget is short, always to its latest pose. */
     private boolean moveDue(Presented body, RegionActor.Publication now, WorldPosition at) {
@@ -685,6 +711,8 @@ final class RegionViewer {
         /** The passenger roster last sent for this vehicle; null when unknown, so the next update sends it again. */
         List<Integer> sentRoster;
         BodyTransport.Bones bones; RigView view;
+        /** The filled text rows this player was sent, when the name or a hologram line holds a placeholder; otherwise null. */
+        List<String> labels; long labelledAt;
         Presented(RegionActor actor, NativePacketAdapter.Body body, RegionActor.Publication now) {
             this.actor = actor; this.body = body; appearance = now.appearance(); ids = body.entityIds().length; pose = now.pose();
             equipment = now.equipment().isEmpty() ? now.equipmentRevision() : -1;

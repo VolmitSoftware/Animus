@@ -137,6 +137,9 @@ final class NativePresentation {
         return values;
     }
 
+    /** Only the text of a text display row, as a placeholder refresh changes it. */
+    Object textValue(String content) throws ReflectiveOperationException { return dataValue.invoke(null, text, component(content)); }
+
     /** The body's shared flags, invisible when a rig hides it; its pose flags are kept. */
     Object visibility(BodyLook look, boolean hidden) throws ReflectiveOperationException {
         boolean invisible = hidden || look.armorStand().map(ArmorStandLook::invisible).orElse(false);

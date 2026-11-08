@@ -83,6 +83,13 @@ public interface BodyTransport<P, I> extends AutoCloseable {
      */
     default CompletionStage<Void> look(P viewer, Body body, BodyLook look) { return java.util.concurrent.CompletableFuture.completedFuture(null); }
     /**
+     * New coloured text on a visible body's text rows, one entry per row it was created with, as a placeholder refresh
+     * sends. A transport that cannot change text in place refuses it, and the caller respawns the body instead.
+     */
+    default CompletionStage<Void> relabel(P viewer, Body body, List<String> rows) {
+        return java.util.concurrent.CompletableFuture.failedFuture(new UnsupportedOperationException("Text rows cannot change in place on this server"));
+    }
+    /**
      * Sets the attributes of a visible body, as a runtime change does; a body spawns with the attributes of its look. Only
      * attributes the body's type carries are sent. A transport without attribute packets ignores it.
      */

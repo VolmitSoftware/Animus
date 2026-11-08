@@ -19,7 +19,8 @@ import java.util.Map;
 public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, NpcRuntimeSettings npcs,
                              FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors, CombatBudgets combat, BuildSettings builds,
                              ShopSettings shops, EditorRelaySettings relay, EditorSettings editor, RigSettings rigs,
-                             NavigationSettings navigation, HotloadSettings hotload, RecordingSettings recordings) {
+                             NavigationSettings navigation, HotloadSettings hotload, RecordingSettings recordings,
+                             PlaceholderSettings placeholders) {
     public static PluginSettings load(DocumentStore store) throws IOException {
         Path toml = store.resolve("config.toml");
         if (Files.exists(toml)) return readToml(toml);
@@ -48,6 +49,7 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, N
             document.add("navigation", new Gson().toJsonTree(NavigationSettings.DEFAULT));
             document.add("hotload", new Gson().toJsonTree(HotloadSettings.DEFAULT));
             document.add("recordings", new Gson().toJsonTree(RecordingSettings.DEFAULT));
+            document.add("placeholders", new Gson().toJsonTree(PlaceholderSettings.DEFAULT));
         }
         String encoded;
         try { encoded = TomlCodec.toToml(document); }
@@ -64,7 +66,8 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, N
             Map.entry("files", "File work and backups"), Map.entry("modules", "Animus modules"), Map.entry("behaviors", "Behavior engine, triggers and actions"),
             Map.entry("combat", "Combat NPCs"), Map.entry("builds", "Builder NPCs"), Map.entry("shops", "Shops and their messages"),
             Map.entry("editor", "Web editor listener, relay and notices"), Map.entry("rigs", "Rigs and animations"), Map.entry("navigation", "Route planning"),
-            Map.entry("hotload", "Live reload of hand edits"), Map.entry("recordings", "Recordings and ghost replays"));
+            Map.entry("hotload", "Live reload of hand edits"), Map.entry("recordings", "Recordings and ghost replays"),
+            Map.entry("placeholders", "PlaceholderAPI refresh"));
 
     private static String commented(String encoded) {
         StringBuilder text = new StringBuilder(encoded.length() + 1024);
@@ -164,8 +167,11 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, N
         RecordingSettings recordingSettings;
         try { recordingSettings = recordings(table(data.getAsJsonObject(), "recordings")); }
         catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": recordings: " + e.getMessage(), e); }
+        PlaceholderSettings placeholderSettings;
+        try { placeholderSettings = placeholders(table(data.getAsJsonObject(), "placeholders")); }
+        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": placeholders: " + e.getMessage(), e); }
         return new PluginSettings(proof != null && proof.getAsBoolean(), splash == null || splash.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings, shopSettings,
-                relaySettings, editorSettings, rigSettings, navigationSettings, hotloadSettings, recordingSettings);
+                relaySettings, editorSettings, rigSettings, navigationSettings, hotloadSettings, recordingSettings, placeholderSettings);
     }
 
     private static HotloadSettings hotload(JsonObject document) {
@@ -176,6 +182,12 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, N
         return new HotloadSettings(bool(document, "enabled", defaults.enabled()), bool(document, "sound", defaults.sound()),
                 integer(document, "maximumFiles", defaults.maximumFiles()), integer(document, "readsPerPoll", defaults.readsPerPoll()),
                 integer(document, "maximumFileBytes", defaults.maximumFileBytes()));
+    }
+
+    private static PlaceholderSettings placeholders(JsonObject document) {
+        for (String key : document.keySet())
+            if (!key.equals("refreshTicks")) throw new IllegalArgumentException(key + " is not a placeholders setting");
+        return new PlaceholderSettings(integer(document, "refreshTicks", PlaceholderSettings.DEFAULT.refreshTicks()));
     }
 
     private static RecordingSettings recordings(JsonObject document) {

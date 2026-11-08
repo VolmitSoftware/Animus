@@ -190,7 +190,7 @@ class RuntimeSettingsHotloadTest {
         PluginSettings base = PluginSettings.load(harness.runtime.documents());
         RecordingSettings lowered = new RecordingSettings(false, 4, 600, 65_536, 1, false, 40, 20, false, "red", 1);
         PluginSettings next = new PluginSettings(base.packetProofEnabled(), base.splashScreen(), base.npcs(), base.files(), base.modules(), base.behaviors(),
-                base.combat(), base.builds(), base.shops(), base.relay(), base.editor(), base.rigs(), base.navigation(), base.hotload(), lowered);
+                base.combat(), base.builds(), base.shops(), base.relay(), base.editor(), base.rigs(), base.navigation(), base.hotload(), lowered, base.placeholders());
         Thread lane = new Thread(() -> harness.runtime.applySettings(next), "file-lane");
         lane.start();
         try { lane.join(); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IllegalStateException(interrupted); }
@@ -224,7 +224,7 @@ class RuntimeSettingsHotloadTest {
                 npcs.updatesPerTick(), npcs.packetsPerTick(), npcs.pendingSpawnsPerViewer(), npcs.lookUpdatesPerTick(),
                 npcs.simulationPerTick(), npcs.queuePerViewer(), npcs.degradedIntervalTicks());
         PluginSettings next = new PluginSettings(base.packetProofEnabled(), base.splashScreen(), table, base.files(), base.modules(), base.behaviors(),
-                base.combat(), base.builds(), base.shops(), base.relay(), base.editor(), rigs, navigation, base.hotload(), base.recordings());
+                base.combat(), base.builds(), base.shops(), base.relay(), base.editor(), rigs, navigation, base.hotload(), base.recordings(), base.placeholders());
         Thread lane = new Thread(() -> harness.runtime.applySettings(next), "file-lane");
         lane.start();
         try { lane.join(); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IllegalStateException(interrupted); }

@@ -186,6 +186,9 @@ class ViewerWatchRaceTest {
         /** While set, moves stay unfinished in {@link #held}, as on a slow connection. */
         volatile boolean holdMoves;
         final List<CompletableFuture<Void>> held = new ArrayList<>();
+        /** The name and appearance of each body created with an appearance, and the text rows of each relabel, in order. */
+        final List<NpcPresentation.Label> labels = new ArrayList<>();
+        final List<List<String>> relabels = new ArrayList<>();
         /** Looks sent with {@link #look}, in order. */
         final List<art.arcane.animus.core.presentation.BodyLook> looks = new ArrayList<>();
         private void requireWatch() { if (!watched) throw new BodyTransport.ViewerUnwatched("Viewer must be watched before sending body packets"); }
@@ -194,7 +197,11 @@ class ViewerWatchRaceTest {
         @Override public boolean presentationAvailable() { return presentation; }
         @Override public boolean equipmentAvailable() { return equipment; }
         @Override public Body createBody(UUID uuid, String typeKey, String profileName, BodySkin skin) { return new FakeBody(uuid, typeKey); }
-        @Override public Body createBody(UUID uuid, String typeKey, String name, NpcAppearance appearance, BodySkin skin) { return new FakeBody(uuid, typeKey); }
+        @Override public Body createBody(UUID uuid, String typeKey, String name, NpcAppearance appearance, BodySkin skin) {
+            labels.add(new NpcPresentation.Label(uuid, typeKey, name, appearance));
+            return new FakeBody(uuid, typeKey);
+        }
+        @Override public CompletionStage<Void> relabel(Player viewer, Body body, List<String> rows) { relabels.add(rows); return CompletableFuture.completedFuture(null); }
         @Override public int presentationIds(UUID uuid, String typeKey, String name, NpcAppearance appearance) { return 0; }
         @Override public CompletionStage<Void> watch(Player viewer, Consumer<Interaction> interactions) {
             watches.incrementAndGet();
