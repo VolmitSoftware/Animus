@@ -52,7 +52,7 @@ TaskProvider verification = tasks.register('verifyArtifact') {
             }
             Set<String> classes = new HashSet<>()
             List<String> forbidden = ['org/bukkit/', 'org/spigotmc/', 'io/papermc/', 'net/minecraft/',
-                'com/mojang/', 'net/minecraftforge/', 'net/neoforged/', 'net/fabricmc/', 'art/arcane/volmlib/', 'com/google/gson/', 'org/yaml/snakeyaml/']
+                'com/mojang/', 'net/minecraftforge/', 'net/neoforged/', 'net/fabricmc/', 'art/arcane/volmlib/', 'com/google/gson/', 'org/yaml/snakeyaml/', 'org/bstats/']
             archive.entries().each { JarEntry entry ->
                 if (!entry.name.endsWith('.class')) {
                     return

@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Plugin-wide settings are TOML. NPC definitions, behaviors, state and generated data remain JSON. */
-public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, NpcRuntimeSettings npcs,
+public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, boolean metrics, NpcRuntimeSettings npcs,
                              FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors, CombatBudgets combat, BuildSettings builds,
                              ShopSettings shops, EditorRelaySettings relay, EditorSettings editor, RigSettings rigs,
                              NavigationSettings navigation, HotloadSettings hotload, RecordingSettings recordings,
@@ -37,6 +37,7 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, N
             document = new JsonObject();
             document.addProperty("packetProofEnabled", false);
             document.addProperty("splashScreen", true);
+            document.addProperty("metrics", true);
             document.add("npcs", new Gson().toJsonTree(NpcRuntimeSettings.DEFAULT));
             document.add("files", new Gson().toJsonTree(FileWorkSettings.DEFAULT));
             document.add("modules", new Gson().toJsonTree(ModuleSettings.DEFAULT));
@@ -101,6 +102,9 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, N
         JsonElement splash = data.getAsJsonObject().get("splashScreen");
         if (splash != null && (!splash.isJsonPrimitive() || !splash.getAsJsonPrimitive().isBoolean()))
             throw new IOException(path + ": splashScreen must be a boolean");
+        JsonElement metrics = data.getAsJsonObject().get("metrics");
+        if (metrics != null && (!metrics.isJsonPrimitive() || !metrics.getAsJsonPrimitive().isBoolean()))
+            throw new IOException(path + ": metrics must be a boolean");
         NpcRuntimeSettings defaults = NpcRuntimeSettings.DEFAULT;
         JsonObject npc = new JsonObject();
         if (data.getAsJsonObject().has("npcs")) {
@@ -170,7 +174,7 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, N
         PlaceholderSettings placeholderSettings;
         try { placeholderSettings = placeholders(table(data.getAsJsonObject(), "placeholders")); }
         catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": placeholders: " + e.getMessage(), e); }
-        return new PluginSettings(proof != null && proof.getAsBoolean(), splash == null || splash.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings, shopSettings,
+        return new PluginSettings(proof != null && proof.getAsBoolean(), splash == null || splash.getAsBoolean(), metrics == null || metrics.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings, shopSettings,
                 relaySettings, editorSettings, rigSettings, navigationSettings, hotloadSettings, recordingSettings, placeholderSettings);
     }
 

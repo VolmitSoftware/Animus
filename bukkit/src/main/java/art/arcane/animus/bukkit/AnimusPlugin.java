@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit;
 
+import art.arcane.animus.bukkit.metrics.AnimusBStats;
 import art.arcane.animus.bukkit.metrics.ReactBridge;
 import art.arcane.animus.core.command.DebugCommands;
 import art.arcane.animus.core.metrics.AnimusMetrics;
@@ -66,6 +67,7 @@ import art.arcane.animus.core.command.ProofControl;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.command.BehaviorCommands;
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.editor.EditorApi;
 import art.arcane.animus.core.editor.EditorCommands;
 import art.arcane.animus.core.editor.EditorHost;
 import art.arcane.animus.core.editor.EditorService;
@@ -102,6 +104,8 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class AnimusPlugin extends JavaPlugin {
+    // bstats.org plugin id
+    private static final int BSTATS_PLUGIN_ID = 35204;
     private volatile AnimusRuntime runtime;
     private Executor commands;
     private ReplyScheduler replies;
@@ -130,6 +134,8 @@ public final class AnimusPlugin extends JavaPlugin {
     private final DebugWatch debugWatch = new DebugWatch();
     private AutoCloseable metricsTicks;
     private volatile ReactBridge react;
+    // AnimusBStats owns all bStats types; never reference them from this class (link trap)
+    private AnimusBStats bStats;
     private HotloadService hotload;
     private BukkitServerBehaviors serverBehaviors;
 
@@ -268,6 +274,8 @@ public final class AnimusPlugin extends JavaPlugin {
             director = new AnimusCommandTree(commandServices).director();
             extensions.start();
             startEditor(modulePlatform, regions);
+            updateMetrics(runtime.metrics());
+            runtime.onSettings((PluginSettings next) -> updateMetrics(next.metrics()));
             if (runtime.splashScreen()) splash(true);
             getLogger().info("Enabled " + BuildIdentity.VERSION + " on " + getServer().getName() + " " + environment.minecraftVersion() + (replies.isFolia() ? " (Folia regions)" : "")
                     + " in " + (System.nanoTime() - started) / 1_000_000 + "ms | " + runtime.npcs().all().size() + " NPCs | editor " + editorState());
@@ -282,6 +290,8 @@ public final class AnimusPlugin extends JavaPlugin {
     @Override
     public void onDisable() {
         stopping = true;
+        // Stop bStats first so no chart callable reads a runtime that is shutting down.
+        updateMetrics(false);
         if (hotload != null) { hotload.close(); hotload = null; }
         CitizensGuard.clear();
         EditorService activeEditor = editor;
@@ -356,6 +366,48 @@ public final class AnimusPlugin extends JavaPlugin {
             getLogger().info("React metrics on: source " + ReactMetricCatalog.SOURCE_ID + ", " + ReactMetricCatalog.SPECS.size() + " metrics");
         } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
             getLogger().warning("React metrics off; its API is unavailable: " + failure.getClass().getSimpleName() + ": " + failure.getMessage());
+        }
+    }
+
+    /** Starts or stops bStats to follow {@code metrics} in config.toml; bStats' own global opt-out still applies. */
+    private synchronized void updateMetrics(boolean enabled) {
+        if (!enabled || stopping) {
+            if (bStats != null) { bStats.shutdown(); bStats = null; }
+            return;
+        }
+        if (bStats != null) return;
+        try { bStats = AnimusBStats.start(this, BSTATS_PLUGIN_ID, new UsageSource(modulePlatform())); }
+        catch (RuntimeException | LinkageError failure) { getLogger().log(Level.WARNING, "bStats metrics could not start", failure); }
+    }
+
+    /** What the bStats charts read on bStats' own thread: volatile fields and immutable snapshots only, null while stopping. */
+    private final class UsageSource implements AnimusBStats.Source {
+        private final String platform;
+
+        private UsageSource(Platform platform) {
+            this.platform = switch (platform) { case FOLIA -> "Folia"; case PAPER -> "Paper"; default -> "Spigot"; };
+        }
+
+        @Override public String platform() { return platform; }
+
+        @Override public MetricsSnapshot snapshot() {
+            AnimusMetrics measured = metrics;
+            return stopping || measured == null ? null : measured.snapshot();
+        }
+
+        @Override public Map<String, NpcDefinition> definitions() {
+            AnimusRuntime active = runtime;
+            if (stopping || active == null || !active.isRunning()) return null;
+            try { return active.npcs().snapshot(); }
+            catch (IllegalStateException stopped) { return null; }
+        }
+
+        @Override public String editor() {
+            EditorService active = editor;
+            if (stopping) return null;
+            Optional<EditorApi> api = active == null ? Optional.empty() : active.api();
+            if (api.isEmpty()) return "Off";
+            return api.get().parts().tokens().list().isEmpty() ? "On" : "Paired";
         }
     }
 
