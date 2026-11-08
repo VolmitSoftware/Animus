@@ -7,7 +7,6 @@ import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.text.ChatLine;
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
@@ -105,17 +104,6 @@ final class SettingsScreen<P, S> extends ToolScreen<P, S> {
             }
             case HERE -> { if (clear) clear(field); else here().ifPresent((JsonObject spot) -> stage(field, spot)); }
             case OBJECT -> viewer.push(new SettingsScreen<>(toolkit, viewer, commands, settings, title + "." + field.path().getLast(), field.children(), draft));
-            case DROPS, SPOTS -> {
-                JsonArray list = value.filter(JsonElement::isJsonArray).map((JsonElement array) -> array.getAsJsonArray().deepCopy()).orElse(new JsonArray());
-                if (clear) {
-                    if (list.isEmpty()) return;
-                    list.remove(list.size() - 1);
-                    if (list.isEmpty()) clear(field); else stage(field, list);
-                    return;
-                }
-                Optional<JsonObject> added = field.kind() == CombatFields.Kind.SPOTS ? here() : drop();
-                added.ifPresent((JsonObject entry) -> { list.add(entry); stage(field, list); });
-            }
             case WEAPONS -> weapons(field, value, clear);
         }
     }
@@ -166,19 +154,8 @@ final class SettingsScreen<P, S> extends ToolScreen<P, S> {
         return Optional.of(spot);
     }
 
-    /** The held stack as a drop that always happens. */
-    private Optional<JsonObject> drop() {
-        Optional<NpcItem> held = toolkit.host().worn(viewer.player(), EquipmentSlot.MAIN_HAND);
-        if (held.isEmpty()) { toolkit.say(viewer.player(), ChatLine.error("Hold the item to drop in your main hand first")); return Optional.empty(); }
-        JsonObject drop = new JsonObject();
-        drop.addProperty("item", held.get().id());
-        drop.addProperty("amount", Math.clamp(held.get().count(), 1, 64));
-        drop.addProperty("chance", 1);
-        return Optional.of(drop);
-    }
-
     private static boolean isList(CombatFields.Field field) {
-        return field.kind() == CombatFields.Kind.DROPS || field.kind() == CombatFields.Kind.SPOTS || field.kind() == CombatFields.Kind.WEAPONS;
+        return field.kind() == CombatFields.Kind.WEAPONS;
     }
 
     /** The lines that list a list's entries. */
@@ -186,13 +163,7 @@ final class SettingsScreen<P, S> extends ToolScreen<P, S> {
         if (!isList(field) && field.kind() != CombatFields.Kind.OBJECT) return List.of();
         List<String> lines = new ArrayList<>();
         if (value.isEmpty()) { lines.add("&7None"); return lines; }
-        if (value.get().isJsonArray()) {
-            for (JsonElement entry : value.get().getAsJsonArray()) {
-                JsonObject object = entry.getAsJsonObject();
-                lines.add("&f" + (object.has("item") ? object.get("amount").getAsInt() + "x " + object.get("item").getAsString() + " at " + number(object.get("chance").getAsDouble())
-                        : object.get("world").getAsString() + " " + number(object.get("x").getAsDouble()) + " " + number(object.get("y").getAsDouble()) + " " + number(object.get("z").getAsDouble())));
-            }
-        } else if (value.get().isJsonObject())
+        if (value.get().isJsonObject())
             for (Map.Entry<String, JsonElement> entry : value.get().getAsJsonObject().entrySet()) lines.add("&f" + entry.getKey() + " " + shown(Optional.of(entry.getValue())));
         return lines;
     }
@@ -207,8 +178,6 @@ final class SettingsScreen<P, S> extends ToolScreen<P, S> {
             case NPC -> hints("click an NPC with the wand", "clear", "click an NPC with the wand");
             case HERE -> hints("set to where you stand", "clear", "set to where you stand");
             case OBJECT -> any("open");
-            case DROPS -> hints("add the item in your hand", "remove the last", "add the item in your hand");
-            case SPOTS -> hints("add where you stand", "remove the last", "add where you stand");
             case WEAPONS -> hints("type a damage for the held item", "remove the held item", "type a damage for the held item");
         };
     }
@@ -222,9 +191,8 @@ final class SettingsScreen<P, S> extends ToolScreen<P, S> {
             case TEXT -> "minecraft:name_tag";
             case YOU -> HEAD;
             case NPC -> "minecraft:armor_stand";
-            case HERE, SPOTS -> "minecraft:red_bed";
+            case HERE -> "minecraft:red_bed";
             case OBJECT -> "minecraft:chest";
-            case DROPS -> "minecraft:hopper";
             case WEAPONS -> "minecraft:iron_sword";
         };
     }

@@ -1,11 +1,11 @@
 // Opens test/fixtures/health_part (an NPC without a health module, and a
-// dead permadeath NPC whose combat module still sets defense and death) and
-// checks the Health and death part at 1440 and 390 px in both themes: Make
-// killable, the Killable switch off and on, max health, a drop picked by item
-// search with its max count and chance, a respawn point at the NPC's block,
-// permadeath hiding the respawn fields, the combat conflict fixed in one
-// click, and Revive clearing `dead`. Every edit is read back from the Code
-// view. No console errors, no sideways scrolling.
+// dead permadeath combat NPC) and checks the Health and death part at 1440
+// and 390 px in both themes: Make killable, the Killable switch off and on,
+// max health, hit range and Safe from ignored, a drop picked by item search
+// with its max count and chance, a respawn point at the NPC's block,
+// permadeath and delete hiding the respawn fields, and Revive clearing
+// `dead`. Every edit is read back from the Code view. No console errors, no
+// sideways scrolling.
 //
 // It opens the fixture as a data folder and needs no fake server. To look at
 // the same NPCs paired with one, start it with
@@ -89,8 +89,11 @@ async function dummy(page, tag) {
   await health.getByRole('checkbox', {name: /^Killable/}).click();
   await settle(page);
 
-  // Max health, then a drop picked by item search.
+  // Max health, hit range and Safe from ignored, then a drop picked by item search.
   await fill(page, health.getByLabel('health.maximumHealth', {exact: true}), '30');
+  await fill(page, health.getByLabel('health.protectFromRange', {exact: true}), '8');
+  await health.getByRole('checkbox', {name: /^Safe from ignored/}).click();
+  await settle(page);
   await health.getByRole('button', {name: 'Add drop'}).click();
   await settle(page);
   const item = health.getByLabel('Drop 1 item', {exact: true});
@@ -112,6 +115,8 @@ async function dummy(page, tag) {
   let module = (await codeOf(page)).modules['animus:health'];
   assert.equal(module.killable, true);
   assert.equal(module.maximumHealth, 30);
+  assert.equal(module.protectFromRange, 8, `${tag} hit range`);
+  assert.equal(module.protectedFromIgnored, true, `${tag} safe from ignored`);
   assert.deepEqual(module.death.drops, [{item: {id: 'minecraft:gold_ingot'}, maxCount: 3, chance: 0.5}], `${tag} drop`);
   assert.deepEqual(module.respawn.points, [{world: 'world', x: 4, y: 64, z: -3}], `${tag} respawn point`);
 
@@ -123,26 +128,25 @@ async function dummy(page, tag) {
   module = (await codeOf(page)).modules['animus:health'];
   assert.equal(module.respawn.afterDeath, 'permadeath');
   assert.equal(module.respawn.points.length, 1, `${tag} points kept`);
+
+  // Delete also hides them.
+  health = await healthPart(page);
+  await choose(health.getByLabel('health.respawn.afterDeath', {exact: true}), 'delete');
+  await settle(page);
+  assert.equal(await health.getByLabel('health.respawn.delayTicks', {exact: true}).count(), 0, `${tag} delay hidden on delete`);
+  assert.equal((await codeOf(page)).modules['animus:health'].respawn.afterDeath, 'delete', `${tag} delete after death`);
 }
 
 async function knight(page, tag) {
   await open(page, 'Fallen Knight');
   let health = await healthPart(page);
-  await health.getByText('Combat also sets defense, death.', {exact: false}).waitFor();
   await health.getByText('Dead. Stays gone until revived.').waitFor();
   await shot(page, health, `health-${tag}-knight`);
   await noSideways(page, `${tag} knight`);
 
-  await health.getByRole('button', {name: 'Remove from combat'}).click();
-  await settle(page);
-  let json = await codeOf(page);
-  assert.deepEqual(Object.keys(json.modules['animus:combat']), ['enabled', 'targets'], `${tag} combat sections removed`);
-  health = await healthPart(page);
-  assert.equal(await health.getByText('Combat also sets', {exact: false}).count(), 0, `${tag} conflict cleared`);
-
   await health.getByRole('button', {name: 'Revive'}).click();
   await settle(page);
-  json = await codeOf(page);
+  const json = await codeOf(page);
   assert.equal('dead' in json.modules['animus:health'], false, `${tag} revive clears dead`);
   health = await healthPart(page);
   assert.equal(await health.getByRole('button', {name: 'Revive'}).count(), 0, `${tag} revive button gone`);

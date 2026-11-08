@@ -10,8 +10,9 @@ import static org.junit.jupiter.api.Assertions.*;
 class CombatAttributesTest {
     private final MockCombatWorld world = new MockCombatWorld();
 
-    private static CombatSettings settings(String module, String attributes) {
-        JsonObject definition = JsonParser.parseString("{\"type\":\"minecraft:player\",\"modules\":{\"animus:combat\":" + module + "}}").getAsJsonObject();
+    private static CombatSettings settings(String module, String attributes) { return settings(module, "{\"killable\":true}", attributes); }
+    private static CombatSettings settings(String module, String health, String attributes) {
+        JsonObject definition = JsonParser.parseString("{\"type\":\"minecraft:player\",\"modules\":{\"animus:combat\":" + module + ",\"animus:health\":" + health + "}}").getAsJsonObject();
         definition.getAsJsonObject("modules").getAsJsonObject("animus:combat").addProperty("enabled", true);
         definition.add("attributes", JsonParser.parseString(attributes));
         return CombatSettings.parse(definition).orElseThrow();
@@ -21,7 +22,7 @@ class CombatAttributesTest {
         CombatSettings settings = settings("{}", """
                 {"max_health":40,"attack_damage":7,"attack_knockback":2,"attack_speed":2,"follow_range":48,"movement_speed":0.1}
                 """);
-        assertEquals(40, settings.defense().maximumHealth());
+        assertEquals(40, settings.health().defense().maximumHealth());
         assertEquals(7, settings.melee().damage());
         assertEquals(0.4 + 2 * 0.5, settings.melee().knockback(), 1e-9);
         assertEquals(10, settings.melee().cooldownTicks(), "two hits a second");
@@ -29,18 +30,18 @@ class CombatAttributesTest {
         assertEquals(4.317, settings.pursuit().speed(), 1e-9, "the chase runs at the walking speed");
     }
 
-    @Test void theCombatModuleWinsOverAttributes() {
+    @Test void theModulesWinOverAttributes() {
         CombatSettings settings = settings("""
-                {"defense":{"maximumHealth":30,"armor":0.25},"melee":{"damage":3,"knockback":1,"cooldownTicks":30},"targeting":{"scanRange":12},"pursuit":{"speed":2}}
-                """, "{\"max_health\":40,\"attack_damage\":7,\"attack_knockback\":2,\"attack_speed\":2,\"follow_range\":48,\"armor\":20,\"movement_speed\":0.2}");
-        assertEquals(30, settings.defense().maximumHealth());
+                {"melee":{"damage":3,"knockback":1,"cooldownTicks":30},"targeting":{"scanRange":12},"pursuit":{"speed":2}}
+                """, "{\"killable\":true,\"maximumHealth\":30,\"armor\":0.25}", "{\"max_health\":40,\"attack_damage\":7,\"attack_knockback\":2,\"attack_speed\":2,\"follow_range\":48,\"armor\":20,\"movement_speed\":0.2}");
+        assertEquals(30, settings.health().defense().maximumHealth());
         assertEquals(3, settings.melee().damage());
         assertEquals(1, settings.melee().knockback());
         assertEquals(30, settings.melee().cooldownTicks());
         assertEquals(12, settings.targeting().scanRange());
         assertEquals(2, settings.pursuit().speed());
-        assertEquals(0.25, settings.defense().armor());
-        assertEquals(0, settings.defense().armorPoints(), "an explicit armor share ignores the armor attribute");
+        assertEquals(0.25, settings.health().defense().armor());
+        assertEquals(0, settings.health().defense().armorPoints(), "an explicit armor share ignores the armor attribute");
     }
 
     @Test void valuesBeyondTheCombatRangesAreKeptWithinThem() {
@@ -58,10 +59,10 @@ class CombatAttributesTest {
     }
 
     @Test void armorAndToughnessAndKnockbackResistanceApplyInAFight() {
-        CombatSettings armored = settings("{\"defense\":{\"invulnerableTicks\":0}}", "{\"armor\":20,\"armor_toughness\":8,\"knockback_resistance\":0.5}");
-        assertEquals(20, armored.defense().armorPoints());
-        assertEquals(8, armored.defense().armorToughness());
-        assertEquals(0.5, armored.defense().knockbackResistance());
+        CombatSettings armored = settings("{}", "{\"killable\":true,\"invulnerableTicks\":0}", "{\"armor\":20,\"armor_toughness\":8,\"knockback_resistance\":0.5}");
+        assertEquals(20, armored.health().defense().armorPoints());
+        assertEquals(8, armored.health().defense().armorToughness());
+        assertEquals(0.5, armored.health().defense().knockbackResistance());
         CombatEngine engine = new CombatEngine(art.arcane.animus.core.config.CombatBudgets.DEFAULT, world, ProtectionAdapter.NONE, new java.util.Random(7), (String message) -> {});
         UUID npc = world.npc(0, 0, 20);
         assertTrue(engine.register(npc, "armored", armored, CombatLoadout.NONE));
@@ -70,8 +71,8 @@ class CombatAttributesTest {
         assertEquals(0.2, world.knocked.get(npc), 1e-9, "half of the 0.4 a player's hit knocks back");
     }
 
-    @Test void attributeNotesNameTheCombatFieldsThatWin() {
-        assertTrue(NpcAttributes.note("max_health").contains("defense.maximumHealth"));
+    @Test void attributeNotesNameTheFieldsThatWin() {
+        assertTrue(NpcAttributes.note("max_health").contains("animus:health sets maximumHealth"));
         assertTrue(NpcAttributes.note("follow_range").contains("targeting.scanRange"));
     }
 }

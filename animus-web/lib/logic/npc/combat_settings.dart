@@ -33,11 +33,9 @@ const List<String> combatRootKeys = <String>[
   'pursuit',
   'melee',
   'ranged',
-  'defense',
-  'death',
-  'respawn',
   'greetings',
   'targetableByMobs',
+  'victimDrops',
   'preservedSettings',
   'historicalStatistics',
   'migrationReport',
@@ -69,19 +67,6 @@ const Map<String, List<String>> combatSectionKeys = <String, List<String>>{
     'fromEquipment',
     'useAmmo',
   ],
-  'defense': <String>[
-    'maximumHealth',
-    'armor',
-    'invincible',
-    'knockback',
-    'protectedFromIgnored',
-    'protectFromRange',
-    'healRateTicks',
-    'invulnerableTicks',
-    'armorFromEquipment',
-  ],
-  'death': <String>['drops', 'experience', 'victimDrops'],
-  'respawn': <String>['delayTicks', 'locations', 'deleteOnDeath'],
   'greetings': <String>['friendly', 'hostile', 'range', 'cooldownTicks'],
 };
 
@@ -225,21 +210,12 @@ const List<CombatRange> combatRanges = <CombatRange>[
   CombatRange('ranged', 'velocity', 1.6, 0.5, 4),
   CombatRange('ranged', 'inaccuracy', 0, 0, 16),
   CombatRange('ranged', 'knockback', 0.2, 0, 4),
-  CombatRange('defense', 'maximumHealth', 20, 1, 2048),
-  CombatRange('defense', 'armor', 0, 0, 1),
-  CombatRange('defense', 'protectFromRange', 0, 0, 256),
-  CombatRange('defense', 'healRateTicks', 0, 0, 72000, integer: true),
-  CombatRange('defense', 'invulnerableTicks', 10, 0, 100, integer: true),
-  CombatRange('death', 'experience', 0, 0, 10000, integer: true),
-  CombatRange('respawn', 'delayTicks', 100, -1, 72000, integer: true),
   CombatRange('greetings', 'range', 10, 1, 64),
   CombatRange('greetings', 'cooldownTicks', 100, 0, 72000, integer: true),
   // Nested objects, by their own section name.
   CombatRange('weaponDamage', '*', 1, 0, 100),
   CombatRange('effect', 'amplifier', 0, 0, 9, integer: true),
   CombatRange('effect', 'durationTicks', 200, 1, 72000, integer: true),
-  CombatRange('drop', 'amount', 1, 1, 64, integer: true),
-  CombatRange('drop', 'chance', 1, 0, 1),
   CombatRange('rule', 'healthAbove', 0, 0, 100),
   CombatRange('rule', 'healthBelow', 0, 0, 100),
 ];
@@ -252,9 +228,6 @@ const Map<String, Map<String, bool>> combatBooleans = <String, Map<String, bool>
   'pursuit': <String, bool>{'closeChase': true, 'rangedChase': false, 'returnToPost': true, 'teleportWhenStuck': false},
   'melee': <String, bool>{'enabled': true, 'fromEquipment': false},
   'ranged': <String, bool>{'enabled': false, 'safeShot': true, 'fromEquipment': false, 'useAmmo': false},
-  'defense': <String, bool>{'invincible': false, 'knockback': true, 'protectedFromIgnored': false, 'armorFromEquipment': false},
-  'death': <String, bool>{'victimDrops': true},
-  'respawn': <String, bool>{'deleteOnDeath': false},
 };
 
 CombatRange? combatRange(String section, String key) {
@@ -264,7 +237,7 @@ CombatRange? combatRange(String section, String key) {
   return null;
 }
 
-/// The server's path for [steps] under the module: `$.modules.animus:combat.melee.reach`, `...drops[0].item`.
+/// The server's path for [steps] under the module: `$.modules.animus:combat.melee.reach`, `...chat[0]`.
 String combatPath(List<JsonStep> steps) {
   final StringBuffer path = StringBuffer(combatRoot);
   for (final JsonStep step in steps) {
@@ -308,6 +281,7 @@ List<Diagnostic> validateCombat(Object? settings) {
   final _Reader root = _Reader(check, settings, combatRoot);
   root.known(combatRootKeys);
   root.boolean('targetableByMobs');
+  root.boolean('victimDrops');
   for (final String section in combatRuleSections) {
     final _Reader? rules = root.child(section);
     if (rules != null) _rules(rules, section == 'ignores' ? _Level.ignoring : _Level.seeking);
@@ -394,44 +368,6 @@ List<Diagnostic> validateCombat(Object? settings) {
     }
     reader.numbers('ranged');
     reader.booleans('ranged');
-  });
-  _section(root, 'defense', (_Reader reader) {
-    reader.numbers('defense');
-    reader.booleans('defense');
-  });
-  _section(root, 'death', (_Reader reader) {
-    final List<Object?>? drops = reader.array('drops', 32);
-    for (int index = 0; index < (drops?.length ?? 0); index++) {
-      final String path = '${reader.field('drops')}[$index]';
-      final Object? entry = drops![index];
-      if (entry is! Map<String, Object?>) {
-        check.error(path, 'expected object');
-        continue;
-      }
-      final _Reader drop = _Reader(check, entry, path);
-      drop.known(const <String>['item', 'amount', 'chance']);
-      drop.namespaced('item', 'expected namespace:item');
-      drop.integer('amount', combatRange('drop', 'amount')!);
-      drop.number('chance', combatRange('drop', 'chance')!);
-    }
-    reader.numbers('death');
-    reader.booleans('death');
-  });
-  _section(root, 'respawn', (_Reader reader) {
-    final List<Object?>? locations = reader.array('locations', 16);
-    for (int index = 0; index < (locations?.length ?? 0); index++) {
-      final String path = '${reader.field('locations')}[$index]';
-      final Object? entry = locations![index];
-      if (entry is! Map<String, Object?>) {
-        check.error(path, 'expected object');
-        continue;
-      }
-      _location(_Reader(check, entry, path));
-    }
-    final int? delay = reader.integer('delayTicks', combatRange('respawn', 'delayTicks')!);
-    final bool? delete = reader.boolean('deleteOnDeath');
-    final bool delayValid = !reader.object.containsKey('delayTicks') || delay != null;
-    if (delete == true && delayValid && (delay ?? 100) != -1) check.error(reader.field('deleteOnDeath'), 'requires delayTicks -1');
   });
   _section(root, 'greetings', (_Reader reader) {
     for (final String key in const <String>['friendly', 'hostile']) {

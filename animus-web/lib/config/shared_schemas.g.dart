@@ -11170,7 +11170,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "type": "number",
           "minimum": 0.0,
           "maximum": 30.0,
-          "description": "Vanilla default 0. Combat armor points with vanilla damage reduction, unless the combat module sets defense.armor or defense.armorFromEquipment.",
+          "description": "Vanilla default 0. Armor points with vanilla damage reduction, unless animus:health sets armor or armorFromEquipment.",
           "default": 0.0,
           "x-bodies": [
             "minecraft:armadillo",
@@ -11187,7 +11187,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "type": "number",
           "minimum": 0.0,
           "maximum": 30.0,
-          "description": "Vanilla default 0. Combat armor points with vanilla damage reduction, unless the combat module sets defense.armor or defense.armorFromEquipment.",
+          "description": "Vanilla default 0. Armor points with vanilla damage reduction, unless animus:health sets armor or armorFromEquipment.",
           "default": 0.0,
           "x-bodies": [
             "minecraft:armadillo",
@@ -11204,7 +11204,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "type": "number",
           "minimum": 0.0,
           "maximum": 20.0,
-          "description": "Vanilla default 0. Combat armor toughness, used with armor.",
+          "description": "Vanilla default 0. Armor toughness, used with armor.",
           "default": 0.0,
           "x-bodies": [
             "minecraft:armadillo",
@@ -11221,7 +11221,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "type": "number",
           "minimum": 0.0,
           "maximum": 20.0,
-          "description": "Vanilla default 0. Combat armor toughness, used with armor.",
+          "description": "Vanilla default 0. Armor toughness, used with armor.",
           "default": 0.0,
           "x-bodies": [
             "minecraft:armadillo",
@@ -11740,7 +11740,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "type": "number",
           "minimum": -2.0,
           "maximum": 1.0,
-          "description": "Vanilla default 0. The share of combat knockback the NPC ignores; below 0 it takes more.",
+          "description": "Vanilla default 0. The share of knockback the NPC ignores; below 0 it takes more.",
           "default": 0.0,
           "x-bodies": [
             "minecraft:armadillo",
@@ -11757,7 +11757,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "type": "number",
           "minimum": -2.0,
           "maximum": 1.0,
-          "description": "Vanilla default 0. The share of combat knockback the NPC ignores; below 0 it takes more.",
+          "description": "Vanilla default 0. The share of knockback the NPC ignores; below 0 it takes more.",
           "default": 0.0,
           "x-bodies": [
             "minecraft:armadillo",
@@ -11828,7 +11828,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "type": "number",
           "minimum": 1.0,
           "maximum": 1024.0,
-          "description": "Vanilla default 20. Combat maximum health unless the combat module sets defense.maximumHealth.",
+          "description": "Vanilla default 20. Maximum health unless animus:health sets maximumHealth.",
           "default": 20.0,
           "x-bodies": [
             "minecraft:armadillo",
@@ -11845,7 +11845,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "type": "number",
           "minimum": 1.0,
           "maximum": 1024.0,
-          "description": "Vanilla default 20. Combat maximum health unless the combat module sets defense.maximumHealth.",
+          "description": "Vanilla default 20. Maximum health unless animus:health sets maximumHealth.",
           "default": 20.0,
           "x-bodies": [
             "minecraft:armadillo",
@@ -13339,7 +13339,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "animus:combat": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Fighting, guarding, health and death. An unknown setting is refused so a typo cannot weaken a rule.",
+          "description": "Targeting, attacks and guarding. Health and death are in animus:health. An unknown setting is refused so a typo cannot weaken a rule.",
           "properties": {
             "enabled": {
               "description": "Literal true turns combat on; anything else leaves it off."
@@ -13716,149 +13716,6 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 }
               ]
             },
-            "defense": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "maximumHealth": {
-                  "type": "number",
-                  "minimum": 1,
-                  "maximum": 2048,
-                  "description": "20 by default."
-                },
-                "armor": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 1,
-                  "description": "Share of damage absorbed."
-                },
-                "invincible": {
-                  "type": "boolean"
-                },
-                "knockback": {
-                  "type": "boolean",
-                  "description": "True by default."
-                },
-                "protectedFromIgnored": {
-                  "type": "boolean"
-                },
-                "protectFromRange": {
-                  "type": "number",
-                  "minimum": 0,
-                  "maximum": 256
-                },
-                "healRateTicks": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 72000,
-                  "description": "0 never heals."
-                },
-                "invulnerableTicks": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 100,
-                  "description": "10 by default."
-                },
-                "armorFromEquipment": {
-                  "type": "boolean"
-                }
-              }
-            },
-            "death": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "drops": {
-                  "type": "array",
-                  "description": "At most 32.",
-                  "minItems": 0,
-                  "maxItems": 32,
-                  "items": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                      "item": {
-                        "type": "string",
-                        "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
-                      },
-                      "amount": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 64,
-                        "description": "1 by default."
-                      },
-                      "chance": {
-                        "type": "number",
-                        "minimum": 0,
-                        "maximum": 1,
-                        "description": "1 by default."
-                      }
-                    },
-                    "required": [
-                      "item"
-                    ]
-                  }
-                },
-                "experience": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 10000
-                },
-                "victimDrops": {
-                  "type": "boolean",
-                  "description": "True by default."
-                }
-              }
-            },
-            "respawn": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "delayTicks": {
-                  "type": "integer",
-                  "minimum": -1,
-                  "maximum": 72000,
-                  "description": "-1 never respawns. 100 by default."
-                },
-                "locations": {
-                  "type": "array",
-                  "description": "At most 16.",
-                  "minItems": 0,
-                  "maxItems": 16,
-                  "items": {
-                    "$ref": "#/$defs/location"
-                  }
-                },
-                "deleteOnDeath": {
-                  "type": "boolean",
-                  "description": "Delete the definition on death; needs delayTicks -1."
-                }
-              },
-              "allOf": [
-                {
-                  "if": {
-                    "properties": {
-                      "deleteOnDeath": {
-                        "const": true
-                      }
-                    },
-                    "required": [
-                      "deleteOnDeath"
-                    ]
-                  },
-                  "then": {
-                    "properties": {
-                      "delayTicks": {
-                        "const": -1
-                      }
-                    },
-                    "required": [
-                      "delayTicks"
-                    ]
-                  }
-                }
-              ]
-            },
             "greetings": {
               "type": "object",
               "additionalProperties": false,
@@ -13893,6 +13750,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "type": "boolean",
               "description": "Nearby hostile mobs may attack the NPC."
             },
+            "victimDrops": {
+              "type": "boolean",
+              "description": "What it kills drops loot. True by default."
+            },
             "preservedSettings": {
               "description": "Kept from an import."
             },
@@ -13907,7 +13768,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "animus:health": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Health and death without combat AI. On a combat NPC it replaces defense, death and respawn.",
+          "description": "Health, armor, death and respawn, with or without combat. Without it the NPC cannot be hurt.",
           "properties": {
             "killable": {
               "type": "boolean",
@@ -13974,6 +13835,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "type": "boolean",
               "description": "Shows its health on the attacker's action bar."
             },
+            "protectFromRange": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 256,
+              "description": "Only attackers this close can hurt it. 0, any distance, by default."
+            },
+            "protectedFromIgnored": {
+              "type": "boolean",
+              "description": "What animus:combat ignores cannot hurt it."
+            },
             "death": {
               "type": "object",
               "additionalProperties": false,
@@ -14027,9 +13898,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 "afterDeath": {
                   "enum": [
                     "respawn",
-                    "permadeath"
+                    "permadeath",
+                    "delete"
                   ],
-                  "description": "permadeath keeps it dead until revived. respawn by default."
+                  "description": "permadeath keeps it dead until revived; delete removes its definition. respawn by default."
                 },
                 "delayTicks": {
                   "type": "integer",

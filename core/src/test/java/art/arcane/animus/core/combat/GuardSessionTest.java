@@ -29,7 +29,7 @@ class GuardSessionTest {
     private static final String BODYGUARD = "{\"targeting\":{\"scanRange\":16,\"fightBack\":true,\"lineOfSight\":\"required\"},"
             + "\"guard\":{\"followDistance\":4,\"pointRange\":2,\"catchUpDistance\":24,\"replanDistance\":1.5},"
             + "\"pursuit\":{\"speed\":6,\"giveUpRange\":24,\"leashRange\":32,\"returnToPost\":true},"
-            + "\"melee\":{\"damage\":4,\"reach\":3,\"cooldownTicks\":15},\"defense\":{\"maximumHealth\":30}}";
+            + "\"melee\":{\"damage\":4,\"reach\":3,\"cooldownTicks\":15}}";
     private static final double PATH_TOP = 63.9375;
 
     /** Routes take time and end on the surface the planner found; the leg rules are the runtime's own. */
@@ -100,7 +100,7 @@ class GuardSessionTest {
     private static CombatSettings settings(String json) {
         JsonObject module = JsonParser.parseString(json).getAsJsonObject();
         module.addProperty("enabled", true);
-        return CombatSettings.parseModule(module);
+        return CombatSettings.parseModule(module, CombatTesting.health("{\"killable\":true,\"maximumHealth\":30}"));
     }
     private void tick() {
         engine.tick();

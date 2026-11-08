@@ -12,6 +12,7 @@ import art.arcane.animus.core.combat.CombatEngine;
 import art.arcane.animus.core.combat.CombatLoadout;
 import art.arcane.animus.core.combat.CombatOperations;
 import art.arcane.animus.core.combat.CombatSettings;
+import art.arcane.animus.core.combat.HealthSettings;
 import art.arcane.animus.core.combat.CombatWorld;
 import art.arcane.animus.core.combat.ProtectionAdapter;
 import art.arcane.animus.core.combat.ProtectionGate;
@@ -98,7 +99,7 @@ public final class CombatModule implements AutoCloseable {
 
     private void start(CombatBudgets budgets) {
         engine = new CombatEngine(budgets, world, adapter, new SplittableRandom(), warnings);
-        living.onLanding((UUID npc, Double damage) -> { if (engine != null) engine.environment(npc, CombatSettings.DamageSource.FALL, damage); });
+        living.onLanding((UUID npc, Double damage) -> { if (engine != null) engine.environment(npc, HealthSettings.DamageSource.FALL, damage); });
         protection = engine.protection();
         observed = null; pass = null; refused = 0;
         candidates.clear(); nextCandidates = new HashMap<>();
@@ -275,7 +276,7 @@ public final class CombatModule implements AutoCloseable {
                 try {
                     CombatDeletions.delete(runtime.npcs(), npc).ifPresent((CombatDeletions.Deleted deleted) -> {
                         deletedOnDeath.incrementAndGet();
-                        warnings.accept("Combat NPC " + deleted.id() + " died and was deleted (respawn.deleteOnDeath); tx " + deleted.transaction());
+                        warnings.accept("Combat NPC " + deleted.id() + " died and was deleted (animus:health afterDeath delete); tx " + deleted.transaction());
                     });
                 } catch (java.io.IOException failure) {
                     warnings.accept("Combat could not delete dead NPC " + npc + ": " + failure.getMessage());

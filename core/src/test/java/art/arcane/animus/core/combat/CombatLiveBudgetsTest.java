@@ -25,7 +25,7 @@ class CombatLiveBudgetsTest {
     private static CombatSettings settings(String json) {
         JsonObject module = JsonParser.parseString(json).getAsJsonObject();
         module.addProperty("enabled", true);
-        return CombatSettings.parseModule(module);
+        return CombatSettings.parseModule(module, CombatTesting.KILLABLE);
     }
     private UUID combatant(double x, double z, String json) {
         UUID npc = world.npc(x, z, 20);

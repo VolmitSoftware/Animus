@@ -157,12 +157,12 @@ class RealDamageTest {
 
     @Test void environmentalSourcesAreOffUnlessListed() {
         CombatSettings plain = HealthSettingsTest.parse("{\"animus:health\":{\"killable\":true}}");
-        assertEquals(CombatSettings.DamageSource.ATTACKS, plain.defense().sources());
+        assertEquals(HealthSettings.DamageSource.ATTACKS, plain.health().defense().sources());
         UUID npc = killable("{\"killable\":true}", 20);
         world.contacts.put(npc, CombatWorld.Contact.LAVA);
         run(40);
         assertEquals(20, health(npc));
-        assertEquals(CombatWorld.DamageStatus.NO_CHANGE, engine.environment(npc, CombatSettings.DamageSource.FALL, 5).status());
+        assertEquals(CombatWorld.DamageStatus.NO_CHANGE, engine.environment(npc, HealthSettings.DamageSource.FALL, 5).status());
     }
 
     @Test void lavaBurnsTheBodyAndHurtsEveryHalfSecond() {
@@ -217,7 +217,7 @@ class RealDamageTest {
         assertEquals(4, FallTracker.damage(10, NpcAttributes.NONE.with("fall_damage_multiplier", .5)), "Rounded up as vanilla does");
         assertEquals(2, FallTracker.damage(10, NpcAttributes.NONE.with("safe_fall_distance", 8)));
         UUID npc = killable("{\"killable\":true,\"sources\":[\"fall\"]}", 20);
-        assertEquals(CombatWorld.DamageStatus.APPLIED, engine.environment(npc, CombatSettings.DamageSource.FALL, 7).status());
+        assertEquals(CombatWorld.DamageStatus.APPLIED, engine.environment(npc, HealthSettings.DamageSource.FALL, 7).status());
         assertEquals(13, health(npc));
     }
 
@@ -233,7 +233,7 @@ class RealDamageTest {
 
     @Test void theSourceListParsesTheNewNames() {
         CombatSettings settings = HealthSettingsTest.parse("{\"animus:health\":{\"killable\":true,\"sources\":[\"players\",\"fire\",\"lava\",\"fall\"]}}");
-        assertEquals(EnumSet.of(CombatSettings.DamageSource.PLAYERS, CombatSettings.DamageSource.FIRE, CombatSettings.DamageSource.LAVA,
-                CombatSettings.DamageSource.FALL), settings.defense().sources());
+        assertEquals(EnumSet.of(HealthSettings.DamageSource.PLAYERS, HealthSettings.DamageSource.FIRE, HealthSettings.DamageSource.LAVA,
+                HealthSettings.DamageSource.FALL), settings.health().defense().sources());
     }
 }

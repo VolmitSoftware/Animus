@@ -125,7 +125,7 @@ final class CombatBrain {
         };
         meleeDamage = EquipmentStats.melee(settings.melee(), loadout);
         rangedDamage = EquipmentStats.ranged(settings.ranged(), settings.melee(), loadout);
-        armor = EquipmentStats.armor(settings.defense(), loadout);
+        armor = EquipmentStats.armor(settings.health().defense(), loadout);
         fullAmmunition = settings.ranged().useAmmo() && !settings.ranged().weapon().ammunition().isEmpty() ? loadout.count(settings.ranged().weapon().ammunition()) : -1;
         ammunition = fullAmmunition;
         guarded = settings.guard().player().map((UUID id) -> new TargetRef(TargetKind.PLAYER, id))
@@ -199,7 +199,7 @@ final class CombatBrain {
     }
 
     private boolean engaged() { return target != null || threat != null || state == CombatState.RETURNING; }
-    private boolean healing(VirtualNpcState.Snapshot self) { return self.health() < settings.defense().maximumHealth() && settings.defense().healRateTicks() > 0; }
+    private boolean healing(VirtualNpcState.Snapshot self) { return self.health() < settings.health().defense().maximumHealth() && settings.health().defense().healRateTicks() > 0; }
     private double searchRadius() {
         double radius = Math.max(scanRange(), settings.avoids().empty() ? 0 : settings.avoidance().range());
         return settings.greetings().enabled() ? Math.max(radius, settings.greetings().range() + 1) : radius;
@@ -824,7 +824,7 @@ final class CombatBrain {
      * NPC does not accept, or a player without its attacker permission, deals nothing.
      */
     double mitigate(TargetRef attacker, WorldPosition from, double amount, Optional<CombatTarget> attackerView, CombatWorld.DamageKind kind) {
-        CombatSettings.Defense defense = settings.defense();
+        HealthSettings.Defense defense = settings.health().defense();
         long now = engine.now();
         if (defense.invincible() || now < invulnerableUntil || state == CombatState.DEAD || !defense.accepts(attacker.kind(), kind)) return 0;
         if (attacker.kind() == TargetKind.PLAYER && defense.attackerPermission().isPresent() && !world.permitted(attacker, defense.attackerPermission().get())) return 0;
@@ -843,8 +843,8 @@ final class CombatBrain {
      * The environment's damage that remains after this NPC's defense, or 0: only a listed source, outside invulnerability
      * frames. {@code armored} damage is reduced by armor as a hit is; falls and burning are not.
      */
-    double mitigateEnvironment(CombatSettings.DamageSource source, double amount, boolean armored) {
-        CombatSettings.Defense defense = settings.defense();
+    double mitigateEnvironment(HealthSettings.DamageSource source, double amount, boolean armored) {
+        HealthSettings.Defense defense = settings.health().defense();
         long now = engine.now();
         if (!defense.takes(source) || now < invulnerableUntil || state == CombatState.DEAD || !(amount > 0)) return 0;
         double reduced = !armored ? amount : defense.armorPoints() > 0 ? CombatAttributes.armored(amount, defense.armorPoints(), defense.armorToughness()) : amount * (1 - armor);
@@ -854,9 +854,9 @@ final class CombatBrain {
     }
 
     private void heal(long now, VirtualNpcState.Snapshot self) {
-        int rate = settings.defense().healRateTicks();
+        int rate = settings.health().defense().healRateTicks();
         if (rate <= 0) return;
-        if (self.health() >= settings.defense().maximumHealth()) {
+        if (self.health() >= settings.health().defense().maximumHealth()) {
             nextHeal = 0;
             return;
         }
@@ -882,9 +882,9 @@ final class CombatBrain {
         moving = false;
         anchor = null;
         engine.removeHelpers(npc);
-        CombatSettings.Death death = settings.death();
+        HealthSettings.Death death = settings.health().death();
         List<CombatWorld.Drop> drops = new ArrayList<>();
-        for (CombatSettings.DropRule rule : death.drops()) {
+        for (HealthSettings.DropRule rule : death.drops()) {
             if (engine.random().nextDouble() >= rule.chance()) continue;
             int amount = rule.maximum() > rule.amount() ? rule.amount() + engine.random().nextInt(rule.maximum() - rule.amount() + 1) : rule.amount();
             drops.add(new CombatWorld.Drop(rule.item(), amount, rule.components()));
@@ -892,10 +892,10 @@ final class CombatBrain {
         if (death.dropEquipment()) drops.addAll(loadout.worn());
         if (!drops.isEmpty() || death.experience() > 0) world.drop(place, drops, death.experience());
         if (killer != null && !killer.id().equals(npc)) world.credit(killer, npc);
-        int delay = settings.respawn().delayTicks();
+        int delay = settings.health().respawn().delayTicks();
         respawnAt = delay < 0 ? -1 : engine.now() + delay;
-        if (settings.respawn().deleteOnDeath()) engine.requestDeletion(npc);
-        if (settings.respawn().permadeath()) permadeathAt = engine.now() + DEATH_ANIMATION_TICKS;
+        if (settings.health().respawn().deleteOnDeath()) engine.requestDeletion(npc);
+        if (settings.health().respawn().permadeath()) permadeathAt = engine.now() + DEATH_ANIMATION_TICKS;
         engine.wake(this);
     }
 
@@ -922,7 +922,7 @@ final class CombatBrain {
         Optional<VirtualNpcState.Snapshot> self = world.npc(npc);
         if (self.isEmpty()) return false;
         if (self.get().health() > 0) {
-            double missing = settings.defense().maximumHealth() - self.get().health();
+            double missing = settings.health().defense().maximumHealth() - self.get().health();
             if (missing > 0) world.heal(npc, missing);
             return true;
         }
@@ -932,11 +932,11 @@ final class CombatBrain {
         return true;
     }
 
-    /** Where the NPC comes back: the next listed point by the respawn order, else its home or where it fell. */
+    /** Where the NPC comes back: the next listed point by the respawn order, else its home, else where it fell. */
     private Optional<WorldPosition> respawnPoint() {
-        List<CombatSettings.Location> locations = settings.respawn().locations();
-        if (locations.isEmpty()) return settings.respawn().home() ? world.home(npc).or(() -> Optional.ofNullable(deathPlace)) : Optional.ofNullable(deathPlace);
-        return switch (settings.respawn().order()) {
+        List<CombatSettings.Location> locations = settings.health().respawn().locations();
+        if (locations.isEmpty()) return world.home(npc).or(() -> Optional.ofNullable(deathPlace));
+        return switch (settings.health().respawn().order()) {
             case RANDOM -> world.resolve(locations.get(engine.random().nextInt(locations.size())));
             case IN_ORDER -> world.resolve(locations.get(Math.floorMod(nextPoint, locations.size())));
             case NEAREST -> {

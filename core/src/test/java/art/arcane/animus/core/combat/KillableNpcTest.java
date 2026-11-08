@@ -187,7 +187,7 @@ class KillableNpcTest {
         UUID npc = killable("{\"killable\":true}", null, 2);
         UUID hunter = world.npc(2, 0, 20);
         assertTrue(engine.register(hunter, "hunter", CombatSettings.parseModule(com.google.gson.JsonParser.parseString(
-                "{\"enabled\":true,\"targets\":{\"npcs\":[\"villager\"]},\"targeting\":{\"scanIntervalTicks\":1},\"melee\":{\"damage\":10,\"cooldownTicks\":1}}").getAsJsonObject()), CombatLoadout.NONE));
+                "{\"enabled\":true,\"targets\":{\"npcs\":[\"villager\"]},\"targeting\":{\"scanIntervalTicks\":1},\"melee\":{\"damage\":10,\"cooldownTicks\":1}}").getAsJsonObject(), HealthSettings.UNKILLABLE), CombatLoadout.NONE));
         run(3);
         assertEquals(0, health(npc), "Combat NPCs may kill a killable NPC");
         assertEquals(List.of(new TargetRef(TargetKind.NPC, hunter)), world.credits);

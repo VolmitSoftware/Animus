@@ -1,11 +1,9 @@
-/// The NPC health module `modules["animus:health"]`: killable without combat
-/// AI. Its field lists, the edits behind its editor, and the combat sections
-/// it replaces. On a combat NPC the server refuses a definition that also
-/// sets combat's defense, death or respawn.
+/// The NPC health module `modules["animus:health"]`: health, armor, death,
+/// drops and respawn, with or without combat AI. Its field lists and the
+/// edits behind its editor. A combat NPC without it cannot be hurt.
 library;
 
 import '../gui/gui_json.dart';
-import 'combat_settings.dart' show combatModule;
 
 const String healthModule = 'animus:health';
 
@@ -22,6 +20,8 @@ const List<String> healthKeys = <String>[
   'sources',
   'attackerPermission',
   'showHealth',
+  'protectFromRange',
+  'protectedFromIgnored',
   'death',
   'respawn',
   'dead',
@@ -33,11 +33,8 @@ const List<String> healthSources = <String>['players', 'mobs', 'npcs', 'projecti
 /// The sources a module without `sources` takes: every attack and nothing from the environment.
 const List<String> healthAttackSources = <String>['players', 'mobs', 'npcs', 'projectiles'];
 
-const List<String> healthAfterDeath = <String>['respawn', 'permadeath'];
+const List<String> healthAfterDeath = <String>['respawn', 'permadeath', 'delete'];
 const List<String> healthOrders = <String>['in_order', 'random', 'nearest'];
-
-/// Combat sections the health module replaces.
-const List<String> healthReplacedCombat = <String>['defense', 'death', 'respawn'];
 
 bool _empty(Object? value) => (value is Map<String, Object?> && value.isEmpty) || (value is List<Object?> && value.isEmpty);
 
@@ -90,21 +87,4 @@ List<Object?> withHealthDropItem(List<Object?> drops, int index, String key, Obj
 JsonMap revivedHealth(JsonMap module) => <String, Object?>{
   for (final MapEntry<String, Object?> entry in module.entries)
     if (entry.key != 'dead') entry.key: entry.value,
-};
-
-/// Combat sections [modules] sets that the health module replaces; empty
-/// when it has no health module.
-List<String> healthCombatConflicts(JsonMap modules) {
-  if (!modules.containsKey(healthModule)) return const <String>[];
-  final JsonMap combat = asMap(modules[combatModule]);
-  return <String>[
-    for (final String section in healthReplacedCombat)
-      if (combat.containsKey(section)) section,
-  ];
-}
-
-/// [combat] without the sections the health module replaces.
-JsonMap withoutReplacedCombat(JsonMap combat) => <String, Object?>{
-  for (final MapEntry<String, Object?> entry in combat.entries)
-    if (!healthReplacedCombat.contains(entry.key)) entry.key: entry.value,
 };

@@ -102,13 +102,12 @@ void main() {
       'targets': <String, Object?>{'effects': <Object?>['glowing']},
       'melee': <String, Object?>{'weaponDamage': <String, Object?>{'netherite_axe': 9}},
       'ranged': <String, Object?>{'enabled': true, 'weapon': 'potion', 'effect': <String, Object?>{'id': 'poison'}},
-      'death': <String, Object?>{'drops': <Object?>[<String, Object?>{'item': 'iron_ingot'}]},
     });
     expect(problems, isEmpty);
     expect(
         validateCombat(<String, Object?>{
-          'death': <String, Object?>{'drops': <Object?>[<String, Object?>{'item': ':iron'}]},
+          'ranged': <String, Object?>{'enabled': true, 'weapon': 'potion', 'effect': <String, Object?>{'id': ':poison'}},
         }).map((Diagnostic diagnostic) => diagnostic.path),
-        contains(r'$.modules.animus:combat.death.drops[0].item'));
+        contains(r'$.modules.animus:combat.ranged.effect.id'));
   });
 }

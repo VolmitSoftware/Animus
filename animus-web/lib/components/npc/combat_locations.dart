@@ -1,6 +1,6 @@
-/// Combat locations (`avoidance.returnPoint`, `respawn.locations`): a top-down
-/// grid to place them and a world, x, y and z row per location. Keys a
-/// location does not use are kept under "Other fields".
+/// Locations (combat's `avoidance.returnPoint`, health's `respawn.points`):
+/// a top-down grid to place them and a world, x, y and z row per location.
+/// Keys a location does not use are kept under "Other fields".
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -40,7 +40,7 @@ class CombatLocationsEditor extends StatefulWidget {
   /// The whole new list; empty removes the field.
   final void Function(List<Object?> points) onChanged;
 
-  /// Names the grid ("Respawn locations").
+  /// Names the grid ("Respawn points").
   final String label;
 
   /// One location, as its rows and buttons name it ("Location", "Return point").

@@ -18,7 +18,7 @@ export async function combatEdges(t) {
   await owner.tp(...at(0, 0));
 
   await check('combat edges: an invincible NPC is never a target and refuses player hits', async () => {
-    const statue = await server.npc('estatue', 'minecraft:player', ...at(0, 6), 'Statue', combatNpc({ defense: { invincible: true }, targeting: { fightBack: false } }));
+    const statue = await server.npc('estatue', 'minecraft:player', ...at(0, 6), 'Statue', combatNpc({ targeting: { fightBack: false } }, [], { killable: false }));
     await server.npc('ehunter', 'minecraft:player', ...at(3, 6), 'Hunter', combatNpc({
       targets: { categories: ['npcs'] }, targeting: { scanRange: 16, scanIntervalTicks: 5, lineOfSight: 'ignored' }, melee: { damage: 4, reach: 3, cooldownTicks: 10 },
     }));
@@ -59,8 +59,7 @@ export async function combatEdges(t) {
     // The target fights back at whoever hurt it, so its target names the NPC each arrow is credited to.
     await server.npc('edummy', 'minecraft:player', ...at(-10, 20), 'Dummy', combatNpc({
       targeting: { fightBack: true, scanRange: 24, lineOfSight: 'ignored' }, melee: { enabled: false }, pursuit: { closeChase: false, rangedChase: false },
-      defense: { maximumHealth: 200, healRateTicks: 0, invulnerableTicks: 0 },
-    }));
+    }, [], { maximumHealth: 200, invulnerableTicks: 0 }));
     const archer = await server.npc('earcher', 'minecraft:player', ...at(-10, 6), 'Archer', combatNpc({
       targets: { npcs: ['edummy'] }, targeting: { scanRange: 24, scanIntervalTicks: 5, lineOfSight: 'ignored' },
       melee: { enabled: false }, pursuit: { closeChase: false, rangedChase: false },
@@ -91,9 +90,8 @@ export async function combatEdges(t) {
   await check('combat edges: a respawn away from the post comes back whole and walks home', async () => {
     const post = at(12, -6), elsewhere = at(18, -6);
     const frail = await server.npc('efrail', 'minecraft:player', ...post, 'Frail', combatNpc({
-      targeting: { fightBack: false }, defense: { maximumHealth: 2, healRateTicks: 0, invulnerableTicks: 0 }, pursuit: { speed: 3, returnToPost: true },
-      respawn: { delayTicks: 40, locations: [{ world: 'world', x: elsewhere[0], y: elsewhere[1], z: elsewhere[2] }] },
-    }));
+      targeting: { fightBack: false }, pursuit: { speed: 3, returnToPost: true },
+    }, [], { maximumHealth: 2, invulnerableTicks: 0, respawn: { delayTicks: 40, points: [{ world: 'world', x: elsewhere[0], y: elsewhere[1], z: elsewhere[2] }] } }));
     await owner.tp(...at(12, -3));
     for (let i = 0; i < 4 && !/DEAD/.test(await combatOf('efrail')); i++) { await click(owner, frail, 'attack'); await delay(500); }
     const dead = await combatOf('efrail');

@@ -36,14 +36,16 @@ class CombatEngineTest {
         }, new Random(7), diagnostics::add);
         return engine;
     }
-    private static CombatSettings settings(String json) {
+    private static CombatSettings settings(String json) { return settings(json, "{\"killable\":true}"); }
+    private static CombatSettings settings(String json, String health) {
         JsonObject module = JsonParser.parseString(json).getAsJsonObject();
         module.addProperty("enabled", true);
-        return CombatSettings.parseModule(module);
+        return CombatSettings.parseModule(module, CombatTesting.health(health));
     }
-    private UUID combatant(double x, double z, String json) {
+    private UUID combatant(double x, double z, String json) { return combatant(x, z, json, "{\"killable\":true}"); }
+    private UUID combatant(double x, double z, String json, String health) {
         UUID npc = world.npc(x, z, 20);
-        assertTrue(engine().register(npc, "npc-" + npc, settings(json), CombatLoadout.NONE));
+        assertTrue(engine().register(npc, "npc-" + npc, settings(json, health), CombatLoadout.NONE));
         return npc;
     }
     private void run(int ticks) { for (int i = 0; i < ticks; i++) engine().tick(); }
@@ -296,7 +298,7 @@ class CombatEngineTest {
     @Test void npcVersusNpcAppliesArmorDeathDropsAndRespawn() {
         UUID hunter = combatant(0, 0, "{\"targets\":{\"npcs\":[\"prey\"]},\"targeting\":{\"scanIntervalTicks\":1},\"melee\":{\"damage\":10,\"cooldownTicks\":1,\"knockback\":0.5}}");
         UUID prey = world.npc(2, 0, 10);
-        assertTrue(engine().register(prey, "prey", settings("{\"defense\":{\"maximumHealth\":10,\"armor\":0.5,\"invulnerableTicks\":0,\"knockback\":true},\"death\":{\"experience\":7,\"drops\":[{\"item\":\"minecraft:iron_ingot\",\"amount\":2,\"chance\":1},{\"item\":\"minecraft:gold_ingot\",\"chance\":0}]},\"respawn\":{\"delayTicks\":5,\"locations\":[{\"world\":\"world\",\"x\":40,\"y\":64,\"z\":40}]}}"), CombatLoadout.NONE));
+        assertTrue(engine().register(prey, "prey", settings("{}", "{\"killable\":true,\"maximumHealth\":10,\"armor\":0.5,\"invulnerableTicks\":0,\"knockback\":true,\"death\":{\"experience\":7,\"drops\":[{\"item\":{\"id\":\"minecraft:iron_ingot\",\"count\":2},\"chance\":1},{\"item\":{\"id\":\"minecraft:gold_ingot\"},\"chance\":0}]},\"respawn\":{\"delayTicks\":5,\"points\":[{\"world\":\"world\",\"x\":40,\"y\":64,\"z\":40}]}}"), CombatLoadout.NONE));
         run(1);
         assertEquals(mobless(TargetKind.NPC, prey), status(hunter).target().orElseThrow());
         assertEquals(5, world.npc(prey).orElseThrow().health(), "Armor halves the hit");
@@ -316,25 +318,21 @@ class CombatEngineTest {
     }
     private static TargetRef mobless(TargetKind kind, UUID id) { return new TargetRef(kind, id); }
     @Test void aDeathFromOutsideTheEngineIsStillProcessed() {
-        UUID npc = combatant(0, 0, "{\"death\":{\"experience\":3},\"respawn\":{\"delayTicks\":-1}}");
+        UUID npc = combatant(0, 0, "{}", "{\"killable\":true,\"death\":{\"experience\":3},\"respawn\":{\"afterDeath\":\"permadeath\"}}");
         world.damageVirtual(npc, player(UUID.randomUUID()), 100);
         run(200);
         assertEquals(CombatState.DEAD, status(npc).state());
         assertEquals(3, world.experience);
-        assertTrue(world.revived.isEmpty(), "A delay of -1 never respawns");
+        assertTrue(world.revived.isEmpty(), "Permadeath never respawns");
     }
     @Test void deleteOnDeathRequestsOneDeletionAndNeverRespawns() {
-        UUID npc = combatant(0, 0, "{\"respawn\":{\"delayTicks\":-1,\"deleteOnDeath\":true}}");
+        UUID npc = combatant(0, 0, "{}", "{\"killable\":true,\"respawn\":{\"afterDeath\":\"delete\"}}");
         assertEquals(List.of(), engine().drainDeletions());
         world.damageVirtual(npc, player(UUID.randomUUID()), 100);
         run(200);
         assertEquals(List.of(npc), engine().drainDeletions());
         assertEquals(List.of(), engine().drainDeletions(), "A death is reported once");
         assertTrue(world.revived.isEmpty());
-    }
-    @Test void deleteOnDeathCannotBeCombinedWithARespawnDelay() {
-        IllegalArgumentException invalid = assertThrows(IllegalArgumentException.class, () -> settings("{\"respawn\":{\"delayTicks\":5,\"deleteOnDeath\":true}}"));
-        assertTrue(invalid.getMessage().startsWith("$.modules.animus:combat.respawn.deleteOnDeath"), invalid.getMessage());
     }
     @Test void anOwnerIgnoreNeverTargetsTheDefinitionOwner() {
         UUID owner = world.player("Owner", 2, 0);
@@ -348,14 +346,15 @@ class CombatEngineTest {
         assertEquals(player(stranger), status(npc).target().orElseThrow());
     }
     @Test void respawnWithoutAConfiguredLocationUsesThePlaceOfDeath() {
-        UUID npc = combatant(3, 4, "{\"respawn\":{\"delayTicks\":1}}");
+        UUID npc = combatant(3, 4, "{}", "{\"killable\":true,\"respawn\":{\"delayTicks\":1}}");
         world.damageVirtual(npc, player(UUID.randomUUID()), 100);
         run(3);
         assertEquals(new Vec3(3, 64, 4), world.npc(npc).orElseThrow().position().point());
     }
     @Test void playerAttacksRespectInvulnerabilityIgnoresAndRange() {
         UUID alice = world.player("Alice", 2, 0);
-        UUID npc = combatant(0, 0, "{\"ignores\":{\"players\":[\"bob\"]},\"defense\":{\"invulnerableTicks\":10,\"protectedFromIgnored\":true,\"protectFromRange\":5},\"targeting\":{\"fightBack\":false}}");
+        UUID npc = combatant(0, 0, "{\"ignores\":{\"players\":[\"bob\"]},\"targeting\":{\"fightBack\":false}}",
+                "{\"killable\":true,\"invulnerableTicks\":10,\"protectedFromIgnored\":true,\"protectFromRange\":5}");
         WorldPosition close = MockCombatWorld.at(2, 64, 0);
         assertEquals(CombatWorld.DamageStatus.APPLIED, engine().playerAttack(npc, player(alice), close, 3).status());
         assertEquals(CombatWorld.DamageStatus.NO_CHANGE, engine().playerAttack(npc, player(alice), close, 3).status(), "Inside invulnerability frames");
@@ -371,11 +370,11 @@ class CombatEngineTest {
         assertEquals(20, world.npc(plain).orElseThrow().health());
     }
     @Test void invincibleNpcIsProtectedFromDamage() {
-        UUID npc = combatant(0, 0, "{\"defense\":{\"invincible\":true}}");
+        UUID npc = combatant(0, 0, "{}", "{\"killable\":false}");
         assertEquals(CombatWorld.DamageStatus.PROTECTED, engine().playerAttack(npc, player(UUID.randomUUID()), near(), 5).status());
     }
     @Test void knockbackCanBeRefused() {
-        UUID npc = combatant(0, 0, "{\"defense\":{\"knockback\":false}}");
+        UUID npc = combatant(0, 0, "{}", "{\"killable\":true,\"knockback\":false}");
         engine().playerAttack(npc, player(UUID.randomUUID()), near(), 1);
         assertTrue(world.knocked.isEmpty());
     }
@@ -391,7 +390,7 @@ class CombatEngineTest {
         assertEquals(CombatState.AVOIDING, status(flees).state());
     }
     @Test void healingRestoresHealthAtTheConfiguredRate() {
-        UUID npc = combatant(0, 0, "{\"defense\":{\"healRateTicks\":5,\"invulnerableTicks\":0},\"targeting\":{\"fightBack\":false}}");
+        UUID npc = combatant(0, 0, "{\"targeting\":{\"fightBack\":false}}", "{\"killable\":true,\"regenerate\":true,\"regenerateTicks\":5,\"invulnerableTicks\":0}");
         engine().playerAttack(npc, player(UUID.randomUUID()), near(), 4);
         run(6);
         assertEquals(17, world.npc(npc).orElseThrow().health());
@@ -428,7 +427,7 @@ class CombatEngineTest {
     @Test void aRangedHitAppliesExactlyOnceWhenCollisionAndARealCallbackBothFire() {
         combatant(0, 0, ARCHER);
         UUID target = world.npc(10, 0, 20);
-        assertTrue(engine().register(target, "target", settings("{\"defense\":{\"invulnerableTicks\":0},\"targeting\":{\"fightBack\":false}}"), CombatLoadout.NONE));
+        assertTrue(engine().register(target, "target", settings("{\"targeting\":{\"fightBack\":false}}", "{\"killable\":true,\"invulnerableTicks\":0}"), CombatLoadout.NONE));
         run(2);
         assertEquals(1, world.helperLaunches);
         UUID helper = onlyHelper();
@@ -467,7 +466,7 @@ class CombatEngineTest {
     }
     @Test void aShotCannotHurtItsOwnerOrSquad() {
         UUID archer = combatant(0, 0, ARCHER.replace("{\"targets\"", "{\"squad\":{\"name\":\"a\"},\"targets\""));
-        UUID mate = combatant(4, 3, "{\"squad\":{\"name\":\"a\"},\"defense\":{\"invulnerableTicks\":0}}");
+        UUID mate = combatant(4, 3, "{\"squad\":{\"name\":\"a\"}}", "{\"killable\":true,\"invulnerableTicks\":0}");
         world.monster("minecraft:zombie", 10, 0);
         run(2);
         UUID helper = onlyHelper();
@@ -607,7 +606,7 @@ class CombatEngineTest {
         assertTrue(world.realDamage.get(zombie) > dealt);
     }
     @Test void aDeadNpcRefusesOperations() {
-        UUID npc = combatant(0, 0, "{\"respawn\":{\"delayTicks\":-1}}");
+        UUID npc = combatant(0, 0, "{}", "{\"killable\":true,\"respawn\":{\"afterDeath\":\"permadeath\"}}");
         world.damageVirtual(npc, player(UUID.randomUUID()), 100);
         run(1);
         assertEquals(CombatOperations.Status.DEAD, engine().target(npc, mob(world.monster("minecraft:zombie", 1, 0))).status());

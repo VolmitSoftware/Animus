@@ -8,7 +8,7 @@
   "type": "minecraft:villager",
   "spawned": false,
   "migration": {
-    "importId": "2e48d59a7782a9cef2841d45bd40c19269d2c169f76099c6d87b044851af5bcc",
+    "importId": "5e485808af2fe6f20bd00d81df0cefa8b0eb9dd938df810a6fcaf434c263bd86",
     "citizensId": 1,
     "originalSpawned": null,
     "references": []
@@ -22,7 +22,8 @@
     "pitch": 0
   },
   "movement": {
-    "avoidWater": false
+    "avoidWater": false,
+    "openDoors": true
   },
   "modules": {
     "animus:navigation": {

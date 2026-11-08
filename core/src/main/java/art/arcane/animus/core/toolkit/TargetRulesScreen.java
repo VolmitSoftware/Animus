@@ -1,6 +1,7 @@
 package art.arcane.animus.core.toolkit;
 
 import art.arcane.animus.core.combat.CombatSettings;
+import art.arcane.animus.core.combat.HealthSettings;
 import art.arcane.animus.core.combat.TargetCategory;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
@@ -162,7 +163,7 @@ final class TargetRulesScreen<P, S> extends ToolScreen<P, S> {
         CombatFiles.put(next, rule.path(), Optional.of(entries));
         JsonObject module = new JsonObject();
         module.add(list, next);
-        try { CombatSettings.parseModule(module); }
+        try { CombatSettings.parseModule(module, HealthSettings.UNKILLABLE); }
         catch (IllegalArgumentException invalid) { toolkit.say(viewer.player(), ChatLine.error(invalid.getMessage())); return; }
         rules = next;
     }

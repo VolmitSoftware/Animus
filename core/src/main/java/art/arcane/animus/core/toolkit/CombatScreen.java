@@ -22,8 +22,7 @@ final class CombatScreen<P, S> extends ToolScreen<P, S> {
             TARGETS = 19, IGNORES = 20, AVOIDS = 21, RELEASE = 23, GUARD = 24, SECTIONS = 27;
     private static final Map<String, String> ICONS = Map.ofEntries(Map.entry("targeting", "minecraft:spyglass"), Map.entry("avoidance", "minecraft:feather"),
             Map.entry("squad", "minecraft:white_banner"), Map.entry("guard", "minecraft:shield"), Map.entry("pursuit", "minecraft:leather_boots"),
-            Map.entry("melee", "minecraft:iron_sword"), Map.entry("ranged", "minecraft:bow"), Map.entry("defense", "minecraft:iron_chestplate"),
-            Map.entry("death", "minecraft:skeleton_skull"), Map.entry("respawn", "minecraft:totem_of_undying"), Map.entry("greetings", "minecraft:oak_sign"));
+            Map.entry("melee", "minecraft:iron_sword"), Map.entry("ranged", "minecraft:bow"), Map.entry("greetings", "minecraft:oak_sign"));
 
     CombatScreen(Toolkit<P, S> toolkit, ScreenManager<P, S>.Viewer viewer, Toolkit.Commands commands) { super(toolkit, viewer, commands); }
 

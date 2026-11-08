@@ -36,7 +36,10 @@
         "enabled": true,
         "weapon": "arrow",
         "range": 20
-      },
+      }
+    },
+    "animus:health": {
+      "killable": true,
       "respawn": {
         "delayTicks": 100
       }

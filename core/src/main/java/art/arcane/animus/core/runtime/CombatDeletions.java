@@ -7,7 +7,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Deletes the definition of a combat NPC that died with {@code respawn.deleteOnDeath}. It is an ordinary repository
+ * Deletes the definition of a combat NPC that died with {@code afterDeath} {@code delete} in {@code animus:health}. It is an ordinary repository
  * deletion: one committed transaction with a receipt, so {@code /animus rollback <transaction>} restores it.
  */
 public final class CombatDeletions {

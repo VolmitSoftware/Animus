@@ -74,12 +74,14 @@ const Map<String, String> starterPackFiles = <String, String>{
         "damage": 4,
         "reach": 3,
         "cooldownTicks": 15
-      },
-      "defense": {
-        "maximumHealth": 30,
-        "armor": 0.1,
-        "healRateTicks": 100
-      },
+      }
+    },
+    "animus:health": {
+      "killable": true,
+      "maximumHealth": 30,
+      "armor": 0.1,
+      "regenerate": true,
+      "regenerateTicks": 100,
       "respawn": {
         "delayTicks": 200
       }
@@ -312,12 +314,14 @@ const Map<String, String> starterPackFiles = <String, String>{
         "damage": 5,
         "reach": 3,
         "cooldownTicks": 20
-      },
-      "defense": {
-        "maximumHealth": 40,
-        "armor": 0.2,
-        "healRateTicks": 100
-      },
+      }
+    },
+    "animus:health": {
+      "killable": true,
+      "maximumHealth": 40,
+      "armor": 0.2,
+      "regenerate": true,
+      "regenerateTicks": 100,
       "respawn": {
         "delayTicks": 600
       }

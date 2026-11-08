@@ -102,6 +102,8 @@ class ExamplePacksTest {
         assertTrue(settings.pursuit().returnToPost());
         assertTrue(settings.pursuit().leashRange() <= settings.pursuit().giveUpRange());
         assertEquals(Optional.of("town-guard"), settings.squad().name());
+        assertTrue(settings.health().killable(), "animus:health makes the guard killable");
+        assertEquals(600, settings.health().respawn().delayTicks());
     }
 
     @Test void theBodyguardIsHiredForEmeraldsAndFollowsClosely() throws Exception {
@@ -110,6 +112,7 @@ class ExamplePacksTest {
         assertTrue(settings.targeting().fightBack());
         assertTrue(settings.guard().player().isEmpty());
         assertTrue(settings.guard().catchUpDistance() > settings.guard().followDistance());
+        assertEquals(30, settings.health().defense().maximumHealth());
         JsonObject npc = JsonDocuments.object(Files.readString(RepositoryFiles.packs().resolve("personal-guard/npcs/examples/bodyguard.json")));
         HireTerms terms = HireTerms.parse(npc).orElseThrow();
         assertEquals("minecraft:emerald", terms.items().getFirst().id());

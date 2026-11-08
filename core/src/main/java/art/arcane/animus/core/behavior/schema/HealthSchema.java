@@ -10,19 +10,17 @@ import static art.arcane.animus.core.behavior.schema.NpcSchemaGenerator.referenc
 import static art.arcane.animus.core.behavior.schema.NpcSchemaGenerator.strings;
 import static art.arcane.animus.core.behavior.schema.NpcSchemaGenerator.type;
 
-import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.combat.HealthSettings;
 import art.arcane.animus.core.npc.NpcItem;
 import com.google.gson.JsonObject;
 import java.util.Arrays;
-import java.util.List;
 
 /** {@code modules["animus:health"]}, with the bounds {@link HealthSettings} reads. */
 final class HealthSchema {
     private HealthSchema() {}
 
     static JsonObject module() {
-        JsonObject health = described(closed(), "Health and death without combat AI. On a combat NPC it replaces defense, death and respawn.");
+        JsonObject health = described(closed(), "Health, armor, death and respawn, with or without combat. Without it the NPC cannot be hurt.");
         JsonObject fields = new JsonObject();
         fields.add("killable", described(type("boolean"), "Players, mobs and NPCs can hurt and kill it. Off by default."));
         fields.add("maximumHealth", described(range("number", 1, 2048), "Left out, the max_health attribute or 20."));
@@ -33,11 +31,13 @@ final class HealthSchema {
         fields.add("regenerate", described(type("boolean"), "Heals 1 health each regenerateTicks."));
         fields.add("regenerateTicks", described(range("integer", 1, 72000), "100 by default."));
         JsonObject sources = described(type("array"), "What can hurt it. Every attack by default; fire, lava and fall only when listed.");
-        sources.add("items", choices(Arrays.stream(CombatSettings.DamageSource.values()).map(CombatSettings.DamageSource::jsonName).toList()));
+        sources.add("items", choices(Arrays.stream(HealthSettings.DamageSource.values()).map(HealthSettings.DamageSource::jsonName).toList()));
         sources.addProperty("uniqueItems", true);
         fields.add("sources", sources);
         fields.add("attackerPermission", described(pattern("^[A-Za-z0-9_.-]{1,128}$"), "Players need this node to hurt it."));
         fields.add("showHealth", described(type("boolean"), "Shows its health on the attacker's action bar."));
+        fields.add("protectFromRange", described(range("number", 0, 256), "Only attackers this close can hurt it. 0, any distance, by default."));
+        fields.add("protectedFromIgnored", described(type("boolean"), "What animus:combat ignores cannot hurt it."));
         JsonObject drop = closed();
         drop.add("required", strings("item"));
         JsonObject dropFields = new JsonObject();
@@ -54,10 +54,11 @@ final class HealthSchema {
         fields.add("death", death);
         JsonObject respawn = closed();
         JsonObject respawnFields = new JsonObject();
-        respawnFields.add("afterDeath", described(choices(List.of("respawn", "permadeath")), "permadeath keeps it dead until revived. respawn by default."));
+        respawnFields.add("afterDeath", described(choices(Arrays.stream(HealthSettings.AfterDeath.values()).map(HealthSettings.AfterDeath::jsonName).toList()),
+                "permadeath keeps it dead until revived; delete removes its definition. respawn by default."));
         respawnFields.add("delayTicks", described(range("integer", 0, 72000), "100 by default."));
         respawnFields.add("points", list(reference("location"), 0, 16, "At most 16. None means its own position."));
-        respawnFields.add("order", described(choices(Arrays.stream(CombatSettings.Order.values()).map(CombatSettings.Order::jsonName).toList()), "in_order by default."));
+        respawnFields.add("order", described(choices(Arrays.stream(HealthSettings.Order.values()).map(HealthSettings.Order::jsonName).toList()), "in_order by default."));
         respawn.add("properties", respawnFields);
         fields.add("respawn", respawn);
         fields.add(HealthSettings.DEAD, described(type("boolean"), "Set when a permadeath NPC dies. False revives it."));

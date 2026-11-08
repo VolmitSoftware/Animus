@@ -1464,7 +1464,7 @@ async function foliaGuard(owner, at) {
     return `${fight.s.slice(0, 120)} -> ${after.s.slice(0, 80)}${seen ? '; zombie removed for the client' : ''}`;
   });
   await check('Folia: a player hit damages a combat NPC on its region', async () => {
-    const target = await server.npc('fdummy', 'minecraft:player', ...at(10, 10), 'Dummy', combatNpc({ targeting: { fightBack: false }, defense: { maximumHealth: 20, healRateTicks: 0, invulnerableTicks: 0 } }));
+    const target = await server.npc('fdummy', 'minecraft:player', ...at(10, 10), 'Dummy', combatNpc({ targeting: { fightBack: false } }, [], { maximumHealth: 20, invulnerableTicks: 0 }));
     await owner.tp(...at(10, 8));
     await owner.body(target);
     const before = await inspect('fdummy');
@@ -1475,7 +1475,7 @@ async function foliaGuard(owner, at) {
     return `health ${before.health} -> ${after.health}`;
   });
   await check('Folia: NPC versus NPC hits go to the defender\'s owner', async () => {
-    await server.npc('fprey', 'minecraft:player', ...at(20, 14), 'Prey', combatNpc({ targeting: { fightBack: false }, defense: { maximumHealth: 40, armor: 0.5, healRateTicks: 0, invulnerableTicks: 0 } }));
+    await server.npc('fprey', 'minecraft:player', ...at(20, 14), 'Prey', combatNpc({ targeting: { fightBack: false } }, [], { maximumHealth: 40, armor: 0.5, invulnerableTicks: 0 }));
     await server.npc('fhunter', 'minecraft:player', ...at(22, 14), 'Hunter', combatNpc({
       targets: { npcs: ['fprey'] }, targeting: { scanRange: 16, scanIntervalTicks: 5, lineOfSight: 'ignored' }, melee: { damage: 8, reach: 3, cooldownTicks: 10 }, pursuit: { speed: 4 },
     }));
@@ -1607,7 +1607,9 @@ async function cells(client, points) {
   if (!fixture) return;
   for (const [x, y, z] of points) note(plain((await client.command(`animusqa motion cell ${x} ${y} ${z}`, 'QA cell')).text));
 }
-const combatNpc = (settings, behaviors = []) => ({ ...(behaviors.length ? { behaviors } : {}), modules: { 'animus:combat': { enabled: true, ...settings } } });
+// Combat NPCs here are killable unless the health settings say otherwise; health, armor and respawn live in animus:health.
+const combatNpc = (settings, behaviors = [], health = {}) => ({ ...(behaviors.length ? { behaviors } : {}),
+  modules: { 'animus:combat': { enabled: true, ...settings }, 'animus:health': { killable: true, ...health } } });
 
 async function terrain() {
   const owner = await join(OWNER.name, 'survival');
@@ -1757,7 +1759,7 @@ async function combat() {
     const zombie = await summon(12, 'minecraft:zombie', -24, 61, -27, `NoAI:1b,${holding},Health:8f`);
     await server.npc('cslayer', 'minecraft:player', -24.5, 61, -30.5, 'Slayer', combatNpc({
       targets: { entityTypes: ['minecraft:zombie'] }, targeting: { scanRange: 16, scanIntervalTicks: 5, lineOfSight: 'ignored' },
-      melee: { damage: 5, reach: 3, cooldownTicks: 10 }, pursuit: { speed: 4 }, death: { victimDrops: false },
+      melee: { damage: 5, reach: 3, cooldownTicks: 10 }, pursuit: { speed: 4 }, victimDrops: false,
     }));
     await until(async () => ({ ok: await entityCount(`@e[type=zombie,nbt={UUID:[I;12,0,0,1]}]`) === 0 }), 20000, 'zombie survived');
     await delay(800);
@@ -1862,7 +1864,7 @@ async function combat() {
     await gamemode('creative');
     await owner.tp(-20, 61, -6);
     const from = owner.events.length;
-    const uuid = await server.npc('cfrail', 'minecraft:player', -20.5, 61, -4.5, 'Frail', combatNpc({ targeting: { fightBack: false }, defense: { maximumHealth: 2, healRateTicks: 0, invulnerableTicks: 0 }, respawn: { delayTicks: 40 } }, ['live:fighter']));
+    const uuid = await server.npc('cfrail', 'minecraft:player', -20.5, 61, -4.5, 'Frail', combatNpc({ targeting: { fightBack: false } }, ['live:fighter'], { maximumHealth: 2, invulnerableTicks: 0, respawn: { delayTicks: 40 } }));
     await owner.chat('fighter-up', from);
     const first = await owner.body(uuid);
     for (let i = 0; i < 4 && !owner.has(e => e.event === 'chat' && e.text.includes('fighter-down'), from); i++) { await click(owner, uuid, 'attack'); await delay(700); }

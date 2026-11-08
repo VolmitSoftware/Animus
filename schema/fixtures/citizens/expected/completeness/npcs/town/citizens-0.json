@@ -8,7 +8,7 @@
   "type": "minecraft:player",
   "spawned": false,
   "migration": {
-    "importId": "b29173263996dc186dbfeedc14d0a079a41a5a421035c54223956f494737557e",
+    "importId": "04400a2b1c130f7624888d255541071fb0dbebc74628fff53ce4ca620b8e83ff",
     "citizensId": 0,
     "originalSpawned": null,
     "references": [],
@@ -74,7 +74,7 @@
   "movement": {
     "speed": 1.29,
     "avoidWater": false,
-    "maximumFall": 1,
+    "maximumFall": 3,
     "pathRange": 60.0,
     "arrivalMargin": 0.5,
     "stuck": {

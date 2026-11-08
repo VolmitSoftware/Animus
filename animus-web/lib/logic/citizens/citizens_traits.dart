@@ -23,6 +23,9 @@ const int wanderRadius = 10;
 const int wanderHeight = 7;
 const int wanderWait = 120;
 
+/// `CitizensTraits.ROUTE_FALL`: the least drop a Citizens route walks.
+const int routeFall = 3;
+
 /// `NamedPoses.MAXIMUM_POSES`.
 const int maxPoses = 64;
 
@@ -41,17 +44,21 @@ const Map<String, String> _rotationDefaults = <String, String>{
 };
 
 class TraitsResult {
-  const TraitsResult(this.fields, this.migration, this.converted, this.notes, this.warnings);
+  const TraitsResult(this.fields, this.migration, this.converted, this.notes, this.warnings, this.raisedFall);
 
   final JObject fields;
   final JObject migration;
   final Set<String> converted;
   final Map<String, FieldNote> notes;
   final List<String> warnings;
+
+  /// A Citizens route's fall distance below [routeFall] was raised to it.
+  final bool raisedFall;
 }
 
-TraitsResult mapTraits(String type, JObject record, JObject traits, bool combat, bool routed, JArray references) {
-  final _Traits mapping = _Traits(type, record, traits, combat, routed, references);
+/// [patrolled] means the route comes from Citizens waypoints; it then opens doors and drops at least [routeFall] blocks.
+TraitsResult mapTraits(String type, JObject record, JObject traits, bool combat, bool health, bool routed, bool patrolled, JArray references) {
+  final _Traits mapping = _Traits(type, record, traits, combat, health, routed, patrolled, references);
   mapping
     ..metadata()
     ..movement()
@@ -69,7 +76,7 @@ TraitsResult mapTraits(String type, JObject record, JObject traits, bool combat,
   mapping.kept('/traitnames', 'Citizens bookkeeping of the traits the NPC had; nothing to convert');
   final List<String> sorted = List<String>.of(mapping.warnings)..sort();
   return TraitsResult(mapping.fields.deepCopy(), mapping.migration.deepCopy(), Set<String>.of(mapping.converted),
-      Map<String, FieldNote>.of(mapping.notes), sorted);
+      Map<String, FieldNote>.of(mapping.notes), sorted, mapping.raisedFall);
 }
 
 JObject? _object(JElement? value) => value is JObject ? value : null;
@@ -103,18 +110,20 @@ bool citizensTargetable(JObject traits) {
 }
 
 /// `CitizensTraits.targetableCombat`: a combat module that never attacks or fights back.
-JObject targetableCombat(JObject record) {
-  final JObject? metadata = _object(record.get('metadata'));
+JObject targetableCombat() {
   final JObject module = JObject();
   module.addBool('enabled', false);
   module.addBool('reviewAccepted', false);
   final JObject targeting = JObject();
   targeting.addBool('fightBack', false);
   module.add('targeting', targeting);
-  final JObject defense = JObject();
-  defense.addBool('invincible', (metadata == null ? null : _bool(metadata.get('protected'))) != false);
-  module.add('defense', defense);
   return module;
+}
+
+/// `CitizensTraits.targetableHealth`: takes mob hits unless Citizens protected the NPC.
+JObject targetableHealth(JObject record) {
+  final JObject? metadata = _object(record.get('metadata'));
+  return JObject()..addBool('killable', (metadata == null ? null : _bool(metadata.get('protected'))) == false);
 }
 
 /// `CitizensTraits.wanders`: Citizens ran vanilla AI on a body that has some.
@@ -156,13 +165,16 @@ double? _decimal(String text) {
 }
 
 class _Traits {
-  _Traits(this.type, this.record, this.traits, this.combat, this.routed, this.references);
+  _Traits(this.type, this.record, this.traits, this.combat, this.health, this.routed, this.patrolled, this.references);
 
   final String type;
   final JObject record;
   final JObject traits;
   final bool combat;
+  final bool health;
   final bool routed;
+  final bool patrolled;
+  bool raisedFall = false;
   final JArray references;
   final JObject fields = JObject();
   final JObject migration = JObject();
@@ -206,10 +218,10 @@ class _Traits {
             kept(path, 'the NPC has no world to wander in');
           }
         case 'protected':
-          if (flag == true || flag == false && combat) {
+          if (flag == true || flag == false && health) {
             converted.add(path);
           } else if (flag == false) {
-            kept(path, 'Animus NPCs take damage only through an enabled animus:combat module, which this NPC does not have');
+            kept(path, 'Animus NPCs take damage only through an animus:health module, which this NPC does not have');
           }
         case 'using-held-item':
           if (flag == null) break;
@@ -254,6 +266,10 @@ class _Traits {
         if (blocks > BigInt.from(16)) blocks = BigInt.from(16);
         if (blocks < BigInt.zero) blocks = BigInt.zero;
         if (value > 16) warnings.add('/navigator/falldistance: falls longer than 16 blocks became 16');
+        if (patrolled && blocks < BigInt.from(routeFall)) {
+          blocks = BigInt.from(routeFall);
+          raisedFall = true;
+        }
         movement.addBig('maximumFall', blocks);
         converted.add('/navigator/falldistance');
         any = true;
@@ -306,7 +322,7 @@ class _Traits {
       movement.addString('style', 'fly');
       any = true;
     }
-    if (metadata != null && _bool(metadata.get('pathfinder-open-doors')) == true) {
+    if (patrolled || metadata != null && _bool(metadata.get('pathfinder-open-doors')) == true) {
       movement.addBool('openDoors', true);
       any = true;
     }

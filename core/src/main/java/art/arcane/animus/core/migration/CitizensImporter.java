@@ -15,11 +15,12 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import art.arcane.animus.core.building.BuilderModule;
+import art.arcane.animus.core.combat.HealthSettings;
 import java.util.*;
 
 /** Local, loss-preserving conversion. Conversion status describes data, never gameplay parity. */
 public final class CitizensImporter {
-    public static final int CONVERTER_VERSION = 14;
+    public static final int CONVERTER_VERSION = 15;
     /**
      * A staged or installed imported definition path: {@code <source prefix>-<source number>}. Citizens uses the
      * {@code citizens} prefix; module converters use theirs. The folder is the NPC group, empty for {@code npcs/} itself.
@@ -116,7 +117,7 @@ public final class CitizensImporter {
                             + !value + ", so NPCs without the field are converted with " + value + " (the server default that wrote the save); if that default was "
                             + !value + ", set " + inferred.getAsString() + " in animus:look-close on those NPCs");
                 }
-                int remappedLocations = 0;
+                int remappedLocations = 0, patrols = 0, raisedFalls = 0;
                 int resolvedReferences = 0;
                 int unresolvedReferences = 0;
                 JsonObject manifest = new JsonObject();
@@ -191,6 +192,7 @@ public final class CitizensImporter {
                     if (traits.has("sentinel")) {
                         SentinelMapping.Result combat = SentinelMapping.convertRaw(reviewed.get("sentinel"), reviewed.get("equipment"), references);
                         modules.add("animus:combat", combat.module());
+                        combat.health().ifPresent((JsonObject health) -> modules.add(HealthSettings.MODULE, health));
                         if (reviewed.get("sentinel").isJsonObject()) {
                             JsonObject reviewedSentinel = reviewed.getAsJsonObject("sentinel");
                             for (String field : new ArrayList<>(reviewedSentinel.keySet())) {
@@ -210,8 +212,9 @@ public final class CitizensImporter {
                         trader.warning().ifPresent((String warning) -> migrationWarnings.add("citizens-" + key + ": " + warning));
                     }
                     if (CitizensTraits.targetable(reviewed)) {
-                        if (!modules.has("animus:combat")) modules.add("animus:combat", CitizensTraits.targetableCombat(record));
+                        if (!modules.has("animus:combat")) modules.add("animus:combat", CitizensTraits.targetableCombat());
                         modules.getAsJsonObject("animus:combat").addProperty("targetableByMobs", true);
+                        if (!modules.has(HealthSettings.MODULE)) modules.add(HealthSettings.MODULE, CitizensTraits.targetableHealth(record));
                     }
                     riding(traits.get("controllable")).ifPresent((JsonObject riding) -> modules.add("animus:riding", riding));
                     if (traits.has(BuilderMapping.BUILDER_TRAIT)) {
@@ -240,7 +243,9 @@ public final class CitizensImporter {
                         increment(conversions, "routes");
                     }
                     CitizensTraits.Result state = CitizensTraits.map(definition.get("type").getAsString(), record, reviewed, modules.has("animus:combat"),
-                            modules.has("animus:navigation"), references);
+                            modules.has(HealthSettings.MODULE), modules.has("animus:navigation"), runtime.navigation().isPresent(), references);
+                    if (runtime.navigation().isPresent()) patrols++;
+                    if (state.raisedFall()) raisedFalls++;
                     for (Map.Entry<String, JsonElement> field : state.fields().entrySet()) definition.add(field.getKey(), field.getValue());
                     if (!state.migration().isEmpty()) migration.add("skin", state.migration());
                     for (String warning : state.warnings()) migrationWarnings.add("citizens-" + key + ": " + warning);
@@ -316,6 +321,8 @@ public final class CitizensImporter {
                 summary.add("sentinelFields", sentinelFields);
                 summary.add("sentinelMapping", sentinelMapping);
                 summary.add("issues", issues);
+                if (patrols > 0) migrationWarnings.add("movement: " + patrols + " Citizens routes now open doors and drop at least " + CitizensTraits.ROUTE_FALL
+                        + " blocks (openDoors, maximumFall), " + raisedFalls + " of them raised from a lower fall distance; lower these in the NPC's movement to undo");
                 summary.add("migrationWarnings", migrationWarnings);
                 summary.addProperty("remappedLocations", remappedLocations);
                 summary.addProperty("resolvedReferences", resolvedReferences);

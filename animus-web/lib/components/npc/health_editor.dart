@@ -1,8 +1,6 @@
 /// The typed editor for an NPC's `modules["animus:health"]`: whether it can
 /// be hurt and killed, how it takes damage, what it drops and how it comes
-/// back. A permadeath NPC the server marked dead gets a Revive button, and a
-/// combat module that still sets defense, death or respawn is flagged with a
-/// fix, since the server refuses both.
+/// back. A permadeath NPC the server marked dead gets a Revive button.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -38,8 +36,6 @@ class HealthEditor extends StatelessWidget {
   const HealthEditor({
     required this.value,
     required this.onChanged,
-    this.combat,
-    this.onCombatChanged,
     this.diagnostics = const <Diagnostic>[],
     this.origin,
     super.key,
@@ -51,9 +47,6 @@ class HealthEditor extends StatelessWidget {
   /// The whole new module; null removes it.
   final void Function(Object? value) onChanged;
 
-  /// The NPC's combat module, checked for sections this one replaces.
-  final Object? combat;
-  final void Function(Object? value)? onCombatChanged;
   final List<Diagnostic> diagnostics;
 
   /// The NPC's x, y and z, drawn on the respawn grid.
@@ -72,7 +65,7 @@ class HealthEditor extends StatelessWidget {
     NpcSubhead(
       'Health and death',
       help: value == null ? 'Off: cannot be hurt.' : null,
-      tip: 'Lets players, mobs and NPCs hurt and kill it without combat AI: health, drops and respawn. Replaces combat defense, death and respawn.',
+      tip: 'Lets players, mobs and NPCs hurt and kill it: health, drops and respawn. A combat NPC without it cannot be hurt.',
       docs: Docs.combat,
     ),
     _body(),
@@ -94,24 +87,11 @@ class HealthEditor extends StatelessWidget {
     }
     final JsonMap module = _module;
     final bool killable = module['killable'] == true;
-    final List<String> conflicts = healthCombatConflicts(<String, Object?>{healthModule: module, 'animus:combat': ?combat});
     return dom.section(classes: 'animus-health-editor', attributes: const <String, String>{'aria-label': 'Health editor'}, <Widget>[
       if (module['dead'] == true)
         dom.div(classes: 'animus-health-notice', attributes: const <String, String>{'role': 'status'}, <Widget>[
           const dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('Dead. Stays gone until revived.')]),
           Button.secondary(label: 'Revive', size: ButtonSize.small, onPressed: () => onChanged(revivedHealth(module))),
-        ]),
-      if (conflicts.isNotEmpty)
-        dom.div(classes: 'animus-health-notice', attributes: const <String, String>{'role': 'status'}, <Widget>[
-          dom.span(classes: 'animus-gui-problem is-error', <Widget>[
-            Component.text('Combat also sets ${conflicts.join(', ')}. Health replaces them; the server refuses both.'),
-          ]),
-          if (onCombatChanged != null)
-            Button.secondary(
-              label: 'Remove from combat',
-              size: ButtonSize.small,
-              onPressed: () => onCombatChanged!(withoutReplacedCombat(asMap(combat))),
-            ),
         ]),
       _problems(diagnosticsAt(diagnostics, _root)),
       dom.div(classes: 'animus-combat-switches', <Widget>[
@@ -145,11 +125,13 @@ class HealthEditor extends StatelessWidget {
         _number(const <JsonStep>['armor'], 'Armor', 'Share of each hit absorbed, 0-1. Left out: the armor attributes.', placeholder: '0', integer: false),
         _number(const <JsonStep>['invulnerableTicks'], 'Hit cooldown', 'Ticks repeat hits are ignored, 0-100.', placeholder: '10'),
         if (module['regenerate'] == true) _number(const <JsonStep>['regenerateTicks'], 'Regen ticks', 'Ticks per 1 health healed, 1-72000.', placeholder: '100'),
+        _number(const <JsonStep>['protectFromRange'], 'Hit range', 'Only attackers this close can hurt it, 0-256 blocks. 0: any distance.', placeholder: '0', integer: false),
         dom.div(classes: 'animus-combat-switches', <Widget>[
           _switch(const <JsonStep>['knockback'], 'Knockback', 'Hits push it back.', fallback: true),
           _switch(const <JsonStep>['regenerate'], 'Regenerate', 'Heals over time.', fallback: false),
           _switch(const <JsonStep>['armorFromEquipment'], 'Armor from equipment', 'Worn pieces set armor.', fallback: false),
           _switch(const <JsonStep>['showHealth'], 'Show health', "On the attacker's action bar.", fallback: false),
+          _switch(const <JsonStep>['protectedFromIgnored'], 'Safe from ignored', 'What combat ignores cannot hurt it.', fallback: false),
         ]),
         GuiRow(
           label: 'Hurt by',
@@ -281,7 +263,7 @@ class HealthEditor extends StatelessWidget {
     const List<JsonStep> at = <JsonStep>['respawn', 'points'];
     final Object? raw = readIn(module, at);
     final String? after = asString(readIn(module, const <JsonStep>['respawn', 'afterDeath']));
-    final bool permadeath = after == 'permadeath';
+    final bool comesBack = after != 'permadeath' && after != 'delete';
     return GuiSection(
       key: const ValueKey<String>('health:respawn'),
       title: 'Respawn',
@@ -289,7 +271,7 @@ class HealthEditor extends StatelessWidget {
       children: <Widget>[
         GuiRow(
           label: 'After death',
-          tip: 'permadeath keeps it dead until revived here or in game.',
+          tip: 'permadeath keeps it dead until revived here or in game. delete removes its definition.',
           problems: _at(const <JsonStep>['respawn', 'afterDeath']),
           child: GuiSelect(
             value: withDefault(after, healthAfterDeath, 'respawn').value,
@@ -300,7 +282,7 @@ class HealthEditor extends StatelessWidget {
             onChanged: (String? next) => _put(const <JsonStep>['respawn', 'afterDeath'], next),
           ),
         ),
-        if (!permadeath) ...<Widget>[
+        if (comesBack) ...<Widget>[
           _number(const <JsonStep>['respawn', 'delayTicks'], 'Delay', 'Ticks before it comes back, 0-72000.', placeholder: '100'),
           GuiRow(
             label: 'Order',

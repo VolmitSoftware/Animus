@@ -7,11 +7,11 @@ import com.google.gson.JsonObject;
 
 /**
  * Maps the definition's attributes onto combat settings the {@code animus:combat} module leaves out. A field the module
- * sets always wins. {@code max_health} gives {@code defense.maximumHealth}, {@code attack_damage} {@code melee.damage}
+ * sets always wins. {@code attack_damage} gives {@code melee.damage}
  * (unless {@code melee.fromEquipment}), {@code attack_knockback} adds half its value to the 0.4 base
  * {@code melee.knockback}, {@code attack_speed} hits per second give {@code melee.cooldownTicks}, {@code follow_range}
  * gives {@code targeting.scanRange} and {@code movement_speed} the chase {@code pursuit.speed}. Values are kept within
- * the combat ranges. {@code armor}, {@code armor_toughness} and {@code knockback_resistance} become defense values.
+ * the combat ranges. Health and armor attributes belong to {@link HealthSettings}.
  */
 public final class CombatAttributes {
     private CombatAttributes() {}
@@ -19,7 +19,6 @@ public final class CombatAttributes {
     /** A copy of the module with the attribute values filled in where it sets nothing. */
     static JsonObject fill(JsonObject module, NpcAttributes attributes, boolean player) {
         JsonObject filled = module.deepCopy();
-        attributes.get("max_health").ifPresent((double value) -> put(filled, "defense", "maximumHealth", clamp(value, 1, 2048)));
         JsonObject melee = child(filled, "melee");
         boolean fromEquipment = melee != null && melee.has("fromEquipment") && melee.get("fromEquipment").isJsonPrimitive() && melee.get("fromEquipment").getAsBoolean();
         if (!fromEquipment) attributes.get("attack_damage").ifPresent((double value) -> put(filled, "melee", "damage", clamp(value, .01, 100)));
@@ -29,12 +28,6 @@ public final class CombatAttributes {
         attributes.get("follow_range").ifPresent((double value) -> put(filled, "targeting", "scanRange", clamp(value, 1, 256)));
         attributes.get("movement_speed").ifPresent((double value) -> put(filled, "pursuit", "speed", MovementSettings.walkSpeed(value, player)));
         return filled;
-    }
-
-    /** Whether the module leaves armor to the attributes: it sets neither an armor share nor armor from equipment. */
-    static boolean armorFromAttributes(JsonObject module) {
-        JsonObject defense = child(module, "defense");
-        return defense == null || !defense.has("armor") && !defense.has("armorFromEquipment");
     }
 
     /** Damage left after vanilla armor: {@code points} less the hit over 2 plus a quarter of the toughness, between a fifth of the points and 20, each point a 25th. */

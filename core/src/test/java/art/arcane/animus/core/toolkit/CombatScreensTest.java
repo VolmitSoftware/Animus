@@ -187,7 +187,7 @@ class CombatScreensTest {
         assertFalse(combat("guard").enabled(), "editing a profile does not turn combat on");
     }
 
-    @Test void sectionsFillFromYouYourHandAndWhereYouStand() {
+    @Test void sectionsFillFromYouAndYourHand() {
         select("guard");
         open(CombatScreen::new);
         click(CombatScreen.SECTIONS + CombatFields.SECTIONS.indexOf("guard"), Click.LEFT);
@@ -202,16 +202,6 @@ class CombatScreensTest {
         click("Back", Click.LEFT);
 
         alex.worn.put(EquipmentSlot.MAIN_HAND, new NpcItem("minecraft:emerald", 3, Optional.empty(), Optional.empty()));
-        click("Death", Click.LEFT);
-        click("Drops", Click.LEFT);
-        click("Save", Click.LEFT);
-        assertEquals(List.of(new CombatSettings.DropRule("minecraft:emerald", 3, 1)), combat("guard").death().drops());
-        click("Back", Click.LEFT);
-        click("Respawn", Click.LEFT);
-        click("Locations", Click.LEFT);
-        click("Save", Click.LEFT);
-        assertEquals(List.of(new CombatSettings.Location("world", 0, 64, 0)), combat("guard").respawn().locations());
-        click("Back", Click.LEFT);
         click("Melee", Click.LEFT);
         click("Weapon damage", Click.LEFT);
         MockScreenHost.answer(alex, Optional.of("7.5"));
@@ -233,10 +223,10 @@ class CombatScreensTest {
     @Test void anInvalidCombinationIsRefusedWholeOnSave() {
         select("guard");
         open(CombatScreen::new);
-        click("Respawn", Click.LEFT);
-        click("Delete on death", Click.LEFT);
+        click("Ranged", Click.LEFT);
+        for (int i = 0; i < 9; i++) click("Weapon", Click.LEFT);
         click("Save", Click.LEFT);
-        assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("requires delayTicks -1")), alex.messages.toString());
+        assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("required for a potion")), alex.messages.toString());
         assertFalse(json("guard").has("modules"));
     }
 

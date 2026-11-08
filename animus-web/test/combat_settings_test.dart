@@ -21,10 +21,9 @@ const String _documented = '''
   "pursuit": {"closeChase": true, "rangedChase": false, "speed": 4, "giveUpRange": 32, "leashRange": 64, "returnToPost": true, "teleportWhenStuck": false, "replanTicks": 20, "region": "castle"},
   "melee": {"enabled": true, "damage": 4, "reach": 3, "cooldownTicks": 20, "knockback": 0.4, "fromEquipment": false, "weaponDamage": {"minecraft:stick": 6}},
   "ranged": {"enabled": true, "weapon": "arrow", "damage": 3, "range": 24, "minimumRange": 4, "cooldownTicks": 40, "velocity": 1.6, "inaccuracy": 0, "safeShot": true, "knockback": 0.2, "fromEquipment": false, "useAmmo": false},
-  "defense": {"maximumHealth": 40, "armor": 0.2, "armorFromEquipment": false, "invincible": false, "knockback": true, "protectedFromIgnored": false, "protectFromRange": 0, "healRateTicks": 100, "invulnerableTicks": 10},
-  "death": {"drops": [{"item": "minecraft:iron_ingot", "amount": 2, "chance": 0.5}], "experience": 5, "victimDrops": true},
-  "respawn": {"delayTicks": 100, "locations": [{"world": "world", "x": 0, "y": 64, "z": 0}], "deleteOnDeath": false},
-  "greetings": {"friendly": "Welcome to town.", "hostile": "Leave now.", "range": 10, "cooldownTicks": 100}
+  "greetings": {"friendly": "Welcome to town.", "hostile": "Leave now.", "range": 10, "cooldownTicks": 100},
+  "targetableByMobs": false,
+  "victimDrops": true
 }
 ''';
 
@@ -49,6 +48,26 @@ void main() {
   test('should accept targetableByMobs only as a boolean', () {
     expect(_errors(<String, Object?>{'targetableByMobs': true}), isEmpty);
     expect(_errors(<String, Object?>{'targetableByMobs': 'yes'}), <String>[r'$.modules.animus:combat.targetableByMobs: expected boolean']);
+  });
+
+  test('should accept victimDrops only as a boolean', () {
+    expect(_errors(<String, Object?>{'victimDrops': false}), isEmpty);
+    expect(_errors(<String, Object?>{'victimDrops': 'no'}), <String>[r'$.modules.animus:combat.victimDrops: expected boolean']);
+  });
+
+  test('should refuse defense, death and respawn as unknown settings', () {
+    expect(
+      _errors(<String, Object?>{
+        'defense': <String, Object?>{'maximumHealth': 40},
+        'death': <String, Object?>{'experience': 5},
+        'respawn': <String, Object?>{'delayTicks': 20},
+      }),
+      unorderedEquals(<String>[
+        r'$.modules.animus:combat.defense: unknown setting',
+        r'$.modules.animus:combat.death: unknown setting',
+        r'$.modules.animus:combat.respawn: unknown setting',
+      ]),
+    );
   });
 
   test('should refuse a module that is not an object', () {
@@ -85,7 +104,7 @@ void main() {
     (settings['targeting']! as Map<String, Object?>)['scanIntervalTicks'] = 0;
     (settings['targeting']! as Map<String, Object?>)['memoryTicks'] = 1.5;
     (settings['guard']! as Map<String, Object?>)['replanDistance'] = 0.1;
-    (settings['defense']! as Map<String, Object?>)['armor'] = 'half';
+    (settings['ranged']! as Map<String, Object?>)['velocity'] = 'fast';
     expect(
       _errors(settings),
       unorderedEquals(<String>[
@@ -93,7 +112,7 @@ void main() {
         r'$.modules.animus:combat.targeting.scanIntervalTicks: must be within 1..200',
         r'$.modules.animus:combat.targeting.memoryTicks: expected integer',
         r'$.modules.animus:combat.guard.replanDistance: must be within 0.25..16.0',
-        r'$.modules.animus:combat.defense.armor: expected finite number',
+        r'$.modules.animus:combat.ranged.velocity: expected finite number',
       ]),
     );
   });
@@ -156,27 +175,6 @@ void main() {
     );
   });
 
-  test('should allow deleteOnDeath only with delayTicks -1', () {
-    expect(
-      _errors(<String, Object?>{
-        'respawn': <String, Object?>{'deleteOnDeath': true},
-      }),
-      <String>[r'$.modules.animus:combat.respawn.deleteOnDeath: requires delayTicks -1'],
-    );
-    expect(
-      _errors(<String, Object?>{
-        'respawn': <String, Object?>{'deleteOnDeath': true, 'delayTicks': 20},
-      }),
-      <String>[r'$.modules.animus:combat.respawn.deleteOnDeath: requires delayTicks -1'],
-    );
-    expect(
-      _errors(<String, Object?>{
-        'respawn': <String, Object?>{'deleteOnDeath': true, 'delayTicks': -1},
-      }),
-      isEmpty,
-    );
-  });
-
   test('should refuse scan rules in ignores and scan rules or all inside nested sets', () {
     final Map<String, Object?> settings = <String, Object?>{
       'ignores': <String, Object?>{
@@ -223,9 +221,6 @@ void main() {
         'players': <Object?>[for (int i = 0; i < 257; i++) 'p$i'],
         'chat': <Object?>['  ', 'x' * 129],
       },
-      'respawn': <String, Object?>{
-        'locations': <Object?>[for (int i = 0; i < 17; i++) <String, Object?>{}],
-      },
     };
     expect(
       _errors(settings),
@@ -236,7 +231,6 @@ void main() {
         r'$.modules.animus:combat.targets.players: at most 256 entries',
         r'$.modules.animus:combat.targets.chat[0]: expected text',
         r'$.modules.animus:combat.targets.chat[1]: expected 1..128 characters',
-        r'$.modules.animus:combat.respawn.locations: at most 16 entries',
       ]),
     );
   });
@@ -267,18 +261,12 @@ void main() {
     expect(found[1].message, startsWith('invalid pattern'));
   });
 
-  test('should check strings, uuids, regions, drops, locations, weapon damage and greetings', () {
+  test('should check strings, uuids, regions, locations, weapon damage and greetings', () {
     final Map<String, Object?> settings = <String, Object?>{
       'guard': <String, Object?>{'player': '00000000-0000-0000-0000-000000000001', 'npc': '00000000-0000-0000-0000-000000000002'},
       'pursuit': <String, Object?>{'region': 'my region'},
       'melee': <String, Object?>{
         'weaponDamage': <String, Object?>{'Stick': 1, 'minecraft:bow': 101},
-      },
-      'death': <String, Object?>{
-        'drops': <Object?>[
-          <String, Object?>{'amount': 0},
-          3,
-        ],
       },
       'avoidance': <String, Object?>{
         'returnPoint': <String, Object?>{'world': ' ', 'x': 40000000, 'y': 'up'},
@@ -297,9 +285,6 @@ void main() {
         r'$.modules.animus:combat.pursuit.region: expected a region name',
         r'$.modules.animus:combat.melee.weaponDamage.Stick: expected namespace:item key',
         r'$.modules.animus:combat.melee.weaponDamage.minecraft:bow: must be within 0.0..100.0',
-        r'$.modules.animus:combat.death.drops[0].item: expected namespace:item',
-        r'$.modules.animus:combat.death.drops[0].amount: must be within 1..64',
-        r'$.modules.animus:combat.death.drops[1]: expected object',
         r'$.modules.animus:combat.avoidance.returnPoint.world: expected nonblank string',
         r'$.modules.animus:combat.avoidance.returnPoint.x: must be within +-30000000',
         r'$.modules.animus:combat.avoidance.returnPoint.y: expected finite number',
@@ -321,8 +306,8 @@ void main() {
 
   test('should share ranges and paths with the editor', () {
     expect(combatRange('melee', 'reach')!.help, '0.5 to 6, default 3');
-    expect(combatRange('respawn', 'delayTicks')!.bounds, '-1..72000');
-    expect(combatPath(<Object>['death', 'drops', 0, 'item']), r'$.modules.animus:combat.death.drops[0].item');
+    expect(combatRange('greetings', 'cooldownTicks')!.bounds, '0..72000');
+    expect(combatPath(<Object>['targets', 'chat', 0]), r'$.modules.animus:combat.targets.chat[0]');
     expect(normalizeCombatPath(r'$.modules["animus:combat"].melee'), r'$.modules.animus:combat.melee');
     expect(combatSectionKeys.keys, containsAll(combatBooleans.keys));
   });

@@ -27,7 +27,7 @@ class CombatPostTest {
         if (posted) world.posts.put(npc, MockCombatWorld.at(x, 64, z));
         JsonObject module = JsonParser.parseString(GUARD).getAsJsonObject();
         module.addProperty("enabled", true);
-        assertTrue(engine().register(npc, "guard", CombatSettings.parseModule(module), CombatLoadout.NONE));
+        assertTrue(engine().register(npc, "guard", CombatSettings.parseModule(module, CombatTesting.KILLABLE), CombatLoadout.NONE));
         return npc;
     }
     private void tick() { engine().tick(); world.flush(); }

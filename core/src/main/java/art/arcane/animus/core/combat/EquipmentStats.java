@@ -49,7 +49,7 @@ final class EquipmentStats {
         return WEAPONS.getOrDefault(held, 1.0);
     }
 
-    static double armor(CombatSettings.Defense defense, CombatLoadout loadout) {
+    static double armor(HealthSettings.Defense defense, CombatLoadout loadout) {
         if (!defense.armorFromEquipment()) return defense.armor();
         double total = 0;
         for (String slot : WORN) total += ARMOR.getOrDefault(loadout.item(slot), 0.0);

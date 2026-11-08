@@ -28,7 +28,7 @@ class CombatAnimationTest {
         UUID npc = world.npc(0, 0, 20);
         JsonObject module = JsonParser.parseString(json).getAsJsonObject();
         module.addProperty("enabled", true);
-        assertTrue(engine().register(npc, "npc-" + npc, CombatSettings.parseModule(module), CombatLoadout.NONE));
+        assertTrue(engine().register(npc, "npc-" + npc, CombatSettings.parseModule(module, CombatTesting.KILLABLE), CombatLoadout.NONE));
         return npc;
     }
     private void run(int ticks) { for (int i = 0; i < ticks; i++) engine().tick(); }

@@ -93,17 +93,20 @@ const Map<String, String> _sectionTips = <String, String>{
   'squad': 'NPCs that share a squad name never target each other, and alert squad mates within alertRange.',
   'guard': 'A player or NPC this one follows and protects, by UUID.',
   'pursuit': 'How the NPC chases a target: speed, when it gives up, and whether it returns to its post.',
-  'defense': 'How the NPC takes damage: health, armor, knockback, healing and invincibility.',
   'targeting': 'How the NPC finds and keeps targets: scan range and interval, reaction time, memory and line of sight.',
   'avoidance': 'How far the NPC keeps from what it avoids, and where it runs to.',
   'melee': 'Close attacks: damage, reach, cooldown and knockback, or the held weapon with fromEquipment.',
   'ranged': 'Projectile attacks: the weapon, damage, range, cooldown, accuracy and ammo.',
-  'death': 'What the NPC drops when it dies: items, each with its own chance, and experience.',
-  'respawn': 'Whether and where the NPC comes back after it dies, and after how long.',
   'greetings': 'Lines the NPC says to players nearby: hostile to its targets, friendly to everyone else.',
   'targets': 'Mobs, players or NPCs this NPC attacks. Any matching rule makes a target.',
   'ignores': 'Mobs, players or NPCs this NPC never targets, even when a targets rule matches.',
   'avoids': 'Mobs, players or NPCs this NPC runs from.',
+};
+
+/// Top-level switches: default and description.
+const Map<String, (bool, String)> _rootSwitches = <String, (bool, String)>{
+  'targetableByMobs': (false, 'Idle hostile mobs nearby may attack it.'),
+  'victimDrops': (true, 'What it kills drops loot.'),
 };
 
 const List<String> _commonItems = <String>[
@@ -220,13 +223,6 @@ class _CombatEditorState extends State<CombatEditor> {
           ]),
           _melee(),
           _ranged(),
-          _section('defense', 'Defense', '', <Widget>[
-            for (final String key in const <String>['maximumHealth', 'armor', 'protectFromRange', 'healRateTicks', 'invulnerableTicks'])
-              _number('defense', key),
-            _switches('defense'),
-          ]),
-          _death(),
-          _respawn(),
           _section(
             'greetings',
             'Greetings',
@@ -247,7 +243,7 @@ class _CombatEditorState extends State<CombatEditor> {
 
   Widget _enabled() {
     final JsonMap module = _module;
-    final Set<String> edited = <String>{'enabled', 'reviewAccepted', ...combatRuleSections, ...combatSectionKeys.keys};
+    final Set<String> edited = <String>{'enabled', 'reviewAccepted', ..._rootSwitches.keys, ...combatRuleSections, ...combatSectionKeys.keys};
     return GuiSection(
       title: 'Enabled',
       tip: 'Whether combat runs. Without it the NPC is invulnerable and never fights.',
@@ -270,7 +266,18 @@ class _CombatEditorState extends State<CombatEditor> {
               problems: _at(const <JsonStep>['reviewAccepted']),
               onChanged: (bool next) => _put(const <JsonStep>['reviewAccepted'], next),
             ),
+          for (final MapEntry<String, (bool, String)> entry in _rootSwitches.entries)
+            if (module[entry.key] case final Object? value when value == null || value is bool)
+              _checkbox(
+                label: entry.key,
+                value: (value as bool?) ?? entry.value.$1,
+                description: '${entry.value.$2} Default ${entry.value.$1 ? 'on' : 'off'}.',
+                problems: _at(<JsonStep>[entry.key]),
+                onChanged: (bool next) => _put(<JsonStep>[entry.key], next),
+              ),
         ]),
+        for (final String key in _rootSwitches.keys)
+          if (module[key] case final Object value when value is! bool) _keptRow(<JsonStep>[key], key),
         for (final MapEntry<String, Object?> entry in module.entries)
           if (!edited.contains(entry.key) && combatRootKeys.contains(entry.key)) _keptRow(<JsonStep>[entry.key], entry.key, known: true),
         _others(const <JsonStep>[], module, combatRootKeys.toSet()),
@@ -551,100 +558,6 @@ class _CombatEditorState extends State<CombatEditor> {
     ]);
   }
 
-  Widget _death() {
-    const List<JsonStep> at = <JsonStep>['death', 'drops'];
-    final Object? raw = _read(at);
-    final List<Object?> drops = asList(raw);
-    void write(List<Object?> next) => _put(at, next);
-    return _section('death', 'Death', 'Each drop rolls its own chance.', <Widget>[
-      GuiRow(
-        label: 'drops',
-        help: 'Amount 1-64, chance 0-1.',
-        problems: _at(at),
-        child: raw != null && raw is! List<Object?>
-            ? TypedValueEditor(value: raw, label: 'death.drops', onChanged: (Object? next) => _put(at, next))
-            : dom.div(classes: 'animus-combat-list', <Widget>[
-                for (int index = 0; index < drops.length; index++)
-                  dom.div(
-                    key: ValueKey<String>('drop-$index'),
-                    classes: 'animus-combat-item',
-                    attributes: <String, String>{'role': 'group', 'aria-label': 'Drop ${index + 1}'},
-                    <Widget>[
-                      if (drops[index] case final Map<String, Object?> drop) ...<Widget>[
-                        dom.div(classes: 'animus-combat-fields', <Widget>[
-                          ItemPicker(
-                            value: asString(drop['item']) ?? '',
-                            label: 'death.drops[$index].item',
-                            placeholder: 'minecraft:iron_ingot',
-                            preferred: _commonItems,
-                            onChanged: (String next) => write(withDropField(drops, index, 'item', next.trim())),
-                          ),
-                          _numberField(<JsonStep>[...at, index, 'amount'], 'death.drops[$index].amount', integer: true, placeholder: 'amount 1'),
-                          _numberField(<JsonStep>[...at, index, 'chance'], 'death.drops[$index].chance', integer: false, placeholder: 'chance 1'),
-                          GuiIconButton(
-                            icon: ArcaneIcon.x(size: IconSize.sm),
-                            label: 'Remove drop ${index + 1}',
-                            onPressed: () => write(<Object?>[...drops]..removeAt(index)),
-                          ),
-                        ]),
-                        _others(<JsonStep>[...at, index], drop, const <String>{'item', 'amount', 'chance'}),
-                      ] else
-                        TypedValueEditor(value: drops[index], label: 'death.drops[$index]', onChanged: (Object? next) => _put(<JsonStep>[...at, index], next)),
-                      _problemList(_at(<JsonStep>[...at, index], nested: true)),
-                    ],
-                  ),
-                dom.div(classes: 'animus-row', <Widget>[
-                  Button.ghost(
-                    label: 'Add drop',
-                    size: ButtonSize.small,
-                    disabled: drops.length >= 32,
-                    onPressed: () => write(<Object?>[...drops, newCombatDrop()]),
-                  ),
-                ]),
-              ]),
-      ),
-      _number('death', 'experience'),
-      _switches('death'),
-    ]);
-  }
-
-  Widget _respawn() {
-    const List<JsonStep> at = <JsonStep>['respawn', 'locations'];
-    final Object? raw = _read(at);
-    final Object? delay = _read(const <JsonStep>['respawn', 'delayTicks']);
-    final bool deleting = _read(const <JsonStep>['respawn', 'deleteOnDeath']) == true;
-    return _section(
-      'respawn',
-      'Respawn',
-      'delayTicks -1 never respawns.',
-      <Widget>[
-        _number('respawn', 'delayTicks'),
-        GuiRow(
-          label: 'locations',
-          help: 'Up to 16.',
-          tip: 'One is picked at random on each respawn. Click the grid to move the picked location.',
-          problems: _at(at),
-          child: raw != null && raw is! List<Object?>
-              ? TypedValueEditor(value: raw, label: 'respawn.locations', onChanged: (Object? next) => _put(at, next))
-              : CombatLocationsEditor(
-                  points: asList(raw),
-                  label: 'Respawn locations',
-                  noun: 'Location',
-                  path: combatPath(at),
-                  origin: component.origin,
-                  diagnostics: _problems,
-                  onChanged: (List<Object?> next) => _put(at, next),
-                ),
-        ),
-        _switches(
-          'respawn',
-          disabled: <String>{if (delay != -1 && !deleting) 'deleteOnDeath'},
-          notes: const <String, String>{'deleteOnDeath': 'Deletes the NPC on death; needs delayTicks -1.'},
-        ),
-      ],
-    );
-  }
-
   // Fields.
 
   Widget _number(String section, String key, {List<JsonStep>? steps, String? label, String? help}) {
@@ -688,7 +601,7 @@ class _CombatEditorState extends State<CombatEditor> {
   }
 
   /// The section's boolean fields; a field set to a non-boolean is kept as JSON.
-  Widget _switches(String section, {Set<String> disabled = const <String>{}, Map<String, String> notes = const <String, String>{}}) {
+  Widget _switches(String section) {
     final Map<String, bool> defaults = combatBooleans[section] ?? const <String, bool>{};
     return dom.div(classes: 'animus-combat-switches', <Widget>[
       for (final MapEntry<String, bool> entry in defaults.entries)
@@ -696,8 +609,7 @@ class _CombatEditorState extends State<CombatEditor> {
           _checkbox(
             label: '$section.${entry.key}',
             value: (value as bool?) ?? entry.value,
-            description: '${notes[entry.key] ?? ''}${notes.containsKey(entry.key) ? ' ' : ''}Default ${entry.value ? 'on' : 'off'}.',
-            disabled: disabled.contains(entry.key),
+            description: 'Default ${entry.value ? 'on' : 'off'}.',
             problems: _at(<JsonStep>[section, entry.key]),
             onChanged: (bool next) => _put(<JsonStep>[section, entry.key], next),
           )
@@ -711,10 +623,9 @@ class _CombatEditorState extends State<CombatEditor> {
     required bool value,
     required void Function(bool value) onChanged,
     String? description,
-    bool disabled = false,
     List<Diagnostic> problems = const <Diagnostic>[],
   }) => dom.div(key: ValueKey<String>('switch:$label'), classes: 'animus-combat-switch', <Widget>[
-    ArcaneCheckbox(checked: value, label: label, description: description, size: ComponentSize.sm, disabled: disabled, onChanged: onChanged),
+    ArcaneCheckbox(checked: value, label: label, description: description, size: ComponentSize.sm, onChanged: onChanged),
     _problemList(problems),
   ]);
 

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 14,
+  "converterVersion": 15,
   "fieldPathFormat": "json-pointer",
-  "importId": "2e48d59a7782a9cef2841d45bd40c19269d2c169f76099c6d87b044851af5bcc",
+  "importId": "5e485808af2fe6f20bd00d81df0cefa8b0eb9dd938df810a6fcaf434c263bd86",
   "sourceSha256": "b0f736e8596bac6f209b6870af200dbf3b3c407aa3546d8b8488937f280c5ad8",
   "worldMap": {
     "old_town": "town"
@@ -60,7 +60,8 @@
     "citizens-3: /traits/commandtrait: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones",
     "citizens-3: /traits/commandtrait: commands stay denied until citizens:commands-3 is on the [behaviors.actions] commandBehaviors list in config.toml",
     "citizens-4: /traits/waypoints/provider: waypoint provider spiral is not supported; kept in citizens:review",
-    "citizens-5: /traits/lookclose/enabled: an armor stand keeps its own facing and pose, so the server's look-close default is not applied; set enabled in animus:look-close to turn it toward players"
+    "citizens-5: /traits/lookclose/enabled: an armor stand keeps its own facing and pose, so the server's look-close default is not applied; set enabled in animus:look-close to turn it toward players",
+    "movement: 3 Citizens routes now open doors and drop at least 3 blocks (openDoors, maximumFall), 0 of them raised from a lower fall distance; lower these in the NPC's movement to undo"
   ],
   "remappedLocations": 13,
   "resolvedReferences": 0,
@@ -75,14 +76,14 @@
     "5": "0a1b2c3d-0000-4000-8000-000000000305"
   },
   "documents": {
-    "npcs/town/citizens-0.json": "bf88bdda3f7b5f2faadfbca35b37adce1339f0e58d02327128307977bf84958c",
-    "npcs/town/citizens-1.json": "a42aca866efc7c6b8ea260689e27f28d0c75e5a249283774b6541eea458e7901",
+    "npcs/town/citizens-0.json": "fcb1c983d2d5dc01d08bb8efa20dffa07555a2a6f21c33182a479b90954c333d",
+    "npcs/town/citizens-1.json": "ce56afc5b2ccf564f1c987f0754a5d44b9cd3ce56767439cb191501119b1d8a9",
     "behaviors/citizens/text-2.json": "fd86b6d89e566471ce36cb74f5c889cd2355336dd7330f02375f7421cafd5674",
-    "npcs/town/citizens-2.json": "939496e3777435ffeeb1e94501038835e047375cfee6f39e8fd99727e9ce4e88",
+    "npcs/town/citizens-2.json": "1eb2b04d52e2f60371bdbe41aa45390a1ca3dada000ada6e00d8d592ed46ef42",
     "behaviors/citizens/text-3.json": "2500899a3646cabd0c82cd0c2ddc83ee3a2be0f694052a1b2e4ae7049be79f75",
     "behaviors/citizens/commands-3.json": "c66ac35ed116f4afc253fa0929c15527882be3f800c4656215e5abb0c477766b",
-    "npcs/town/citizens-3.json": "9b6aa1dcc2e0c4fdd726f73d963dcb841acdaa937fd8d64d8d137e8a31c65d5c",
-    "npcs/town/citizens-4.json": "92b0be8ad5995613f7c9e0d2e4e806867c115601843386cebc4e42157a07890a",
-    "npcs/town/citizens-5.json": "2f546647bd854d49c107a90a27a5943ba0fc726339bc7700832478469fd9ec13"
+    "npcs/town/citizens-3.json": "ec6cf7688eeff522fbd8b4062ae8d0045fc2d770fd2fc0f95c5f2d14cf1bfffc",
+    "npcs/town/citizens-4.json": "b170f687b50b071f99227793805e30a1c3ba0473494851397db2bbc9ba3b0569",
+    "npcs/town/citizens-5.json": "9ea29c6de51e6f9459f30696a51cd70ec037c566263edec28a2ccea138a8cc4e"
   }
 }

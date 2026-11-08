@@ -236,7 +236,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
                 try {
                     CombatDeletions.delete(host.runtime.npcs(), npc).ifPresent((CombatDeletions.Deleted done) -> {
                         deleted.incrementAndGet();
-                        warn("Combat NPC " + done.id() + " died and was deleted (respawn.deleteOnDeath); tx " + done.transaction());
+                        warn("Combat NPC " + done.id() + " died and was deleted (animus:health afterDeath delete); tx " + done.transaction());
                     });
                 } catch (java.io.IOException failure) { warn("Combat could not delete dead NPC " + npc + ": " + failure.getMessage()); }
             });
@@ -457,7 +457,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
         RegionActor actor = actor(npc);
         RegionActor.Publication view = actor == null ? null : actor.publication;
         return view != null && view.combat() != null && view.snapshot().active()
-                && view.combat().settings().defense().takes(art.arcane.animus.core.combat.CombatSettings.DamageSource.PROJECTILES);
+                && view.combat().settings().health().defense().takes(art.arcane.animus.core.combat.HealthSettings.DamageSource.PROJECTILES);
     }
     /** On the victim's region. Guards and witnesses hear of it on their own owners. */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

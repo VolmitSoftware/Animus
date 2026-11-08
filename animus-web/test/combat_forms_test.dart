@@ -67,13 +67,10 @@ void main() {
       expect(combatLocationXZ(<String, Object?>{'x': 'a', 'z': 1}), isNull);
     });
 
-    test('should round-trip the return point and respawn locations through the checks', () {
+    test('should round-trip the return point through the checks', () {
       final JsonMap point = withLocationField(newCombatLocation(), 'world', 'world_nether');
       final JsonMap module = <String, Object?>{
         'avoidance': <String, Object?>{'returnPoint': placeCombatLocation(point, 12, 30)},
-        'respawn': <String, Object?>{
-          'locations': <Object?>[newCombatLocation(), placeCombatLocation(newCombatLocation(), -8, 8)],
-        },
       };
       expect(_paths(module), isEmpty);
       expect(readIn(module, <JsonStep>['avoidance', 'returnPoint', 'world']), 'world_nether');
@@ -104,22 +101,6 @@ void main() {
       expect(_paths(<String, Object?>{'ranged': ranged}), isEmpty);
       ranged = withRangedEffect(ranged, 'amplifier', null);
       expect(ranged['effect'], <String, Object?>{'id': 'minecraft:poison', 'durationTicks': 100});
-    });
-  });
-
-  group('combat death drops', () {
-    test('should add, edit and clear drop fields', () {
-      List<Object?> drops = <Object?>[newCombatDrop()];
-      drops = withDropField(drops, 0, 'item', 'minecraft:gold_ingot');
-      drops = withDropField(drops, 0, 'amount', 3);
-      drops = withDropField(drops, 0, 'chance', 0.5);
-      expect(drops, <Object?>[
-        <String, Object?>{'item': 'minecraft:gold_ingot', 'amount': 3, 'chance': 0.5},
-      ]);
-      expect(_paths(<String, Object?>{'death': <String, Object?>{'drops': drops}}), isEmpty);
-      drops = withDropField(drops, 0, 'chance', null);
-      expect(drops.first, <String, Object?>{'item': 'minecraft:gold_ingot', 'amount': 3});
-      expect(withDropField(drops, 4, 'amount', 1), drops);
     });
   });
 }

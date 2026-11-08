@@ -25,7 +25,8 @@ import 'trader_builder.dart';
 export 'snake_yaml.dart' show CitizensImportException;
 
 /// Must equal `CitizensImporter.CONVERTER_VERSION`; the shared golden fixtures fail when they drift.
-const int citizensConverterVersion = 14;
+const int citizensConverterVersion = 15;
+const String _healthModule = 'animus:health';
 
 const String _notice =
     'Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.';
@@ -154,6 +155,8 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     }
   }
   int remappedLocations = 0;
+  int patrols = 0;
+  int raisedFalls = 0;
   int resolvedReferences = 0;
   int unresolvedReferences = 0;
   final JObject manifest = JObject();
@@ -244,7 +247,9 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     }
     final JObject modules = JObject();
     if (traits.has('sentinel')) {
-      modules.add('animus:combat', convertSentinel(reviewed.get('sentinel'), reviewed.get('equipment'), references));
+      final SentinelModules sentinel = convertSentinel(reviewed.get('sentinel'), reviewed.get('equipment'), references);
+      modules.add('animus:combat', sentinel.combat);
+      if (sentinel.health != null) modules.add(_healthModule, sentinel.health);
       final JElement? reviewedSentinel = reviewed.get('sentinel');
       if (reviewedSentinel is JObject) {
         for (final String field in reviewedSentinel.keys.toList()) {
@@ -264,8 +269,9 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
       if (trader.warning != null) migrationWarnings.addString('citizens-$key: ${trader.warning}');
     }
     if (citizensTargetable(reviewed)) {
-      if (!modules.has('animus:combat')) modules.add('animus:combat', targetableCombat(record));
+      if (!modules.has('animus:combat')) modules.add('animus:combat', targetableCombat());
       (modules.get('animus:combat')! as JObject).addBool('targetableByMobs', true);
+      if (!modules.has(_healthModule)) modules.add(_healthModule, targetableHealth(record));
     }
     final JObject? riding = _riding(traits.get('controllable'));
     if (riding != null) modules.add('animus:riding', riding);
@@ -307,7 +313,9 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
       _increment(conversions, 'routes');
     }
     final TraitsResult state = mapTraits(definition.get('type')!.asPrimitive.asString, record, reviewed, modules.has('animus:combat'),
-        modules.has('animus:navigation'), references);
+        modules.has(_healthModule), modules.has('animus:navigation'), runtime.navigation != null, references);
+    if (runtime.navigation != null) patrols++;
+    if (state.raisedFall) raisedFalls++;
     for (final MapEntry<String, JElement> field in state.fields.entries) {
       definition.add(field.key, field.value);
     }
@@ -367,6 +375,10 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
   summary.add('sentinelFields', sentinelFields);
   summary.add('sentinelMapping', sentinelMapping);
   summary.add('issues', issues);
+  if (patrols > 0) {
+    migrationWarnings.addString('movement: $patrols Citizens routes now open doors and drop at least $routeFall blocks (openDoors, maximumFall), '
+        "$raisedFalls of them raised from a lower fall distance; lower these in the NPC's movement to undo");
+  }
   summary.add('migrationWarnings', migrationWarnings);
   summary.addInt('remappedLocations', remappedLocations);
   summary.addInt('resolvedReferences', resolvedReferences);

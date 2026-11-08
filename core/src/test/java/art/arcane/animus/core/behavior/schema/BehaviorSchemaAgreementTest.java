@@ -246,9 +246,10 @@ class BehaviorSchemaAgreementTest {
         fields.put("movement field", "{\"movement\":{\"sped\":2}}");
         fields.put("named pose pitch", "{\"poses\":{\"rest\":{\"yaw\":0,\"pitch\":120}}}");
         fields.put("combat unknown setting", "{\"modules\":{\"animus:combat\":{\"enabled\":true,\"meele\":{}}}}");
-        fields.put("combat health", "{\"modules\":{\"animus:combat\":{\"defense\":{\"maximumHealth\":0}}}}");
+        fields.put("combat defense", "{\"modules\":{\"animus:combat\":{\"defense\":{\"maximumHealth\":20}}}}");
+        fields.put("health maximum", "{\"modules\":{\"animus:health\":{\"maximumHealth\":0}}}");
         fields.put("combat potion without effect", "{\"modules\":{\"animus:combat\":{\"ranged\":{\"weapon\":\"potion\"}}}}");
-        fields.put("combat delete without -1", "{\"modules\":{\"animus:combat\":{\"respawn\":{\"deleteOnDeath\":true}}}}");
+        fields.put("health after death", "{\"modules\":{\"animus:health\":{\"respawn\":{\"afterDeath\":\"never\"}}}}");
         fields.put("combat scan rule in ignores", "{\"modules\":{\"animus:combat\":{\"ignores\":{\"chat\":[\"hi\"]}}}}");
         fields.put("shop without id", "{\"modules\":{\"animus:shop\":{\"openOn\":\"right\"}}}");
         fields.put("gui empty", "{\"modules\":{\"animus:gui\":{}}}");
@@ -294,9 +295,10 @@ class BehaviorSchemaAgreementTest {
                                      "targeting": {"scanRange": 20, "lineOfSight": "field_of_view"}, "guard": {"followDistance": 5},
                                      "melee": {"damage": 4, "weaponDamage": {"minecraft:iron_sword": 6}},
                                      "ranged": {"enabled": true, "weapon": "potion", "effect": {"id": "minecraft:poison", "amplifier": 1}},
-                                     "defense": {"maximumHealth": 40, "armor": 0.5}, "death": {"drops": [{"item": "minecraft:bone", "amount": 2, "chance": 0.5}]},
-                                     "respawn": {"delayTicks": -1, "deleteOnDeath": true, "locations": [{"world": "world", "x": 0, "y": 64, "z": 0}]},
-                                     "greetings": {"friendly": "Hello", "range": 8}, "squad": {"name": "north"}, "targetableByMobs": true},
+                                     "greetings": {"friendly": "Hello", "range": 8}, "squad": {"name": "north"}, "targetableByMobs": true, "victimDrops": false},
+                   "animus:health": {"killable": true, "maximumHealth": 40, "armor": 0.5, "protectFromRange": 16, "protectedFromIgnored": true,
+                                     "death": {"drops": [{"item": {"id": "minecraft:bone", "count": 2}, "chance": 0.5}]},
+                                     "respawn": {"afterDeath": "delete", "points": [{"world": "world", "x": 0, "y": 64, "z": 0}]}},
                    "animus:shop": {"shop": "town:baker", "openOn": "both"},
                    "animus:gui": {"open": {"kind": "gloss", "id": "lobby/main"}, "hologram": {"id": "town:sign", "offset": [0, 2.5, 0]}},
                    "animus:hire": {"price": 50, "items": [{"id": "minecraft:emerald", "count": 2}], "durationMinutes": 120, "permission": "animus.hire.guard"}

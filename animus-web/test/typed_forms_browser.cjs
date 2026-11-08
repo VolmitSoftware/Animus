@@ -2,10 +2,10 @@
 // configuration, the presets document, a menu with named lists and a list
 // component, a chest GUI with an inventory action and a shop) and checks the
 // typed forms that replaced the JSON boxes, at 1440 and 390 px in both
-// themes: combat advanced rules typed from the schema, the return point and
-// respawn locations on the position grid (keyboard nudge and a grid click),
-// a death drop and a shop entry picked by item search, the ranged potion
-// effect, the pack module configuration, preset values, the inventory
+// themes: combat advanced rules typed from the schema, the return point on
+// the position grid (keyboard nudge and a grid click), the victimDrops
+// switch, a shop entry picked by item search, the ranged potion effect, the
+// pack module configuration, preset values, the inventory
 // action's arguments, and the call, list and chest GUI pickers. Every edit is
 // read back from the Code view. No console errors, no sideways scrolling, no
 // raw JSON boxes outside an Advanced toggle. It needs no fake server.
@@ -130,25 +130,17 @@ async function combat(page, tag) {
   json = await codeOf(page);
   assert.deepEqual(json.modules['animus:combat'].avoidance.returnPoint, {world: 'world', x: 3, y: 64, z: 2}, `${tag} grid click`);
 
-  // Respawn locations: add one and name its world.
+  // victimDrops is on by default; turning it off writes false.
   editor = await combatEditor();
-  await editor.getByRole('button', {name: 'Add location', exact: true}).click();
+  await editor.getByRole('checkbox', {name: /^victimDrops/}).click();
   await settle(page);
-  await editor.getByLabel('Location 2 world', {exact: true}).fill('world_nether');
-  await settle(page);
-
-  // A drop's item comes from the item registry search.
-  await suggest(page, editor.getByLabel('death.drops[0].item', {exact: true}), 'gold ingot', 'minecraft:gold_ingot');
   await editor.getByLabel('ranged.effect.amplifier', {exact: true}).fill('3');
   await settle(page);
   await shot(page, `${tag}-combat`);
   await noSideways(page, `${tag} combat`);
   json = await codeOf(page);
   module = json.modules['animus:combat'];
-  assert.equal(module.respawn.locations.length, 2);
-  assert.equal(module.respawn.locations[1].world, 'world_nether');
-  assert.equal(module.death.drops[0].item, 'minecraft:gold_ingot');
-  assert.equal(module.death.drops[0].amount, 2, 'other drop fields survive');
+  assert.equal(module.victimDrops, false, `${tag} victimDrops off`);
   assert.deepEqual(module.ranged.effect, {id: 'minecraft:poison', amplifier: 3});
 }
 

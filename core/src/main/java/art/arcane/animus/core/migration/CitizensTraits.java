@@ -19,7 +19,8 @@ import java.util.*;
  * Fields with no Animus equivalent get a one-line reason; fields that change nothing in Citizens either count as converted.
  */
 final class CitizensTraits {
-    record Result(JsonObject fields, JsonObject migration, Set<String> converted, Map<String, CitizensImporter.Note> notes, List<String> warnings) {
+    /** @param raisedFall a Citizens route's fall distance below {@link #ROUTE_FALL} was raised to it */
+    record Result(JsonObject fields, JsonObject migration, Set<String> converted, Map<String, CitizensImporter.Note> notes, List<String> warnings, boolean raisedFall) {
         Result {
             fields = fields.deepCopy(); migration = migration.deepCopy(); converted = Set.copyOf(converted); notes = Map.copyOf(notes); warnings = List.copyOf(warnings);
         }
@@ -30,36 +31,42 @@ final class CitizensTraits {
     static final String CITIZENS_TAG = "CITIZENS_NPC";
     /** Vanilla random strolling: a pick within 10 blocks across and 7 up or down, about every six seconds. */
     static final int WANDER_RADIUS = 10, WANDER_HEIGHT = 7, WANDER_WAIT = 120;
+    /** The least drop a Citizens route walks: Citizens' common 1 blocks most legs that step off a ledge. */
+    static final int ROUTE_FALL = 3;
     private static final Map<String, String> ROTATION_DEFAULTS = Map.of("headOnly", "false", "immediate", "false", "linkedBody", "false", "lockPitch", "false",
             "maxPitchPerTick", "10.0", "maxYawPerTick", "40.0");
 
     private final String type;
     private final JsonObject record, traits, fields = new JsonObject(), migration = new JsonObject();
-    private final boolean combat, routed;
+    private final boolean combat, health, routed, patrolled;
+    private boolean raisedFall;
     private final JsonArray references;
     private final Set<String> converted = new HashSet<>();
     private final Map<String, CitizensImporter.Note> notes = new HashMap<>();
     private final List<String> warnings = new ArrayList<>();
 
-    private CitizensTraits(String type, JsonObject record, JsonObject traits, boolean combat, boolean routed, JsonArray references) {
-        this.type = type; this.record = record; this.traits = traits; this.combat = combat; this.routed = routed; this.references = references;
+    private CitizensTraits(String type, JsonObject record, JsonObject traits, boolean combat, boolean health, boolean routed, boolean patrolled, JsonArray references) {
+        this.type = type; this.record = record; this.traits = traits; this.combat = combat; this.health = health; this.routed = routed; this.patrolled = patrolled;
+        this.references = references;
     }
 
     /**
      * @param type the definition's body type
      * @param traits the review copy of the NPC's traits
      * @param combat whether the NPC converts with an {@code animus:combat} module
+     * @param health whether the NPC converts with an {@code animus:health} module
      * @param routed whether the NPC converts with an {@code animus:navigation} route
+     * @param patrolled whether that route comes from Citizens waypoints; it then opens doors and drops at least {@link #ROUTE_FALL} blocks
      * @param references the resolved NPC references
      */
-    static Result map(String type, JsonObject record, JsonObject traits, boolean combat, boolean routed, JsonArray references) {
-        CitizensTraits mapping = new CitizensTraits(type, record, traits, combat, routed, references);
+    static Result map(String type, JsonObject record, JsonObject traits, boolean combat, boolean health, boolean routed, boolean patrolled, JsonArray references) {
+        CitizensTraits mapping = new CitizensTraits(type, record, traits, combat, health, routed, patrolled, references);
         mapping.metadata(); mapping.movement(); mapping.age(); mapping.gravity(); mapping.scoreboard(); mapping.attributes(); mapping.rotation();
         mapping.targetable(); mapping.spawned(); mapping.mount(); mapping.controllable(); mapping.poses(); mapping.horse();
         mapping.note("/traitnames", CitizensImporter.Status.UNSUPPORTED_PRESERVED, "Citizens bookkeeping of the traits the NPC had; nothing to convert");
         List<String> sorted = new ArrayList<>(mapping.warnings);
         Collections.sort(sorted);
-        return new Result(mapping.fields, mapping.migration, mapping.converted, mapping.notes, sorted);
+        return new Result(mapping.fields, mapping.migration, mapping.converted, mapping.notes, sorted, mapping.raisedFall);
     }
 
     private void note(String path, CitizensImporter.Status status, String reason) { notes.put(path, new CitizensImporter.Note(status, reason)); }
@@ -96,8 +103,8 @@ final class CitizensTraits {
                     else if (Boolean.TRUE.equals(flag)) kept(path, "the NPC has no world to wander in");
                 }
                 case "protected" -> {
-                    if (Boolean.TRUE.equals(flag) || Boolean.FALSE.equals(flag) && combat) converted.add(path);
-                    else if (Boolean.FALSE.equals(flag)) kept(path, "Animus NPCs take damage only through an enabled animus:combat module, which this NPC does not have");
+                    if (Boolean.TRUE.equals(flag) || Boolean.FALSE.equals(flag) && health) converted.add(path);
+                    else if (Boolean.FALSE.equals(flag)) kept(path, "Animus NPCs take damage only through an animus:health module, which this NPC does not have");
                 }
                 case "using-held-item" -> {
                     if (flag == null) break;
@@ -133,6 +140,10 @@ final class CitizensTraits {
             if (number(fall)) {
                 long blocks = Math.max(0, Math.min(16, (long) Math.floor(fall.getAsDouble())));
                 if (fall.getAsDouble() > 16) warnings.add("/navigator/falldistance: falls longer than 16 blocks became 16");
+                if (patrolled && blocks < ROUTE_FALL) {
+                    blocks = ROUTE_FALL;
+                    raisedFall = true;
+                }
                 movement.addProperty("maximumFall", blocks);
                 converted.add("/navigator/falldistance");
                 any = true;
@@ -168,7 +179,7 @@ final class CitizensTraits {
         // Citizens' navigator swims by default, so a route whose save sets no avoidwater crosses water at the surface.
         if (routed && !movement.has("avoidWater")) { movement.addProperty("avoidWater", false); any = true; }
         if (metadata != null && Boolean.TRUE.equals(bool(metadata.get("flyable")))) { movement.addProperty("style", "fly"); any = true; }
-        if (metadata != null && Boolean.TRUE.equals(bool(metadata.get("pathfinder-open-doors")))) { movement.addProperty("openDoors", true); any = true; }
+        if (patrolled || metadata != null && Boolean.TRUE.equals(bool(metadata.get("pathfinder-open-doors")))) { movement.addProperty("openDoors", true); any = true; }
         if (any) fields.add("movement", movement);
     }
 
@@ -283,20 +294,24 @@ final class CitizensTraits {
     }
 
     /**
-     * The combat module of a targetable NPC without Sentinel: it never attacks or fights back, and takes mob hits unless
-     * Citizens protected it. Like every imported combat module it stays disabled until its review is accepted.
+     * The combat module of a targetable NPC without Sentinel: it never attacks or fights back. Like every imported combat
+     * module it stays disabled until its review is accepted.
      */
-    static JsonObject targetableCombat(JsonObject record) {
-        JsonObject metadata = object(record.get("metadata"));
+    static JsonObject targetableCombat() {
         JsonObject module = new JsonObject();
         module.addProperty("enabled", false);
         module.addProperty("reviewAccepted", false);
         JsonObject targeting = new JsonObject();
         targeting.addProperty("fightBack", false);
         module.add("targeting", targeting);
-        JsonObject defense = new JsonObject();
-        defense.addProperty("invincible", !Boolean.FALSE.equals(metadata == null ? null : bool(metadata.get("protected"))));
-        module.add("defense", defense);
+        return module;
+    }
+
+    /** The health module of a targetable NPC without Sentinel: it takes mob hits unless Citizens protected it. */
+    static JsonObject targetableHealth(JsonObject record) {
+        JsonObject metadata = object(record.get("metadata"));
+        JsonObject module = new JsonObject();
+        module.addProperty("killable", Boolean.FALSE.equals(metadata == null ? null : bool(metadata.get("protected"))));
         return module;
     }
 

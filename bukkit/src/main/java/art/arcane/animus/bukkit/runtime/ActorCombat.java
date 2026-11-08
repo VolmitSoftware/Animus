@@ -7,6 +7,7 @@ import art.arcane.animus.core.combat.CombatEngine;
 import art.arcane.animus.core.combat.CombatLoadout;
 import art.arcane.animus.core.combat.CombatOperations;
 import art.arcane.animus.core.combat.CombatSettings;
+import art.arcane.animus.core.combat.HealthSettings;
 import art.arcane.animus.core.combat.CombatTarget;
 import art.arcane.animus.core.combat.CombatWorld;
 import art.arcane.animus.core.combat.RealShot;
@@ -160,7 +161,7 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
         engine.shot(actor.uuid, shot);
     }
     /** An idle fall landed hard enough to hurt. */
-    void fell(double damage) { engine.environment(actor.uuid, CombatSettings.DamageSource.FALL, damage); }
+    void fell(double damage) { engine.environment(actor.uuid, HealthSettings.DamageSource.FALL, damage); }
 
     int helpers() { return helpers.size(); }
     @Override public void close() {

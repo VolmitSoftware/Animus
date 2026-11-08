@@ -34,15 +34,17 @@ class CombatParityTest {
         }, new Random(7), diagnostics::add);
         return engine;
     }
-    private static CombatSettings settings(String json) {
+    private static CombatSettings settings(String json) { return settings(json, CombatTesting.KILLABLE); }
+    private static CombatSettings settings(String json, HealthSettings health) {
         JsonObject module = JsonParser.parseString(json).getAsJsonObject();
         module.addProperty("enabled", true);
-        return CombatSettings.parseModule(module);
+        return CombatSettings.parseModule(module, health);
     }
-    private UUID combatant(double x, double z, String json) { return combatant(x, z, json, CombatLoadout.NONE); }
-    private UUID combatant(double x, double z, String json, CombatLoadout loadout) {
+    private UUID combatant(double x, double z, String json) { return combatant(x, z, json, CombatTesting.KILLABLE, CombatLoadout.NONE); }
+    private UUID combatant(double x, double z, String json, CombatLoadout loadout) { return combatant(x, z, json, CombatTesting.KILLABLE, loadout); }
+    private UUID combatant(double x, double z, String json, HealthSettings health, CombatLoadout loadout) {
         UUID npc = world.npc(x, z, 20);
-        assertTrue(engine().register(npc, "npc-" + npc, settings(json), loadout));
+        assertTrue(engine().register(npc, "npc-" + npc, settings(json, health), loadout));
         return npc;
     }
     private void run(int ticks) { for (int i = 0; i < ticks; i++) engine().tick(); }
@@ -226,7 +228,7 @@ class CombatParityTest {
         run(1);
         assertEquals(11, world.realDamage.get(other), "The weapon map replaces the fixed damage");
         CombatLoadout armored = new CombatLoadout(Optional.empty(), Map.of("chest", "minecraft:diamond_chestplate", "head", "minecraft:diamond_helmet"), Map.of());
-        UUID tank = combatant(0, 60, "{\"defense\":{\"armorFromEquipment\":true,\"invulnerableTicks\":0}}", armored);
+        UUID tank = combatant(0, 60, "{}", CombatTesting.health("{\"killable\":true,\"armorFromEquipment\":true,\"invulnerableTicks\":0}"), armored);
         engine().playerAttack(tank, player(world.player("Hitter", 1, 60)), MockCombatWorld.at(1, 64, 60), 10);
         assertEquals(20 - 10 * (1 - .44), world.npc(tank).orElseThrow().health(), 1e-9);
         assertTrue(engine().registered(mapped));

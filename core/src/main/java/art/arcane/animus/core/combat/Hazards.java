@@ -40,8 +40,8 @@ public final class Hazards {
     /** Watches the NPC when its defense takes fire or lava; forgets it otherwise. */
     void watch(CombatBrain brain, long now) {
         forget(brain.npc());
-        CombatSettings.Defense defense = brain.settings().defense();
-        if (!defense.takes(CombatSettings.DamageSource.FIRE) && !defense.takes(CombatSettings.DamageSource.LAVA)) return;
+        HealthSettings.Defense defense = brain.settings().health().defense();
+        if (!defense.takes(HealthSettings.DamageSource.FIRE) && !defense.takes(HealthSettings.DamageSource.LAVA)) return;
         Exposure exposure = new Exposure(brain, now);
         exposures.put(brain.npc(), exposure);
         order.addLast(exposure);
@@ -56,7 +56,7 @@ public final class Hazards {
     /** A fire projectile set the NPC alight; only an NPC that takes fire burns. */
     void ignite(UUID npc, int ticks) {
         Exposure exposure = exposures.get(npc);
-        if (exposure != null && ticks > 0 && exposure.brain.settings().defense().takes(CombatSettings.DamageSource.FIRE))
+        if (exposure != null && ticks > 0 && exposure.brain.settings().health().defense().takes(HealthSettings.DamageSource.FIRE))
             exposure.burnTicks = Math.max(exposure.burnTicks, ticks);
     }
 
@@ -79,25 +79,25 @@ public final class Hazards {
             show(exposure);
             return;
         }
-        CombatSettings.Defense defense = brain.settings().defense();
+        HealthSettings.Defense defense = brain.settings().health().defense();
         switch (world.contact(brain.npc())) {
             case WATER -> exposure.burnTicks = 0;
             case LAVA -> {
                 exposure.burnTicks = Math.max(exposure.burnTicks, LAVA_BURN_TICKS);
-                engine.environment(brain, CombatSettings.DamageSource.LAVA, LAVA_DAMAGE, true);
+                engine.environment(brain, HealthSettings.DamageSource.LAVA, LAVA_DAMAGE, true);
             }
             case FIRE -> {
-                if (defense.takes(CombatSettings.DamageSource.FIRE)) {
+                if (defense.takes(HealthSettings.DamageSource.FIRE)) {
                     exposure.burnTicks = Math.max(exposure.burnTicks, FIRE_BURN_TICKS);
-                    engine.environment(brain, CombatSettings.DamageSource.FIRE, FIRE_DAMAGE, true);
+                    engine.environment(brain, HealthSettings.DamageSource.FIRE, FIRE_DAMAGE, true);
                 }
             }
             case NONE -> {
                 if (exposure.burnTicks > 0) {
                     exposure.burnTicks = (int) Math.max(0, exposure.burnTicks - elapsed);
-                    if (now >= exposure.nextBurn && defense.takes(CombatSettings.DamageSource.FIRE)) {
+                    if (now >= exposure.nextBurn && defense.takes(HealthSettings.DamageSource.FIRE)) {
                         exposure.nextBurn = now + BURN_INTERVAL;
-                        engine.environment(brain, CombatSettings.DamageSource.FIRE, BURN_DAMAGE, false);
+                        engine.environment(brain, HealthSettings.DamageSource.FIRE, BURN_DAMAGE, false);
                     }
                 }
             }

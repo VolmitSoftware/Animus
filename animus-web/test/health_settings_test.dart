@@ -58,34 +58,22 @@ void main() {
   });
 
   group('health and combat', () {
-    test('should name the combat sections health replaces', () {
-      final JsonMap modules = <String, Object?>{
-        healthModule: <String, Object?>{'killable': true},
-        'animus:combat': <String, Object?>{
-          'enabled': true,
-          'death': <String, Object?>{'experience': 1},
-          'defense': <String, Object?>{'maximumHealth': 40},
-          'melee': <String, Object?>{'damage': 3},
-        },
-      };
-      expect(healthCombatConflicts(modules), <String>['defense', 'death']);
-      expect(healthCombatConflicts(<String, Object?>{'animus:combat': modules['animus:combat']}), isEmpty);
-      expect(withoutReplacedCombat(asMap(modules['animus:combat'])), <String, Object?>{
-        'enabled': true,
-        'melee': <String, Object?>{'damage': 3},
-      });
-    });
-
-    test('should refuse a definition with both, as the server does', () {
+    test('should accept a definition with both modules', () {
       final JsonMap npc = <String, Object?>{
         'modules': <String, Object?>{
           healthModule: <String, Object?>{'killable': true},
-          'animus:combat': <String, Object?>{
-            'respawn': <String, Object?>{'delayTicks': 20},
-          },
+          'animus:combat': <String, Object?>{'enabled': true, 'victimDrops': false},
         },
       };
-      expect(definitionRuleErrors(npc), <String>[r'$.modules.animus:combat.respawn: animus:health replaces it; remove one']);
+      expect(definitionRuleErrors(npc), isEmpty);
+    });
+  });
+
+  group('health choices', () {
+    test('should offer delete after death and the attacker guards', () {
+      expect(healthAfterDeath, <String>['respawn', 'permadeath', 'delete']);
+      expect(healthKeys, containsAll(<String>['protectFromRange', 'protectedFromIgnored']));
+      expect(healthKeys.indexOf('protectFromRange'), lessThan(healthKeys.indexOf('death')));
     });
   });
 

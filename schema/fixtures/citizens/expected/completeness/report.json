@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 14,
+  "converterVersion": 15,
   "fieldPathFormat": "json-pointer",
-  "importId": "b29173263996dc186dbfeedc14d0a079a41a5a421035c54223956f494737557e",
+  "importId": "04400a2b1c130f7624888d255541071fb0dbebc74628fff53ce4ca620b8e83ff",
   "sourceSha256": "b176c69d42c067fecc12d5932b7202aa2fa932991e4be1d21a13bc4ba0d43ee1",
   "worldMap": {},
   "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.",
@@ -59,7 +59,8 @@
   "sentinelMapping": {},
   "issues": [],
   "migrationWarnings": [
-    "lookclose/realisticlooking: this save only ever writes false, so NPCs without the field are converted with true (the server default that wrote the save); if that default was false, set realisticlooking in animus:look-close on those NPCs"
+    "lookclose/realisticlooking: this save only ever writes false, so NPCs without the field are converted with true (the server default that wrote the save); if that default was false, set realisticlooking in animus:look-close on those NPCs",
+    "movement: 1 Citizens routes now open doors and drop at least 3 blocks (openDoors, maximumFall), 1 of them raised from a lower fall distance; lower these in the NPC's movement to undo"
   ],
   "remappedLocations": 0,
   "resolvedReferences": 1,
@@ -70,7 +71,7 @@
     "1": "0a1b2c3d-0000-4000-8000-000000000501"
   },
   "documents": {
-    "npcs/town/citizens-0.json": "53092adb6c17e8bc9e34f9a1673b824812cc8b19bd299cd0d28e46fab7ffd053",
-    "npcs/town/citizens-1.json": "e2a8f48ce3d5be5432b36749530ef258da75b3684e1f5d246174d0f33eb5b07c"
+    "npcs/town/citizens-0.json": "45517258c6e9544a7829d04496c28323375155a743e662c59e07bbe0a3cec5b6",
+    "npcs/town/citizens-1.json": "7cf6f1d165877790efa5ce1891fa652ebffefcd37a666c58a51abed6d9c278f6"
   }
 }

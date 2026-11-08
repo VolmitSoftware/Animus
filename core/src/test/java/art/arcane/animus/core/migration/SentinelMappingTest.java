@@ -2,9 +2,11 @@ package art.arcane.animus.core.migration;
 
 import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.combat.FightKind;
+import art.arcane.animus.core.combat.HealthSettings;
 import art.arcane.animus.core.combat.RangedWeapon;
 import art.arcane.animus.core.combat.TargetCategory;
 import art.arcane.animus.core.combat.TargetRules;
+import art.arcane.animus.core.npc.NpcAttributes;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonArray;
@@ -16,6 +18,7 @@ import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -36,7 +39,10 @@ class SentinelMappingTest {
 
     private static JsonObject json(String text) { return JsonParser.parseString(text).getAsJsonObject(); }
     private static SentinelMapping.Result convert(String sentinel) { return SentinelMapping.convert(json(sentinel), JsonNull.INSTANCE, new JsonArray()); }
-    private static CombatSettings settings(SentinelMapping.Result result) { return CombatSettings.parseModule(result.module()); }
+    private static CombatSettings settings(SentinelMapping.Result result) {
+        return CombatSettings.parseModule(result.module(), result.health().map((JsonObject health) -> HealthSettings.parse(health, NpcAttributes.NONE)).orElse(HealthSettings.UNKILLABLE));
+    }
+    private static JsonObject health(SentinelMapping.Result result) { return result.health().orElseThrow(); }
 
     @Test void everyPersistedFieldHasADisposition() {
         assertEquals(53, SETTINGS.size());
@@ -67,9 +73,12 @@ class SentinelMappingTest {
         assertEquals(0, settings.targeting().memoryTicks(), "enemyTargetTime default");
         assertEquals(100, settings.pursuit().giveUpRange(), "chaseRange default");
         assertEquals(100, settings.pursuit().leashRange(), "chaseRange default");
-        assertEquals(100, settings.defense().healRateTicks(), "healRate default");
-        assertEquals(100, settings.respawn().delayTicks(), "respawnTime default");
-        assertFalse(settings.death().victimDrops(), "enemyDrops default");
+        assertEquals(100, settings.health().defense().healRateTicks(), "healRate default");
+        assertEquals(100, settings.health().respawn().delayTicks(), "respawnTime default");
+        assertFalse(settings.victimDrops(), "enemyDrops default");
+        assertTrue(settings.health().killable(), "invincible default");
+        assertEquals(20, settings.health().defense().maximumHealth(), "health default");
+        assertTrue(settings.health().defense().armorFromEquipment(), "armor default");
         assertTrue(settings.pursuit().teleportWhenStuck(), "disable_teleporting default");
         assertTrue(settings.pursuit().closeChase());
         assertFalse(settings.pursuit().rangedChase());
@@ -81,9 +90,9 @@ class SentinelMappingTest {
                 {"health":40,"damage":6,"armor":0.25,"attackRate":15,"attackRateRanged":25,"range":24,"reach":4,"chaseRange":48,"speed":0.5,"avoidRange":6,"enemyTargetTime":80,
                  "fightback":false,"runaway":true,"retain_target":true,"reaction_slowdown":10,"safeShot":false,"accuracy":2,"projectileRange":40,"close_chase":false,"ranged_chase":true,
                  "invincible":true,"protected":true,"protectFromRange":30,"allow_knockback":false,"healRate":0,"squad":"town","enemyDrops":true,"death_xp":12,"respawnTime":-1,"disable_teleporting":true}"""));
-        assertEquals(40, settings.defense().maximumHealth());
+        assertEquals(40, settings.health().defense().maximumHealth());
         assertEquals(6, settings.melee().damage());
-        assertEquals(.25, settings.defense().armor());
+        assertEquals(.25, settings.health().defense().armor());
         assertEquals(15, settings.melee().cooldownTicks());
         assertEquals(25, settings.ranged().cooldownTicks());
         assertEquals(24, settings.targeting().scanRange());
@@ -101,29 +110,38 @@ class SentinelMappingTest {
         assertEquals(40, settings.ranged().range());
         assertFalse(settings.pursuit().closeChase());
         assertTrue(settings.pursuit().rangedChase());
-        assertTrue(settings.defense().invincible());
-        assertTrue(settings.defense().protectedFromIgnored());
-        assertEquals(30, settings.defense().protectFromRange());
-        assertFalse(settings.defense().knockback());
-        assertEquals(0, settings.defense().healRateTicks());
+        assertTrue(settings.health().defense().invincible());
+        assertTrue(settings.health().defense().protectedFromIgnored());
+        assertEquals(30, settings.health().defense().protectFromRange());
+        assertFalse(settings.health().defense().knockback());
+        assertEquals(0, settings.health().defense().healRateTicks());
         assertEquals("town", settings.squad().name().orElseThrow());
-        assertTrue(settings.death().victimDrops());
-        assertEquals(12, settings.death().experience());
-        assertEquals(-1, settings.respawn().delayTicks());
+        assertTrue(settings.victimDrops());
+        assertEquals(12, settings.health().death().experience());
+        assertTrue(settings.health().respawn().deleteOnDeath());
         assertFalse(settings.pursuit().teleportWhenStuck());
+    }
+    @Test void healthDeathAndRespawnGoToTheHealthModule() {
+        SentinelMapping.Result result = convert("{\"health\":30,\"invincible\":false,\"respawnTime\":60,\"death_xp\":4,\"healRate\":20}");
+        for (String section : List.of("defense", "death", "respawn")) assertFalse(result.module().has(section), section);
+        assertEquals(json("""
+                {"killable":true,"maximumHealth":30,"armorFromEquipment":true,"knockback":true,"regenerate":true,"regenerateTicks":20,"protectedFromIgnored":false,
+                 "protectFromRange":0,"death":{"experience":4},"respawn":{"delayTicks":60}}"""), health(result));
+        assertFalse(health(convert("{\"invincible\":true}")).get("killable").getAsBoolean());
+        assertTrue(SentinelMapping.convertRaw(new com.google.gson.JsonPrimitive("weird"), JsonNull.INSTANCE, new JsonArray()).health().isEmpty());
     }
     @Test void aRespawnTimeOfZeroKeepsTheNpcDead() {
         CombatSettings settings = settings(convert("{\"respawnTime\":0}"));
-        assertEquals(-1, settings.respawn().delayTicks(), "Zero means the NPC stays dead, not an instant respawn");
-        assertFalse(settings.respawn().deleteOnDeath());
+        assertTrue(settings.health().respawn().permadeath(), "Zero means the NPC stays dead, not an instant respawn");
+        assertFalse(settings.health().respawn().deleteOnDeath());
     }
     @Test void aNegativeRespawnTimeDeletesTheNpcOnDeath() {
         for (String time : List.of("-1", "-20")) {
             CombatSettings settings = settings(convert("{\"respawnTime\":" + time + "}"));
-            assertEquals(-1, settings.respawn().delayTicks(), time);
-            assertTrue(settings.respawn().deleteOnDeath(), time);
+            assertEquals(-1, settings.health().respawn().delayTicks(), time);
+            assertTrue(settings.health().respawn().deleteOnDeath(), time);
         }
-        assertFalse(settings(convert("{\"respawnTime\":40}")).respawn().deleteOnDeath());
+        assertFalse(settings(convert("{\"respawnTime\":40}")).health().respawn().deleteOnDeath());
     }
     @Test void theOwnerIgnoreConverts() {
         SentinelMapping.Result result = convert("{\"allIgnores\":{\"targets\":[\"OWNER\",\"NPCS\"]},\"allTargets\":{\"targets\":[\"PLAYERS\"]}}");
@@ -223,13 +241,15 @@ class SentinelMappingTest {
     }
     @Test void locationsConvert() {
         CombatSettings settings = settings(convert("{\"spawnPoint\":{\"world\":\"new\",\"x\":8,\"y\":65,\"z\":9,\"yaw\":1},\"avoidReturnPoint\":{\"world\":\"new\",\"x\":1,\"y\":2,\"z\":3}}"));
-        assertEquals(List.of(new CombatSettings.Location("new", 8, 65, 9)), settings.respawn().locations());
+        assertEquals(List.of(new CombatSettings.Location("new", 8, 65, 9)), settings.health().respawn().locations());
         assertEquals(new CombatSettings.Location("new", 1, 2, 3), settings.avoidance().returnPoint().orElseThrow());
     }
     @Test void dropsConvertSimpleItemsWithTheirChancesAndPreserveTheRest() {
         SentinelMapping.Result result = convert("""
                 {"drops":[{"type":"IRON_INGOT","amount":2},{"id":"minecraft:gold_ingot","count":3},{"type":"DIAMOND_SWORD","meta":{"enchants":{"sharp":5}}}],"dropChances":[0.5,0.25,1]}""");
-        assertEquals(List.of(new CombatSettings.DropRule("minecraft:iron_ingot", 2, .5), new CombatSettings.DropRule("minecraft:gold_ingot", 3, .25)), settings(result).death().drops());
+        assertEquals(List.of(new HealthSettings.DropRule("minecraft:iron_ingot", 2, 2, Optional.empty(), .5), new HealthSettings.DropRule("minecraft:gold_ingot", 3, 3, Optional.empty(), .25)),
+                settings(result).health().death().drops());
+        assertEquals(json("{\"id\":\"minecraft:iron_ingot\",\"count\":2}"), health(result).getAsJsonObject("death").getAsJsonArray("drops").get(0).getAsJsonObject().get("item"));
         assertTrue(result.module().getAsJsonObject("preservedSettings").has("drops"), "An item with data cannot be represented, so the original list stays");
     }
     @Test void outOfRangeAndSpecialValuesStayValidAndKeepTheOriginal() {
@@ -238,7 +258,7 @@ class SentinelMappingTest {
         CombatSettings settings = settings(result);
         assertEquals(256, settings.targeting().scanRange());
         assertEquals(6, settings.melee().reach());
-        assertEquals(2048, settings.defense().maximumHealth());
+        assertEquals(2048, settings.health().defense().maximumHealth());
         assertEquals(1, settings.melee().cooldownTicks());
         assertEquals(10, settings.pursuit().speed());
         assertEquals(64, settings.greetings().range());
@@ -260,7 +280,7 @@ class SentinelMappingTest {
         CombatSettings settings = settings(result);
         assertTrue(settings.melee().fromEquipment());
         assertTrue(settings.ranged().fromEquipment());
-        assertTrue(settings.defense().armorFromEquipment());
+        assertTrue(settings.health().defense().armorFromEquipment());
         JsonObject preserved = result.module().getAsJsonObject("preservedSettings");
         assertFalse(preserved.has("damage"));
         assertFalse(preserved.has("armor"));
@@ -349,12 +369,13 @@ class SentinelMappingTest {
         assertFalse(module.get("enabled").getAsBoolean());
         assertFalse(module.get("reviewAccepted").getAsBoolean());
         NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(candidate));
-        assertTrue(CombatSettings.active(definition).isEmpty());
+        assertTrue(CombatSettings.active(definition).isEmpty(), "Neither combat nor health runs before the review");
+        assertTrue(candidate.getAsJsonObject("modules").has(HealthSettings.MODULE));
         CombatSettings settings = CombatSettings.parse(candidate).orElseThrow();
-        assertEquals(40, settings.defense().maximumHealth());
+        assertEquals(40, settings.health().defense().maximumHealth());
         assertTrue(settings.ranged().enabled());
         assertEquals(new UUID(0, 2), settings.guard().npc().orElseThrow());
-        assertEquals("new", settings.respawn().locations().getFirst().world(), "World mapping applies to converted locations");
+        assertEquals("new", settings.health().respawn().locations().getFirst().world(), "World mapping applies to converted locations");
         assertEquals(23, module.getAsJsonObject("historicalStatistics").get("stats_punches").getAsInt());
         assertTrue(module.getAsJsonObject("preservedSettings").get("autoswitch").getAsBoolean());
         JsonObject archived = JsonDocuments.object(Files.readString(preview.directory().resolve("records/1.json")));

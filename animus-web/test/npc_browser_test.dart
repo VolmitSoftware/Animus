@@ -250,7 +250,7 @@ void main() {
 
     test('removeModule drops an emptied modules object', () {
       final NpcBulkResult result = removeModule(<NpcEntry>[_entry('town/guard-south')], 'animus:combat');
-      expect(asMap(_json(result.changes.single)['modules']).keys, <String>['animus:navigation']);
+      expect(asMap(_json(result.changes.single)['modules']).keys, <String>['animus:health', 'animus:navigation']);
       final NpcBulkResult both = removeModule(<NpcEntry>[NpcEntry.of(_documents().firstWhere((AnimusDocument d) => d.id == 'town/baker'))], 'animus:shop');
       expect(asMap(_json(both.changes.single)['modules']).keys, <String>['animus:look-close']);
     });

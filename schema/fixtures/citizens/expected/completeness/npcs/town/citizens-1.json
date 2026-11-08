@@ -8,7 +8,7 @@
   "type": "minecraft:horse",
   "spawned": false,
   "migration": {
-    "importId": "b29173263996dc186dbfeedc14d0a079a41a5a421035c54223956f494737557e",
+    "importId": "04400a2b1c130f7624888d255541071fb0dbebc74628fff53ce4ca620b8e83ff",
     "citizensId": 1,
     "originalSpawned": false,
     "references": [
@@ -59,10 +59,10 @@
       "targeting": {
         "fightBack": false
       },
-      "defense": {
-        "invincible": false
-      },
       "targetableByMobs": true
+    },
+    "animus:health": {
+      "killable": true
     },
     "animus:look-close": {
       "enabled": false,

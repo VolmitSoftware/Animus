@@ -21,19 +21,28 @@ import java.util.UUID;
  */
 final class CombatFields {
     /** The combat sections with settings to edit, in screen order. */
-    static final List<String> SECTIONS = List.of("targeting", "avoidance", "squad", "guard", "pursuit", "melee", "ranged", "defense", "death", "respawn", "greetings");
+    static final List<String> SECTIONS = List.of("targeting", "avoidance", "squad", "guard", "pursuit", "melee", "ranged", "greetings");
     private static final Map<String, Kind> SPECIAL = Map.of("guard.player", Kind.YOU, "guard.npc", Kind.NPC, "avoidance.returnPoint", Kind.HERE,
-            "death.drops", Kind.DROPS, "respawn.locations", Kind.SPOTS, "melee.weaponDamage", Kind.WEAPONS);
+            "melee.weaponDamage", Kind.WEAPONS);
     private static final JsonObject SCHEMA = NpcSchemaGenerator.schema();
-    private static final CombatSettings DEFAULTS = CombatSettings.parseModule(new JsonObject());
+    private static final CombatSettings DEFAULTS = CombatSettings.parse(withCombat()).orElseThrow();
 
     private CombatFields() {}
 
+    /** A document with an empty combat module, whose parse gives every default. */
+    private static JsonObject withCombat() {
+        JsonObject modules = new JsonObject();
+        modules.add(CombatSettings.MODULE, new JsonObject());
+        JsonObject document = new JsonObject();
+        document.add("modules", modules);
+        return document;
+    }
+
     /**
      * How a row edits its value: toggle, step, cycle or type; {@code YOU} is the viewer's UUID, {@code NPC} a wand pick,
-     * {@code HERE} where the viewer stands, {@code OBJECT} a screen of its own, and the last three edit lists from the hand or feet.
+     * {@code HERE} where the viewer stands, {@code OBJECT} a screen of its own, and {@code WEAPONS} damage by held item.
      */
-    enum Kind { BOOLEAN, NUMBER, INTEGER, CHOICE, TEXT, YOU, NPC, HERE, OBJECT, DROPS, SPOTS, WEAPONS }
+    enum Kind { BOOLEAN, NUMBER, INTEGER, CHOICE, TEXT, YOU, NPC, HERE, OBJECT, WEAPONS }
 
     /** One editable setting, by its path inside the module. */
     record Field(List<String> path, String label, Kind kind, double minimum, double maximum, double step, List<String> options, String description, List<Field> children) {

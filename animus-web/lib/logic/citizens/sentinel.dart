@@ -1,4 +1,5 @@
-/// Port of core's `SentinelMapping`: a Sentinel trait as the disabled `animus:combat` module of an import.
+/// Port of core's `SentinelMapping`: a Sentinel trait as the disabled `animus:combat` module of an import and its
+/// `animus:health` module.
 library;
 
 import 'java_json.dart';
@@ -55,12 +56,15 @@ JObject _base() => JObject()
 /// Sentinel's own `text`: string primitives only.
 String? _text(JElement? value) => value is JString ? value.value : null;
 
-JObject convertSentinel(JElement? sentinel, JElement? equipment, JArray references) {
+/// The converted combat module and, when the Sentinel record is an object, its health module.
+typedef SentinelModules = ({JObject combat, JObject? health});
+
+SentinelModules convertSentinel(JElement? sentinel, JElement? equipment, JArray references) {
   if (sentinel is JObject) return _Converter(sentinel, equipment, references).run();
   final JObject module = _base();
   module.add('preservedSettings', sentinel == null ? JNull.instance : sentinel.deepCopy());
   module.add('historicalStatistics', JObject());
-  return module;
+  return (combat: module, health: null);
 }
 
 enum _Scope { targets, avoids, ignores, nested }
@@ -317,6 +321,7 @@ class _Converter {
   final JElement? equipment;
   final JArray references;
   final JObject module = _base();
+  final JObject health = JObject();
   final JObject preserved = JObject();
   final JArray converted = JArray();
   final JArray unsupported = JArray();
@@ -324,7 +329,7 @@ class _Converter {
   final List<String> notes = <String>[];
   bool assist = false;
 
-  JObject run() {
+  SentinelModules run() {
     final JObject statistics = JObject();
     for (final MapEntry<String, JElement> field in source.entries) {
       switch (sentinelDisposition(field.key)) {
@@ -361,12 +366,17 @@ class _Converter {
     report.add('unknown', unknown);
     report.add('notes', JArray(<JElement>[for (final String note in notes) JString(note)]));
     module.add('migrationReport', report);
-    return module;
+    return (combat: module, health: health);
   }
 
   JObject _section(String name) {
     if (!module.has(name)) module.add(name, JObject());
     return module.get(name)! as JObject;
+  }
+
+  JObject _healthSection(String name) {
+    if (!health.has(name)) health.add(name, JObject());
+    return health.get(name)! as JObject;
   }
 
   void _keep(String field, String why) {
@@ -608,26 +618,27 @@ class _Converter {
     return _heldWeapons[javaLower(type).replaceAll('minecraft:', '')];
   }
 
+  /// Sentinel's defense becomes the health module; an NPC that is not invincible is killable.
   void _defense() {
-    final JObject section = _section('defense');
-    section.addDouble('maximumHealth', _number('health', 20, 1, 2048));
+    health.addBool('killable', !_flag('invincible', false));
+    health.addDouble('maximumHealth', _number('health', 20, 1, 2048));
     final double armor = source.has('armor') ? _number('armor', -1, -1, 1) : -1;
     if (armor < 0) {
-      section.addInt('armor', 0);
-      section.addBool('armorFromEquipment', true);
+      health.addBool('armorFromEquipment', true);
     } else {
-      section.addDouble('armor', armor);
+      health.addDouble('armor', armor);
     }
-    section.addBool('invincible', _flag('invincible', false));
-    section.addBool('protectedFromIgnored', _flag('protected', false));
-    section.addDouble('protectFromRange', _number('protectFromRange', 0, 0, 256));
-    section.addBool('knockback', _flag('allow_knockback', true));
-    section.addInt('healRateTicks', _ticks('healRate', 100, 0, 72000));
+    health.addBool('knockback', _flag('allow_knockback', true));
+    final int heal = _ticks('healRate', 100, 0, 72000);
+    health.addBool('regenerate', heal > 0);
+    if (heal > 0) health.addInt('regenerateTicks', heal);
+    health.addBool('protectedFromIgnored', _flag('protected', false));
+    health.addDouble('protectFromRange', _number('protectFromRange', 0, 0, 256));
   }
 
   void _death() {
-    final JObject section = _section('death');
-    section.addBool('victimDrops', _flag('enemyDrops', false));
+    module.addBool('victimDrops', _flag('enemyDrops', false));
+    final JObject section = _healthSection('death');
     section.addInt('experience', _ticks('death_xp', 0, 0, 10000));
     final JElement? drops = source.get('drops');
     if (drops == null) return;
@@ -676,25 +687,29 @@ class _Converter {
       final double raw = chance.asDouble;
       probability = raw > 1 ? 1 : (raw < 0 ? 0 : raw);
     }
+    final JObject stack = JObject();
+    stack.addString('id', id);
+    stack.addInt('count', count);
     final JObject rule = JObject();
-    rule.addString('item', id);
-    rule.addInt('amount', count);
+    rule.add('item', stack);
     rule.addDouble('chance', probability);
     return rule;
   }
 
+  /// Sentinel keeps an NPC with a respawn time of 0 dead, and deletes one with a negative time when it dies.
   void _respawn() {
-    final JObject section = _section('respawn');
+    final JObject section = _healthSection('respawn');
     final double time = _number('respawnTime', 100, -double.maxFinite, 72000);
+    final BigInt ticks = javaRound(time);
     if (time < 0) {
-      section.addInt('delayTicks', -1);
-      section.addBool('deleteOnDeath', true);
+      section.addString('afterDeath', 'delete');
+    } else if (ticks == BigInt.zero) {
+      section.addString('afterDeath', 'permadeath');
     } else {
-      final BigInt ticks = javaRound(time);
-      section.addBig('delayTicks', ticks == BigInt.zero ? BigInt.from(-1) : ticks);
+      section.addBig('delayTicks', ticks);
     }
     final JObject? point = _location('spawnPoint');
-    if (point != null) section.add('locations', JArray(<JElement>[point]));
+    if (point != null) section.add('points', JArray(<JElement>[point]));
   }
 
   void _greetings() {

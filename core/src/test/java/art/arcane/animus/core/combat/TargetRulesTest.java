@@ -25,7 +25,7 @@ class TargetRulesTest {
     private static CombatTarget player(String name) { return target(TargetKind.PLAYER, "minecraft:player", name, Set.of(TargetCategory.PLAYERS), "", null); }
     private static TargetRules rules(String json) {
         JsonObject module = JsonParser.parseString("{\"targets\":" + json + "}").getAsJsonObject();
-        return CombatSettings.parseModule(module).targets();
+        return CombatSettings.parseModule(module, HealthSettings.UNKILLABLE).targets();
     }
     private static boolean matches(String json, CombatTarget target) { return rules(json).matches(target, TargetRules.Context.NONE); }
 
@@ -114,7 +114,7 @@ class TargetRulesTest {
         assertThrows(IllegalArgumentException.class, () -> rules("{\"all\":[{}]}"));
         assertThrows(IllegalArgumentException.class, () -> rules("{\"together\":[[{\"categories\":[\"players\"]}]]}"), "A group needs two parts");
         IllegalArgumentException ignored = assertThrows(IllegalArgumentException.class,
-                () -> CombatSettings.parseModule(JsonParser.parseString("{\"ignores\":{\"events\":{\"kinds\":[\"player_hurts_player\"]}}}").getAsJsonObject()));
+                () -> CombatSettings.parseModule(JsonParser.parseString("{\"ignores\":{\"events\":{\"kinds\":[\"player_hurts_player\"]}}}").getAsJsonObject(), HealthSettings.UNKILLABLE));
         assertTrue(ignored.getMessage().contains("not available in ignores"), ignored.getMessage());
     }
 }

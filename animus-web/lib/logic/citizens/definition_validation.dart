@@ -15,7 +15,6 @@ import '../npc/group_merge.dart' show groupMergeNpc;
 import '../npc/combat_settings.dart';
 import '../npc/group_model.dart';
 import '../npc/route_model.dart' show movementStyles;
-import '../npc/health_settings.dart';
 import '../npc/npc_attributes.dart';
 import 'citizens_traits.dart' show teamColors;
 import 'java_json.dart';
@@ -172,9 +171,6 @@ List<String> definitionRuleErrors(JsonMap definition, {String? id}) {
     if (range.length == 2 && range[0] is num && range[1] is num && (range[0]! as num) > (range[1]! as num)) {
       errors.add('\$.modules.animus:look-close.randomLook.$key: the minimum is above the maximum');
     }
-  }
-  for (final String section in healthCombatConflicts(modules)) {
-    errors.add('\$.modules.animus:combat.$section: animus:health replaces it; remove one');
   }
   return errors;
 }

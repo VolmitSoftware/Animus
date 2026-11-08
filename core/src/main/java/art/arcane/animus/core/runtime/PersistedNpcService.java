@@ -2192,7 +2192,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (!startInline(entry.value)) requestRouteRead(entry.value);
     }
     public static double maximumHealth(DefinitionSpec<?> spec) {
-        return CombatSettings.active(spec.definition()).map((CombatSettings combat) -> combat.defense().maximumHealth()).orElse(20.0);
+        return CombatSettings.active(spec.definition()).map((CombatSettings combat) -> combat.health().defense().maximumHealth()).orElse(20.0);
     }
     /** The body size multiplier: hitbox, reach and path clearance follow it, as the viewers' clients draw it. */
     public static double scale(DefinitionSpec<?> spec) { return spec.appearance().traits().attributes().scale(); }

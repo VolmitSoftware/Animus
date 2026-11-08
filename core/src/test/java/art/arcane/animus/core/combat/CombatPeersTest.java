@@ -64,28 +64,29 @@ class CombatPeersTest {
     private final PeerWorld world = new PeerWorld();
     private final List<CombatEngine> engines = new ArrayList<>();
 
-    private static CombatSettings settings(String json) {
+    private static CombatSettings settings(String json, String health) {
         JsonObject module = JsonParser.parseString(json).getAsJsonObject();
         module.addProperty("enabled", true);
-        return CombatSettings.parseModule(module);
+        return CombatSettings.parseModule(module, CombatTesting.health(health));
     }
-    private UUID combatant(double x, double z, double health, String json, CombatEngine.Allowance allowance) {
+    private UUID combatant(double x, double z, double health, String json, String rules, CombatEngine.Allowance allowance) {
         UUID npc = world.npc(x, z, health);
-        CombatSettings settings = settings(json);
+        CombatSettings settings = settings(json, rules);
         CombatEngine engine = new CombatEngine(CombatBudgets.DEFAULT, world, ProtectionAdapter.NONE, new Random(7), (String message) -> {}, allowance);
         assertTrue(engine.register(npc, "npc-" + npc, settings, CombatLoadout.NONE));
         world.holders.put(npc, engine); world.published.put(npc, settings);
         engines.add(engine);
         return npc;
     }
-    private UUID combatant(double x, double z, double health, String json) { return combatant(x, z, health, json, CombatEngine.Allowance.UNLIMITED); }
+    private UUID combatant(double x, double z, double health, String json) { return combatant(x, z, health, json, "{\"killable\":true}"); }
+    private UUID combatant(double x, double z, double health, String json, String rules) { return combatant(x, z, health, json, rules, CombatEngine.Allowance.UNLIMITED); }
     private void run(int ticks) { for (int i = 0; i < ticks; i++) { for (CombatEngine engine : engines) engine.tick(); world.deliver(); } }
     private CombatEngine.Status status(UUID npc) { return world.holders.get(npc).status(npc).orElseThrow(); }
     private static TargetRef npcRef(UUID id) { return new TargetRef(TargetKind.NPC, id); }
 
     @Test void shouldStrikeAnNpcHeldByAnotherEngineThroughItsOwnerAndApplyItsDefense() {
         UUID hunter = combatant(0, 0, 20, "{\"targets\":{\"categories\":[\"npcs\"]},\"targeting\":{\"scanIntervalTicks\":1},\"melee\":{\"damage\":10,\"cooldownTicks\":1}}");
-        UUID prey = combatant(2, 0, 20, "{\"defense\":{\"armor\":0.5,\"invulnerableTicks\":0}}");
+        UUID prey = combatant(2, 0, 20, "{}", "{\"killable\":true,\"armor\":0.5,\"invulnerableTicks\":0}");
         run(1);
         assertEquals(npcRef(prey), status(hunter).target().orElseThrow(), "the other engine's NPC is seen through its published view");
         assertTrue(world.delivered.contains("strike"), "the hit went to the prey's owner as a message");
@@ -97,7 +98,7 @@ class CombatPeersTest {
     @Test void shouldLandAnArrowOnAnNpcAnotherEngineHoldsAndCreditTheArcher() {
         UUID archer = combatant(0, 0, 20, "{\"targets\":{\"categories\":[\"npcs\"]},\"targeting\":{\"scanIntervalTicks\":1,\"scanRange\":30},\"melee\":{\"enabled\":false},"
                 + "\"ranged\":{\"enabled\":true,\"damage\":5,\"range\":30,\"cooldownTicks\":20}}");
-        UUID dummy = combatant(10, 0, 20, "{\"defense\":{\"invulnerableTicks\":0},\"melee\":{\"enabled\":false},\"pursuit\":{\"closeChase\":false}}");
+        UUID dummy = combatant(10, 0, 20, "{\"melee\":{\"enabled\":false},\"pursuit\":{\"closeChase\":false}}", "{\"killable\":true,\"invulnerableTicks\":0}");
         run(1);
         UUID helper = world.helpers.keySet().iterator().next();
         world.helpers.put(helper, new art.arcane.animus.core.virtual.Vec3(11, 65, 0));
@@ -109,7 +110,7 @@ class CombatPeersTest {
 
     @Test void shouldNeverTargetAnInvincibleNpcAnotherEngineHolds() {
         UUID hunter = combatant(0, 0, 20, "{\"targets\":{\"categories\":[\"npcs\"]},\"targeting\":{\"scanIntervalTicks\":1}}");
-        combatant(2, 0, 20, "{\"defense\":{\"invincible\":true},\"targeting\":{\"fightBack\":false}}");
+        combatant(2, 0, 20, "{\"targeting\":{\"fightBack\":false}}", "{}");
         run(3);
         assertTrue(status(hunter).target().isEmpty());
         assertFalse(world.delivered.contains("strike"));
@@ -143,7 +144,7 @@ class CombatPeersTest {
             @Override public void refund(Kind kind, int unused) { if (unused > 0) left.merge(kind, unused, Integer::sum); }
         };
         String hunter = "{\"targets\":{\"categories\":[\"monsters\"]},\"targeting\":{\"scanIntervalTicks\":1,\"scanRange\":16}}";
-        UUID first = combatant(0, 0, 20, hunter, region), second = combatant(0, 40, 20, hunter, region);
+        UUID first = combatant(0, 0, 20, hunter, "{\"killable\":true}", region), second = combatant(0, 40, 20, hunter, "{\"killable\":true}", region);
         world.monster("minecraft:zombie", 5, 0); world.monster("minecraft:zombie", 5, 40);
         for (CombatEngine.Allowance.Kind kind : CombatEngine.Allowance.Kind.values()) left.put(kind, 64);
         left.put(CombatEngine.Allowance.Kind.SCANS, 1);

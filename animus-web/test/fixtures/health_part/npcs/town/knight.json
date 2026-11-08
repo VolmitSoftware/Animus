@@ -22,12 +22,6 @@
         "categories": [
           "monsters"
         ]
-      },
-      "defense": {
-        "maximumHealth": 40
-      },
-      "death": {
-        "experience": 5
       }
     },
     "animus:health": {
@@ -36,7 +30,10 @@
       "respawn": {
         "afterDeath": "permadeath"
       },
-      "dead": true
+      "dead": true,
+      "death": {
+        "experience": 5
+      }
     }
   }
 }

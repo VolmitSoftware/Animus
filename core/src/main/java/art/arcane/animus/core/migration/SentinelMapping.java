@@ -17,16 +17,18 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Converts a Sentinel trait record into the disabled {@code animus:combat} module of an import. Nothing
- * here activates combat: {@code enabled} and {@code reviewAccepted} stay false until the review is accepted.
+ * Converts a Sentinel trait record into the disabled {@code animus:combat} module of an import and its
+ * {@code animus:health} module: health, armor, invincibility, drops, experience, respawn time and spawn point.
+ * Nothing here activates combat: {@code enabled} and {@code reviewAccepted} stay false until the review is accepted.
  * A field absent from a save holds Sentinel's own default, so those defaults are written explicitly rather
  * than inheriting Animus defaults. A value that cannot be converted exactly is kept in preservedSettings.
  */
 final class SentinelMapping {
     enum Disposition { CONVERTED, UNSUPPORTED, STATISTIC, UNKNOWN }
 
-    record Result(JsonObject module, List<String> notes) {
-        Result { module = Objects.requireNonNull(module); notes = List.copyOf(notes); }
+    /** @param health the {@code animus:health} module; empty when the Sentinel record is not an object */
+    record Result(JsonObject module, Optional<JsonObject> health, List<String> notes) {
+        Result { module = Objects.requireNonNull(module); health = Objects.requireNonNull(health); notes = List.copyOf(notes); }
     }
 
     private static final Set<String> CONVERTED = Set.of("allTargets", "allIgnores", "allAvoids", "avoidRange", "enemyTargetTime", "fightback", "realistic", "ignore_los", "retain_target",
@@ -62,7 +64,7 @@ final class SentinelMapping {
         JsonObject module = base();
         module.add("preservedSettings", sentinel == null ? JsonNull.INSTANCE : sentinel.deepCopy());
         module.add("historicalStatistics", new JsonObject());
-        return new Result(module, List.of());
+        return new Result(module, Optional.empty(), List.of());
     }
 
     static Result convert(JsonObject sentinel, JsonElement equipment, JsonArray references) {
@@ -302,6 +304,7 @@ final class SentinelMapping {
         private final JsonElement equipment;
         private final JsonArray references;
         private final JsonObject module = base();
+        private final JsonObject health = new JsonObject();
         private final JsonObject preserved = new JsonObject();
         private final JsonArray converted = new JsonArray();
         private final JsonArray unsupported = new JsonArray();
@@ -354,12 +357,16 @@ final class SentinelMapping {
             notes.forEach(noteList::add);
             report.add("notes", noteList);
             module.add("migrationReport", report);
-            return new Result(module, notes);
+            return new Result(module, Optional.of(health), notes);
         }
 
         private JsonObject section(String name) {
             if (!module.has(name)) module.add(name, new JsonObject());
             return module.getAsJsonObject(name);
+        }
+        private JsonObject healthSection(String name) {
+            if (!health.has(name)) health.add(name, new JsonObject());
+            return health.getAsJsonObject(name);
         }
         private void keep(String field, String why) {
             preserved.add(field, source.get(field).deepCopy());
@@ -576,25 +583,23 @@ final class SentinelMapping {
             if (type == null) return Optional.empty();
             return Optional.ofNullable(HELD_WEAPONS.get(type.toLowerCase(Locale.ROOT).replace("minecraft:", "")));
         }
+        /** Sentinel's defense becomes the health module; an NPC that is not invincible is killable. */
         private void defense() {
-            JsonObject section = section("defense");
-            section.addProperty("maximumHealth", number("health", 20, 1, 2048));
+            health.addProperty("killable", !flag("invincible", false));
+            health.addProperty("maximumHealth", number("health", 20, 1, 2048));
             double armor = source.has("armor") ? number("armor", -1, -1, 1) : -1;
-            if (armor < 0) {
-                section.addProperty("armor", 0);
-                section.addProperty("armorFromEquipment", true);
-            } else {
-                section.addProperty("armor", armor);
-            }
-            section.addProperty("invincible", flag("invincible", false));
-            section.addProperty("protectedFromIgnored", flag("protected", false));
-            section.addProperty("protectFromRange", number("protectFromRange", 0, 0, 256));
-            section.addProperty("knockback", flag("allow_knockback", true));
-            section.addProperty("healRateTicks", ticks("healRate", 100, 0, 72000));
+            if (armor < 0) health.addProperty("armorFromEquipment", true);
+            else health.addProperty("armor", armor);
+            health.addProperty("knockback", flag("allow_knockback", true));
+            int heal = ticks("healRate", 100, 0, 72000);
+            health.addProperty("regenerate", heal > 0);
+            if (heal > 0) health.addProperty("regenerateTicks", heal);
+            health.addProperty("protectedFromIgnored", flag("protected", false));
+            health.addProperty("protectFromRange", number("protectFromRange", 0, 0, 256));
         }
         private void death() {
-            JsonObject section = section("death");
-            section.addProperty("victimDrops", flag("enemyDrops", false));
+            module.addProperty("victimDrops", flag("enemyDrops", false));
+            JsonObject section = healthSection("death");
             section.addProperty("experience", ticks("death_xp", 0, 0, 10000));
             JsonElement drops = source.get("drops");
             if (drops == null) return;
@@ -630,27 +635,26 @@ final class SentinelMapping {
             JsonElement amount = from.has("amount") ? from.get("amount") : from.get("count");
             int count = amount != null && amount.isJsonPrimitive() && amount.getAsJsonPrimitive().isNumber() ? Math.max(1, Math.min(64, amount.getAsInt())) : 1;
             double probability = chance != null && chance.isJsonPrimitive() && chance.getAsJsonPrimitive().isNumber() ? Math.max(0, Math.min(1, chance.getAsDouble())) : 1;
+            JsonObject stack = new JsonObject();
+            stack.addProperty("id", id);
+            stack.addProperty("count", count);
             JsonObject rule = new JsonObject();
-            rule.add("item", new JsonPrimitive(id));
-            rule.addProperty("amount", count);
+            rule.add("item", stack);
             rule.addProperty("chance", probability);
             return Optional.of(rule);
         }
         /** Sentinel keeps an NPC with a respawn time of 0 dead, and deletes one with a negative time when it dies. */
         private void respawn() {
-            JsonObject section = section("respawn");
+            JsonObject section = healthSection("respawn");
             double time = number("respawnTime", 100, -Double.MAX_VALUE, 72000);
-            if (time < 0) {
-                section.addProperty("delayTicks", -1);
-                section.addProperty("deleteOnDeath", true);
-            } else {
-                long ticks = Math.round(time);
-                section.addProperty("delayTicks", ticks == 0 ? -1 : ticks);
-            }
+            long ticks = Math.round(time);
+            if (time < 0) section.addProperty("afterDeath", "delete");
+            else if (ticks == 0) section.addProperty("afterDeath", "permadeath");
+            else section.addProperty("delayTicks", ticks);
             location("spawnPoint").ifPresent((JsonObject point) -> {
-                JsonArray locations = new JsonArray();
-                locations.add(point);
-                section.add("locations", locations);
+                JsonArray points = new JsonArray();
+                points.add(point);
+                section.add("points", points);
             });
         }
         /** Empty text means no line in Sentinel. */

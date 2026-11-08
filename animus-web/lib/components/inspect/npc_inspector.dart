@@ -843,11 +843,9 @@ class _NpcInspectorState extends State<NpcInspector> {
 
   Widget _health() => HealthEditor(
     value: _modules[healthModule],
-    combat: _modules[combatModule],
     diagnostics: _diagnostics,
     origin: _origin,
     onChanged: (Object? value) => _putModule(healthModule, value),
-    onCombatChanged: (Object? value) => _putModule(combatModule, value),
   );
 
   Widget _shop() => ShopBindingEditor(

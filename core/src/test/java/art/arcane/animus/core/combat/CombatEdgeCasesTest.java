@@ -30,15 +30,17 @@ class CombatEdgeCasesTest {
         }, new Random(7), (String line) -> {});
         return engine;
     }
-    private static CombatSettings settings(String json) {
+    private static CombatSettings settings(String json) { return settings(json, "{\"killable\":true}"); }
+    private static CombatSettings settings(String json, String health) {
         JsonObject module = JsonParser.parseString(json).getAsJsonObject();
         module.addProperty("enabled", true);
-        return CombatSettings.parseModule(module);
+        return CombatSettings.parseModule(module, CombatTesting.health(health));
     }
-    private UUID combatant(double x, double z, String json) { return combatant(x, z, json, CombatLoadout.NONE); }
-    private UUID combatant(double x, double z, String json, CombatLoadout loadout) {
+    private UUID combatant(double x, double z, String json) { return combatant(x, z, json, "{\"killable\":true}", CombatLoadout.NONE); }
+    private UUID combatant(double x, double z, String json, String health) { return combatant(x, z, json, health, CombatLoadout.NONE); }
+    private UUID combatant(double x, double z, String json, String health, CombatLoadout loadout) {
         UUID npc = world.npc(x, z, 20);
-        assertTrue(engine().register(npc, "npc-" + npc, settings(json), loadout));
+        assertTrue(engine().register(npc, "npc-" + npc, settings(json, health), loadout));
         return npc;
     }
     private void run(int ticks) { for (int i = 0; i < ticks; i++) engine().tick(); }
@@ -132,7 +134,7 @@ class CombatEdgeCasesTest {
     @Test void anInvincibleNpcViewPublishedToOtherEnginesSaysSo() {
         UUID statue = world.npc(2, 0, 20);
         CombatTarget view = CombatEngine.npcTarget(statue, "Statue", world.npc(statue).orElseThrow(), "statue",
-                settings("{\"defense\":{\"invincible\":true}}"), CombatLoadout.NONE);
+                settings("{}", "{}"), CombatLoadout.NONE);
         assertTrue(view.details().invulnerable());
         assertFalse(CombatEngine.npcTarget(statue, "Statue", world.npc(statue).orElseThrow(), "statue", settings("{}"), CombatLoadout.NONE).details().invulnerable());
     }
@@ -146,7 +148,7 @@ class CombatEdgeCasesTest {
     }
     @Test void anInvincibleNpcIsNeverTargeted() {
         UUID hunter = combatant(0, 0, "{\"targets\":{\"categories\":[\"npcs\"]},\"targeting\":{\"scanIntervalTicks\":1}}");
-        UUID statue = combatant(2, 0, "{\"defense\":{\"invincible\":true},\"targeting\":{\"fightBack\":false}}");
+        UUID statue = combatant(2, 0, "{\"targeting\":{\"fightBack\":false}}", "{}");
         run(3);
         assertTrue(status(hunter).target().isEmpty());
         assertEquals(CombatWorld.DamageStatus.PROTECTED, engine().playerAttack(statue, player(UUID.randomUUID()), MockCombatWorld.at(1, 64, 0), 5).status());
@@ -154,9 +156,9 @@ class CombatEdgeCasesTest {
     }
     @Test void aRespawnedGuardWalksBackToItsPostWithFreshState() {
         String json = "{\"targets\":{\"categories\":[\"monsters\"]},\"targeting\":{\"scanIntervalTicks\":1,\"scanRange\":30},\"pursuit\":{\"giveUpRange\":40},\"melee\":{\"enabled\":false},"
-                + "\"ranged\":{\"enabled\":true,\"damage\":5,\"range\":30,\"cooldownTicks\":1,\"velocity\":1.6,\"useAmmo\":true},"
-                + "\"respawn\":{\"delayTicks\":5,\"locations\":[{\"world\":\"world\",\"x\":20,\"y\":64,\"z\":20}]}}";
-        UUID guard = combatant(0, 0, json, new CombatLoadout(Optional.empty(), Map.of(), Map.of("minecraft:arrow", 2)));
+                + "\"ranged\":{\"enabled\":true,\"damage\":5,\"range\":30,\"cooldownTicks\":1,\"velocity\":1.6,\"useAmmo\":true}}";
+        String health = "{\"killable\":true,\"respawn\":{\"delayTicks\":5,\"points\":[{\"world\":\"world\",\"x\":20,\"y\":64,\"z\":20}]}}";
+        UUID guard = combatant(0, 0, json, health, new CombatLoadout(Optional.empty(), Map.of(), Map.of("minecraft:arrow", 2)));
         world.posts.put(guard, MockCombatWorld.at(0, 64, 0));
         UUID zombie = world.monster("minecraft:zombie", 10, 0);
         run(4);
@@ -176,7 +178,7 @@ class CombatEdgeCasesTest {
         assertEquals(new Vec3(0, 64, 0), world.npc(guard).orElseThrow().position().point());
     }
     @Test void aRespawnOnThePostStaysIdle() {
-        UUID guard = combatant(3, 4, "{\"respawn\":{\"delayTicks\":1}}");
+        UUID guard = combatant(3, 4, "{}", "{\"killable\":true,\"respawn\":{\"delayTicks\":1}}");
         world.posts.put(guard, MockCombatWorld.at(3, 64, 4));
         world.damageVirtual(guard, player(UUID.randomUUID()), 100);
         run(4);

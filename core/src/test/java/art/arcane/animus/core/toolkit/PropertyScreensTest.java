@@ -272,7 +272,7 @@ class PropertyScreensTest {
     @Test void theCoveredPathsReachNestedListsMapsAndModules() {
         Set<String> covered = PropertyScreen.covered(PropertyScreen.SCHEMA);
         for (String path : List.of("name", "tags[]", "position.x", "armorStand.head[]", "poses.*.yaw", "hologram.lines[]", "movement.stuck.afterTicks",
-                "attributes.minecraft:scale", "modules.animus:combat.enabled", "modules.animus:combat.death.drops[].item", "modules.animus:combat.melee.weaponDamage.*"))
+                "attributes.minecraft:scale", "modules.animus:combat.enabled", "modules.animus:health.death.drops[].item.id", "modules.animus:combat.melee.weaponDamage.*"))
             assertTrue(covered.contains(path), path);
         assertFalse(covered.contains("equipment.main_hand.id"), "items belong to the Equipment screen");
     }

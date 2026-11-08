@@ -725,7 +725,7 @@ public final class NpcSchemaGenerator {
         private CombatSchema() {}
 
         static JsonObject module() {
-            JsonObject combat = described(closed(), "Fighting, guarding, health and death. An unknown setting is refused so a typo cannot weaken a rule.");
+            JsonObject combat = described(closed(), "Targeting, attacks and guarding. Health and death are in animus:health. An unknown setting is refused so a typo cannot weaken a rule.");
             JsonObject fields = new JsonObject();
             fields.add("enabled", described(new JsonObject(), "Literal true turns combat on; anything else leaves it off."));
             fields.add("reviewAccepted", described(new JsonObject(), "Imported NPCs fight only once this is literal true."));
@@ -811,46 +811,13 @@ public final class NpcSchemaGenerator {
             rangedRules.add(potion);
             ranged.add("allOf", rangedRules);
             fields.add("ranged", ranged);
-            fields.add("defense", section(
-                    "maximumHealth", described(range("number", 1, 2048), "20 by default."),
-                    "armor", described(range("number", 0, 1), "Share of damage absorbed."),
-                    "invincible", type("boolean"),
-                    "knockback", described(type("boolean"), "True by default."),
-                    "protectedFromIgnored", type("boolean"),
-                    "protectFromRange", range("number", 0, 256),
-                    "healRateTicks", described(range("integer", 0, 72000), "0 never heals."),
-                    "invulnerableTicks", described(range("integer", 0, 100), "10 by default."),
-                    "armorFromEquipment", type("boolean")));
-            JsonObject drop = section(
-                    "item", pattern(NAMESPACED),
-                    "amount", described(range("integer", 1, 64), "1 by default."),
-                    "chance", described(range("number", 0, 1), "1 by default."));
-            drop.add("required", strings("item"));
-            fields.add("death", section(
-                    "drops", list(drop, 0, 32, "At most 32."),
-                    "experience", range("integer", 0, 10000),
-                    "victimDrops", described(type("boolean"), "True by default.")));
-            JsonObject respawn = section(
-                    "delayTicks", described(range("integer", -1, 72000), "-1 never respawns. 100 by default."),
-                    "locations", list(reference("location"), 0, 16, "At most 16."),
-                    "deleteOnDeath", described(type("boolean"), "Delete the definition on death; needs delayTicks -1."));
-            JsonObject deletes = new JsonObject();
-            JsonObject deleting = property("deleteOnDeath", constant(true));
-            deleting.add("required", strings("deleteOnDeath"));
-            deletes.add("if", deleting);
-            JsonObject never = property("delayTicks", constant(-1));
-            never.add("required", strings("delayTicks"));
-            deletes.add("then", never);
-            JsonArray respawnRules = new JsonArray();
-            respawnRules.add(deletes);
-            respawn.add("allOf", respawnRules);
-            fields.add("respawn", respawn);
             fields.add("greetings", section(
                     "friendly", described(text(TEXT), "Said to players it would not target."),
                     "hostile", described(text(TEXT), "Said to players it would target."),
                     "range", described(range("number", 1, 64), "10 by default."),
                     "cooldownTicks", described(range("integer", 0, 72000), "100 by default.")));
             fields.add("targetableByMobs", described(type("boolean"), "Nearby hostile mobs may attack the NPC."));
+            fields.add("victimDrops", described(type("boolean"), "What it kills drops loot. True by default."));
             for (String kept : List.of("preservedSettings", "historicalStatistics", "migrationReport")) fields.add(kept, described(new JsonObject(), "Kept from an import."));
             combat.add("properties", fields);
             return combat;

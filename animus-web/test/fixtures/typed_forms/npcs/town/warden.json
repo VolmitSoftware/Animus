@@ -44,19 +44,24 @@
           "id": "minecraft:poison",
           "amplifier": 1
         }
-      },
+      }
+    },
+    "animus:health": {
+      "killable": true,
       "death": {
         "drops": [
           {
-            "item": "minecraft:iron_ingot",
-            "amount": 2,
+            "item": {
+              "id": "minecraft:iron_ingot",
+              "count": 2
+            },
             "chance": 0.5
           }
         ]
       },
       "respawn": {
         "delayTicks": 100,
-        "locations": [
+        "points": [
           {
             "world": "world",
             "x": 4,

@@ -10,10 +10,12 @@ import static org.junit.jupiter.api.Assertions.*;
 class CitizensTraitsTest {
     private static JsonObject json(String text) { return JsonParser.parseString(text).getAsJsonObject(); }
     private static CitizensTraits.Result map(String type, String record, boolean combat) { return map(type, record, combat, false); }
-    private static CitizensTraits.Result map(String type, String record, boolean combat, boolean routed) {
+    private static CitizensTraits.Result map(String type, String record, boolean combat, boolean routed) { return map(type, record, combat, routed, false); }
+    /** A Sentinel NPC converts with both combat and health modules. */
+    private static CitizensTraits.Result map(String type, String record, boolean combat, boolean routed, boolean patrolled) {
         JsonObject source = json(record);
         JsonObject traits = source.has("traits") ? source.getAsJsonObject("traits") : new JsonObject();
-        return CitizensTraits.map("minecraft:" + type, source, traits, combat, routed, new JsonArray());
+        return CitizensTraits.map("minecraft:" + type, source, traits, combat, combat, routed, patrolled, new JsonArray());
     }
 
     @Test void navigatorSettingsBecomeTheNpcsMovement() {
@@ -77,6 +79,19 @@ class CitizensTraitsTest {
         assertEquals(json("{\"avoidWater\":true}"), map("player", "{\"navigator\":{\"avoidwater\":true}}", false, true).fields().get("movement"));
     }
 
+    @Test void citizensRoutesOpenDoorsAndDropAtLeastThreeBlocks() {
+        CitizensTraits.Result low = map("player", "{\"navigator\":{\"falldistance\":1}}", false, true, true);
+        assertEquals(json("{\"maximumFall\":3,\"avoidWater\":false,\"openDoors\":true}"), low.fields().get("movement"));
+        assertTrue(low.raisedFall());
+        CitizensTraits.Result high = map("player", "{\"navigator\":{\"falldistance\":5}}", false, true, true);
+        assertEquals(5, high.fields().getAsJsonObject("movement").get("maximumFall").getAsInt(), "A longer drop stays");
+        assertFalse(high.raisedFall());
+        assertEquals(json("{\"avoidWater\":false,\"openDoors\":true}"), map("player", "{}", false, true, true).fields().get("movement"),
+                "Without a fall distance the body's own drop of 3 applies");
+        assertEquals(1, map("player", "{\"navigator\":{\"falldistance\":1}}", false, true, false).fields().getAsJsonObject("movement").get("maximumFall").getAsInt(),
+                "A wander route is not a Citizens route");
+    }
+
     @Test void vanillaAiBecomesAWanderRouteOnMobBodies() {
         String record = "{\"metadata\":{\"minecraft-ai\":true},\"navigator\":{\"speedmodifier\":1.5}}";
         assertTrue(CitizensTraits.wanders("minecraft:zombie", json(record)));
@@ -92,9 +107,9 @@ class CitizensTraitsTest {
         JsonObject traits = json("{\"targetable\":{\"targetable\":true}}");
         assertTrue(CitizensTraits.targetable(traits));
         assertFalse(CitizensTraits.targetable(json("{\"targetable\":{\"targetable\":false}}")));
-        assertEquals(json("{\"enabled\":false,\"reviewAccepted\":false,\"targeting\":{\"fightBack\":false},\"defense\":{\"invincible\":true}}"),
-                CitizensTraits.targetableCombat(json("{}")));
-        assertFalse(CitizensTraits.targetableCombat(json("{\"metadata\":{\"protected\":false}}")).getAsJsonObject("defense").get("invincible").getAsBoolean());
+        assertEquals(json("{\"enabled\":false,\"reviewAccepted\":false,\"targeting\":{\"fightBack\":false}}"), CitizensTraits.targetableCombat());
+        assertEquals(json("{\"killable\":false}"), CitizensTraits.targetableHealth(json("{}")));
+        assertEquals(json("{\"killable\":true}"), CitizensTraits.targetableHealth(json("{\"metadata\":{\"protected\":false}}")));
         assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, map("player", "{\"traits\":{\"targetable\":{\"targetable\":true}}}", false)
                 .notes().get("/traits/targetable/targetable").status());
     }

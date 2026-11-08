@@ -91,7 +91,7 @@ final class HealthSetting {
                 catch (NumberFormatException invalid) { throw new IllegalArgumentException("value must be a whole number of ticks"); }
             }
             case AFTER_DEATH -> {
-                if (!text.equals("respawn") && !text.equals("permadeath")) throw new IllegalArgumentException("value must be respawn or permadeath");
+                if (!List.of("respawn", "permadeath", "delete").contains(text)) throw new IllegalArgumentException("value must be respawn, permadeath or delete");
                 yield new JsonPrimitive(text);
             }
         };

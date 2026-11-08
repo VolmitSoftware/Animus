@@ -1,7 +1,7 @@
 /// Edits behind the combat editor's typed forms: the advanced target rules
-/// from the NPC schema, locations placed on the grid (avoidance.returnPoint,
-/// respawn.locations), the ranged weapon and its potion effect, and death
-/// drops. Each keeps keys it does not edit.
+/// from the NPC schema, locations placed on the grid (avoidance.returnPoint),
+/// and the ranged weapon and its potion effect. Each keeps keys it does not
+/// edit.
 library;
 
 import '../gui/gui_json.dart';
@@ -93,12 +93,3 @@ JsonMap withRangedWeapon(JsonMap ranged, String? weapon) {
 /// [ranged] with effect field [key] set, or removed when [value] is null.
 JsonMap withRangedEffect(JsonMap ranged, String key, Object? value) =>
     <String, Object?>{...ranged, 'effect': withLocationField(asMap(ranged['effect']), key, value)};
-
-JsonMap newCombatDrop([String item = 'minecraft:iron_ingot']) => <String, Object?>{'item': item, 'amount': 1, 'chance': 1};
-
-/// [drops] with drop [index]'s [key] set, or removed when [value] is null;
-/// unchanged when there is no such drop.
-List<Object?> withDropField(List<Object?> drops, int index, String key, Object? value) {
-  if (index < 0 || index >= drops.length) return drops;
-  return <Object?>[...drops]..[index] = withLocationField(asMap(drops[index]), key, value);
-}
