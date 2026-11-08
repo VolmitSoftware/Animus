@@ -326,7 +326,6 @@ public final class NpcSchemaGenerator {
         JsonObject fields = new JsonObject();
         fields.add("speed", described(range("number", 1, 5), "Blocks per second."));
         fields.add("avoidWater", described(type("boolean"), "False lets a walking route cross water at the surface. True by default."));
-        fields.add("fly", described(type("boolean"), "Routes fly."));
         fields.add("openDoors", described(type("boolean"), "Walk through wooden doors, fence gates and trapdoors, closing them behind."));
         fields.add("stepHeight", described(range("number", 0, MovementProfile.MAX_STEP), "Blocks the body climbs without jumping."));
         fields.add("maximumFall", described(range("integer", 0, 16), "Blocks the body drops."));
@@ -352,7 +351,8 @@ public final class NpcSchemaGenerator {
 
     /** A movement style name with the choices it takes. */
     private static JsonObject style(String description) {
-        return described(choices(MovementStyle.keys()), description + " Sneak and crawl move at 0.3x, sprint and swimming at 1.3x.");
+        return described(choices(MovementStyle.keys()), description + " Fly and glide move through the air; glide shows the elytra pose. Sneak and crawl move at 0.3x, sprint and swimming at 1.3x, glide at "
+                + NpcAttributes.format(MovementStyle.GLIDE_RATIO) + "x.");
     }
 
     private static JsonObject shop() {

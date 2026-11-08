@@ -162,8 +162,12 @@ class NavigationEditor extends StatelessWidget {
     this.onOpen,
     this.onCopyRoute,
     this.copyLabel = 'Make a copy for this NPC',
+    this.ownStyle,
     super.key,
   });
+
+  /// The NPC's own `movement.style`, which decides whether its waypoints may hang in the air.
+  final String? ownStyle;
 
   /// The module object, or null.
   final Object? value;
@@ -332,7 +336,7 @@ class NavigationEditor extends StatelessWidget {
               RouteEditor(value: asMap(routeDocument.json), onChanged: (JsonMap _, JsonMap _) {}, origin: origin, recordings: recordings, readOnly: true),
           ],
         NavigationSource.points => <Widget>[
-            RouteEditor(value: module, origin: origin, world: world, path: path, diagnostics: diagnostics, recordings: recordings, onChanged: (JsonMap next, JsonMap from) => onChanged(next, from: from)),
+            RouteEditor(value: module, origin: origin, world: world, path: path, diagnostics: diagnostics, recordings: recordings, ownStyle: ownStyle, onChanged: (JsonMap next, JsonMap from) => onChanged(next, from: from)),
           ],
       },
     ]);

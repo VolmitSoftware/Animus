@@ -13,7 +13,10 @@ const List<String> routeOrders = <String>['sequence', 'pingpong', 'random', 'wan
 const List<String> routeModes = <String>['walk', 'swim', 'fly'];
 
 /// Movement styles, as `MovementStyle` names them; walk is the default.
-const List<String> movementStyles = <String>['walk', 'sneak', 'sprint', 'swim', 'crawl', 'glide'];
+const List<String> movementStyles = <String>['walk', 'sneak', 'sprint', 'swim', 'crawl', 'fly', 'glide'];
+
+/// The styles whose legs fly, as `MovementStyle.flies` decides.
+const Set<String> flyingStyles = <String>{'fly', 'glide'};
 
 const int routeMaxPoints = 256;
 const int routeMaxWanderCentres = 64;
@@ -252,7 +255,9 @@ class RouteSpec {
   }
 
   /// Problems the runtime refuses, worded like its field errors, by field.
-  List<(String, String)> problems() {
+  /// [ownStyle] is the NPC's own `movement.style` for an inline route: a
+  /// flying style lets its unstyled points hang in the air.
+  List<(String, String)> problems({String? ownStyle}) {
     final List<(String, String)> found = <(String, String)>[];
     void check(String field, String? problem) {
       if (problem != null) found.add((field, problem));
@@ -287,8 +292,11 @@ class RouteSpec {
     }
     if (mode == 'walk') {
       final List<RouteEntry> all = nodes;
+      final Object? routeStyle = json['style'] ?? ownStyle;
       for (int index = 0; index < all.length; index++) {
         final RouteEntry node = all[index];
+        final Object? legStyle = node.guide || index >= raw.length ? routeStyle : (asMap(raw[index])['style'] ?? routeStyle);
+        if (flyingStyles.contains(legStyle)) continue;
         if (node is RouteNode && node.y != node.y.roundToDouble()) {
           found.add((node.guide ? 'guides[${index - points.length}].y' : 'points[$index].y', 'walking routes need whole-block heights'));
         }

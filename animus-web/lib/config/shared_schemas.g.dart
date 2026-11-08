@@ -12389,10 +12389,6 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "type": "boolean",
           "description": "False lets a walking route cross water at the surface. True by default."
         },
-        "fly": {
-          "type": "boolean",
-          "description": "Routes fly."
-        },
         "openDoors": {
           "type": "boolean",
           "description": "Walk through wooden doors, fence gates and trapdoors, closing them behind."
@@ -12445,9 +12441,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "sprint",
             "swim",
             "crawl",
+            "fly",
             "glide"
           ],
-          "description": "How the NPC moves where its route sets no style. walk by default. Sneak and crawl move at 0.3x, sprint and swimming at 1.3x."
+          "description": "How the NPC moves where its route sets no style. walk by default. Fly and glide move through the air; glide shows the elytra pose. Sneak and crawl move at 0.3x, sprint and swimming at 1.3x, glide at 2x."
         },
         "onLand": {
           "enum": [
@@ -12624,9 +12621,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 "sprint",
                 "swim",
                 "crawl",
+                "fly",
                 "glide"
               ],
-              "description": "How NPCs move on this route, instead of their own style. Sneak and crawl move at 0.3x, sprint and swimming at 1.3x."
+              "description": "How NPCs move on this route, instead of their own style. Fly and glide move through the air; glide shows the elytra pose. Sneak and crawl move at 0.3x, sprint and swimming at 1.3x, glide at 2x."
             },
             "points": {
               "type": "array",
@@ -12665,9 +12663,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                           "sprint",
                           "swim",
                           "crawl",
+                          "fly",
                           "glide"
                         ],
-                        "description": "How the NPC moves on the leg to this point, instead of the route's. Sneak and crawl move at 0.3x, sprint and swimming at 1.3x."
+                        "description": "How the NPC moves on the leg to this point, instead of the route's. Fly and glide move through the air; glide shows the elytra pose. Sneak and crawl move at 0.3x, sprint and swimming at 1.3x, glide at 2x."
                       },
                       "waitTicks": {
                         "oneOf": [
@@ -15509,9 +15508,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "sprint",
         "swim",
         "crawl",
+        "fly",
         "glide"
       ],
-      "description": "How NPCs move on this route, instead of their own style. Sneak and crawl move at 0.3x, sprint and swimming at 1.3x."
+      "description": "How NPCs move on this route, instead of their own style. Fly and glide move through the air; glide shows the elytra pose. Sneak and crawl move at 0.3x, sprint and swimming at 1.3x, glide at 2x."
     },
     "points": {
       "type": "array",
@@ -15550,9 +15550,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                   "sprint",
                   "swim",
                   "crawl",
+                  "fly",
                   "glide"
                 ],
-                "description": "How the NPC moves on the leg to this point, instead of the route's. Sneak and crawl move at 0.3x, sprint and swimming at 1.3x."
+                "description": "How the NPC moves on the leg to this point, instead of the route's. Fly and glide move through the air; glide shows the elytra pose. Sneak and crawl move at 0.3x, sprint and swimming at 1.3x, glide at 2x."
               },
               "waitTicks": {
                 "oneOf": [

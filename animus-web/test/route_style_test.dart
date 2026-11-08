@@ -14,10 +14,25 @@ void main() {
         ],
       };
       expect(RouteSpec(route).problems(), <(String, String)>[
-        ('style', 'must be walk, sneak, sprint, swim, crawl, glide'),
-        ('points[1].style', 'must be walk, sneak, sprint, swim, crawl, glide'),
+        ('style', 'must be walk, sneak, sprint, swim, crawl, fly, glide'),
+        ('points[1].style', 'must be walk, sneak, sprint, swim, crawl, fly, glide'),
         ('points[2].style', 'a recording step plays its recorded movement; it has no style'),
       ]);
+    });
+
+    test('test_routeSpec_flyingLegs_mayEndInTheAir', () {
+      const String air = 'walking routes need whole-block heights';
+      JsonMap route(Object? routeStyle, Object? pointStyle) => <String, Object?>{
+            'style': ?routeStyle,
+            'points': <Object?>[
+              <String, Object?>{'x': 0, 'y': 70.5, 'z': 0, 'style': ?pointStyle},
+            ],
+          };
+      expect(RouteSpec(route(null, null)).problems(), <(String, String)>[('points[0].y', air)]);
+      expect(RouteSpec(route('glide', null)).problems(), isEmpty);
+      expect(RouteSpec(route(null, 'fly')).problems(), isEmpty);
+      expect(RouteSpec(route(null, null)).problems(ownStyle: 'fly'), isEmpty, reason: 'an inline route of a flying NPC');
+      expect(RouteSpec(route(null, 'sneak')).problems(ownStyle: 'fly'), <(String, String)>[('points[0].y', air)]);
     });
 
     test('test_routePointToStep_dropsTheStyle', () {

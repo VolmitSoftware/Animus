@@ -26,11 +26,12 @@ class MovementSettingsTest {
 
     @Test void everyFieldParses() {
         MovementSettings movement = MovementSettings.parse(definition("""
-                {"speed":1.5,"avoidWater":false,"fly":true,"openDoors":true,"stepHeight":1,"maximumFall":1,"pathRange":60,"arrivalMargin":0.5,
+                {"speed":1.5,"avoidWater":false,"style":"fly","openDoors":true,"stepHeight":1,"maximumFall":1,"pathRange":60,"arrivalMargin":0.5,
                  "stuck":{"afterTicks":120,"teleport":true}}
                 """));
-        assertEquals(new MovementSettings(OptionalDouble.of(1.5), false, true, true, OptionalDouble.of(1), OptionalInt.of(1), OptionalDouble.of(60), OptionalDouble.of(0.5),
-                Optional.of(new MovementSettings.Stuck(120, true)), OptionalDouble.empty(), IdleFall.GRAVITY, MovementSettings.Styling.DEFAULT), movement);
+        assertEquals(new MovementSettings(OptionalDouble.of(1.5), false, true, OptionalDouble.of(1), OptionalInt.of(1), OptionalDouble.of(60), OptionalDouble.of(0.5),
+                Optional.of(new MovementSettings.Stuck(120, true)), OptionalDouble.empty(), IdleFall.GRAVITY,
+                new MovementSettings.Styling(MovementStyle.FLY, MovementStyle.OnLand.WALK, true, false)), movement);
     }
 
     @Test void errorsNameTheirField() {
@@ -40,14 +41,14 @@ class MovementSettingsTest {
     }
 
     @Test void theRouteProfileTakesStepFallAndWater() {
-        MovementSettings movement = new MovementSettings(OptionalDouble.empty(), false, false, false, OptionalDouble.of(1), OptionalInt.of(1), OptionalDouble.empty(),
+        MovementSettings movement = new MovementSettings(OptionalDouble.empty(), false, false, OptionalDouble.of(1), OptionalInt.of(1), OptionalDouble.empty(),
                 OptionalDouble.empty(), Optional.empty(), OptionalDouble.empty(), IdleFall.GRAVITY, MovementSettings.Styling.DEFAULT);
         MovementProfile profile = movement.apply(BodyMobility.forRoute("minecraft:player", .6, 1.8, MovementProfile.Mode.WALK), "minecraft:player");
         assertEquals(Set.of(MovementProfile.Mode.WALK, MovementProfile.Mode.SWIM), profile.modes());
         assertEquals(1, profile.stepHeight());
         assertEquals(1, profile.maximumFall());
-        MovementProfile flying = new MovementSettings(OptionalDouble.empty(), true, true, true, OptionalDouble.empty(), OptionalInt.empty(), OptionalDouble.empty(),
-                OptionalDouble.empty(), Optional.empty(), OptionalDouble.empty(), IdleFall.GRAVITY, MovementSettings.Styling.DEFAULT).apply(BodyMobility.forRoute("minecraft:player", .6, 1.8, MovementProfile.Mode.WALK), "minecraft:player");
+        MovementProfile flying = MovementSettings.parse(definition("{\"style\":\"fly\",\"openDoors\":true}"))
+                .apply(BodyMobility.forRoute("minecraft:player", .6, 1.8, MovementProfile.Mode.WALK), "minecraft:player");
         assertEquals(Set.of(MovementProfile.Mode.FLY), flying.modes());
         assertFalse(flying.opensDoors(), "only walking bodies open doors");
         assertFalse(profile.opensDoors());

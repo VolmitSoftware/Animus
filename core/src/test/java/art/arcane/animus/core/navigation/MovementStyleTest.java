@@ -30,8 +30,7 @@ class MovementStyleTest {
     }
     private static StyledLeg leg(String type, String movement, MovementStyle legStyle) {
         MovementSettings settings = MovementSettings.parse(definition(type, movement));
-        MovementProfile base = settings.apply(BodyMobility.forRoute(type, 0.6, 1.8, MovementProfile.Mode.WALK), type);
-        return StyledLeg.of(settings, legStyle, base, type);
+        return StyledLeg.of(settings, legStyle, BodyMobility.forRoute(type, 0.6, 1.8, MovementProfile.Mode.WALK), type);
     }
     private static PathExecution.Proposal step(MotionValidator.Medium medium, boolean onGround) {
         return new PathExecution.Proposal(Vec3.ZERO, new Vec3(0.1, 0, 0), medium, true, false, medium, onGround, 0, false, 0);
@@ -49,7 +48,7 @@ class MovementStyleTest {
     }
 
     @Test void styleErrorsNameTheirField() {
-        assertEquals(List.of("$.movement.style: expected walk, sneak, sprint, swim, crawl, glide", "$.movement.onLand: expected walk or avoid",
+        assertEquals(List.of("$.movement.style: expected walk, sneak, sprint, swim, crawl, fly, glide", "$.movement.onLand: expected walk or avoid",
                         "$.movement.auto.dive: unknown field", "$.movement.auto.swim: expected boolean"),
                 NpcDefinition.validate(definition(PLAYER, "{\"style\":\"run\",\"onLand\":\"fly\",\"auto\":{\"swim\":1,\"dive\":true}}")));
     }
@@ -64,7 +63,7 @@ class MovementStyleTest {
         assertNull(plain.styleTo(0), "no route style leaves the NPC's own");
         IllegalArgumentException wrong = assertThrows(IllegalArgumentException.class,
                 () -> WaypointSettings.document("{\"schemaVersion\":1,\"points\":[{\"x\":0,\"y\":1,\"z\":0,\"style\":\"run\"}]}"));
-        assertEquals("$.points[0].style must be walk, sneak, sprint, swim, crawl, glide", wrong.getMessage());
+        assertEquals("$.points[0].style must be walk, sneak, sprint, swim, crawl, fly, glide", wrong.getMessage());
         IllegalArgumentException step = assertThrows(IllegalArgumentException.class,
                 () -> WaypointSettings.document("{\"schemaVersion\":1,\"points\":[{\"recording\":\"walk\",\"style\":\"sneak\"}]}"));
         assertTrue(step.getMessage().startsWith("$.points[0].style: a recording step"), step.getMessage());
@@ -79,7 +78,26 @@ class MovementStyleTest {
         assertEquals(0.1, swim.stepDistance(2), 1e-9, "a swimmer walks at walking speed on land");
         swim.moved(step(MotionValidator.Medium.WATER, false), NpcPose.STANDING, OPEN);
         assertEquals(0.13, swim.stepDistance(2), 1e-9, "and sprint-swims in water");
-        assertEquals(1, leg(PLAYER, "{}", MovementStyle.SPRINT).stepDistance(20), 1e-9, "a step never exceeds a block");
+        assertEquals(MovementSettings.MAXIMUM_SPEED / 20, leg(PLAYER, "{}", MovementStyle.SPRINT).stepDistance(20), 1e-9, "no style passes the speed cap");
+    }
+
+    @Test void flyKeepsWalkingSpeedAndGlideCruisesAtTwiceIt() {
+        assertEquals(0.1, leg(PLAYER, "{\"style\":\"fly\"}", null).stepDistance(2), 1e-9);
+        assertEquals(MovementStyle.GLIDE_RATIO, 2, 1e-9);
+        assertEquals(0.2, leg(PLAYER, "{\"style\":\"glide\"}", null).stepDistance(2), 1e-9);
+        assertEquals(0.5, leg(PLAYER, "{}", MovementStyle.GLIDE).stepDistance(5), 1e-9, "the fastest route speed glides at the speed cap");
+        assertEquals(MovementSettings.MAXIMUM_SPEED / 20, leg(PLAYER, "{}", MovementStyle.GLIDE).stepDistance(8), 1e-9, "a fast body never glides past the cap");
+    }
+
+    @Test void flyAndGlideStylesFlyAndTheOldFlagIsGone() {
+        assertEquals(Set.of(MovementProfile.Mode.FLY), leg(PLAYER, "{\"style\":\"fly\"}", null).profile().modes());
+        assertEquals(Set.of(MovementProfile.Mode.FLY), leg(VILLAGER, "{}", MovementStyle.FLY).profile().modes());
+        assertEquals(Set.of(MovementProfile.Mode.WALK), leg(PLAYER, "{\"style\":\"fly\"}", MovementStyle.WALK).profile().modes(), "a walking leg of a flying NPC walks");
+        assertEquals(Set.of(MovementProfile.Mode.FLY), MovementSettings.parse(definition(PLAYER, "{\"style\":\"glide\"}"))
+                .apply(BodyMobility.forRoute(PLAYER, 0.6, 1.8, MovementProfile.Mode.WALK), PLAYER).modes(), "a recording walk of a gliding NPC flies");
+        StyledLeg routeFlies = StyledLeg.of(MovementSettings.DEFAULT, null, BodyMobility.forRoute(PLAYER, 0.6, 1.8, MovementProfile.Mode.FLY), PLAYER);
+        assertEquals(Set.of(MovementProfile.Mode.FLY), routeFlies.profile().modes(), "route mode fly still flies a walking NPC");
+        assertEquals(List.of("$.movement.fly: unknown field"), NpcDefinition.validate(definition(PLAYER, "{\"fly\":true}")));
     }
 
     @Test void speedCombinesWithTheMovementSpeedAttribute() {
@@ -124,6 +142,26 @@ class MovementStyleTest {
         assertFalse(leg(PLAYER, "{}", MovementStyle.SNEAK).crawls());
     }
 
+    @Test void aFlyingLegRunsAsAFlyingRoute() throws Exception {
+        MovementSettings flier = MovementSettings.parse(definition(PLAYER, "{\"style\":\"fly\"}"));
+        assertEquals(MovementProfile.Mode.FLY, flier.legMode(MovementProfile.Mode.WALK, null), "no gravity, doors or ground goals on its legs");
+        assertEquals(MovementProfile.Mode.WALK, flier.legMode(MovementProfile.Mode.WALK, MovementStyle.WALK));
+        assertEquals(MovementProfile.Mode.FLY, MovementSettings.DEFAULT.legMode(MovementProfile.Mode.WALK, MovementStyle.GLIDE));
+        assertEquals(MovementProfile.Mode.SWIM, MovementSettings.DEFAULT.legMode(MovementProfile.Mode.SWIM, null));
+        WaypointSettings gliding = WaypointSettings.document("""
+                {"schemaVersion":1,"style":"glide","points":[{"x":0,"y":70.5,"z":0}]}""");
+        assertEquals(70.5, gliding.points().getFirst().position().y(), 1e-9, "a flying route's points may hang in the air");
+        WaypointSettings point = WaypointSettings.document("""
+                {"schemaVersion":1,"points":[{"x":0,"y":1,"z":0},{"x":0,"y":70.5,"z":0,"style":"fly"}]}""");
+        assertEquals(70.5, point.points().get(1).position().y(), 1e-9);
+        IllegalArgumentException walking = assertThrows(IllegalArgumentException.class,
+                () -> WaypointSettings.document("{\"schemaVersion\":1,\"points\":[{\"x\":0,\"y\":70.5,\"z\":0,\"style\":\"sneak\"}]}"));
+        assertTrue(walking.getMessage().contains("walking waypoints require integer feet height"), walking.getMessage());
+        JsonObject inline = definition(PLAYER, "{\"style\":\"fly\"}");
+        inline.add("modules", JsonParser.parseString("{\"animus:navigation\":{\"enabled\":true,\"points\":[{\"x\":4,\"y\":7.5,\"z\":0}]}}"));
+        assertEquals(7.5, WaypointSettings.parse(inline).orElseThrow().points().getFirst().position().y(), 1e-9, "an inline route of a flying NPC may end in the air");
+    }
+
     @Test void playerBodiesShowTheStylePoseAndFlags() {
         assertEquals(new StyledLeg.Look(NpcPose.STANDING, 0), leg(PLAYER, "{}", null).moved(step(MotionValidator.Medium.GROUND, true), NpcPose.STANDING, OPEN));
         assertEquals(new StyledLeg.Look(NpcPose.SNEAKING, 0), leg(PLAYER, "{}", MovementStyle.SNEAK).moved(step(MotionValidator.Medium.GROUND, true), NpcPose.STANDING, OPEN));
@@ -132,6 +170,8 @@ class MovementStyleTest {
         assertEquals(new StyledLeg.Look(NpcPose.STANDING, 0), sprint.resting(NpcPose.STANDING), "nobody sprints standing still");
         assertEquals(new StyledLeg.Look(NpcPose.SWIMMING, 0), leg(PLAYER, "{}", MovementStyle.CRAWL).moved(step(MotionValidator.Medium.GROUND, true), NpcPose.STANDING, OPEN));
         assertEquals(new StyledLeg.Look(NpcPose.STANDING, BodyLook.GLIDING), leg(PLAYER, "{}", MovementStyle.GLIDE).moved(step(MotionValidator.Medium.AIR, false), NpcPose.STANDING, OPEN));
+        assertEquals(new StyledLeg.Look(NpcPose.STANDING, 0), leg(PLAYER, "{}", MovementStyle.FLY).moved(step(MotionValidator.Medium.AIR, false), NpcPose.STANDING, OPEN),
+                "fly keeps the normal pose");
         assertEquals(new StyledLeg.Look(NpcPose.SNEAKING, 0), leg(PLAYER, "{}", null).moved(step(MotionValidator.Medium.GROUND, true), NpcPose.SNEAKING, OPEN),
                 "a declared pose stays while walking");
     }

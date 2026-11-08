@@ -24,23 +24,20 @@ class SelectCommandTest {
         @Override public boolean highlight(UUID viewer, String id, int ticks) { glowed.add(id + " " + ticks); return true; }
     }
 
-    /** A player whose replies and sounds are kept. */
+    /** A player whose replies are kept. */
     private static final class Player extends AnimusDirectorTest.Actor {
         final List<ChatLine> rich = new ArrayList<>();
-        final List<CommandSound> heard = new ArrayList<>();
         Player() { super(true, AnimusDirector.ADMIN); }
         @Override public void rich(ChatLine line) { rich.add(line); }
-        @Override public void play(CommandSound sound) { heard.add(sound); }
     }
 
     @Test void withoutAnIdThePickedNpcIsSelectedAndGlows() {
         Picking living = new Picking(Optional.of("guard"));
         Player player = new Player();
-        AnimusCommandTree.select(new CommandFeedback(player), living, "");
+        AnimusCommandTree.select(player, living, "");
         assertEquals(List.of("guard"), living.selected);
         assertEquals(List.of("guard " + SelectionPick.GLOW_TICKS), living.glowed);
         assertEquals("[Animus]: Selected guard", player.rich.getFirst().toString());
-        assertEquals(List.of(CommandSound.SUCCESS), player.heard);
     }
 
     @Test void aNamedNpcAlsoGlows() {
@@ -51,12 +48,11 @@ class SelectCommandTest {
         assertEquals(List.of("smith " + SelectionPick.GLOW_TICKS), living.glowed);
     }
 
-    @Test void nothingInRangeIsARefusalWithTheErrorSound() {
+    @Test void nothingInRangeIsARefusal() {
         Picking living = new Picking(Optional.empty());
         Player player = new Player();
-        AnimusCommandTree.select(new CommandFeedback(player), living, "");
+        AnimusCommandTree.select(player, living, "");
         assertTrue(living.selected.isEmpty() && living.glowed.isEmpty());
         assertEquals("[Animus]: No NPC in view or within 16 blocks.", player.lines.getFirst());
-        assertEquals(List.of(CommandSound.FAILURE), player.heard);
     }
 }

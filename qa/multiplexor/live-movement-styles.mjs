@@ -1,12 +1,13 @@
 // Movement styles as a viewer sees them: an NPC sneak-walks a route with the sneaking flag and crouching pose, a
 // swimmer crosses water in the swimming pose, and an NPC with automatic crawling crawls through a gap one block high
-// and stands up after it. Driven by live-features.mjs (--scenarios movestyles).
+// and stands up after it; an NPC in style fly flies its route to a point in the air with the normal pose, and glide covers
+// the same route faster with the elytra flag. Driven by live-features.mjs (--scenarios movestyles).
 import assert from 'node:assert/strict';
 import { delay } from '../protocol-client/client.mjs';
 
 /** Entity data indexes: the shared flags byte and the pose. */
 const SHARED_FLAGS = 0, POSE = 6;
-const SNEAKING = 0x02, SWIMMING = 0x10;
+const SNEAKING = 0x02, SWIMMING = 0x10, GLIDING = 0x80;
 
 /** Runs the sneak, swim and crawl checks; `t` carries live-features' server, client and check helpers. */
 export async function movementStyles(t) {
@@ -76,6 +77,30 @@ export async function movementStyles(t) {
     assert(crawled, 'no crawling pose in the gap');
     assert.equal(after, 'STANDING', 'stands up after the gap');
     return 'SWIMMING (crawl) pose inside the gap, STANDING after it';
+  });
+  await check('styles: fly flies a route to a point in the air, and glide covers it faster with the elytra flag', async () => {
+    const z = sz + 26, high = ground + 6.5, far = sx + 20;
+    const air = { modules: { 'animus:navigation': { enabled: true, speed: 2, waitTicks: 0, points: [{ x: far, y: high, z }] } } };
+    const timed = async (id, style) => {
+      const from = owner.events.length;
+      const uuid = await server.npc(id, 'minecraft:player', sx + .5, ground, z + .5, id, { movement: { style }, ...air });
+      const body = await owner.body(uuid);
+      const start = Date.now();
+      const end = await until(async () => {
+        const at = await inspect(id);
+        return { ok: at.line.includes('navigation=arrived') && Math.abs(at.x - far) < 0.6 && Math.abs(at.y - high) < 0.6, x: at.x, y: at.y, line: at.line.slice(0, 200) };
+      }, 90_000, `${id} reaches the air point`);
+      const seconds = (Date.now() - start) / 1000;
+      const glided = flagSeen(body, from, GLIDING);
+      await server.cmd(`animus delete ${id}`, /Deleted/);
+      return { seconds, glided, y: end.y };
+    };
+    const fly = await timed('mfly', 'fly');
+    const glide = await timed('mglide', 'glide');
+    assert(!fly.glided, 'fly keeps the normal pose');
+    assert(glide.glided, 'glide shows the elytra flag');
+    assert(glide.seconds < fly.seconds * 0.75, `glide ${glide.seconds.toFixed(1)}s against fly ${fly.seconds.toFixed(1)}s`);
+    return `fly reached y=${fly.y.toFixed(1)} in ${fly.seconds.toFixed(1)}s, glide in ${glide.seconds.toFixed(1)}s with flag 0x80`;
   });
   await owner.close();
 }

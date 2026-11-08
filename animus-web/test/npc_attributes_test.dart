@@ -125,11 +125,13 @@ void main() {
       JObject withMovement(JObject value) => definition(<String, JElement>{})..add('movement', value);
       expect(validateDefinition(withMovement(movement('sneak', 'avoid', JObject()..addBool('swim', false)..addBool('crawl', true)))), isEmpty);
       expect(validateDefinition(withMovement(movement('run', 'fly', JObject()..addInt('swim', 1)..addBool('dive', true)))), <String>[
-        r'$.movement.style: expected walk, sneak, sprint, swim, crawl, glide',
+        r'$.movement.style: expected walk, sneak, sprint, swim, crawl, fly, glide',
         r'$.movement.onLand: expected walk or avoid',
         r'$.movement.auto.dive: unknown field',
         r'$.movement.auto.swim: expected boolean',
       ]);
+      expect(validateDefinition(withMovement(JObject()..addString('style', 'fly'))), isEmpty);
+      expect(validateDefinition(withMovement(JObject()..addBool('fly', true))), <String>[r'$.movement.fly: unknown field']);
     });
 
     test('accepts known attributes in range, either spelling', () {

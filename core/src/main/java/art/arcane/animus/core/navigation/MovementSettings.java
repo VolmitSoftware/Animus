@@ -14,7 +14,7 @@ import java.util.Set;
 
 /**
  * How one NPC walks wherever it walks: the definition's {@code movement} object. A route's own speed wins over
- * {@code speed}. {@code avoidWater} false lets a walking route cross water at the surface; {@code fly} makes routes fly.
+ * {@code speed}. {@code avoidWater} false lets a walking route cross water at the surface.
  * {@code openDoors} lets walking routes pass closed wooden doors, fence gates and trapdoors, which the NPC opens and
  * closes behind it. {@code stepHeight} and {@code maximumFall} replace the body's own climb and drop. Each plan reaches at most {@code pathRange};
  * a longer leg is walked in {@link LongLeg} segments of that reach. A point within {@code arrivalMargin} counts as reached, and {@code stuck} decides what an NPC
@@ -24,14 +24,15 @@ import java.util.Set;
  * {@code step_height} the climb and {@code safe_fall_distance} the drop. {@code jump_strength} and {@code gravity} give
  * {@code jumpHeight}, and {@code gravity} is the fall acceleration of an idle body.
  * <p>
- * {@code style} is the {@link MovementStyle} of every leg whose route and point set none; {@code onLand} says whether a
+ * {@code style} is the {@link MovementStyle} of every leg whose route and point set none, so {@code fly} or {@code glide}
+ * there make the NPC fly; {@code onLand} says whether a
  * swimming NPC walks over land or keeps to water, and {@code auto} switches a leg to the swimming pose in water
  * ({@code swim}, on by default) and to crawling through gaps one block high ({@code crawl}, off by default).
  */
-public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean fly, boolean openDoors, OptionalDouble stepHeight, OptionalInt maximumFall,
+public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean openDoors, OptionalDouble stepHeight, OptionalInt maximumFall,
                                OptionalDouble pathRange, OptionalDouble arrivalMargin, Optional<Stuck> stuck, OptionalDouble jumpHeight, double gravity,
                                Styling styling) {
-    public static final MovementSettings DEFAULT = new MovementSettings(OptionalDouble.empty(), true, false, false, OptionalDouble.empty(), OptionalInt.empty(),
+    public static final MovementSettings DEFAULT = new MovementSettings(OptionalDouble.empty(), true, false, OptionalDouble.empty(), OptionalInt.empty(),
             OptionalDouble.empty(), OptionalDouble.empty(), Optional.empty(), OptionalDouble.empty(), IdleFall.GRAVITY, Styling.DEFAULT);
     /** Blocks per second a player walks per unit of {@code movement_speed}, and a mob per unit of its square. */
     public static final double PLAYER_WALK = 43.17, MOB_WALK = 44.05;
@@ -39,7 +40,7 @@ public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean
     public static final double MINIMUM_SPEED = 1, MAXIMUM_SPEED = 10;
     public static final double MAX_ARRIVAL_MARGIN = 4;
     public static final int MAX_STUCK_TICKS = 12_000;
-    private static final Set<String> FIELDS = Set.of("speed", "avoidWater", "fly", "openDoors", "stepHeight", "maximumFall", "pathRange", "arrivalMargin", "stuck",
+    private static final Set<String> FIELDS = Set.of("speed", "avoidWater", "openDoors", "stepHeight", "maximumFall", "pathRange", "arrivalMargin", "stuck",
             "style", "onLand", "auto");
 
     /** The NPC's own movement style, what a swimmer does on land, and the automatic swim and crawl switches. */
@@ -80,7 +81,7 @@ public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean
         if (value != null && !value.isJsonObject()) errors.add("$.movement: expected object");
         JsonObject movement = value != null && value.isJsonObject() ? value.getAsJsonObject() : new JsonObject();
         OptionalDouble speed = decimal(movement, "speed", 1, 5, "blocks/second", errors);
-        boolean avoidWater = flag(movement, "avoidWater", true, errors), fly = flag(movement, "fly", false, errors);
+        boolean avoidWater = flag(movement, "avoidWater", true, errors);
         boolean openDoors = flag(movement, "openDoors", false, errors);
         OptionalDouble step = decimal(movement, "stepHeight", 0, MovementProfile.MAX_STEP, "blocks", errors);
         OptionalInt fall = OptionalInt.empty();
@@ -124,7 +125,7 @@ public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean
         double gravity = attributes.value("gravity");
         OptionalDouble jump = attributes.get("jump_strength").isPresent() || attributes.get("gravity").isPresent()
                 ? OptionalDouble.of(jumpHeight(attributes.value("jump_strength"), gravity)) : OptionalDouble.empty();
-        return new MovementSettings(speed, avoidWater, fly, openDoors, step, fall, range, margin, stuck, jump, gravity, styling);
+        return new MovementSettings(speed, avoidWater, openDoors, step, fall, range, margin, stuck, jump, gravity, styling);
     }
 
     private static Styling styling(JsonObject movement, List<String> errors) {
@@ -183,10 +184,22 @@ public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean
         return Math.min(MovementProfile.MAX_JUMP, height);
     }
 
-    /** The route profile with this NPC's climb, drop, water, flying and door opening applied. Only walking bodies open doors. */
-    public MovementProfile apply(MovementProfile profile, String type) {
+    /**
+     * The mode a leg runs as: fly when the leg's style, or this NPC's own when the leg sets none, flies; otherwise the
+     * route's. A flying leg has no gravity, door opening or whole-block goal heights.
+     */
+    public MovementProfile.Mode legMode(MovementProfile.Mode route, MovementStyle legStyle) { return (legStyle != null ? legStyle : style()).mode(route); }
+
+    /** The route profile in this NPC's own style; see {@link #apply(MovementProfile, String, MovementStyle)}. */
+    public MovementProfile apply(MovementProfile profile, String type) { return apply(profile, type, style()); }
+
+    /**
+     * The route profile with this NPC's climb, drop, water and door opening applied, flying for a {@code style} that
+     * {@link MovementStyle#flies() flies}. Only walking bodies open doors.
+     */
+    public MovementProfile apply(MovementProfile profile, String type, MovementStyle style) {
         Set<MovementProfile.Mode> modes = profile.modes();
-        if (fly) modes = Set.of(MovementProfile.Mode.FLY);
+        if (style.flies()) modes = Set.of(MovementProfile.Mode.FLY);
         else if (!avoidWater && modes.equals(Set.of(MovementProfile.Mode.WALK)) && !BodyMobility.sinks(type))
             modes = Set.of(MovementProfile.Mode.WALK, MovementProfile.Mode.SWIM);
         double step = stepHeight.orElse(profile.stepHeight());

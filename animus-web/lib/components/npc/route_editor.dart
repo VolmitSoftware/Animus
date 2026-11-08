@@ -144,6 +144,7 @@ class RouteEditor extends StatefulWidget {
     this.diagnostics = const <Diagnostic>[],
     this.readOnly = false,
     this.recordings = const <String, int?>{},
+    this.ownStyle,
     super.key,
   });
 
@@ -167,6 +168,9 @@ class RouteEditor extends StatefulWidget {
 
   /// The workspace's recordings by id, with their durationTicks when known.
   final Map<String, int?> recordings;
+
+  /// The NPC's own `movement.style` for an inline route; null for a route document.
+  final String? ownStyle;
 
   @override
   State<RouteEditor> createState() => _RouteEditorState();
@@ -396,7 +400,7 @@ class _RouteEditorState extends State<RouteEditor> {
     // field; the rest are listed under the grid.
     final String? pickedField = picked == null || component.readOnly ? null : '${picked.$1}[${picked.$2}]';
     final List<(String, String)> problems = <(String, String)>[
-      for (final (String field, String message) in RouteSpec(_route).problems())
+      for (final (String field, String message) in RouteSpec(_route).problems(ownStyle: component.ownStyle))
         if (component.readOnly || !(_inlineFields.contains(field) || (pickedField != null && (field.startsWith('$pickedField.') || field == pickedField)))) (field, message),
     ];
     return dom.div(classes: 'animus-route-editor', attributes: const <String, String>{'role': 'group', 'aria-label': 'Route editor'}, <Widget>[
@@ -445,13 +449,13 @@ class _RouteEditorState extends State<RouteEditor> {
 
   /// The browser's problems at exactly [field] (`jitter`, `points[2].next[0].to`).
   List<Diagnostic> _inline(String field) => <Diagnostic>[
-        for (final (String at, String message) in RouteSpec(_route).problems())
+        for (final (String at, String message) in RouteSpec(_route).problems(ownStyle: component.ownStyle))
           if (at == field) Diagnostic(DiagnosticSeverity.error, at, message),
       ];
 
   /// The browser's problems at [field] and inside it.
   List<Diagnostic> _inlineWithin(String field) => <Diagnostic>[
-        for (final (String at, String message) in RouteSpec(_route).problems())
+        for (final (String at, String message) in RouteSpec(_route).problems(ownStyle: component.ownStyle))
           if (at == field || at.startsWith('$field.') || at.startsWith('$field[')) Diagnostic(DiagnosticSeverity.error, at, message),
       ];
 

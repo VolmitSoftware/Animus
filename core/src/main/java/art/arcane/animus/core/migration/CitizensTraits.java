@@ -167,7 +167,7 @@ final class CitizensTraits {
         }
         // Citizens' navigator swims by default, so a route whose save sets no avoidwater crosses water at the surface.
         if (routed && !movement.has("avoidWater")) { movement.addProperty("avoidWater", false); any = true; }
-        if (metadata != null && Boolean.TRUE.equals(bool(metadata.get("flyable")))) { movement.addProperty("fly", true); any = true; }
+        if (metadata != null && Boolean.TRUE.equals(bool(metadata.get("flyable")))) { movement.addProperty("style", "fly"); any = true; }
         if (metadata != null && Boolean.TRUE.equals(bool(metadata.get("pathfinder-open-doors")))) { movement.addProperty("openDoors", true); any = true; }
         if (any) fields.add("movement", movement);
     }

@@ -1,5 +1,5 @@
-// How /animus feels to a player, as in Iris: the chime while typing, the ding for an answer or a help page, the low
-// tone for a refusal, the shared help menu and its page bar, coordinates from where the player stands, and
+// How /animus feels to a player, as in Iris: the chime while typing, the ding once a handler returns or a help page
+// shows, the low tone for a command that cannot run, the shared help menu and its page bar, coordinates from where the player stands, and
 // /animus select glowing its NPC for the selecting player. Driven by live-features.mjs as the `commandfeel` scenario.
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -86,9 +86,11 @@ export async function commandFeel(t) {
     return `feel at ${at.x} ${at.y} ${at.z}; feel2 at ${moved.x} ${moved.y} ${moved.z}`;
   });
 
-  await check('feel: a failing command shows red and sounds low', async () => {
-    const seen = await run('failure', '/animus inspect nosuchnpc', /Unknown NPC/, FAILURE);
-    return seen.chat[0].text;
+  await check('feel: a command that cannot run sounds low, a handler that returns dings even when it answers red', async () => {
+    const unknown = await run('failure', '/animus nosuchcommand', /Unknown command/, FAILURE);
+    const missing = await run('missing', '/animus delete', /Usage/, FAILURE);
+    const answered = await run('answered', '/animus inspect nosuchnpc', /Unknown NPC/, SUCCESS);
+    return `${unknown.chat[0].text} | ${missing.chat.at(-1).text} | ${answered.chat[0].text}`;
   });
 
   await check('feel: /animus select picks the looked-at NPC and glows it for this player only', async () => {
@@ -111,10 +113,10 @@ export async function commandFeel(t) {
     return `glow on at event ${lit.sequence}, off at ${cleared.sequence}; reply "${seen.chat[0].text}"`;
   });
 
-  await check('feel: /animus select with nothing in range refuses with the low tone', async () => {
+  await check('feel: /animus select with nothing in range says so, and its handler returning dings', async () => {
     await owner.tp(140.5, 61, 140.5);
     await delay(800);
-    const seen = await run('selectNone', '/animus select', /No NPC in view or within 16 blocks\./, FAILURE);
+    const seen = await run('selectNone', '/animus select', /No NPC in view or within 16 blocks\./, SUCCESS);
     await server.cmd('animus delete feelsel', /Deleted/);
     await server.cmd('animus delete feelnear', /Deleted/);
     return seen.chat[0].text;

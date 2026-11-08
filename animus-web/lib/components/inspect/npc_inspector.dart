@@ -773,6 +773,7 @@ class _NpcInspectorState extends State<NpcInspector> {
     world: asString(asMap(_doc['position'])['world']),
     imported: _doc.containsKey('migration'),
     diagnostics: _diagnostics,
+    ownStyle: asString(asMap(_doc['movement'])['style']),
     onOpen: component.onOpen,
     onCopyRoute: _copyRoute(),
     copyLabel: _group ? 'Make a copy for this group' : 'Make a copy for this NPC',

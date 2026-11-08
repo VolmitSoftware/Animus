@@ -23,7 +23,7 @@ class CitizensTraitsTest {
                  "traits":{"attributetrait":{"attributes":{"minecraft:step_height":2.0,"minecraft:max_health":40}}}}
                 """, false);
         assertEquals(json("""
-                {"speed":1.29,"avoidWater":false,"maximumFall":1,"pathRange":60.0,"arrivalMargin":0.5,"stuck":{"afterTicks":120,"teleport":false},"fly":true,"openDoors":true}
+                {"speed":1.29,"avoidWater":false,"maximumFall":1,"pathRange":60.0,"arrivalMargin":0.5,"stuck":{"afterTicks":120,"teleport":false},"style":"fly","openDoors":true}
                 """), result.fields().get("movement"));
         for (String path : List.of("/navigator/speedmodifier", "/navigator/avoidwater", "/navigator/falldistance", "/navigator/pathfindingrange",
                 "/navigator/distancemargin", "/navigator/destinationteleportmargin", "/navigator/stationaryticks", "/navigator/usedefaultstuckaction",

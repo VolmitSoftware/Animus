@@ -34,11 +34,12 @@ public final class StyledLeg {
 
     /**
      * @param legStyle the route point's or route's style, or null for the NPC's own
-     * @param base     the route profile with the NPC's movement settings applied
+     * @param route    the route mode's profile for the body, before the NPC's movement settings
      */
-    public static StyledLeg of(MovementSettings movement, MovementStyle legStyle, MovementProfile base, String type) {
+    public static StyledLeg of(MovementSettings movement, MovementStyle legStyle, MovementProfile route, String type) {
         MovementStyle style = legStyle != null ? legStyle : movement.style();
         boolean player = BodyRules.PLAYER.equals(type);
+        MovementProfile base = movement.apply(route, type, style);
         MovementProfile profile = style.profile(base, player, BodyMobility.sinks(type), movement.onLand(), movement.autoCrawl());
         return new StyledLeg(style, player, movement.autoSwim(), base.height(), profile);
     }
@@ -50,8 +51,8 @@ public final class StyledLeg {
     /** Whether the leg plans at crawl height and so checks the headroom of each step. */
     public boolean crawls() { return profile.height() < standingHeight; }
 
-    /** The distance of the next step at {@code speed} blocks per second, at most one block. */
-    public double stepDistance(double speed) { return Math.min(1, speed * style.ratio(inWater) / 20); }
+    /** The distance of the next step at {@code speed} blocks per second in this style, at most {@link MovementSettings#MAXIMUM_SPEED}. */
+    public double stepDistance(double speed) { return Math.min(MovementSettings.MAXIMUM_SPEED, speed * style.ratio(inWater)) / 20; }
 
     /** The look after a committed step; the headroom is read only when the leg may crawl. */
     public Look moved(PathExecution.Proposal step, NpcPose declared, Headroom headroom) {

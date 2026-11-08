@@ -700,7 +700,8 @@ final class RegionActor implements RegionOwner.Body {
 
     // ---- Navigation, on the owner ----
 
-    UUID navigate(WorldPosition destination, MovementProfile.Mode mode, double speed) {
+    UUID navigate(WorldPosition destination, MovementProfile.Mode requested, double speed) {
+        MovementProfile.Mode mode = movement.legMode(requested, null);
         PersistedNpcService.validateLeg(state.snapshot().position(), destination, mode, speed, hullWidth(), hullHeight());
         failWatch("cancelled: replaced by a new route");
         stopRoute("cancelled: replaced by manual route");
@@ -1145,8 +1146,10 @@ final class RegionActor implements RegionOwner.Body {
         WorldPosition at = state.snapshot().position();
         WorldPosition goal = leg.goal() == null ? at : new WorldPosition(at.world(), leg.goal());
         double speed = movement.routeSpeed(routeSpeedDeclared, settings.speed());
+        MovementStyle style = settings.styleTo(leg.arrival());
+        MovementProfile.Mode mode = movement.legMode(settings.mode(), style);
         if (leg.goal() != null) {
-            try { PersistedNpcService.validateLeg(at, goal, settings.mode(), speed, hullWidth(), hullHeight()); }
+            try { PersistedNpcService.validateLeg(at, goal, mode, speed, hullWidth(), hullHeight()); }
             catch (IllegalArgumentException invalid) {
                 if (leg.jittered()) { beginLeg(progress.exact(leg)); return; }
                 navigationStatus = "invalid waypoint " + leg.arrival() + ": " + invalid.getMessage(); failWatch(navigationStatus);
@@ -1155,7 +1158,7 @@ final class RegionActor implements RegionOwner.Body {
                 return;
             }
         }
-        route = styledRoute(goal, settings.mode(), speed, leg, settings.styleTo(leg.arrival()));
+        route = styledRoute(goal, mode, speed, leg, style);
         route.nextAttempt = turns + Math.max(1, leg.waitTicks());
         route.progressTurn = turns;
         routeStatus(route, leg.pause() ? "waiting to retry" : "queued", "");
@@ -1319,7 +1322,8 @@ final class RegionActor implements RegionOwner.Body {
     private void setPose(float nextYaw, float nextPitch, boolean ground) {
         if (yaw != nextYaw || pitch != nextPitch || onGround != ground) { yaw = nextYaw; pitch = nextPitch; onGround = ground; pose++; }
     }
-    private MovementProfile profile(MovementProfile.Mode mode) { return movement.apply(BodyMobility.forRoute(spec.type(), hullWidth(), hullHeight(), mode), spec.type()); }
+    private MovementProfile profile(MovementProfile.Mode mode) { return movement.apply(routeProfile(mode), spec.type()); }
+    private MovementProfile routeProfile(MovementProfile.Mode mode) { return BodyMobility.forRoute(spec.type(), hullWidth(), hullHeight(), mode); }
     private double bodyWidth() { Hitbox box = state.snapshot().bounds(); return box.max().x() - box.min().x(); }
     private double bodyHeight() { Hitbox box = state.snapshot().bounds(); return box.max().y() - box.min().y(); }
     double hullWidth() { return PersistedNpcService.hullWidth(bodyWidth()); }
@@ -1643,7 +1647,7 @@ final class RegionActor implements RegionOwner.Body {
     /** A route or manual leg walked in {@code style}, or the NPC's own style when null; it plans at the style's height. */
     private Route styledRoute(WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg, MovementStyle style) {
         Vec3 origin = state.snapshot().position().point();
-        StyledLeg styled = StyledLeg.of(movement, style, profile(mode), spec.type());
+        StyledLeg styled = StyledLeg.of(movement, style, routeProfile(mode), spec.type());
         Route made = new Route(goal, mode, speed, leg, origin, new LongLeg(origin, goal.point(), hullWidth(), styled.height(), movement.pathRange()));
         made.styled = styled;
         return made;

@@ -42,7 +42,7 @@
   },
   "movement": {
     "avoidWater": false,
-    "fly": true
+    "style": "fly"
   },
   "baby": true,
   "gravity": false,

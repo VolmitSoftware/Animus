@@ -533,13 +533,14 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     @Override public ViewerPreviews previews() { return previews; }
     @Override public WorldPosition navigationOrigin(String id) { return navigable(id).state.snapshot().position(); }
     @Override public UUID navigate(String id, WorldPosition destination, MovementProfile.Mode mode, double blocksPerSecond) {
-        Value value = navigable(id); Objects.requireNonNull(destination); Objects.requireNonNull(mode);
-        validateDestination(value, destination, mode, blocksPerSecond);
+        Value value = navigable(id); Objects.requireNonNull(destination);
+        MovementProfile.Mode legMode = value.movement.legMode(Objects.requireNonNull(mode), null);
+        validateDestination(value, destination, legMode, blocksPerSecond);
         failWatch(value, "cancelled: replaced by a new route");
         stopRoute(value, "cancelled: replaced by manual route");
         cancelRouteRead(value);
         value.waypoints = null;
-        Route route = new Route(value, destination, mode, blocksPerSecond, null, null);
+        Route route = new Route(value, destination, legMode, blocksPerSecond, null, null);
         value.route = route; routeOrder.add(route, tickNumber); value.navigationStatus = "queued; route=" + route.id;
         return route.id;
     }
@@ -1430,8 +1431,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private static String block(Vec3 point) {
         return (int) Math.floor(point.x()) + " " + (int) Math.floor(point.y()) + " " + (int) Math.floor(point.z());
     }
-    private MovementProfile profile(Value value, MovementProfile.Mode mode) {
-        return value.movement.apply(BodyMobility.forRoute(value.spec.type(), moveWidth(value), moveHeight(value), mode), value.spec.type());
+    private MovementProfile profile(Value value, MovementProfile.Mode mode) { return value.movement.apply(routeProfile(value, mode), value.spec.type()); }
+
+    private MovementProfile routeProfile(Value value, MovementProfile.Mode mode) {
+        return BodyMobility.forRoute(value.spec.type(), moveWidth(value), moveHeight(value), mode);
     }
     private boolean routeCurrent(Route route) {
         Value value = route.value; Entry entry = byUuid.get(value.spec.definition().uuid());
@@ -1468,8 +1471,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         WorldPosition at = value.state.snapshot().position();
         WorldPosition goal = leg.goal() == null ? at : new WorldPosition(at.world(), leg.goal());
         double speed = value.movement.routeSpeed(value.routeSpeedDeclared, waypointSettings.speed());
+        MovementStyle style = waypointSettings.styleTo(leg.arrival());
+        MovementProfile.Mode mode = value.movement.legMode(waypointSettings.mode(), style);
         if (leg.goal() != null) {
-            try { validateDestination(value, goal, waypointSettings.mode(), speed); }
+            try { validateDestination(value, goal, mode, speed); }
             catch (IllegalArgumentException invalid) {
                 if (leg.jittered()) { beginLeg(value, progress.exact(leg)); return; }
                 value.navigationStatus = "invalid waypoint " + leg.arrival() + ": " + invalid.getMessage(); failWatch(value, value.navigationStatus);
@@ -1478,7 +1483,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                 return;
             }
         }
-        Route route = new Route(value, goal, waypointSettings.mode(), speed, leg, waypointSettings.styleTo(leg.arrival()));
+        Route route = new Route(value, goal, mode, speed, leg, style);
         route.nextAttempt = tickNumber + Math.max(1, leg.waitTicks());
         value.route = route; routeOrder.add(route, tickNumber); routeStatus(route, leg.pause() ? "waiting to retry" : "queued", "");
     }
@@ -2730,7 +2735,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             this.value = value; this.goal = goal; this.mode = mode; this.speed = speed; this.leg = leg; this.waypoint = leg == null ? -1 : leg.arrival();
             progressTick = tickNumber; progressStart = tickNumber;
             origin = value.state.snapshot().position().point();
-            styled = recording == null ? StyledLeg.of(value.movement, style, PersistedNpcService.this.profile(value, mode), value.spec.type()) : null;
+            styled = recording == null ? StyledLeg.of(value.movement, style, routeProfile(value, mode), value.spec.type()) : null;
             longLeg = new LongLeg(origin, goal.point(), moveWidth(value), styled == null ? moveHeight(value) : styled.height(), value.movement.pathRange());
         }
         MovementProfile profile() { return styled == null ? PersistedNpcService.this.profile(value, mode) : styled.profile(); }

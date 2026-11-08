@@ -195,7 +195,9 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
                     if (data.has(conflicting)) throw new IllegalArgumentException("Reusable route settings belong in its document, not " + conflicting);
                 return Optional.empty();
             }
-            return Optional.of(decode(data));
+            JsonElement movement = document.get("movement");
+            MovementStyle own = movement != null && movement.isJsonObject() ? MovementSettings.style(movement.getAsJsonObject().get("style")).orElse(null) : null;
+            return Optional.of(decode(data, own));
         } catch (RuntimeException invalid) {
             throw new IllegalArgumentException(field + ": " + (invalid.getMessage() == null ? "invalid native waypoint document" : invalid.getMessage()), invalid);
         }
@@ -217,10 +219,11 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
                     || schema.getAsBigDecimal().intValueExact() != 1) throw new ArithmeticException();
         } catch (ArithmeticException | NumberFormatException invalid) { throw new IllegalArgumentException("Reusable route schemaVersion must be 1"); }
         if (data.has("route")) throw new IllegalArgumentException("Recursive route references are unavailable");
-        try { return decode(data); }
+        try { return decode(data, null); }
         catch (IllegalArgumentException invalid) { throw new IllegalArgumentException("$." + invalid.getMessage(), invalid); }
     }
-    private static WaypointSettings decode(JsonObject data) {
+    /** @param own the NPC's own style for an inline route, which decides whether its unstyled points fly; null for a reusable route */
+    private static WaypointSettings decode(JsonObject data, MovementStyle own) {
         MovementProfile.Mode mode = MovementProfile.Mode.WALK;
         if (data.has("mode")) {
             JsonElement value = data.get("mode");
@@ -267,17 +270,17 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
                     throw new IllegalArgumentException(field + "." + key + ": requires recording");
                 if (!(recording ? STEP_FIELDS : POINT_FIELDS).contains(key)) throw new IllegalArgumentException(field + "." + key + ": unknown field");
             }
-            Vec3 position = recording ? null : coordinate(point, field, mode);
+            MovementStyle legStyle = !recording && point.has("style") ? style(point.get("style"), field + ".style") : style != null ? style : own;
+            Vec3 position = recording ? null : coordinate(point, field, legStyle == null ? mode : legStyle.mode(mode));
             Step step = recording ? step(point, field) : null;
-            Wait own = point.has("waitTicks") ? wait(point.get("waitTicks"), field + ".waitTicks") : null;
+            Wait ownWait = point.has("waitTicks") ? wait(point.get("waitTicks"), field + ".waitTicks") : null;
             if (point.has("jitter") && order == Order.WANDER) throw new IllegalArgumentException(field + ".jitter is not allowed with order wander");
             int ownJitter = point.has("jitter") ? jitter(point.get("jitter"), field + ".jitter") : -1;
             if (point.has("weight") && order != Order.RANDOM) throw new IllegalArgumentException(field + ".weight is only allowed with order random");
             int weight = point.has("weight") ? weight(point.get("weight"), field + ".weight") : 1;
             if (point.has("next") && order != Order.SEQUENCE) throw new IllegalArgumentException(field + ".next is only allowed with order sequence");
             List<Junction> next = point.has("next") ? junctions(point.get("next"), field + ".next", array.size()) : List.of();
-            MovementStyle ownStyle = !recording && point.has("style") ? style(point.get("style"), field + ".style") : null;
-            points.add(new Waypoint(position, step, own, ownJitter, weight, next, ownStyle));
+            points.add(new Waypoint(position, step, ownWait, ownJitter, weight, next, !recording && point.has("style") ? legStyle : null));
         }
         List<Vec3> guides = new ArrayList<>();
         if (data.has("guides")) {
@@ -291,7 +294,8 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
                 JsonObject guide = object(entries.get(index), field);
                 for (String key : guide.keySet())
                     if (!Set.of("x", "y", "z").contains(key)) throw new IllegalArgumentException(field + "." + key + ": unknown field");
-                guides.add(coordinate(guide, field, mode));
+                MovementStyle guideStyle = style != null ? style : own;
+                guides.add(coordinate(guide, field, guideStyle == null ? mode : guideStyle.mode(mode)));
             }
         }
         if (points.size() + guides.size() > MAXIMUM_NODES) throw new IllegalArgumentException("points and guides together allow at most " + MAXIMUM_NODES + " coordinates");

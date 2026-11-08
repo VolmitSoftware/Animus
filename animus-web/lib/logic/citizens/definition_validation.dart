@@ -29,7 +29,7 @@ const Set<String> _itemFields = <String>{'id', 'count', 'components', 'imported'
 const Set<String> _hologramFields = <String>{'lines', 'lineHeight', 'viewRange', 'billboard', 'shadowed', 'seeThrough', 'interpolationDelay', 'interpolationDuration'};
 const Set<String> _lineFields = <String>{'text', 'marginTop', 'marginBottom'};
 const Set<String> _billboards = <String>{'center', 'fixed', 'vertical', 'horizontal'};
-const Set<String> _movementFields = <String>{'speed', 'avoidWater', 'fly', 'openDoors', 'stepHeight', 'maximumFall', 'pathRange', 'arrivalMargin', 'stuck', 'style', 'onLand', 'auto'};
+const Set<String> _movementFields = <String>{'speed', 'avoidWater', 'openDoors', 'stepHeight', 'maximumFall', 'pathRange', 'arrivalMargin', 'stuck', 'style', 'onLand', 'auto'};
 
 /// `NpcAppearance.displayText`.
 bool displayText(String? text) => text != null && text.length <= maxText && !text.runes.any(javaIsIsoControl);
@@ -397,7 +397,7 @@ void _movement(JObject definition, List<String> errors) {
     return;
   }
   _decimal(value, 'speed', r'$.movement', 1, 5, 'blocks/second', errors);
-  for (final String key in const <String>['avoidWater', 'fly', 'openDoors']) {
+  for (final String key in const <String>['avoidWater', 'openDoors']) {
     if (value.has(key) && value.get(key) is! JBool) errors.add('\$.movement.$key: expected boolean');
   }
   _decimal(value, 'stepHeight', r'$.movement', 0, 1.5, 'blocks', errors);

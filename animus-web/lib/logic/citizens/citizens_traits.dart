@@ -303,7 +303,7 @@ class _Traits {
       any = true;
     }
     if (metadata != null && _bool(metadata.get('flyable')) == true) {
-      movement.addBool('fly', true);
+      movement.addString('style', 'fly');
       any = true;
     }
     if (metadata != null && _bool(metadata.get('pathfinder-open-doors')) == true) {

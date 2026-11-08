@@ -5,15 +5,15 @@ import java.util.random.RandomGenerator;
 
 /**
  * The sounds a player hears from {@code /animus}, the same ones Iris and Adapt play: a soft chime on every completion
- * request while typing, a ding when a command or help page answers, and a low tone when one is refused. Every platform
- * plays them at the player in the master category.
+ * request while typing, a ding when a command's handler returns or a help page shows, and a low tone when a command
+ * cannot run or its handler throws. Every platform plays them at the player in the master category.
  */
 public enum CommandSound {
     /** A completion request while typing; the pitch varies so typing sounds like a run of chimes. */
     TYPING,
-    /** A command answered, or a help or list page shown. */
+    /** A command's handler returned, or a help page showed. */
     SUCCESS,
-    /** A command refused, failed or unknown. */
+    /** A command unknown, refused, not mapped or converted, or its handler threw. */
     FAILURE;
 
     /** One vanilla sound by its registry key. */

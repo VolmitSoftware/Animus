@@ -77,20 +77,28 @@ public final class AnimusDirector {
 
     /**
      * Runs the words after {@code /animus}. Help words, a group name or an unknown command show help instead. The player
-     * hears one outcome sound, as in every Volmit plugin: a ding for an answer or a page, a low tone for a refusal.
+     * hears one outcome sound once the command is done, decided as Iris's {@code CommandSVC.executeCommand} decides it: a
+     * help page or a handler that returns dings; an unknown command, a refusal, a value that does not map or convert, or a
+     * handler that throws plays the failure tone. What the handler answers does not change it.
      */
-    public void execute(CommandActor given, String[] arguments) {
-        CommandFeedback actor = new CommandFeedback(given);
+    public void execute(CommandActor actor, String[] arguments) {
+        CommandSound outcome = CommandSound.FAILURE;
+        try { if (run(actor, arguments)) outcome = CommandSound.SUCCESS; }
+        finally { actor.play(outcome); }
+    }
+
+    /** Runs one command; true when it showed help or its handler returned. */
+    private boolean run(CommandActor actor, String[] arguments) {
         List<String> tokens = pages(actor, ToolkitCommands.expand(CommandWords.tokens(arguments)));
         Optional<DirectorMiniMenu.DirectorHelpPage> help = DirectorMiniMenu.resolveHelp(engine, tokens);
-        if (help.isPresent()) { help(actor, help.get().node(), help.get().pageIndex()); return; }
+        if (help.isPresent()) { help(actor, help.get().node(), help.get().pageIndex()); return true; }
         ActorSender sender = new ActorSender(actor);
         DirectorRoute route = engine.route(DirectorInvocation.pretokenized(sender, label, tokens));
         if (!route.invocable()) {
             DirectorRuntimeNode reached = route.node() == null ? engine.getRoot() : route.node();
             actor.tell(Palette.error("Unknown command /" + label + " " + String.join(" ", tokens) + "; the commands you may run are below"));
             help(actor, reached, 0);
-            return;
+            return false;
         }
         DirectorRuntimeNode node = route.node();
         List<String> words = new ArrayList<>(tokens.subList(0, tokens.size() - route.remainingArgs().size()));
@@ -100,9 +108,9 @@ public final class AnimusDirector {
             if (!gate.getDescriptor().getOrigin().validFor(actor.player().isPresent())) {
                 actor.tell(Palette.error(actor.player().isPresent() ? "Console only; run /" + label + " " + String.join(" ", tokens) + " from the server console"
                         : "Players only; run it in game"));
-                return;
+                return false;
             }
-        if (!allowed(actor, node)) { actor.tell(Palette.error(refused(node))); return; }
+        if (!allowed(actor, node)) { actor.tell(Palette.error(refused(node))); return false; }
         boolean hidden = hidden(node);
         sender.quiet = hidden;
         CommandActor previous = CURRENT.get();
@@ -110,11 +118,11 @@ public final class AnimusDirector {
         DirectorExecutionResult result;
         try { result = engine.execute(invocation); }
         finally { if (previous == null) CURRENT.remove(); else CURRENT.set(previous); }
-        if (result.isSuccess()) return;
-        actor.settle(CommandSound.FAILURE);
+        if (result.isSuccess()) return true;
         // A hidden command answers every refusal the same way, so a forged click learns nothing.
         if (hidden) actor.tell(Palette.error(ChoiceCommands.NOT_AVAILABLE));
         else actor.rich(ChatLine.of(Palette.PREFIX + "&7Usage: &f" + usage(node)).docs(DocsLink.ARGUMENTS));
+        return false;
     }
 
     /** A page bar's {@code page=N} after a group, such as {@code /animus page=2}, asks for that page of its help. */
