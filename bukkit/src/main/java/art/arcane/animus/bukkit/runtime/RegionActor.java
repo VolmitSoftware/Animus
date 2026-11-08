@@ -47,6 +47,8 @@ import art.arcane.animus.core.navigation.BodyMobility;
 import art.arcane.animus.core.navigation.MotionValidator;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.navigation.PathExecution;
+import art.arcane.animus.core.navigation.MovementStyle;
+import art.arcane.animus.core.navigation.StyledLeg;
 import art.arcane.animus.core.navigation.PathPlanner;
 import art.arcane.animus.core.navigation.WaypointSettings;
 import art.arcane.animus.core.virtual.ChunkPosition;
@@ -686,7 +688,7 @@ final class RegionActor implements RegionOwner.Body {
         stopRoute("cancelled: replaced by manual route");
         cancelRouteRead();
         waypoints = null;
-        route = route(destination, mode, speed, null);
+        route = styledRoute(destination, mode, speed, null, null);
         navigationStatus = "queued; route=" + route.id;
         publish(true);
         return route.id;
@@ -928,7 +930,7 @@ final class RegionActor implements RegionOwner.Body {
                         host.budget.routeRefused(waited); routeWaited = waited + 1;
                         routeStatus(current, "queued", "waiting for a planning turn"); return;
                     }
-                    current.plan = host.navigation.plan(world.getUID().toString(), bounds, feet, request.aim(), profile(current.mode), request.limits());
+                    current.plan = host.navigation.plan(world.getUID().toString(), bounds, feet, request.aim(), profile(current), request.limits());
                     current.result = current.plan.future().toCompletableFuture();
                     routeStatus(current, "planning", "");
                 }
@@ -948,7 +950,7 @@ final class RegionActor implements RegionOwner.Body {
                         else {
                             current.segment = next == LongLeg.Next.SEGMENT;
                             Vec3 end = next == LongLeg.Next.FINAL ? current.goal.point() : planned.path().getLast().point();
-                            current.execution = new PathExecution(state.snapshot().position().point(), planned.path(), end, profile(current.mode));
+                            current.execution = new PathExecution(state.snapshot().position().point(), planned.path(), end, profile(current));
                             routeStatus(current, "moving", PersistedNpcService.moving(current.segment) + "; region owner");
                         }
                     }
@@ -962,24 +964,25 @@ final class RegionActor implements RegionOwner.Body {
     private boolean step(Route current, World world, ChunkOwnership owned) {
         if (!current.execution.position().equals(state.snapshot().position().point())) { stopRoute("cancelled: authoritative position changed"); return true; }
         if (current.execution.finished()) { executed(current); return true; }
-        PathExecution.Proposal step = current.execution.next(current.speed / 20).orElseThrow();
+        PathExecution.Proposal step = current.execution.next(current.styled == null ? current.speed / 20 : current.styled.stepDistance(current.speed)).orElseThrow();
+        double height = current.styled == null ? hullHeight() : current.styled.height();
         int sweep = PersistedNpcService.motionCells(hullWidth(), hullHeight(), step.from().distance(step.to()));
         int settle = PersistedNpcService.motionCells(hullWidth(), hullHeight(), 0);
         int wanted = Math.min(host.navigationSettings().motionCellsPerTick(), sweep + (step.landing() ? settle : 0));
         int granted = host.budget.take(RegionBudget.Kind.MOTION_CELLS, wanted);
         if (granted < wanted) { host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted); return false; }
         if (current.mode == MovementProfile.Mode.WALK && movement.openDoors()) {
-            Optional<BlockPos> door = doors.prepare(current.goal.world(), step.from(), step.to(), hullWidth(), hullHeight(), LiveMovementProbe.owned(world, owned), host.doors);
+            Optional<BlockPos> door = doors.prepare(current.goal.world(), step.from(), step.to(), hullWidth(), height, LiveMovementProbe.owned(world, owned), host.doors);
             if (door.isPresent()) {
                 host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted);
                 failLeg(current, "blocked: the door at " + door.get().x() + " " + door.get().y() + " " + door.get().z() + " could not be opened");
                 return true;
             }
         }
-        MotionValidator.Result validation = LiveMovementProbe.check(world, owned, step.from(), step.to(), hullWidth(), hullHeight(), step.medium(), step.requireSupport(), sweep);
+        MotionValidator.Result validation = LiveMovementProbe.check(world, owned, step.from(), step.to(), hullWidth(), height, step.medium(), step.requireSupport(), sweep);
         int used = validation.sampledCells();
         if (validation.clear() && step.landing()) {
-            validation = LiveMovementProbe.check(world, owned, step.to(), step.to(), hullWidth(), hullHeight(),
+            validation = LiveMovementProbe.check(world, owned, step.to(), step.to(), hullWidth(), height,
                     current.mode == MovementProfile.Mode.SWIM ? MotionValidator.Medium.WATER : MotionValidator.Medium.GROUND,
                     current.mode != MovementProfile.Mode.SWIM, settle);
             used += validation.sampledCells();
@@ -994,6 +997,14 @@ final class RegionActor implements RegionOwner.Body {
             state.move(new WorldPosition(current.goal.world(), step.to()));
             host.index.upsert(state.snapshot());
             pose++; setPose(facing, 0, step.onGround());
+            if (current.styled != null) styleLook(current.styled.moved(step, spec.appearance().pose(), (Vec3 at, double standing) -> {
+                // Charged to the region's motion cells; with none left the body keeps the look it had.
+                int room = PersistedNpcService.motionCells(hullWidth(), standing, 0), cells = host.budget.take(RegionBudget.Kind.MOTION_CELLS, room);
+                if (cells < room) { host.budget.refund(RegionBudget.Kind.MOTION_CELLS, cells); return lookPose == NpcPose.SWIMMING; }
+                MotionValidator.Result clear = LiveMovementProbe.check(world, owned, at, at, hullWidth(), standing, MotionValidator.Medium.AMPHIBIOUS_AIR, false, room);
+                host.budget.refund(RegionBudget.Kind.MOTION_CELLS, cells - clear.sampledCells());
+                return clear.status() == MotionValidator.Status.BLOCKED;
+            }));
             doors.passed(step.to(), hullWidth(), host.doors);
             current.progressTurn = turns;
             routeStatus(current, "moving", PersistedNpcService.moving(current.segment) + "; region owner");
@@ -1086,6 +1097,8 @@ final class RegionActor implements RegionOwner.Body {
     /** Arrival keeps doors the NPC still stands in only while another leg follows; a finished route closes them all. */
     private void arrive(Route current) {
         arriveAt(current);
+        if (current.styled != null && performance.run == null)
+            styleLook(route != null ? current.styled.resting(spec.appearance().pose()) : current.styled.finished(spec.appearance().pose()));
         if (route == null) doors.closeAll(host.doors);
         else doors.passed(state.snapshot().position().point(), hullWidth(), host.doors);
     }
@@ -1122,7 +1135,7 @@ final class RegionActor implements RegionOwner.Body {
                 return;
             }
         }
-        route = route(goal, settings.mode(), speed, leg);
+        route = styledRoute(goal, settings.mode(), speed, leg, settings.styleTo(leg.arrival()));
         route.nextAttempt = turns + Math.max(1, leg.waitTicks());
         route.progressTurn = turns;
         routeStatus(route, leg.pause() ? "waiting to retry" : "queued", "");
@@ -1258,7 +1271,7 @@ final class RegionActor implements RegionOwner.Body {
             performance.stopped();
             recordingDoors.closeAll(host.doors);
             resetLook();
-        }
+        } else if (current != null && current.styled != null) resetLook();
         if (current == null) { navigationStatus = reason; return; }
         if (current.plan != null) current.plan.cancel();
         if (current.execution != null) current.execution.cancel();
@@ -1384,10 +1397,11 @@ final class RegionActor implements RegionOwner.Body {
         }
     }
     private void applyLook(RecordingPose shown) {
-        if (!BodyRules.PLAYER.equals(spec.type())) return;
-        changeLook(RecordingSteps.pose(shown, spec.appearance().pose()), RecordingSteps.motion(shown));
+        boolean player = BodyRules.PLAYER.equals(spec.type());
+        changeLook(player ? RecordingSteps.pose(shown, spec.appearance().pose()) : spec.appearance().pose(), RecordingSteps.motion(shown, player));
     }
     private void resetLook() { changeLook(spec.appearance().pose(), 0); }
+    private void styleLook(StyledLeg.Look shown) { changeLook(shown.pose(), shown.motion()); }
     /** The playback's pose and motion; a bow drawn in a fight stays drawn across them. */
     private void changeLook(NpcPose nextPose, int motion) {
         int shown = motion | (drawing ? BodyLook.USING_ITEM : 0);
@@ -1576,6 +1590,8 @@ final class RegionActor implements RegionOwner.Body {
         long nextAttempt, progressTurn;
         /** The path being walked ends part way along a long leg. */
         boolean segment;
+        /** The style a route or manual leg walks in; a recording's walk and playback have none. */
+        StyledLeg styled;
         /** A recording's turn: a planned walk to its goal pose when {@link #walk}, otherwise its frames; a walk fails after {@link #deadline}. */
         RecordingRun recording; boolean walk; long deadline = Long.MAX_VALUE, startTurn;
         Route(WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg, Vec3 origin, LongLeg longLeg) {
@@ -1588,4 +1604,13 @@ final class RegionActor implements RegionOwner.Body {
         Vec3 origin = state.snapshot().position().point();
         return new Route(goal, mode, speed, leg, origin, new LongLeg(origin, goal.point(), hullWidth(), hullHeight(), movement.pathRange()));
     }
+    /** A route or manual leg walked in {@code style}, or the NPC's own style when null; it plans at the style's height. */
+    private Route styledRoute(WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg, MovementStyle style) {
+        Vec3 origin = state.snapshot().position().point();
+        StyledLeg styled = StyledLeg.of(movement, style, profile(mode), spec.type());
+        Route made = new Route(goal, mode, speed, leg, origin, new LongLeg(origin, goal.point(), hullWidth(), styled.height(), movement.pathRange()));
+        made.styled = styled;
+        return made;
+    }
+    private MovementProfile profile(Route current) { return current.styled == null ? profile(current.mode) : current.styled.profile(); }
 }

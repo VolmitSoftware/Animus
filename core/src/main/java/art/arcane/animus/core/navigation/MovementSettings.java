@@ -23,18 +23,30 @@ import java.util.Set;
  * The definition's {@code attributes} fill what this object leaves out: {@code movement_speed} the speed,
  * {@code step_height} the climb and {@code safe_fall_distance} the drop. {@code jump_strength} and {@code gravity} give
  * {@code jumpHeight}, and {@code gravity} is the fall acceleration of an idle body.
+ * <p>
+ * {@code style} is the {@link MovementStyle} of every leg whose route and point set none; {@code onLand} says whether a
+ * swimming NPC walks over land or keeps to water, and {@code auto} switches a leg to the swimming pose in water
+ * ({@code swim}, on by default) and to crawling through gaps one block high ({@code crawl}, off by default).
  */
 public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean fly, boolean openDoors, OptionalDouble stepHeight, OptionalInt maximumFall,
-                               OptionalDouble pathRange, OptionalDouble arrivalMargin, Optional<Stuck> stuck, OptionalDouble jumpHeight, double gravity) {
+                               OptionalDouble pathRange, OptionalDouble arrivalMargin, Optional<Stuck> stuck, OptionalDouble jumpHeight, double gravity,
+                               Styling styling) {
     public static final MovementSettings DEFAULT = new MovementSettings(OptionalDouble.empty(), true, false, false, OptionalDouble.empty(), OptionalInt.empty(),
-            OptionalDouble.empty(), OptionalDouble.empty(), Optional.empty(), OptionalDouble.empty(), IdleFall.GRAVITY);
+            OptionalDouble.empty(), OptionalDouble.empty(), Optional.empty(), OptionalDouble.empty(), IdleFall.GRAVITY, Styling.DEFAULT);
     /** Blocks per second a player walks per unit of {@code movement_speed}, and a mob per unit of its square. */
     public static final double PLAYER_WALK = 43.17, MOB_WALK = 44.05;
     /** The navigation speed range an attribute speed is kept within, in blocks per second. */
     public static final double MINIMUM_SPEED = 1, MAXIMUM_SPEED = 10;
     public static final double MAX_ARRIVAL_MARGIN = 4;
     public static final int MAX_STUCK_TICKS = 12_000;
-    private static final Set<String> FIELDS = Set.of("speed", "avoidWater", "fly", "openDoors", "stepHeight", "maximumFall", "pathRange", "arrivalMargin", "stuck");
+    private static final Set<String> FIELDS = Set.of("speed", "avoidWater", "fly", "openDoors", "stepHeight", "maximumFall", "pathRange", "arrivalMargin", "stuck",
+            "style", "onLand", "auto");
+
+    /** The NPC's own movement style, what a swimmer does on land, and the automatic swim and crawl switches. */
+    public record Styling(MovementStyle style, MovementStyle.OnLand onLand, boolean autoSwim, boolean autoCrawl) {
+        public static final Styling DEFAULT = new Styling(MovementStyle.WALK, MovementStyle.OnLand.WALK, true, false);
+        public Styling { Objects.requireNonNull(style); Objects.requireNonNull(onLand); }
+    }
 
     /** What an NPC does after {@code afterTicks} without getting closer to the point it walks to. */
     public record Stuck(int afterTicks, boolean teleport) {
@@ -46,7 +58,13 @@ public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean
     public MovementSettings {
         Objects.requireNonNull(speed); Objects.requireNonNull(stepHeight); Objects.requireNonNull(maximumFall);
         Objects.requireNonNull(pathRange); Objects.requireNonNull(arrivalMargin); Objects.requireNonNull(stuck); Objects.requireNonNull(jumpHeight);
+        Objects.requireNonNull(styling);
     }
+
+    public MovementStyle style() { return styling.style(); }
+    public MovementStyle.OnLand onLand() { return styling.onLand(); }
+    public boolean autoSwim() { return styling.autoSwim(); }
+    public boolean autoCrawl() { return styling.autoCrawl(); }
 
     /** @throws IllegalArgumentException naming every malformed field */
     public static MovementSettings parse(JsonObject definition) {
@@ -94,6 +112,7 @@ public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean
                 if (ticks > 0) stuck = Optional.of(new Stuck(ticks, teleport));
             }
         }
+        Styling styling = styling(movement, errors);
         for (String key : movement.keySet()) if (!FIELDS.contains(key)) errors.add("$.movement." + key + ": unknown field");
         NpcAttributes attributes = NpcAttributes.of(definition);
         JsonElement type = definition.get("type");
@@ -105,7 +124,47 @@ public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean
         double gravity = attributes.value("gravity");
         OptionalDouble jump = attributes.get("jump_strength").isPresent() || attributes.get("gravity").isPresent()
                 ? OptionalDouble.of(jumpHeight(attributes.value("jump_strength"), gravity)) : OptionalDouble.empty();
-        return new MovementSettings(speed, avoidWater, fly, openDoors, step, fall, range, margin, stuck, jump, gravity);
+        return new MovementSettings(speed, avoidWater, fly, openDoors, step, fall, range, margin, stuck, jump, gravity, styling);
+    }
+
+    private static Styling styling(JsonObject movement, List<String> errors) {
+        MovementStyle style = MovementStyle.WALK;
+        if (movement.has("style")) {
+            Optional<MovementStyle> named = style(movement.get("style"));
+            if (named.isEmpty()) errors.add("$.movement.style: expected " + String.join(", ", MovementStyle.keys()));
+            else style = named.get();
+        }
+        MovementStyle.OnLand onLand = MovementStyle.OnLand.WALK;
+        if (movement.has("onLand")) {
+            JsonElement value = movement.get("onLand");
+            if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString() || !Set.of("walk", "avoid").contains(value.getAsString()))
+                errors.add("$.movement.onLand: expected walk or avoid");
+            else onLand = MovementStyle.OnLand.valueOf(value.getAsString().toUpperCase(java.util.Locale.ROOT));
+        }
+        boolean swim = Styling.DEFAULT.autoSwim(), crawl = Styling.DEFAULT.autoCrawl();
+        if (movement.has("auto")) {
+            JsonElement value = movement.get("auto");
+            if (!value.isJsonObject()) errors.add("$.movement.auto: expected object");
+            else {
+                JsonObject auto = value.getAsJsonObject();
+                for (String key : auto.keySet()) if (!Set.of("swim", "crawl").contains(key)) errors.add("$.movement.auto." + key + ": unknown field");
+                swim = autoFlag(auto, "swim", swim, errors); crawl = autoFlag(auto, "crawl", crawl, errors);
+            }
+        }
+        return new Styling(style, onLand, swim, crawl);
+    }
+
+    /** A style name, as {@code movement.style}, a route's {@code style} and a point's {@code style} hold it. */
+    public static Optional<MovementStyle> style(JsonElement value) {
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) return Optional.empty();
+        return MovementStyle.fromKey(value.getAsString());
+    }
+
+    private static boolean autoFlag(JsonObject auto, String key, boolean fallback, List<String> errors) {
+        JsonElement value = auto.get(key);
+        if (value == null) return fallback;
+        if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean()) { errors.add("$.movement.auto." + key + ": expected boolean"); return fallback; }
+        return value.getAsBoolean();
     }
 
     /** Blocks per second for a {@code movement_speed}: a player walks linearly with it, a mob with its square, as vanilla moves them. */

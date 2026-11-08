@@ -12437,6 +12437,39 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "description": "Teleport to the point; false stops instead. True by default."
             }
           }
+        },
+        "style": {
+          "enum": [
+            "walk",
+            "sneak",
+            "sprint",
+            "swim",
+            "crawl",
+            "glide"
+          ],
+          "description": "How the NPC moves where its route sets no style. walk by default. Sneak and crawl move at 0.3x, sprint and swimming at 1.3x."
+        },
+        "onLand": {
+          "enum": [
+            "walk",
+            "avoid"
+          ],
+          "description": "Style swim on land: walk there, or keep to water. walk by default."
+        },
+        "auto": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Switch the pose by terrain on any leg.",
+          "properties": {
+            "swim": {
+              "type": "boolean",
+              "description": "Swimming pose in water. True by default."
+            },
+            "crawl": {
+              "type": "boolean",
+              "description": "Plan through gaps one block high and crawl in them. Player bodies only."
+            }
+          }
         }
       }
     },
@@ -12584,6 +12617,17 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "maximum": 8,
               "description": "Leg goals move by a random whole-block x/z offset within this radius."
             },
+            "style": {
+              "enum": [
+                "walk",
+                "sneak",
+                "sprint",
+                "swim",
+                "crawl",
+                "glide"
+              ],
+              "description": "How NPCs move on this route, instead of their own style. Sneak and crawl move at 0.3x, sprint and swimming at 1.3x."
+            },
             "points": {
               "type": "array",
               "description": "Route points in the NPC's world, or recording steps; wander centres for order wander.",
@@ -12613,6 +12657,17 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         "type": "number",
                         "minimum": -29999984,
                         "maximum": 29999984
+                      },
+                      "style": {
+                        "enum": [
+                          "walk",
+                          "sneak",
+                          "sprint",
+                          "swim",
+                          "crawl",
+                          "glide"
+                        ],
+                        "description": "How the NPC moves on the leg to this point, instead of the route's. Sneak and crawl move at 0.3x, sprint and swimming at 1.3x."
                       },
                       "waitTicks": {
                         "oneOf": [
@@ -12801,6 +12856,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                           "required": [
                             "jitter"
                           ]
+                        },
+                        {
+                          "required": [
+                            "style"
+                          ]
                         }
                       ]
                     }
@@ -12948,6 +13008,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                       },
                       {
                         "required": [
+                          "style"
+                        ]
+                      },
+                      {
+                        "required": [
                           "recording"
                         ]
                       }
@@ -13021,6 +13086,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         {
                           "required": [
                             "jitter"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "style"
                           ]
                         }
                       ]
@@ -15274,6 +15344,17 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "maximum": 8,
       "description": "Leg goals move by a random whole-block x/z offset within this radius."
     },
+    "style": {
+      "enum": [
+        "walk",
+        "sneak",
+        "sprint",
+        "swim",
+        "crawl",
+        "glide"
+      ],
+      "description": "How NPCs move on this route, instead of their own style. Sneak and crawl move at 0.3x, sprint and swimming at 1.3x."
+    },
     "points": {
       "type": "array",
       "description": "Route points in the NPC's world, or recording steps; wander centres for order wander.",
@@ -15303,6 +15384,17 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 "type": "number",
                 "minimum": -29999984,
                 "maximum": 29999984
+              },
+              "style": {
+                "enum": [
+                  "walk",
+                  "sneak",
+                  "sprint",
+                  "swim",
+                  "crawl",
+                  "glide"
+                ],
+                "description": "How the NPC moves on the leg to this point, instead of the route's. Sneak and crawl move at 0.3x, sprint and swimming at 1.3x."
               },
               "waitTicks": {
                 "oneOf": [
@@ -15490,6 +15582,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 {
                   "required": [
                     "jitter"
+                  ]
+                },
+                {
+                  "required": [
+                    "style"
                   ]
                 }
               ]

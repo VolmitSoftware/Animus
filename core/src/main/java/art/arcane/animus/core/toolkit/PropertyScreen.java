@@ -35,7 +35,7 @@ final class PropertyScreen<P, S> extends ToolScreen<P, S> {
                     List.of("pose", "baby", "glowing", "teamColor", "usingItem", "listed", "gravity", "armorStand", "horse", "llama", "frog", "armadillo", "dragon", "inventory", "poses")),
             new Section("Position", "minecraft:compass", "World, x, y, z, yaw and pitch", 12, List.of("position"), List.of()),
             new Section("Appearance", "minecraft:painting", "Hologram, nameplate, rig", 13, List.of(), List.of("hologram", "nameplate", "rig")),
-            new Section("Movement", "minecraft:leather_boots", "Speed, doors, water, falls, getting stuck", 14, List.of("movement"), List.of()));
+            new Section("Movement", "minecraft:leather_boots", "Style, speed, doors, water, falls, getting stuck", 14, List.of("movement"), List.of()));
     static final int ATTRIBUTES = 15, MODULES = 16;
 
     private final List<UUID> npcs;

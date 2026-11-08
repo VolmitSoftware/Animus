@@ -440,7 +440,7 @@ class _RouteEditorState extends State<RouteEditor> {
   List<Diagnostic> get _problems => diagnosticsAt(component.diagnostics, component.path, nested: true);
 
   /// Route fields whose problems show in their own row.
-  static const Set<String> _inlineFields = <String>{'waitTicks', 'seed', 'startOffset', 'jitter'};
+  static const Set<String> _inlineFields = <String>{'waitTicks', 'seed', 'startOffset', 'jitter', 'style'};
 
   /// The browser's problems at exactly [field] (`jitter`, `points[2].next[0].to`).
   List<Diagnostic> _inline(String field) => <Diagnostic>[
@@ -484,6 +484,13 @@ class _RouteEditorState extends State<RouteEditor> {
         labelFor: '$_gridId-mode',
         help: 'Only walk needs whole-block points.',
         child: GuiSelect(id: '$_gridId-mode', value: asString(route['mode']), options: routeModes, allowNone: true, noneLabel: 'walk (default)', onChanged: (String? value) => _field('mode', value)),
+      ),
+      InspectRow(
+        label: 'Style',
+        labelFor: '$_gridId-style',
+        help: 'Sneak and crawl 0.3x speed, sprint and swim 1.3x. Empty uses each NPC\'s own.',
+        problems: _inline('style'),
+        child: GuiSelect(id: '$_gridId-style', value: asString(route['style']), options: movementStyles, allowNone: true, noneLabel: 'NPC style', onChanged: (String? value) => _field('style', value)),
       ),
       GuiRow(
         label: 'Speed',
@@ -780,6 +787,21 @@ class _RouteEditorState extends State<RouteEditor> {
               dom.span(classes: 'animus-gui-problem is-error', <Widget>[dom.code(<Widget>[Component.text(problem.path)]), Component.text(' ${problem.message}')]),
               Button.ghost(label: 'Remove jitter', size: ButtonSize.small, onPressed: () => set('jitter', null)),
             ]),
+        if (!step)
+          InspectRow(
+            label: 'Style',
+            labelFor: '$_gridId-point-style',
+            help: 'How the NPC moves on the leg to this point. Empty uses the route\'s.',
+            problems: _inline('$field.style'),
+            child: GuiSelect(
+              id: '$_gridId-point-style',
+              value: asString(node['style']),
+              options: movementStyles,
+              allowNone: true,
+              noneLabel: 'route style',
+              onChanged: (String? value) => set('style', value),
+            ),
+          ),
         if (spec.order == 'random' || node.containsKey('weight'))
           InspectRow(
             label: 'Weight',
@@ -791,7 +813,7 @@ class _RouteEditorState extends State<RouteEditor> {
         if (spec.order == 'sequence' || node.containsKey('next')) _junctions(node, index, label, field),
       ],
       for (final Diagnostic problem in _inlineWithin(field))
-        if (!<String>['waitTicks', 'jitter', 'weight', 'next'].any((String covered) => problem.path == '$field.$covered' || problem.path.startsWith('$field.next')))
+        if (!<String>['waitTicks', 'jitter', 'weight', 'next', 'style'].any((String covered) => problem.path == '$field.$covered' || problem.path.startsWith('$field.next')))
           dom.span(classes: 'animus-gui-problem is-error', <Widget>[dom.code(<Widget>[Component.text(problem.path)]), Component.text(' ${problem.message}')]),
       dom.div(classes: 'animus-row', <Widget>[
         if (!guide) ...<Widget>[
@@ -981,10 +1003,11 @@ class _RouteEditorState extends State<RouteEditor> {
     ]);
   }
 
-  /// A point's weight, jitter and junctions for its list row.
+  /// A point's weight, jitter, style and junctions for its list row.
   static String _extras(JsonMap point) => <String>[
         if (point['weight'] != null) ', weight ${point['weight']}',
         if (point['jitter'] != null) ', jitter ${point['jitter']}',
+        if (point['style'] != null) ', ${point['style']}',
         if (point['next'] is List<Object?>) ', next ${asList(point['next']).map((Object? junction) => asMap(junction)['to']).join(' or ')}',
       ].join();
 

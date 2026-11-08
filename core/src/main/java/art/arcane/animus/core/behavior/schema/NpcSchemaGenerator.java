@@ -11,6 +11,7 @@ import art.arcane.animus.core.hire.HireTerms;
 import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.navigation.MovementSettings;
+import art.arcane.animus.core.navigation.MovementStyle;
 import art.arcane.animus.core.navigation.WaypointSettings;
 import art.arcane.animus.core.npc.ArmorStandLook;
 import art.arcane.animus.core.npc.BodyVariant;
@@ -335,8 +336,21 @@ public final class NpcSchemaGenerator {
         stuckFields.add("teleport", described(type("boolean"), "Teleport to the point; false stops instead. True by default."));
         stuck.add("properties", stuckFields);
         fields.add("stuck", stuck);
+        fields.add("style", style("How the NPC moves where its route sets no style. walk by default."));
+        fields.add("onLand", described(choices(List.of("walk", "avoid")), "Style swim on land: walk there, or keep to water. walk by default."));
+        JsonObject auto = described(closed(), "Switch the pose by terrain on any leg.");
+        JsonObject autoFields = new JsonObject();
+        autoFields.add("swim", described(type("boolean"), "Swimming pose in water. True by default."));
+        autoFields.add("crawl", described(type("boolean"), "Plan through gaps one block high and crawl in them. Player bodies only."));
+        auto.add("properties", autoFields);
+        fields.add("auto", auto);
         movement.add("properties", fields);
         return movement;
+    }
+
+    /** A movement style name with the choices it takes. */
+    private static JsonObject style(String description) {
+        return described(choices(MovementStyle.keys()), description + " Sneak and crawl move at 0.3x, sprint and swimming at 1.3x.");
     }
 
     private static JsonObject shop() {
@@ -490,8 +504,10 @@ public final class NpcSchemaGenerator {
         properties.add("seed", described(choices(List.of("npc", "random")), "npc (default): choices stable per NPC and route, across restarts. random: mixed with the clock."));
         properties.add("startOffset", described(choices(List.of("first", "random")), "random: start at a random point after a random 0..waitTicks wait. first by default."));
         properties.add("jitter", described(range("integer", 0, WaypointSettings.MAXIMUM_JITTER), "Leg goals move by a random whole-block x/z offset within this radius."));
+        properties.add("style", style("How NPCs move on this route, instead of their own style."));
         JsonObject point = coordinate();
         JsonObject pointFields = point.getAsJsonObject("properties");
+        pointFields.add("style", style("How the NPC moves on the leg to this point, instead of the route's."));
         pointFields.add("waitTicks", described(waitTicks(), "Wait after arriving here, instead of the route's."));
         pointFields.add("jitter", described(range("integer", 0, WaypointSettings.MAXIMUM_JITTER), "Jitter radius of this point, instead of the route's."));
         pointFields.add("weight", described(range("integer", 1, WaypointSettings.MAXIMUM_WEIGHT), "Order random only: how often this point is chosen."));
@@ -516,7 +532,7 @@ public final class NpcSchemaGenerator {
         stepFields.add("weight", pointFields.get("weight"));
         stepFields.add("next", pointFields.get("next"));
         step.add("properties", stepFields);
-        step.add("not", anyRequired(List.of("x", "y", "z", "jitter")));
+        step.add("not", anyRequired(List.of("x", "y", "z", "jitter", "style")));
         JsonArray kinds = new JsonArray();
         kinds.add(point);
         kinds.add(step);

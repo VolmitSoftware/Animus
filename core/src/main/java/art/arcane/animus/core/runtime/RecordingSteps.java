@@ -58,8 +58,12 @@ public final class RecordingSteps {
         return declared == NpcPose.SNEAKING || declared == NpcPose.SWIMMING ? NpcPose.STANDING : declared;
     }
 
-    /** The shared-flag bits a recorded pose adds to the body: sprinting and gliding. */
-    public static int motion(RecordingPose pose) {
+    /**
+     * The shared-flag bits a recorded pose adds to the body: sprinting and gliding on a player body, whose pose shows the
+     * sneak; sneaking and sprinting on any other body, which has no sneaking pose.
+     */
+    public static int motion(RecordingPose pose, boolean player) {
+        if (!player) return (pose.sneaking() ? BodyLook.SNEAKING : 0) | (pose.sprinting() ? BodyLook.SPRINTING : 0);
         return (pose.sprinting() ? BodyLook.SPRINTING : 0) | (pose.gliding() ? BodyLook.GLIDING : 0);
     }
 }

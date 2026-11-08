@@ -117,6 +117,21 @@ void main() {
         ..add('attributes', values);
     }
 
+    test('movement styles name their field like MovementSettings', () {
+      JObject movement(String style, String onLand, JObject auto) => JObject()
+        ..addString('style', style)
+        ..addString('onLand', onLand)
+        ..add('auto', auto);
+      JObject withMovement(JObject value) => definition(<String, JElement>{})..add('movement', value);
+      expect(validateDefinition(withMovement(movement('sneak', 'avoid', JObject()..addBool('swim', false)..addBool('crawl', true)))), isEmpty);
+      expect(validateDefinition(withMovement(movement('run', 'fly', JObject()..addInt('swim', 1)..addBool('dive', true)))), <String>[
+        r'$.movement.style: expected walk, sneak, sprint, swim, crawl, glide',
+        r'$.movement.onLand: expected walk or avoid',
+        r'$.movement.auto.dive: unknown field',
+        r'$.movement.auto.swim: expected boolean',
+      ]);
+    });
+
     test('accepts known attributes in range, either spelling', () {
       expect(validateDefinition(definition(<String, JElement>{'scale': JInt.of(2), 'minecraft:gravity': JInt.of(0)})), isEmpty);
     });

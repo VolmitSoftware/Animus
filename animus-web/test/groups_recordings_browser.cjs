@@ -9,9 +9,10 @@
 // the recording view (facts, path, scrub, play, events), its details form
 // (description, tags, playback, speed), trimming the start and end on the
 // scrub, Code Apply refusing a draft that breaks a recording rule and
-// applying a valid one, renaming it, and the recordings list; an NPC playing a recording with its playback mode;
-// and the route editor's ranged waits, seed, start offset, jitter, weights
-// and junctions. No console errors and no sideways scrolling anywhere.
+// applying a valid one, renaming it, making a route from it with each leg's
+// recorded style, and the recordings list; an NPC playing a recording with its
+// playback mode; and the route editor's ranged waits, seed, start offset,
+// jitter, weights, junctions and the route and point movement styles. No console errors and no sideways scrolling anywhere.
 //
 //   python3 tool/serve_site.py --port <WEB_PORT> &
 //   PLAYWRIGHT_MODULE=/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright \
@@ -209,6 +210,18 @@ async function run(browser, viewport, theme, tag) {
   await page.locator(`#${grid}-next-add`).click();
   await settle(page);
   assert.equal((await codeOf(page)).modules['animus:navigation'].points[0].next.length, 3);
+  // Movement styles: the picked point's own, then the route's.
+  grid = await gridId();
+  await page.locator(`#${grid}-points-0`).focus();
+  await page.keyboard.press('Enter');
+  await page.locator(`#${grid}-point-style`).waitFor();
+  await chooseAndWait(page.locator(`#${grid}-point-style`), 'sprint');
+  await settle(page);
+  assert.equal((await codeOf(page)).modules['animus:navigation'].points[0].style, 'sprint');
+  grid = await gridId();
+  await chooseAndWait(page.locator(`#${grid}-style`), 'sneak');
+  await settle(page);
+  assert.equal((await codeOf(page)).modules['animus:navigation'].style, 'sneak');
   await shot(page, `${tag}-04-route`);
   await noSidewaysScroll(page, `${tag} route`);
 
@@ -292,6 +305,16 @@ async function run(browser, viewport, theme, tag) {
   await settle(page);
   await page.getByRole('tab', {name: 'Visual'}).click();
   assert.equal(await page.locator('#animus-recording-description').inputValue(), 'Coded');
+
+  // Make route: a route along the recording, each leg in its recorded style.
+  await page.locator('#animus-recording-route').fill('market-walk-route');
+  await page.locator('#animus-recording-make-route').click();
+  await page.waitForFunction(() => location.hash.endsWith('/route/market-walk-route'));
+  const made = await codeOf(page);
+  assert.equal(made.waitTicks, 0);
+  assert.ok(made.points.length >= 2, JSON.stringify(made));
+  assert.ok(made.points.some((point) => point.style === 'sprint'), `the sprinted stretch keeps its style: ${JSON.stringify(made.points)}`);
+  await openDocument(page, workspace, 'recording', 'market-loop');
 
   // Rename from the id field carries the NPC that plays it.
   await page.locator('#animus-recording-id').fill('market-walk');

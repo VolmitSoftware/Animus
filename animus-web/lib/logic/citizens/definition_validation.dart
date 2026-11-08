@@ -14,6 +14,7 @@ import '../inspect/inspect_schemas.dart';
 import '../npc/group_merge.dart' show groupMergeNpc;
 import '../npc/combat_settings.dart';
 import '../npc/group_model.dart';
+import '../npc/route_model.dart' show movementStyles;
 import '../npc/npc_attributes.dart';
 import 'citizens_traits.dart' show teamColors;
 import 'java_json.dart';
@@ -27,7 +28,7 @@ const Set<String> _itemFields = <String>{'id', 'count', 'components', 'imported'
 const Set<String> _hologramFields = <String>{'lines', 'lineHeight', 'viewRange', 'billboard', 'shadowed', 'seeThrough', 'interpolationDelay', 'interpolationDuration'};
 const Set<String> _lineFields = <String>{'text', 'marginTop', 'marginBottom'};
 const Set<String> _billboards = <String>{'center', 'fixed', 'vertical', 'horizontal'};
-const Set<String> _movementFields = <String>{'speed', 'avoidWater', 'fly', 'openDoors', 'stepHeight', 'maximumFall', 'pathRange', 'arrivalMargin', 'stuck'};
+const Set<String> _movementFields = <String>{'speed', 'avoidWater', 'fly', 'openDoors', 'stepHeight', 'maximumFall', 'pathRange', 'arrivalMargin', 'stuck', 'style', 'onLand', 'auto'};
 
 /// `NpcAppearance.displayText`.
 bool displayText(String? text) => text != null && text.length <= maxText && !text.runes.any(javaIsIsoControl);
@@ -409,6 +410,20 @@ void _movement(JObject definition, List<String> errors) {
       }
       if (stuck.has('afterTicks') && !_whole(stuck.get('afterTicks')!, 1, 12000)) errors.add(r'$.movement.stuck.afterTicks: expected whole 1..12000 ticks');
       if (stuck.has('teleport') && stuck.get('teleport') is! JBool) errors.add(r'$.movement.stuck.teleport: expected boolean');
+    }
+  }
+  final JElement? style = value.get('style');
+  if (style != null && !(style is JString && movementStyles.contains(style.value))) errors.add('\$.movement.style: expected ${movementStyles.join(', ')}');
+  final JElement? onLand = value.get('onLand');
+  if (onLand != null && !(onLand is JString && (onLand.value == 'walk' || onLand.value == 'avoid'))) errors.add(r'$.movement.onLand: expected walk or avoid');
+  final JElement? auto = value.get('auto');
+  if (auto != null && auto is! JObject) errors.add(r'$.movement.auto: expected object');
+  if (auto is JObject) {
+    for (final String key in auto.keys) {
+      if (key != 'swim' && key != 'crawl') errors.add('\$.movement.auto.$key: unknown field');
+    }
+    for (final String key in const <String>['swim', 'crawl']) {
+      if (auto.has(key) && auto.get(key) is! JBool) errors.add('\$.movement.auto.$key: expected boolean');
     }
   }
   for (final String key in value.keys) {

@@ -7,9 +7,12 @@ import com.google.gson.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
-/** Native, explicitly enabled route data. Preserved importer traits are never read as executable waypoints. */
+/**
+ * Native, explicitly enabled route data. Preserved importer traits are never read as executable waypoints. A null
+ * {@code style} walks each leg in the NPC's own {@link MovementStyle}; a point's own style applies to the leg that ends there.
+ */
 public record WaypointSettings(MovementProfile.Mode mode, double speed, Order order, boolean loop, Wait waitTicks, List<Waypoint> points,
-                               List<Vec3> guides, double linkDistance, Wander wander, Seed seed, StartOffset startOffset, int jitter) {
+                               List<Vec3> guides, double linkDistance, Wander wander, Seed seed, StartOffset startOffset, int jitter, MovementStyle style) {
     public static final int MAXIMUM_WAIT = 12_000, DEFAULT_WAIT = 20;
     public static final int MAXIMUM_JITTER = 8, MAXIMUM_WEIGHT = 1000, MAXIMUM_JUNCTIONS = 8;
     /** The highest fromTick or toTick a step may name; the recording itself is the real bound. */
@@ -70,17 +73,17 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
     /**
      * One route point: a position, or a recording step with no position of its own. A null wait or a negative jitter
      * means the route's own value applies here; a step has no jitter. Weight steers order random; next, when not empty,
-     * replaces index + 1 in order sequence.
+     * replaces index + 1 in order sequence. A null style walks the leg to this point in the route's style; a step has none.
      */
-    public record Waypoint(Vec3 position, Step step, Wait waitTicks, int jitter, int weight, List<Junction> next) {
+    public record Waypoint(Vec3 position, Step step, Wait waitTicks, int jitter, int weight, List<Junction> next, MovementStyle style) {
         public Waypoint {
             Objects.requireNonNull(next);
-            if ((position == null) == (step == null) || (step != null && jitter != -1)
+            if ((position == null) == (step == null) || (step != null && (jitter != -1 || style != null))
                     || jitter < -1 || jitter > MAXIMUM_JITTER || weight < 1 || weight > MAXIMUM_WEIGHT || next.size() > MAXIMUM_JUNCTIONS)
                 throw new IllegalArgumentException("Point settings exceed native execution bounds");
             next = List.copyOf(next);
         }
-        public Waypoint(Vec3 position) { this(position, null, null, -1, 1, List.of()); }
+        public Waypoint(Vec3 position) { this(position, null, null, -1, 1, List.of(), null); }
     }
     /** Random walking around a centre: block x and z within radius, feet height within height of the centre. */
     public record Wander(int radius, int height) {
@@ -92,8 +95,8 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
     }
     /** Inline route settings; a reusable route or a recording refuses each of them. */
     public static final List<String> ROUTE_FIELDS = List.of("points", "mode", "speed", "order", "loop", "waitTicks", "guides", "linkDistance", "wander",
-            "seed", "startOffset", "jitter");
-    private static final Set<String> POINT_FIELDS = Set.of("x", "y", "z", "waitTicks", "jitter", "weight", "next");
+            "seed", "startOffset", "jitter", "style");
+    private static final Set<String> POINT_FIELDS = Set.of("x", "y", "z", "waitTicks", "jitter", "weight", "next", "style");
     private static final Set<String> STEP_FIELDS = Set.of("recording", "fromTick", "toTick", "playback", "waitTicks", "weight", "next");
 
     public WaypointSettings {
@@ -125,6 +128,11 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
         Waypoint at = points.get(point);
         if (at.step() != null) return 0;
         return at.jitter() >= 0 ? at.jitter() : jitter;
+    }
+    /** The style of the leg that ends at {@code arrival}: the point's own, else the route's; null leaves the NPC's own. Guides use the route's. */
+    public MovementStyle styleTo(int arrival) {
+        MovementStyle own = arrival >= 0 && arrival < points.size() ? points.get(arrival).style() : null;
+        return own != null ? own : style;
     }
     /** The distinct recordings the route's steps play, in point order. */
     public Set<String> recordings() {
@@ -237,6 +245,7 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
         int jitter = data.has("jitter") ? jitter(data.get("jitter"), "jitter") : 0;
         if (data.has("loop") && order != Order.SEQUENCE) throw new IllegalArgumentException("loop is only allowed with order sequence");
         boolean loop = bool(data, "loop", false);
+        MovementStyle style = data.has("style") ? style(data.get("style"), "style") : null;
         int minimum = order == Order.WANDER ? 0 : 1, maximum = order == Order.WANDER ? MAXIMUM_WANDER_CENTRES : MAXIMUM_POINTS;
         JsonElement pointArray = data.get("points");
         if (pointArray == null && order == Order.WANDER) pointArray = new JsonArray();
@@ -253,6 +262,7 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
                 if (recording && (key.equals("x") || key.equals("y") || key.equals("z")))
                     throw new IllegalArgumentException(field + "." + key + ": a recording step has no position; it starts at the segment's first frame");
                 if (recording && key.equals("jitter")) throw new IllegalArgumentException(field + ".jitter: a recording step has no jitter");
+                if (recording && key.equals("style")) throw new IllegalArgumentException(field + ".style: a recording step plays its recorded movement; it has no style");
                 if (!recording && (key.equals("fromTick") || key.equals("toTick") || key.equals("playback")))
                     throw new IllegalArgumentException(field + "." + key + ": requires recording");
                 if (!(recording ? STEP_FIELDS : POINT_FIELDS).contains(key)) throw new IllegalArgumentException(field + "." + key + ": unknown field");
@@ -266,7 +276,8 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
             int weight = point.has("weight") ? weight(point.get("weight"), field + ".weight") : 1;
             if (point.has("next") && order != Order.SEQUENCE) throw new IllegalArgumentException(field + ".next is only allowed with order sequence");
             List<Junction> next = point.has("next") ? junctions(point.get("next"), field + ".next", array.size()) : List.of();
-            points.add(new Waypoint(position, step, own, ownJitter, weight, next));
+            MovementStyle ownStyle = !recording && point.has("style") ? style(point.get("style"), field + ".style") : null;
+            points.add(new Waypoint(position, step, own, ownJitter, weight, next, ownStyle));
         }
         List<Vec3> guides = new ArrayList<>();
         if (data.has("guides")) {
@@ -302,7 +313,10 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
             if (height < 0 || height > Wander.MAXIMUM_HEIGHT) throw new IllegalArgumentException("wander.height must be 0..8 blocks");
             wander = new Wander(radius, height);
         }
-        return new WaypointSettings(mode, speed, order, loop, wait, points, guides, link, wander, seed, start, jitter);
+        return new WaypointSettings(mode, speed, order, loop, wait, points, guides, link, wander, seed, start, jitter, style);
+    }
+    private static MovementStyle style(JsonElement value, String field) {
+        return MovementSettings.style(value).orElseThrow(() -> new IllegalArgumentException(field + " must be " + String.join(", ", MovementStyle.keys())));
     }
     private static List<Junction> junctions(JsonElement value, String field, int points) {
         if (!value.isJsonArray() || value.getAsJsonArray().isEmpty() || value.getAsJsonArray().size() > MAXIMUM_JUNCTIONS)

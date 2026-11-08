@@ -13,6 +13,7 @@ import { combatEdges } from './live-combat-edges.mjs';
 import { swingLook } from './live-swing-look.mjs';
 import { npcKeys } from './live-npc-keys.mjs';
 import { toolkit } from './live-toolkit.mjs';
+import { movementStyles } from './live-movement-styles.mjs';
 
 const args = parseArgs();
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -43,7 +44,7 @@ const scenarios = (args.get('scenarios') ?? defaultScenarios).split(',');
 const dashed = version.replaceAll('.', '-');
 const name = args.get('instance-name') ?? (MOD ? `animus-mod-${project}-${dashed}` : `animus-live-${project}-${dashed}`);
 // A Folia run may also use the animus-folia-paper-<version> instance a Folia check was asked to run on.
-assert(new RegExp(MOD ? `^animus-mod-${project}-${dashed}$` : `^animus-(?:live|gate-live|guarddebug|foliafinal|builderscaffold|combatedges|shopstyle|swinglook|npckeys|parity)-${project}-${dashed}$`).test(name)
+assert(new RegExp(MOD ? `^animus-mod-${project}-${dashed}$` : `^animus-(?:live|gate-live|guarddebug|foliafinal|builderscaffold|combatedges|shopstyle|swinglook|npckeys|parity|movestyles)-${project}-${dashed}$`).test(name)
   || project === 'folia' && name === `animus-folia-paper-${dashed}`, 'Instance name must bind the requested platform/version');
 assert(!MOD || !fixture, 'The QA event fixture is a Bukkit plugin; mod servers run without it');
 const instances = path.join(workspace, `consumers/${MOD ? `${project}-mod` : 'plugin'}-consumers/instances`);
@@ -121,7 +122,7 @@ class Server {
     writeFileSync(path.join(instance, 'eula.txt'), existsSync(path.join(template, 'eula.txt')) ? readFileSync(path.join(template, 'eula.txt')) : 'eula=true\n');
     const plugins = path.join(instance, MOD ? 'mods' : 'plugins');
     // Every run starts from empty plugin data so no earlier revision, checkpoint or state answers for this run.
-    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|guarddebug|foliafinal|builderscaffold|combatedges|shopstyle|swinglook|npckeys|parity|mod|folia-paper)-/.test(path.basename(instance)));
+    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|guarddebug|foliafinal|builderscaffold|combatedges|shopstyle|swinglook|npckeys|parity|movestyles|mod|folia-paper)-/.test(path.basename(instance)));
     rmSync(data, { recursive: true, force: true });
     mkdirSync(data, { recursive: true });
     mkdirSync(plugins, { recursive: true });
@@ -2907,7 +2908,8 @@ const combatedges = () => combatEdges({ server, join, check, combatNpc, inspect,
 const swinglook = () => swingLook({ server, join, check, combatNpc, summon, sturdy, plain, folia: project === 'folia', OWNER });
 const npckeys = () => npcKeys({ server, join, check, sayTo, data, OWNER });
 const toolkitScenario = () => toolkit({ server, join, check, data, OWNER });
-const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, combatedges, swinglook, npckeys, toolkit: toolkitScenario, packs, appearance, building, scaffolding, shops, folia, smoke, worlds, guardsoak };
+const movestyles = () => movementStyles({ server, join, check, inspect, until, OWNER });
+const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, combatedges, swinglook, npckeys, movestyles, toolkit: toolkitScenario, packs, appearance, building, scaffolding, shops, folia, smoke, worlds, guardsoak };
 function finalLogReview(text, label) {
   const lines = text.split('\n');
   const bad = lines.filter(line => /\b(ERROR|SEVERE)\b|Exception|Nag author|Could not pass event/.test(line) || (MOD && /[Mm]ixin[^\n]*(?:fail|error|could not|not applied)/i.test(line)));

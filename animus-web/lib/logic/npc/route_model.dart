@@ -12,6 +12,9 @@ const String navigationModule = 'animus:navigation';
 const List<String> routeOrders = <String>['sequence', 'pingpong', 'random', 'wander'];
 const List<String> routeModes = <String>['walk', 'swim', 'fly'];
 
+/// Movement styles, as `MovementStyle` names them; walk is the default.
+const List<String> movementStyles = <String>['walk', 'sneak', 'sprint', 'swim', 'crawl', 'glide'];
+
 const int routeMaxPoints = 256;
 const int routeMaxWanderCentres = 64;
 const int routeMaxGuides = 1024;
@@ -20,7 +23,7 @@ const int routeMaxWait = 12000;
 const double routeDefaultLinkDistance = 32;
 
 /// Fields a route keeps, in the module or in its route document.
-const List<String> routeFields = <String>['mode', 'speed', 'order', 'loop', 'waitTicks', 'points', 'guides', 'linkDistance', 'wander', 'seed', 'startOffset', 'jitter'];
+const List<String> routeFields = <String>['mode', 'speed', 'order', 'loop', 'waitTicks', 'points', 'guides', 'linkDistance', 'wander', 'seed', 'startOffset', 'jitter', 'style'];
 
 /// Route seeds and start offsets; the first of each is the default.
 const List<String> routeSeeds = <String>['npc', 'random'];
@@ -263,6 +266,7 @@ class RouteSpec {
       check('jitter', order == 'wander' ? 'is not allowed with order wander; wander.radius spreads its goals' : _rangeProblem(json['jitter'], 0, routeMaxJitter, ' blocks'));
     }
     if (json.containsKey('loop') && order != 'sequence') found.add(('loop', 'is only allowed with order sequence'));
+    if (json.containsKey('style') && !movementStyles.contains(json['style'])) found.add(('style', _styleProblem));
     final List<Object?> raw = asList(json['points']);
     for (int index = 0; index < raw.length; index++) {
       found.addAll(_pointProblems(asMap(raw[index]), 'points[$index]', raw.length));
@@ -308,6 +312,9 @@ class RouteSpec {
         '$field.jitter',
         step ? 'a recording step has no jitter' : (order == 'wander' ? 'is not allowed with order wander' : _rangeProblem(point['jitter'], 0, routeMaxJitter, ' blocks')),
       );
+    }
+    if (point.containsKey('style')) {
+      check('$field.style', step ? 'a recording step plays its recorded movement; it has no style' : (movementStyles.contains(point['style']) ? null : _styleProblem));
     }
     if (point.containsKey('weight')) {
       check('$field.weight', order != 'random' ? 'is only allowed with order random' : _rangeProblem(point['weight'], 1, routeMaxWeight, ''));
@@ -451,11 +458,14 @@ JsonMap setRouteNodeField(JsonMap route, String key, int index, String field, Ob
   return <String, Object?>{...route, key: list};
 }
 
-const List<String> _positionFields = <String>['x', 'y', 'z', 'jitter'];
+const List<String> _positionFields = <String>['x', 'y', 'z', 'jitter', 'style'];
+
+/// The runtime's words for a style it does not know.
+final String _styleProblem = 'must be ${movementStyles.join(', ')}';
 const List<String> _stepFields = <String>['recording', 'fromTick', 'toTick', 'playback'];
 
-/// The route with point [index] made a step playing [recording]: x, y, z and
-/// jitter go, `recording` takes the place of the first coordinate, and the
+/// The route with point [index] made a step playing [recording]: x, y, z,
+/// jitter and style go, `recording` takes the place of the first coordinate, and the
 /// wait, weight, next and any other key stay where they were.
 JsonMap routePointToStep(JsonMap route, int index, String recording) =>
     _convertPoint(route, index, _positionFields, <String, Object?>{'recording': recording});
@@ -613,7 +623,7 @@ enum NavigationSource { points, route, recording }
 const List<String> navigationPlaybacks = <String>['once', 'loop', 'pingpong'];
 
 /// The route fields RecordingSource refuses beside `recording`, in its order.
-const List<String> _recordingConflicts = <String>['points', 'mode', 'speed', 'order', 'loop', 'waitTicks', 'guides', 'linkDistance', 'wander', 'seed', 'startOffset', 'jitter'];
+const List<String> _recordingConflicts = <String>['points', 'mode', 'speed', 'order', 'loop', 'waitTicks', 'guides', 'linkDistance', 'wander', 'seed', 'startOffset', 'jitter', 'style'];
 
 NavigationSource navigationSource(JsonMap module) => module.containsKey('recording')
     ? NavigationSource.recording

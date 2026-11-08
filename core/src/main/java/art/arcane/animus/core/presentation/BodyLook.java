@@ -20,8 +20,11 @@ import java.util.UUID;
 public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, boolean hideProfileName, boolean aboveNativeNameplate,
                        NpcPose pose, Optional<ArmorStandLook> armorStand, BodyTraits traits, int motion) {
     public static final int SEAT_FLAGS = 0x10 | 0x08;
-    /** Shared-flag bits of {@link #motion}: a sprinting body, and one gliding on elytra, which also shows the fall-flying pose. */
-    public static final int SPRINTING = 0x08, GLIDING = 0x80;
+    /**
+     * Shared-flag bits of {@link #motion}: a sneaking body of any type, which dims its name; a sprinting body; and one
+     * gliding on elytra, which also shows the fall-flying pose.
+     */
+    public static final int SNEAKING = 0x02, SPRINTING = 0x08, GLIDING = 0x80;
     /** A {@link #motion} bit outside the shared flags: the body holds its main-hand item in use, as a drawn bow. */
     public static final int USING_ITEM = 0x100;
     public static final byte BILLBOARD_CENTER = 3;
@@ -49,7 +52,7 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
     public BodyLook {
         rows = List.copyOf(rows);
         Objects.requireNonNull(style); Objects.requireNonNull(pose); Objects.requireNonNull(armorStand); Objects.requireNonNull(traits);
-        if ((motion & ~(SPRINTING | GLIDING | USING_ITEM)) != 0) throw new IllegalArgumentException("motion holds only the sprinting, gliding and using-item bits");
+        if ((motion & ~(SNEAKING | SPRINTING | GLIDING | USING_ITEM)) != 0) throw new IllegalArgumentException("motion holds only the sneaking, sprinting, gliding and using-item bits");
     }
 
     /** This look in another pose and motion, as a recording playback shows it. */
@@ -58,7 +61,7 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
     }
 
     /** The shared flags this look sends: its pose, invisibility, glow and motion. */
-    public byte sharedFlags(boolean invisible) { return (byte) (sharedFlags(pose, invisible, traits.glowing()) | (motion & (SPRINTING | GLIDING))); }
+    public byte sharedFlags(boolean invisible) { return (byte) (sharedFlags(pose, invisible, traits.glowing()) | (motion & (SNEAKING | SPRINTING | GLIDING))); }
 
     /** Whether the body holds its main-hand item in use: the definition's {@code usingItem}, or a bow drawn in a fight. */
     public boolean usingItem() { return traits.usingItem() || (motion & USING_ITEM) != 0; }

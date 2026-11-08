@@ -31,6 +31,10 @@ import 'offline/dry_run_panel.dart';
 import 'offline/offline_fields.dart';
 import 'recording/recording_view.dart';
 import '../logic/recording/recording_edit.dart' show recordingProblems, recordingTags;
+import '../logic/recording/recording_model.dart' show Recording;
+import '../logic/recording/recording_route.dart';
+import '../logic/offline/new_documents.dart' show idHint, newDocumentPath, validDocumentId;
+import '../state/editor_store.dart' show DocumentChange;
 import 'gui/gui_data_editors.dart';
 import 'gui/hologram_editor.dart';
 import 'gui/inventory_editor.dart';
@@ -424,6 +428,18 @@ class _DocumentPaneState extends State<DocumentPane> {
           if (other.kind == kind) other.id,
       ];
 
+  /// A new route following the recording, each leg in the style recorded on it; opens it. A problem to show, or null.
+  Future<String?> _makeRoute(AnimusDocument recording, String id) async {
+    if (!validDocumentId(DocumentKind.route, id)) return 'Use ${idHint(DocumentKind.route)}.';
+    if (component.workspaceDocuments.any((AnimusDocument other) => other.kind == DocumentKind.route && other.id == id)) return 'Route $id already exists.';
+    final Recording? read = Recording.parse(recording.json);
+    final JsonMap? route = read == null ? null : recordingRoute(read);
+    if (route == null) return 'The recording needs two frames to make a route.';
+    await component.onCommit!(<DocumentChange>[DocumentChange(DocumentKind.route, id, prettyJson(route), path: newDocumentPath(DocumentKind.route, id))], 'route $id from ${recording.id}');
+    component.onOpen?.call(DocumentKind.route, id);
+    return null;
+  }
+
   Widget _visual(AnimusDocument document) {
     final Object? json = document.json;
     final JsonEdit onJson = component.onJson;
@@ -438,6 +454,7 @@ class _DocumentPaneState extends State<DocumentPane> {
         document: document,
         onJson: onJson,
         onRename: component.onRename,
+        onMakeRoute: component.onCommit == null ? null : (String id) => _makeRoute(document, id),
         knownTags: recordingTags(component.workspaceDocuments),
       );
     }

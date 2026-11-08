@@ -19,15 +19,19 @@ const String recordingDescriptionId = 'animus-recording-description';
 const String recordingTagInputId = 'animus-recording-tag';
 const String recordingPlaybackId = 'animus-recording-playback';
 const String recordingSpeedId = 'animus-recording-speed';
+const String recordingRouteInputId = 'animus-recording-route';
 
 class RecordingDetailsForm extends StatefulWidget {
-  const RecordingDetailsForm({required this.document, required this.onJson, this.onRename, this.knownTags = const <String>[], super.key});
+  const RecordingDetailsForm({required this.document, required this.onJson, this.onRename, this.onMakeRoute, this.knownTags = const <String>[], super.key});
 
   final AnimusDocument document;
   final JsonEdit onJson;
 
   /// Moves the recording to a new id; returns a problem to show, or null.
   final Future<String?> Function(String id)? onRename;
+
+  /// Makes a route under an id that follows the recording; returns a problem to show, or null.
+  final Future<String?> Function(String id)? onMakeRoute;
 
   /// Tags other recordings use, offered while typing one.
   final List<String> knownTags;
@@ -41,6 +45,8 @@ class _RecordingDetailsFormState extends State<RecordingDetailsForm> {
   String? _idProblem;
   String _newTag = '';
   String? _speedProblem;
+  String? _routeId;
+  String? _routeProblem;
 
   JsonMap get _json => asMap(component.document.json);
   RecordingDetails get _details => RecordingDetails.read(_json);
@@ -61,9 +67,20 @@ class _RecordingDetailsFormState extends State<RecordingDetailsForm> {
     });
   }
 
+  Future<void> _makeRoute(String id) async {
+    final String? problem = await component.onMakeRoute!(id);
+    if (!mounted) return;
+    setState(() {
+      _routeProblem = problem;
+      if (problem == null) _routeId = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final RecordingDetails details = _details;
+    final String routeId = (_routeId ?? component.document.id).trim();
+    final bool routeValid = recordingIdPattern.hasMatch(routeId);
     final List<Diagnostic> diagnostics = component.document.diagnostics;
     final String id = _id ?? component.document.id;
     final bool idChanged = id.trim() != component.document.id;
@@ -97,6 +114,25 @@ class _RecordingDetailsFormState extends State<RecordingDetailsForm> {
               Button.secondary(id: 'animus-recording-rename', label: 'Rename', size: ButtonSize.small, disabled: !idChanged || !idValid, onPressed: _rename),
               if (_idProblem != null || (idChanged && !idValid))
                 dom.span(classes: 'animus-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(_idProblem ?? 'Use 1-64 lowercase letters, digits, _ or -.')]),
+            ]),
+          ),
+        if (component.onMakeRoute != null)
+          GuiRow(
+            label: 'Route',
+            forId: recordingRouteInputId,
+            tip: 'A route along the recorded path. Each leg keeps the style recorded on it: sneak, sprint, swim or glide.',
+            child: dom.div(classes: 'animus-gui-line', <Widget>[
+              GuiTextInput(
+                id: recordingRouteInputId,
+                value: routeId,
+                onChanged: (String value) => setState(() {
+                  _routeId = value;
+                  _routeProblem = null;
+                }),
+              ),
+              Button.secondary(id: 'animus-recording-make-route', label: 'Make route', size: ButtonSize.small, disabled: !routeValid, onPressed: () => _makeRoute(routeId)),
+              if (_routeProblem != null || !routeValid)
+                dom.span(classes: 'animus-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(_routeProblem ?? 'Use 1-64 lowercase letters, digits, _ or -.')]),
             ]),
           ),
         GuiRow(

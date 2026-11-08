@@ -103,7 +103,7 @@ class WaypointSettingsTest {
         assertThrows(IllegalArgumentException.class,()->new WaypointSettings(MovementProfile.Mode.WALK,2,WaypointSettings.Order.RANDOM,false,WaypointSettings.Wait.fixed(20),
                 java.util.Collections.nCopies(257,new WaypointSettings.Waypoint(art.arcane.animus.core.virtual.Vec3.ZERO)),
                 java.util.Collections.nCopies(1024,art.arcane.animus.core.virtual.Vec3.ZERO),32,null,
-                WaypointSettings.Seed.NPC,WaypointSettings.StartOffset.FIRST,0));
+                WaypointSettings.Seed.NPC,WaypointSettings.StartOffset.FIRST,0,null));
     }
     @Test void sharedRouteRandomnessFieldsParseWithDefaults() throws Exception {
         WaypointSettings plain=WaypointSettings.document("{\"schemaVersion\":1,\"points\":[{\"x\":0,\"y\":1,\"z\":0}]}");

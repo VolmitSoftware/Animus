@@ -32,7 +32,7 @@ const String recordingPlayId = 'animus-recording-play';
 const String recordingPathId = 'animus-recording-path';
 
 class RecordingView extends StatefulWidget {
-  const RecordingView({required this.document, this.facts = true, this.onJson, this.onRename, this.knownTags = const <String>[], super.key});
+  const RecordingView({required this.document, this.facts = true, this.onJson, this.onRename, this.onMakeRoute, this.knownTags = const <String>[], super.key});
 
   final AnimusDocument document;
 
@@ -44,6 +44,9 @@ class RecordingView extends StatefulWidget {
 
   /// Moves the recording to a new id; null hides the id field.
   final Future<String?> Function(String id)? onRename;
+
+  /// Makes a route under [id] that follows the recording; returns a problem to show, or null.
+  final Future<String?> Function(String id)? onMakeRoute;
 
   /// Tags other recordings use.
   final List<String> knownTags;
@@ -146,7 +149,13 @@ class _RecordingViewState extends State<RecordingView> {
       <Widget>[
         if (component.facts)
           dom.div(classes: 'animus-recording-facts', <Widget>[
-            if (component.onJson case final JsonEdit onJson) RecordingDetailsForm(document: component.document, onJson: onJson, onRename: component.onRename, knownTags: component.knownTags),
+            if (component.onJson case final JsonEdit onJson) RecordingDetailsForm(
+                document: component.document,
+                onJson: onJson,
+                onRename: component.onRename,
+                onMakeRoute: component.onMakeRoute,
+                knownTags: component.knownTags,
+              ),
             _facts(recording),
           ]),
         _path(recording, tick),

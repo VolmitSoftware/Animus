@@ -24,6 +24,8 @@ import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.navigation.NavigationPlan;
 import art.arcane.animus.core.navigation.OwnerNavigation;
 import art.arcane.animus.core.navigation.PathExecution;
+import art.arcane.animus.core.navigation.MovementStyle;
+import art.arcane.animus.core.navigation.StyledLeg;
 import art.arcane.animus.core.navigation.PathPlanner;
 import art.arcane.animus.core.navigation.WaypointSettings;
 import art.arcane.animus.core.control.LookClose;
@@ -485,7 +487,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         stopRoute(value, "cancelled: replaced by manual route");
         cancelRouteRead(value);
         value.waypoints = null;
-        Route route = new Route(value, destination, mode, blocksPerSecond, null);
+        Route route = new Route(value, destination, mode, blocksPerSecond, null, null);
         value.route = route; routeOrder.add(route, tickNumber); value.navigationStatus = "queued; route=" + route.id;
         return route.id;
     }
@@ -893,12 +895,14 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             case RecordingEvent.Use use -> value.recordingDoors.use(world, new BlockPos(use.x(), use.y(), use.z()), host.doors());
         }
     }
-    /** Sneaking, swimming, sprinting and gliding show on a player body as metadata, without respawning it. */
+    /** Sneaking, swimming, sprinting and gliding show on a player body as metadata, without respawning it; other bodies show the sneaking and sprinting flags. */
     private void applyLook(Value value, RecordingPose pose) {
-        if (!BodyRules.PLAYER.equals(value.spec.type())) return;
-        changeLook(value, RecordingSteps.pose(pose, value.spec.appearance().pose()), RecordingSteps.motion(pose));
+        boolean player = BodyRules.PLAYER.equals(value.spec.type());
+        NpcPose declared = value.spec.appearance().pose();
+        changeLook(value, player ? RecordingSteps.pose(pose, declared) : declared, RecordingSteps.motion(pose, player));
     }
     private void resetLook(Value value) { changeLook(value, value.spec.appearance().pose(), 0); }
+    private void styleLook(Value value, StyledLeg.Look look) { changeLook(value, look.pose(), look.motion()); }
     /** The playback's pose and motion; a bow drawn in a fight stays drawn across them. */
     private void changeLook(Value value, NpcPose pose, int motion) {
         int shown = motion | (value.drawing ? BodyLook.USING_ITEM : 0);
@@ -1328,6 +1332,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             value.recordingDoors.closeAll(host.doors());
             resetLook(value);
         }
+        if (route != null && route.styled != null && run == null) resetLook(value);
         if (route != null) {
             routeOrder.remove(route); if (route.plan != null) route.plan.cancel();
             if (route.execution != null) route.execution.cancel();
@@ -1357,7 +1362,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                 return;
             }
         }
-        Route route = new Route(value, goal, waypointSettings.mode(), speed, leg);
+        Route route = new Route(value, goal, waypointSettings.mode(), speed, leg, waypointSettings.styleTo(leg.arrival()));
         route.nextAttempt = tickNumber + Math.max(1, leg.waitTicks());
         value.route = route; routeOrder.add(route, tickNumber); routeStatus(route, leg.pause() ? "waiting to retry" : "queued", "");
     }
@@ -1597,7 +1602,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                         return RouteScheduler.Result.YIELD;
                     } else {
                         planStarts--;
-                        route.plan = navigation.plan(world, request.bounds(), feet, request.aim(), profile(value, route.mode), request.limits());
+                        route.plan = navigation.plan(world, request.bounds(), feet, request.aim(), route.profile(), request.limits());
                         route.result = route.plan.future().toCompletableFuture(); routeStatus(route, "planning", "");
                     }
                 } else if (route.result.isDone()) {
@@ -1610,7 +1615,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                         else {
                             route.segment = next == LongLeg.Next.SEGMENT;
                             Vec3 end = next == LongLeg.Next.FINAL ? route.goal.point() : planned.path().getLast().point();
-                            route.execution = new PathExecution(value.state.snapshot().position().point(), planned.path(), end, profile(value, route.mode));
+                            route.execution = new PathExecution(value.state.snapshot().position().point(), planned.path(), end, route.profile());
                             routeStatus(route, "moving", moving(route.segment));
                         }
                     }
@@ -1620,22 +1625,22 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                 if (!route.execution.position().equals(value.state.snapshot().position().point())) { stopRoute(value, "cancelled: authoritative position changed"); }
                 else if (route.execution.finished()) executed(route);
                 else {
-                    PathExecution.Proposal step = route.execution.next(route.speed / 20).orElseThrow();
+                    PathExecution.Proposal step = route.execution.next(route.styled == null ? route.speed / 20 : route.styled.stepDistance(route.speed)).orElseThrow();
                     int sweep = motionCells(value, step.from().distance(step.to())), settle = motionCells(value, 0);
                     // A step larger than the whole tick's cells still runs when it is the tick's first, so a big body never stalls.
                     if (motionCells < sweep + (step.landing() ? settle : 0) && motionCells < navigationSettings.motionCellsPerTick()) return RouteScheduler.Result.DEFER;
                     MotionValidator.Sampler terrain = host.collision(world);
                     if (route.mode == MovementProfile.Mode.WALK && value.movement.openDoors()) {
-                        Optional<BlockPos> door = value.doors.prepare(world, step.from(), step.to(), moveWidth(value), moveHeight(value), terrain, host.doors());
+                        Optional<BlockPos> door = value.doors.prepare(world, step.from(), step.to(), moveWidth(value), route.height(), terrain, host.doors());
                         if (door.isPresent()) {
                             failLeg(route, "blocked: the door at " + door.get().x() + " " + door.get().y() + " " + door.get().z() + " could not be opened");
                             return routeCurrent(route) ? RouteScheduler.Result.KEEP : RouteScheduler.Result.DONE;
                         }
                     }
-                    MotionValidator.Result validation = MotionValidator.check(step.from(), step.to(), moveWidth(value), moveHeight(value), step.medium(), step.requireSupport(), sweep, terrain);
+                    MotionValidator.Result validation = MotionValidator.check(step.from(), step.to(), moveWidth(value), route.height(), step.medium(), step.requireSupport(), sweep, terrain);
                     motionCells -= validation.sampledCells();
                     if (validation.clear() && step.landing()) {
-                        validation = MotionValidator.check(step.to(), step.to(), moveWidth(value), moveHeight(value),
+                        validation = MotionValidator.check(step.to(), step.to(), moveWidth(value), route.height(),
                                 route.mode == MovementProfile.Mode.SWIM ? MotionValidator.Medium.WATER : MotionValidator.Medium.GROUND,
                                 route.mode != MovementProfile.Mode.SWIM, settle, terrain);
                         motionCells -= validation.sampledCells();
@@ -1648,6 +1653,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                         float yaw = Math.hypot(delta.x(), delta.z()) > .000001 ? (float) Math.toDegrees(Math.atan2(-delta.x(), delta.z())) : value.yaw;
                         value.state.move(new WorldPosition(route.goal.world(), step.to())); index.upsert(value.state.snapshot());
                         value.poseRevision++; setPose(value, yaw, 0, step.onGround());
+                        if (route.styled != null) styleLook(value, route.styled.moved(step, value.spec.appearance().pose(), (Vec3 at, double height) -> {
+                            MotionValidator.Result room = MotionValidator.check(at, at, moveWidth(value), height, MotionValidator.Medium.AMPHIBIOUS_AIR, false, settle, terrain);
+                            motionCells -= room.sampledCells();
+                            return room.status() == MotionValidator.Status.BLOCKED;
+                        }));
                         value.doors.passed(step.to(), moveWidth(value), host.doors());
                         route.progressTick = tickNumber;
                         routeStatus(route, "moving", moving(route.segment));
@@ -1741,6 +1751,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private void arrive(Route route) {
         Value value = route.value;
         arriveAt(route);
+        if (route.styled != null && value.recording == null)
+            styleLook(value, value.route != null ? route.styled.resting(value.spec.appearance().pose()) : route.styled.finished(value.spec.appearance().pose()));
         if (value.route == null) value.doors.closeAll(host.doors());
         else value.doors.passed(value.state.snapshot().position().point(), moveWidth(value), host.doors());
     }
@@ -2560,15 +2572,26 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         long deadline = Long.MAX_VALUE; final long progressStart;
         /** Segment: the path being walked ends part way along a long leg. */
         boolean awake = true, segment;
-        Route(Value value, WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg) { this(value, goal, mode, speed, leg, null, false); }
-        Route(Value value, WorldPosition goal, MovementProfile.Mode mode, double speed, RecordingRun recording, boolean walk) { this(value, goal, mode, speed, null, recording, walk); }
-        private Route(Value value, WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg, RecordingRun recording, boolean walk) {
+        /** The style a route or manual leg walks in; a recording's walk and playback have none. */
+        final StyledLeg styled;
+        Route(Value value, WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg, MovementStyle style) {
+            this(value, goal, mode, speed, leg, null, false, style);
+        }
+        Route(Value value, WorldPosition goal, MovementProfile.Mode mode, double speed, RecordingRun recording, boolean walk) {
+            this(value, goal, mode, speed, null, recording, walk, null);
+        }
+        private Route(Value value, WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg, RecordingRun recording, boolean walk,
+                      MovementStyle style) {
             this.recording = recording; this.walk = walk;
             this.value = value; this.goal = goal; this.mode = mode; this.speed = speed; this.leg = leg; this.waypoint = leg == null ? -1 : leg.arrival();
             progressTick = tickNumber; progressStart = tickNumber;
             origin = value.state.snapshot().position().point();
-            longLeg = new LongLeg(origin, goal.point(), moveWidth(value), moveHeight(value), value.movement.pathRange());
+            styled = recording == null ? StyledLeg.of(value.movement, style, PersistedNpcService.this.profile(value, mode), value.spec.type()) : null;
+            longLeg = new LongLeg(origin, goal.point(), moveWidth(value), styled == null ? moveHeight(value) : styled.height(), value.movement.pathRange());
         }
+        MovementProfile profile() { return styled == null ? PersistedNpcService.this.profile(value, mode) : styled.profile(); }
+        /** The hull height its steps are checked with: lower while the leg may crawl. */
+        double height() { return styled == null ? moveHeight(value) : styled.height(); }
     }
     final class Presented {
         final Value value; final BodyTransport.Body body;
