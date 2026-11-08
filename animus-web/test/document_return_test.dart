@@ -96,6 +96,11 @@ void main() {
       expect(referenceActions(DocumentKind.behavior).first.label, '+ New behavior');
     });
 
+    test('New names the search text it will use', () {
+      expect(referenceActions(DocumentKind.group, query: ' harbor crew ').first.label, '+ New group "harbor crew"');
+      expect(referenceActions(DocumentKind.group, query: '  ').first.label, '+ New group');
+    });
+
     test('recordings say to record in game instead of New', () {
       expect(referenceActions(DocumentKind.recording).first.id, recordInGameActionId);
       expect(referenceActions(DocumentKind.recording).first.hint, contains('/animus record start'));

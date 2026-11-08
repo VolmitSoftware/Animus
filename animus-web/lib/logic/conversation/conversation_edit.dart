@@ -61,6 +61,27 @@ ConversationChoices newChoices(Conversation conversation, String prompt, List<St
   return choices;
 }
 
+/// A new action step, valid as added: it sets a flag named after none the
+/// conversation already sets, which the action picker can then change.
+ConversationAction newAction(Conversation conversation) {
+  final Set<String> flags = <String>{};
+  void collect(StepList list) {
+    for (final ConversationStep step in list.steps) {
+      if (step is ConversationAction && step.capability == 'animus:set-flag') {
+        final String? name = asString(step.arguments['name']);
+        if (name != null) flags.add(name);
+      }
+      if (step is ConversationBranch) {
+        collect(step.then);
+        collect(step.otherwise);
+      }
+    }
+  }
+
+  conversation.blocks.values.forEach(collect);
+  return ConversationAction('animus:set-flag', arguments: <String, Object?>{'name': freeId('met', flags)});
+}
+
 void insertStep(Conversation conversation, StepAt at, ConversationStep step) {
   final StepList? list = listAt(conversation, at.block, at.listRoute);
   if (list == null) return;

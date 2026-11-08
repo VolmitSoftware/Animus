@@ -71,6 +71,15 @@ void main() {
       expect(newNpc(NpcSeed(name: 'A', type: 'minecraft:horse', skin: hash), uuid: newUuid(random)).containsKey('skin'), isFalse);
     });
 
+    test('should make the paired player the owner of a new NPC', () {
+      const String player = '0000000a-0000-4000-8000-0000000000b2';
+      const NpcSeed seed = NpcSeed(name: 'Owned', group: 'town', owner: player);
+      final JsonMap npc = newNpc(seed, uuid: newUuid(random));
+      expect(npc['owner'], player);
+      expect(errors(validate(DocumentKind.npc, seed.documentId, npc)), isEmpty);
+      expect(newNpc(const NpcSeed(name: 'Offline'), uuid: newUuid(random)).containsKey('owner'), isFalse, reason: 'offline NPCs have no owner');
+    });
+
     test('should make a valid behavior from every template', () {
       for (final BehaviorTemplate template in BehaviorTemplate.values) {
         final JsonMap behavior = behaviorFromTemplate(template, 'town:${template.name}', shop: 'town:market', origin: (10, 70, -4));

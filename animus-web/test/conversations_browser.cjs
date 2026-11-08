@@ -140,6 +140,12 @@ async function run(browser, viewport, label, theme) {
   const condition = tab.locator('[data-block="ferry"] li[data-kind="branch"]');
   await condition.waitFor();
   await page.locator('[id="conv-if:ferry:1:name"]').fill('ticket');
+  // A new action step is valid as added: no document error before a pick.
+  await tab.getByRole('button', {name: 'Add a step to market'}).click();
+  await page.getByRole('menuitem', {name: 'Action'}).click();
+  await tab.locator('[data-block="market"] li[data-kind="action"]').waitFor();
+  await page.waitForFunction(() => !document.querySelector('[data-conv-errors]'));
+  assert.equal(await page.locator('.animus-diagnostics li.is-error').count(), 0, 'a new action step leaves the document valid');
   await shot(page, `${label}-built`);
 
   // The written behavior: the start, one trigger per answer, ids kept.

@@ -15,6 +15,7 @@ import '../../model/document_kind.dart';
 import '../../state/editor_store.dart';
 import '../conversation/conversation_attach.dart' show ConversationCommit;
 import '../info_tip.dart';
+import '../offline/offline_fields.dart' show ConfirmRow;
 import 'gui_fields.dart';
 import 'shop_offer_editor.dart' show CountStepper;
 
@@ -98,6 +99,9 @@ class _ShopLinksState extends State<ShopLinks> {
   String? _pick;
   bool _busy = false;
 
+  /// Asking before the attach replaces the picked NPC's shop.
+  bool _confirming = false;
+
   static String _key(AnimusDocument document) => '${document.kind.wireName}:${document.id}';
 
   static String _name(AnimusDocument document) {
@@ -136,7 +140,19 @@ class _ShopLinksState extends State<ShopLinks> {
         const dom.p(classes: 'animus-muted', <Widget>[Component.text('No NPC opens it yet.')])
       else
         dom.ul(classes: 'animus-shop-users', <Widget>[for (final AnimusDocument document in users) _user(document)]),
-      if (others.isNotEmpty)
+      if (others.isNotEmpty && _confirming && picked != null && replaces != null)
+        ConfirmRow(
+          question: 'Replace $replaces on ${_name(picked)}?',
+          detail: 'It opens ${component.shop} instead.',
+          confirmLabel: 'Replace',
+          onConfirm: () async {
+            setState(() => _confirming = false);
+            await _attach(picked);
+            if (mounted) setState(() => _pick = null);
+          },
+          onCancel: () => setState(() => _confirming = false),
+        )
+      else if (others.isNotEmpty)
         dom.div(classes: 'animus-row animus-shop-attach', <Widget>[
           GuiSelect(
             value: picked == null ? null : _pick,
@@ -144,7 +160,10 @@ class _ShopLinksState extends State<ShopLinks> {
             labels: <String, String>{for (final MapEntry<String, AnimusDocument> one in byKey.entries) one.key: _name(one.value)},
             noneLabel: 'Attach to NPC...',
             hiddenLabel: 'NPC to attach this shop to',
-            onChanged: (String? key) => setState(() => _pick = key),
+            onChanged: (String? key) => setState(() {
+              _pick = key;
+              _confirming = false;
+            }),
           ),
           Button.primary(
             label: 'Attach',
@@ -153,6 +172,10 @@ class _ShopLinksState extends State<ShopLinks> {
             onPressed: () async {
               final AnimusDocument? target = picked;
               if (target == null) return;
+              if (replaces != null) {
+                setState(() => _confirming = true);
+                return;
+              }
               await _attach(target);
               if (mounted) setState(() => _pick = null);
             },

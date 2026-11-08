@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "4b1a3f0e-6a7c-4d2b-9e51-0c8f2a7d6b31",
+  "id": "ferryman",
+  "group": "harbor",
+  "name": "Ferryman",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {"world": "world", "x": 0.5, "y": 64, "z": 0.5, "yaw": 0, "pitch": 0},
+  "groups": ["harbor-crew"]
+}

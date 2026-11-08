@@ -84,14 +84,13 @@ class BehaviorEditor extends StatelessWidget {
   Widget _editor(JsonMap doc, BehaviorContext behavior, bool server) {
     return dom.section(classes: 'animus-panel animus-inspector animus-behavior-editor', attributes: const <String, String>{'aria-label': 'Behavior editor'}, <Widget>[
       if (schemas.live) const dom.p(classes: 'animus-muted', <Widget>[Component.text('Capabilities and triggers from the server.')]),
-      GuiSection(title: 'Document', tip: 'The behavior file: its id, revision, the routine it starts in, and whether it runs on the server.', docs: Docs.behaviors, children: <Widget>[
+      GuiSection(title: 'Document', tip: 'The behavior file: its id, the routine it starts in, and whether it runs on the server.', docs: Docs.behaviors, children: <Widget>[
         GuiRow(
           label: 'ID',
           help: _spec('id').description ?? 'Set by the file path.',
           problems: diagnosticsAt(diagnostics, r'$.id'),
           child: dom.code(classes: 'animus-inspect-const', <Widget>[Component.text(asString(doc['id']) ?? '-')]),
         ),
-        InspectField(field: _spec('revision'), value: doc['revision'], path: r'$.revision', diagnostics: diagnostics, onChanged: (Object? v) => _write(<JsonStep>['revision'], v)),
         GuiRow(
           label: fieldLabel(_spec('entry')),
           help: _spec('entry').help,

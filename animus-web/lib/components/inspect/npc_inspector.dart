@@ -24,8 +24,10 @@ import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/inspect_schemas.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/npc/combat_settings.dart';
+import '../../logic/npc/group_create.dart';
 import '../../logic/npc/group_merge.dart';
 import '../../logic/npc/group_model.dart';
+import '../../logic/npc/item_slots.dart' show hireModule;
 import '../../logic/npc/npc_appearance.dart';
 import '../../logic/npc/npc_attributes.dart';
 import '../../logic/npc/npc_catalog.dart';
@@ -44,10 +46,10 @@ import '../npc/behavior_list.dart';
 import '../npc/body_type_field.dart';
 import '../npc/body_type_parts.dart';
 import '../npc/combat_editor.dart';
-import '../npc/equipment_editor.dart';
+import '../npc/equipment_slots.dart';
 import '../npc/group_part.dart';
 import '../npc/group_parts.dart';
-import '../npc/inventory_editor.dart';
+import '../npc/inventory_slots.dart';
 import '../npc/npc_modules.dart';
 import '../npc/route_editor.dart' show routeRecordings;
 import '../npc/npc_section.dart';
@@ -301,7 +303,6 @@ class _NpcInspectorState extends State<NpcInspector> {
         _readOnly('id', 'ID', ''),
         _readOnly('group', 'Folder', ''),
         _readOnly('uuid', 'UUID', 'Never changes.'),
-        _field('revision'),
         _tags(doc),
         _groupsList(doc),
         GuiRow(
@@ -386,13 +387,23 @@ class _NpcInspectorState extends State<NpcInspector> {
   Map<String, JsonMap> get _groups => workspaceGroups(component.workspaceDocuments);
 
   /// The NPC's `groups`: merge order, reorder, remove, add from the workspace.
-  Widget _groupsList(JsonMap doc) => NpcGroupsList(
-        npc: doc,
-        groups: _groups,
-        diagnostics: _diagnostics,
-        onOpen: component.onOpen,
-        onChanged: (List<String>? groups) => _write(<JsonStep>['groups'], groups),
-      );
+  Widget _groupsList(JsonMap doc) {
+    final ConversationCommit? commit = component.onCommit;
+    return NpcGroupsList(
+      npc: doc,
+      groups: _groups,
+      diagnostics: _diagnostics,
+      onOpen: component.onOpen,
+      onCreate: commit == null
+          ? null
+          : (String search) async {
+              final GroupCreation made = groupFromSearch(search, _groups.keys.toSet());
+              await commit(made.changes(component.document.id), 'new group ${made.id}');
+              return made.id;
+            },
+      onChanged: (List<String>? groups) => _write(<JsonStep>['groups'], groups),
+    );
+  }
 
   /// The merged definition the server runs, one row per field or module,
   /// each with the group or the NPC that set it.
@@ -674,7 +685,7 @@ class _NpcInspectorState extends State<NpcInspector> {
           NoSkinNote(diagnostics: _diagnostics),
         if (_group) _skinPool(doc),
         const NpcSubhead('Equipment', tip: 'Items the body wears and holds, by slot.', docs: Docs.npcAppearance),
-        EquipmentEditor(
+        EquipmentSlots(
           value: doc['equipment'],
           bodyType: _type,
           diagnostics: _diagnostics,
@@ -729,7 +740,7 @@ class _NpcInspectorState extends State<NpcInspector> {
         _field('movement'),
         if (!_group) ...<Widget>[
           const NpcSubhead('Inventory', tip: 'A stored inventory that behaviors and modules read. Nothing draws it.', docs: Docs.npcInventory),
-          NpcInventoryEditor(value: doc['inventory'], diagnostics: _diagnostics, onChanged: (Object? value) => _write(<JsonStep>['inventory'], value)),
+          NpcInventorySlots(value: doc['inventory'], diagnostics: _diagnostics, onChanged: (Object? value) => _write(<JsonStep>['inventory'], value)),
         ],
       ],
     );
@@ -912,7 +923,16 @@ class _NpcInspectorState extends State<NpcInspector> {
             onPressed: () => _putModule(key, null),
           ),
         ]),
-        if (typed)
+        if (typed && key == hireModule)
+          HireModuleFields(
+            schema: _schema,
+            node: field.schema,
+            value: value,
+            path: path,
+            diagnostics: _diagnostics,
+            onChanged: (JsonMap next) => _putModule(key, next),
+          )
+        else if (typed)
           InspectObject(
             schema: _schema,
             node: field.schema,

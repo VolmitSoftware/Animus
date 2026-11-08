@@ -425,46 +425,82 @@
   min-width: 0;
 }
 
-.animus-equipment-slot {
+/* Item slots: equipment, the stored inventory and hire items, drawn in the
+   chest window's frame. */
+
+.animus-item-slots {
   display: grid;
-  grid-template-columns: 2.75rem minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
+  min-width: 0;
+}
+
+.animus-item-slots-screen {
+  padding: 0.5rem;
+}
+
+/* A filled slot drags instead of scrolling; empty ones still scroll. */
+.animus-item-slot.is-filled {
+  touch-action: none;
+}
+
+.animus-item-slot.is-warning {
+  border-color: #8a5a00;
+  background: #b09060;
+}
+
+.animus-item-slot.is-error {
+  border-color: #8b1a1a;
+  background: #b07070;
+}
+
+.animus-item-slot.is-dragging .animus-chest-face {
+  opacity: 0.4;
+}
+
+.animus-item-slot.is-drop-target {
+  background: #a5a5a5;
+  outline: 2px dashed var(--primary, #ff5fa8);
+  outline-offset: -4px;
+}
+
+.animus-item-slot-name {
+  padding: 1px;
+  font-size: 0.5rem;
+  line-height: 1;
+  text-align: center;
+  overflow-wrap: anywhere;
+  color: #1d1d1d;
+}
+
+.animus-item-slot-editor {
+  display: grid;
+  gap: 0.375rem;
   padding: 0.5rem;
   border: 1px solid var(--animus-border);
   min-width: 0;
 }
 
-.animus-equipment-slot.is-empty {
-  opacity: 0.85;
-}
-
-.animus-equipment-icon {
-  display: grid;
-  place-items: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  border: 1px solid var(--animus-border);
-  background: color-mix(in srgb, var(--animus-border) 60%, transparent);
-  color: var(--animus-muted);
-}
-
-.animus-equipment-img {
-  width: 2.25rem;
-  height: 2.25rem;
-  image-rendering: pixelated;
-}
-
-.animus-equipment-fields {
-  display: grid;
-  gap: 0.375rem;
-  min-width: 0;
-}
-
-.animus-equipment-head {
+.animus-item-slot-head,
+.animus-item-slot-line,
+.animus-item-slot-count {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  align-items: baseline;
+  align-items: center;
+  min-width: 0;
+}
+
+.animus-item-slot-count {
+  flex-wrap: nowrap;
+  gap: 0.25rem;
+}
+
+.animus-hire-fields,
+.animus-hire-items {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
 /* Skins */
@@ -484,7 +520,7 @@
 
 .animus-skin-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
   gap: 0.375rem;
 }
 
@@ -500,6 +536,15 @@
   text-align: left;
   cursor: pointer;
   min-width: 0;
+}
+
+.animus-skin-card:hover {
+  border-color: var(--animus-muted);
+}
+
+.animus-skin-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .animus-skin-card.is-selected {
@@ -954,22 +999,6 @@ html.light .animus-route-dot {
   grid-column: 1 / -1;
 }
 
-.animus-npc-inventory-slot {
-  display: grid;
-  grid-template-columns: 2.25rem minmax(0, 1fr) 5rem auto;
-  gap: 0.375rem;
-  align-items: center;
-}
-
-.animus-npc-inventory-slot > .animus-gui-problem {
-  grid-column: 1 / -1;
-}
-
-.animus-npc-inventory-number {
-  text-align: center;
-  color: var(--animus-muted);
-}
-
 /* Skin and pack documents */
 
 .animus-skin-summary,
@@ -1077,10 +1106,6 @@ html.light .animus-route-dot {
 
   .animus-armor-stand-name {
     grid-column: 1 / -1;
-  }
-
-  .animus-npc-inventory-slot {
-    grid-template-columns: 2rem minmax(0, 1fr) 4.5rem;
   }
 }
 

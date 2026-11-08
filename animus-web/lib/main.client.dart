@@ -29,6 +29,7 @@ Future<void> main() async {
     onWorkspaceCreated: requestPersistentStorage,
   );
   guardUnload(() => store.hasPendingWork);
+  releaseNumberBoxesOnWheel();
   final ServerHub hub = ServerHub(
     profiles: ServerProfileStore(local: BrowserKeyValueStore.local(), session: BrowserKeyValueStore.session()),
     open: openBrowserTransport,

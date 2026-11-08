@@ -1,6 +1,7 @@
 import 'package:animus_editor/logic/gui/gui_json.dart';
 import 'package:animus_editor/logic/gui/gui_validation.dart';
 import 'package:animus_editor/logic/gui/shop_entries.dart';
+import 'package:animus_editor/logic/shared_schemas.dart';
 import 'package:animus_editor/model/animus_document.dart';
 import 'package:animus_editor/model/document_kind.dart';
 import 'package:test/test.dart';
@@ -53,6 +54,34 @@ void main() {
       final JsonMap decoration = withShopEntryType(command, 'static');
       expect(decoration.keys, isNot(anyOf(contains('commands'), contains('limit'), contains('stock'))));
       expect(_problems(_shop(decoration)), isEmpty);
+    });
+
+    test('should start a command entry with one empty command and no allow-list note', () {
+      final JsonMap command = withShopEntryType(trade, 'command');
+      expect(command['commands'], <Object?>[<String, Object?>{'command': '', 'as': 'console'}]);
+      final List<Diagnostic> found = validateGui(DocumentKind.shop, _shop(command));
+      expect(found.where((Diagnostic d) => d.code == allowListCode), isEmpty);
+      expect(_problems(_shop(command))[r'$.pages[0].buy["10"].commands[0].command'], 'write the command to run, without a leading slash');
+      final JsonMap shop = _shop(<String, Object?>{...command, 'price': 1});
+      final List<String> merged = <String>[
+        for (final Diagnostic d in mergeGuiDiagnostics(SharedSchemas.embedded.validate(DocumentKind.shop, shop), validateGui(DocumentKind.shop, shop))) '${d.path}: ${d.message}',
+      ];
+      expect(merged, <String>[r'$.pages[0].buy["10"].commands[0].command: write the command to run, without a leading slash']);
+    });
+
+    test('should name the config keys that allow a shop with a written command', () {
+      final JsonMap command = <String, Object?>{
+        ...withShopEntryType(trade, 'command'),
+        'commands': <Object?>[<String, Object?>{'command': 'give {player} diamond 1'}],
+      };
+      final List<String> notes = <String>[
+        for (final Diagnostic d in validateGui(DocumentKind.shop, _shop(command)))
+          if (d.code == allowListCode) '${d.severity.name} ${d.path}: ${d.message}',
+      ];
+      expect(notes, <String>[
+        'warning \$.pages[0].buy["10"].commands: runs commands, so the server refuses this shop until config.toml allows it: '
+            'add "town" to commandNamespaces, or "town:market" to commandBehaviors, under [behaviors.actions]',
+      ]);
     });
 
     test('should give a new trade goods from the entry item', () {

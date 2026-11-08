@@ -18,6 +18,7 @@ import '../fold.dart';
 import '../gui/gui_fields.dart';
 import '../info_tip.dart';
 import '../select/skin_faces.dart';
+import 'chip_row.dart';
 
 /// Skin hashes as the server stores them.
 final RegExp _skinHash = RegExp(r'^[a-f0-9]{64}$');
@@ -25,10 +26,11 @@ final RegExp _skinHash = RegExp(r'^[a-f0-9]{64}$');
 /// At most this many skins in a group's pool.
 const int _poolLimit = 64;
 
-/// An NPC's `groups` in merge order: move earlier, remove, add from the
-/// workspace, and a warning for a group the workspace lacks.
-class NpcGroupsList extends StatelessWidget {
-  const NpcGroupsList({required this.npc, required this.groups, required this.onChanged, this.diagnostics = const <Diagnostic>[], this.onOpen, super.key});
+/// An NPC's `groups` in merge order: a chip row (drag or Alt+arrow to
+/// reorder, remove, open) and a picker that adds a workspace group or makes
+/// a new one from the search text.
+class NpcGroupsList extends StatefulWidget {
+  const NpcGroupsList({required this.npc, required this.groups, required this.onChanged, this.diagnostics = const <Diagnostic>[], this.onOpen, this.onCreate, super.key});
 
   final JsonMap npc;
 
@@ -40,68 +42,80 @@ class NpcGroupsList extends StatelessWidget {
   final List<Diagnostic> diagnostics;
   final void Function(DocumentKind kind, String id)? onOpen;
 
+  /// Makes a group named from the search text and lists it here in one
+  /// change; answers its id, or null when nothing was made. Null leaves
+  /// "+ New group" to the New page.
+  final Future<String?> Function(String search)? onCreate;
+
+  @override
+  State<NpcGroupsList> createState() => _NpcGroupsListState();
+}
+
+class _NpcGroupsListState extends State<NpcGroupsList> {
+  /// The group made here last, offered to open.
+  String? _made;
+
+  Future<void> _create(String search) async {
+    final String? id = await component.onCreate!(search);
+    if (mounted) setState(() => _made = id);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final List<String> listed = npcGroups(npc);
+    final List<String> listed = npcGroups(component.npc);
+    final Map<String, JsonMap> groups = component.groups;
     final List<String> available = <String>[
       for (final String id in groups.keys)
         if (!listed.contains(id)) id,
     ];
-    final List<Diagnostic> unknown = npcGroupDiagnostics(npc, groups.keys.toSet());
-    void put(List<String> next) => onChanged(next.isEmpty ? null : next);
+    final List<Diagnostic> unknown = npcGroupDiagnostics(component.npc, groups.keys.toSet());
+    void put(List<String> next) => component.onChanged(next.isEmpty ? null : next);
+    final void Function(DocumentKind, String)? open = component.onOpen;
+    final String? made = _made != null && listed.contains(_made) ? _made : null;
     const String addId = 'animus-npc-add-group';
     return GuiRow(
       label: 'Groups',
-      help: 'First to last; own fields win.',
-      tip: "Trait groups this NPC takes values from. A later group overrides an earlier one, and the NPC's own fields override every group.",
-      problems: diagnosticsAt(diagnostics, r'$.groups', nested: true),
+      forId: listed.length < npcGroupLimit ? addId : null,
+      tip: "Trait groups this NPC takes values from, first to last. A later group overrides an earlier one, and the NPC's own fields override every group. Drag a group, or press Alt with an arrow key, to reorder.",
+      problems: diagnosticsAt(component.diagnostics, r'$.groups', nested: true),
       child: dom.div(classes: 'animus-npc-groups', attributes: const <String, String>{'data-npc': 'groups'}, <Widget>[
-        if (listed.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No groups.')]),
-        if (listed.isNotEmpty)
-          dom.ol(classes: 'animus-npc-group-list', <Widget>[
-            for (int index = 0; index < listed.length; index++)
-              dom.li(key: ValueKey<String>('group:${listed[index]}'), attributes: <String, String>{'data-group': listed[index]}, <Widget>[
-                dom.div(classes: 'animus-gui-line', <Widget>[
-                  dom.code(<Widget>[Component.text(listed[index])]),
-                  if (onOpen != null && groups.containsKey(listed[index]))
-                    Button.ghost(
-                      label: 'Open',
-                      size: ButtonSize.small,
-                      attributes: <String, String>{'aria-label': 'Open group ${listed[index]}'},
-                      onPressed: () => onOpen!(DocumentKind.group, listed[index]),
+        dom.div(classes: 'animus-chip-line', <Widget>[
+            if (listed.isNotEmpty)
+              ChipRow(
+                noun: 'group',
+                attribute: 'group',
+                items: <ChipItem>[
+                  for (int index = 0; index < listed.length; index++)
+                    ChipItem(
+                      listed[index],
+                      onOpen: open != null && groups.containsKey(listed[index]) ? () => open(DocumentKind.group, listed[index]) : null,
+                      problem: unknown.where((Diagnostic d) => d.path == '\$.groups[$index]').firstOrNull?.message,
                     ),
-                  GuiIconButton(
-                    icon: ArcaneIcon.arrowUp(size: IconSize.sm),
-                    label: 'Move group ${listed[index]} earlier',
-                    disabled: index == 0,
-                    onPressed: () => put(<String>[for (final Object? id in moveItem(listed, index, index - 1)) id! as String]),
-                  ),
-                  GuiIconButton(
-                    icon: ArcaneIcon.x(size: IconSize.sm),
-                    label: 'Remove group ${listed[index]}',
-                    onPressed: () => put(<String>[...listed]..removeAt(index)),
-                  ),
-                ]),
-                for (final Diagnostic problem in unknown.where((Diagnostic d) => d.path == '\$.groups[$index]'))
-                  dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text(problem.message)]),
-              ]),
+                ],
+                onRemove: (int index) => put(<String>[...listed]..removeAt(index)),
+                onMove: (int from, int to) => put(<String>[for (final Object? id in moveItem(listed, from, to)) id! as String]),
+              ),
+            if (listed.length < npcGroupLimit)
+              GuiSelect(
+                references: DocumentKind.group,
+                id: addId,
+                value: null,
+                options: available,
+                noneLabel: 'Add group',
+                hiddenLabel: 'Add a group',
+                onNew: component.onCreate == null ? null : _create,
+                onChanged: (String? id) {
+                  if (id != null) put(<String>[...listed, id]);
+                },
+              ),
           ]),
-        if (listed.length < npcGroupLimit && available.isNotEmpty)
-          dom.div(classes: 'animus-row', <Widget>[
-            const dom.label(classes: 'animus-sr-only', attributes: <String, String>{'for': addId}, <Widget>[Component.text('Add a group')]),
-            GuiSelect(
-              references: DocumentKind.group,
-              id: addId,
-              value: null,
-              options: available,
-              noneLabel: 'Add a group',
-              onChanged: (String? id) {
-                if (id != null) put(<String>[...listed, id]);
-              },
-            ),
-          ])
-        else if (groups.isEmpty)
-          const dom.p(classes: 'animus-muted', <Widget>[Component.text('No groups yet. Use New document.')]),
+        for (final Diagnostic problem in unknown)
+          dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text(problem.message)]),
+        if (made != null && open != null)
+          dom.p(classes: 'animus-gui-help animus-made-note', attributes: const <String, String>{'role': 'status'}, <Widget>[
+            Component.text('Made group $made. '),
+            Button.ghost(label: 'Open $made', size: ButtonSize.small, onPressed: () => open(DocumentKind.group, made)),
+          ]),
       ]),
     );
   }
@@ -208,34 +222,29 @@ class _GroupSkinPoolState extends State<GroupSkinPool> {
       tip: 'Skins the members share. Each member always gets the same one, chosen from its UUID.',
       problems: diagnosticsAt(component.diagnostics, r'$.skins', nested: true),
       child: dom.div(classes: 'animus-group-skins', <Widget>[
-        if (pool.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No pool. Members use the skin above.')]),
-        if (pool.isNotEmpty)
-          dom.ul(classes: 'animus-group-skin-list', <Widget>[
-            for (final String hash in pool)
-              dom.li(key: ValueKey<String>('skin:$hash'), <Widget>[
-                dom.code(attributes: <String, String>{'title': hash}, <Widget>[Component.text('${short(hash)}...')]),
-                GuiIconButton(
-                  icon: ArcaneIcon.x(size: IconSize.sm),
-                  label: 'Remove skin ${short(hash)} from the pool',
-                  onPressed: () => put(<String>[...pool]..remove(hash)),
-                ),
-              ]),
-          ]),
-        dom.div(classes: 'animus-row', <Widget>[
-          if (offered.isNotEmpty) ...<Widget>[
-            const dom.label(classes: 'animus-sr-only', attributes: <String, String>{'for': pickId}, <Widget>[Component.text('Add a workspace skin to the pool')]),
+        dom.div(classes: 'animus-chip-line', <Widget>[
+          if (pool.isNotEmpty)
+            ChipRow(
+              noun: 'pool skin',
+              attribute: 'skin',
+              items: <ChipItem>[for (final String hash in pool) ChipItem(hash, label: short(hash))],
+              onRemove: (int index) => put(<String>[...pool]..removeAt(index)),
+            ),
+          if (pool.length < _poolLimit)
             GuiSelect(
               references: DocumentKind.skin,
               id: pickId,
               value: null,
               options: offered,
               skinFaces: skinFacesOf(offered),
-              noneLabel: 'Add a workspace skin',
+              noneLabel: 'Add skin',
+              hiddenLabel: 'Add a workspace skin to the pool',
               onChanged: (String? hash) {
                 if (hash != null && pool.length < _poolLimit) put(<String>[...pool, hash]);
               },
             ),
-          ],
+        ]),
+        dom.div(classes: 'animus-row', <Widget>[
           GuiTextInput(value: _adding, label: 'Skin hash to add', placeholder: '64 hex characters', onChanged: (String value) => setState(() => _adding = value.trim().toLowerCase())),
           Button.ghost(
             label: 'Add hash',

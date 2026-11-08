@@ -32,6 +32,7 @@ class AnimusSelect extends StatefulWidget {
     this.references,
     this.field,
     this.disabled = false,
+    this.onNew,
     super.key,
   });
 
@@ -58,6 +59,10 @@ class AnimusSelect extends StatefulWidget {
   final String? field;
   final bool disabled;
 
+  /// Makes the [references] document here from the search text instead of
+  /// going to the New page; the search field then always shows.
+  final void Function(String search)? onNew;
+
   @override
   State<AnimusSelect> createState() => _AnimusSelectState();
 }
@@ -77,11 +82,11 @@ class _AnimusSelectState extends State<AnimusSelect> {
 
   String get _name => component.hiddenLabel ?? component.label ?? component.placeholder;
 
-  bool get _searchable => searchable(component.options.length);
+  bool get _searchable => component.onNew != null || searchable(component.options.length);
 
   List<SelectAction> _actions(PickerScope? scope) {
     final DocumentKind? kind = component.references;
-    return kind == null || scope == null ? const <SelectAction>[] : scope.actionsFor(kind);
+    return kind == null || scope == null ? const <SelectAction>[] : scope.actionsFor(kind, query: _state.query);
   }
 
   SelectRows _rows(PickerScope? scope) => SelectRows(filterOptions(component.options, _state.query), _actions(scope).length);
@@ -149,6 +154,8 @@ class _AnimusSelectState extends State<AnimusSelect> {
     final DocumentKind? kind = component.references;
     if (action.id == recordInGameActionId) {
       ArcaneSonner.info('Record in game with /animus record start <id>.');
+    } else if (action.id == newActionId && component.onNew != null) {
+      component.onNew!(query);
     } else if (kind != null && scope != null) {
       scope.run(action.id, kind, _field, query);
     }

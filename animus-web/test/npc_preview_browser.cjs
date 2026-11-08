@@ -3,10 +3,10 @@
 // nothing left waiting for a texture, a canvas that is not one flat colour,
 // and no console errors, at desktop width in the dark theme and phone width
 // in the light one, with no horizontal overflow. It also orbits the stage
-// from the keyboard and checks that a skin PNG of the wrong size says why
-// under the stage. A player with no skin wears its built-in placeholder in
-// classic and slim arms (served, decoded, not blank), and the inspector's
-// placeholder grid swaps it. Needs the asset pack (tool/extract_minecraft_world_assets.dart)
+// from the keyboard, loads a skin PNG from the inspector, and checks that a
+// PNG of the wrong size says why. A player with no skin wears its built-in
+// placeholder (served, decoded, not blank), and picking a built-in skin in
+// the inspector wears it. Needs the asset pack (tool/extract_minecraft_world_assets.dart)
 // in the build.
 //
 //   python3 tool/serve_site.py --port <port>
@@ -116,7 +116,7 @@ async function run(browser, viewport, label, dark) {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     assert.ok(overflow <= 0, `${id}: ${overflow}px of horizontal overflow`);
   }
-  // A player with no skin wears its placeholder, classic then slim.
+  // A player with no skin wears its placeholder.
   const drawn = async n => page.waitForFunction(min => {
     const element = document.querySelector('.animus-mc-gl-host');
     return element && Number(element.getAttribute('data-frames')) > min && element.getAttribute('data-unbuilt') === '0';
@@ -136,21 +136,17 @@ async function run(browser, viewport, label, dark) {
   await skinState.getByText(/none; preview shows the placeholder \w+ skin \(classic\)/).waitFor();
   const look = /placeholder (\w+) skin/.exec(await skinState.textContent())[1].toLowerCase();
   await wearsPlaceholder(`${look}.png`, `placeholder-${look}-classic`);
-  await page.getByRole('button', {name: 'Slim', exact: true}).click();
-  await skinState.getByText(/the placeholder \w+ skin \(slim\)/).waitFor();
-  await wearsPlaceholder(`${look}-slim.png`, `placeholder-${look}-slim`);
-  // The inspector's grid picks another placeholder for the stage beside it.
+  // Picking a built-in skin wears it.
   const other = look === 'miner' ? 'Scholar' : 'Miner';
   await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/players%2Fmerchant?view=visual`);
   const appearance = page.locator('details[data-section="appearance"]');
   if (!(await appearance.evaluate(element => element.open))) await appearance.locator('summary').first().click();
-  const grid = page.getByRole('radiogroup', {name: 'Placeholder skins'});
-  assert.equal(await grid.getByRole('radio').count(), 8);
-  assert.equal(await grid.getByRole('radio', {name: `Placeholder ${look[0].toUpperCase()}${look.slice(1)}`}).getAttribute('aria-checked'), 'true');
-  await grid.getByRole('radio', {name: `Placeholder ${other}`}).click();
-  assert.equal(await grid.getByRole('radio', {name: `Placeholder ${other}`}).getAttribute('aria-checked'), 'true');
-  await skinState.getByText(`the placeholder ${other} skin (classic)`).waitFor();
-  await wearsPlaceholder(`${other.toLowerCase()}.png`, `placeholder-${other.toLowerCase()}-picked`);
+  const grid = page.getByRole('group', {name: 'Built-in skins'});
+  assert.equal(await grid.getByRole('button').count(), 8);
+  await grid.getByRole('button', {name: `Wear the built-in ${other} skin`}).click();
+  await page.waitForFunction((name) => document.querySelector(`[aria-label="Wear the built-in ${name} skin"]`)?.getAttribute('aria-pressed') === 'true', other);
+  await skinState.getByText(`the built-in ${other} skin (classic)`).waitFor();
+  await wearsPlaceholder(`${other.toLowerCase()}.png`, `builtin-${other.toLowerCase()}-picked`);
   if (shots) fs.writeFileSync(path.join(shots, `${label}-placeholder-picker.png`), await page.screenshot({fullPage: true}));
   // Text above the hero: the hologram lines and the native nameplate.
   await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/players%2Fhero?view=split`);
@@ -190,17 +186,21 @@ async function run(browser, viewport, label, dark) {
   const scratch = fs.mkdtempSync(path.join(shots || require('node:os').tmpdir(), 'animus-skin-'));
   const skinFile = path.join(scratch, 'skin.png');
   fs.writeFileSync(skinFile, Buffer.from(skin, 'base64'));
+  await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/players%2Fhero?view=visual`);
+  const heroLook = page.locator('details[data-section="appearance"]');
+  if (!(await heroLook.evaluate(element => element.open))) await heroLook.locator('summary').first().click();
+  // The visual view has its own stage, counting frames from zero.
   const framesBefore = Number(await page.locator('.animus-mc-gl-host').getAttribute('data-frames'));
   const skinChooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', {name: 'Load skin PNG'}).click();
+  await heroLook.getByRole('button', {name: 'From PNG file'}).click();
   await (await skinChooser).setFiles(skinFile);
-  await page.locator('.animus-npc-facts').getByText('skin.png (slim)').waitFor();
+  await page.locator('.animus-npc-facts').getByText(/skin\.png \((classic|slim)\)/).waitFor();
   await page.waitForFunction(n => {
     const element = document.querySelector('.animus-mc-gl-host');
     return Number(element.getAttribute('data-frames')) > n && element.getAttribute('data-unbuilt') === '0';
   }, framesBefore);
   if (shots) fs.writeFileSync(path.join(shots, `${label}-hero-loaded-skin.png`), await page.locator('.animus-mc-stage').screenshot());
-  // A PNG that is not a skin: the reason stays under the stage.
+  // A PNG that is not a skin: the inspector says why.
   const tiny = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
     canvas.width = 10;
@@ -211,9 +211,9 @@ async function run(browser, viewport, label, dark) {
   const tinyFile = path.join(scratch, 'tiny.png');
   fs.writeFileSync(tinyFile, Buffer.from(tiny, 'base64'));
   const tinyChooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', {name: 'Load skin PNG'}).click();
+  await heroLook.getByRole('button', {name: 'From PNG file'}).click();
   await (await tinyChooser).setFiles(tinyFile);
-  await page.locator('.animus-npc-notes').getByText('this image is 10x10. Pick a 64x64 Minecraft skin PNG.').waitFor();
+  await heroLook.getByRole('alert').getByText('this image is 10x10. Pick a 64x64 Minecraft skin PNG.').waitFor();
   if (shots) fs.writeFileSync(path.join(shots, `${label}-skin-failure.png`), await page.screenshot({fullPage: true}));
   fs.rmSync(scratch, {recursive: true, force: true});
   assert.deepEqual(errors, []);

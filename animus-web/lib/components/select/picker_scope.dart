@@ -22,8 +22,9 @@ class PickerScope extends InheritedWidget {
   @override
   bool updateShouldNotify(PickerScope oldComponent) => oldComponent.workspaceId != workspaceId || oldComponent.route != route;
 
-  /// The footer rows of a dropdown that picks a [kind] document.
-  List<SelectAction> actionsFor(DocumentKind kind) => referenceActions(kind);
+  /// The footer rows of a dropdown that picks a [kind] document, its search
+  /// text [query] named on "+ New".
+  List<SelectAction> actionsFor(DocumentKind kind, {String query = ''}) => referenceActions(kind, query: query);
 
   /// Runs footer row [actionId] of a [kind] dropdown known as [field],
   /// with the search text [search].
@@ -65,13 +66,14 @@ String kindPlural(DocumentKind kind) => switch (kind) {
       _ => kind.label.toLowerCase(),
     };
 
-/// The footer of a dropdown that picks a [kind] document. Recordings are
-/// made in game, so theirs says how instead of offering New.
-List<SelectAction> referenceActions(DocumentKind kind) => <SelectAction>[
+/// The footer of a dropdown that picks a [kind] document; "+ New" names the
+/// search text [query] the new document takes. Recordings are made in game,
+/// so theirs says how instead of offering New.
+List<SelectAction> referenceActions(DocumentKind kind, {String query = ''}) => <SelectAction>[
       if (kind == DocumentKind.recording)
         const SelectAction(id: recordInGameActionId, label: 'Record in game', hint: 'Run /animus record start <id> in game.')
       else
-        SelectAction(id: newActionId, label: '+ New ${kindNoun(kind)}'),
+        SelectAction(id: newActionId, label: '+ New ${kindNoun(kind)}${query.trim().isEmpty ? '' : ' "${query.trim()}"'}'),
       SelectAction(id: manageActionId, label: 'Manage ${kindPlural(kind)}'),
     ];
 

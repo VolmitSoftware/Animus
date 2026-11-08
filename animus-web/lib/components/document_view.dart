@@ -270,7 +270,7 @@ class _DocumentPaneState extends State<DocumentPane> {
           dom.h1(id: mainHeadingId, attributes: const <String, String>{'tabindex': '-1'}, <Widget>[Component.text(guiPlainText(document.title))]),
           dom.code(classes: 'animus-muted animus-document-path', <Widget>[Component.text(document.path)]),
         ]),
-        if (component.onRename != null || component.onDelete != null || component.onDuplicate != null) _manage(document),
+        if (component.onRename != null || component.onDelete != null || component.onDuplicate != null) _manage(document) else ?_revision(document),
         TabStrip<ViewMode>(
           idPrefix: _tabPrefix,
           label: 'View',
@@ -322,6 +322,7 @@ class _DocumentPaneState extends State<DocumentPane> {
     }
     if (renaming == null) {
       return dom.div(classes: 'animus-row', attributes: const <String, String>{'role': 'group', 'aria-label': 'Manage document'}, <Widget>[
+        ?_revision(document),
         if (component.onRename != null)
           Button.ghost(id: 'animus-doc-rename', label: 'Rename', size: ButtonSize.small, onPressed: () => _startRename(copy: false)),
         if (component.onDuplicate != null)
@@ -346,6 +347,19 @@ class _DocumentPaneState extends State<DocumentPane> {
       Button.primary(label: _copying ? 'Copy' : 'Move', size: ButtonSize.small, onPressed: _submitRename),
       Button.ghost(label: 'Cancel', size: ButtonSize.small, onPressed: _cancelRename),
     ]);
+  }
+
+  /// The document's revision, read only: the server raises it on every
+  /// apply, so nobody edits it by hand.
+  Widget? _revision(AnimusDocument document) {
+    final Object? json = document.json;
+    final Object? revision = json is Map<String, Object?> ? json['revision'] : null;
+    if (revision is! int) return null;
+    return dom.span(
+      classes: 'animus-muted animus-document-revision',
+      attributes: const <String, String>{'title': 'The server raises it on every apply.'},
+      <Widget>[Component.text('revision $revision')],
+    );
   }
 
   Widget _diagnostics(AnimusDocument document) {
@@ -532,7 +546,7 @@ class _DocumentPaneState extends State<DocumentPane> {
             withTip(Component.text('Rig $missingRig is not in this workspace.'), 'The timeline needs the rig. Add or import it, and this animation opens in the rig editor.'),
           ]),
         if (schema != null)
-          InspectObject(schema: schema, node: schema.root, value: json, path: r'$', diagnostics: _allDiagnostics(document), onChanged: put)
+          InspectObject(schema: schema, node: schema.root, value: json, path: r'$', diagnostics: _allDiagnostics(document), skip: const <String>{'revision'}, onChanged: put)
         else
           KeyValueEditor(value: json, label: '${document.kind.label} fields', onChanged: put),
       ],

@@ -23,3 +23,7 @@ List<NpcEntry> groupCandidates(List<NpcEntry> entries, String group) => <NpcEntr
 /// browser's bulk assign.
 NpcBulkResult addGroupMember(List<NpcEntry> entries, Map<String, JsonMap> groups, String group, String key) =>
     changeGroup(entries, groups, group, NpcGroupTarget.ids(<String>{key}), assign: true);
+
+/// Drops [group] from NPC [key]'s `groups`, as `/animus groups unassign` does.
+NpcBulkResult removeGroupMember(List<NpcEntry> entries, Map<String, JsonMap> groups, String group, String key) =>
+    changeGroup(entries, groups, group, NpcGroupTarget.ids(<String>{key}), assign: false);

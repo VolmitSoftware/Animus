@@ -57,6 +57,15 @@ JsonMap defaultArguments(CapabilitySpec? spec) => <String, Object?>{
           if (argument.required) argument.key: defaultValue(argument),
     };
 
+/// Arguments that make the capability a new action or condition starts
+/// with valid as added, since an empty required field makes the whole
+/// document invalid.
+const Map<String, JsonMap> _starterArguments = <String, JsonMap>{
+  'animus:say': <String, Object?>{'text': 'Hello, {player_name}.'},
+  'animus:message': <String, Object?>{'text': 'Hello.'},
+  'animus:flag-state': <String, Object?>{'name': 'met'},
+};
+
 CapabilitySpec? _firstCapability(String kind, CompletionCatalog catalog, {bool server = false}) {
   final List<CapabilitySpec> all = catalog.capabilitiesFor(kind, server: server);
   return all.where((CapabilitySpec spec) => spec.id == (server ? 'animus:message' : 'animus:say')).firstOrNull ??
@@ -100,7 +109,7 @@ JsonMap defaultNode(String type, CompletionCatalog catalog, {String? routine, Js
       return <String, Object?>{
         'type': type,
         'capability': capability?.id ?? '',
-        'arguments': defaultArguments(capability),
+        'arguments': <String, Object?>{...defaultArguments(capability), ...?_starterArguments[capability?.id]},
         if (type == 'condition') 'then': defaultNode('sequence', catalog),
       };
     case 'call':

@@ -44,10 +44,13 @@ const Map<String, String> bodyLabels = <String, String>{
 enum _SkinSource { none, file, url, existing }
 
 class NewDocumentPage extends StatefulWidget {
-  const NewDocumentPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, this.folder, this.name, this.conversation = false, super.key});
+  const NewDocumentPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, this.folder, this.name, this.conversation = false, this.owner, super.key});
 
   /// Starts a behavior with the Conversation template picked.
   final bool conversation;
+
+  /// The paired player's UUID, which a new NPC takes as its owner.
+  final String? owner;
 
   final EditorStore store;
   final WorkspaceSnapshot workspace;
@@ -397,6 +400,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
       z: _z.toDouble(),
       yaw: _yaw.toDouble(),
       behaviors: behaviors,
+      owner: component.owner,
     );
     changes.add(_change(DocumentKind.npc, id, newNpc(seed, uuid: newUuid())));
     await _write(changes, DocumentKind.npc, id, resources: resources);

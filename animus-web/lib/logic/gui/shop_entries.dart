@@ -42,7 +42,7 @@ JsonMap withShopEntryType(JsonMap entry, String type, {bool container = false}) 
   out['type'] = type;
   if (!container && (type == 'buy' || type == 'sell' || type == 'command') && out['price'] == null) out['price'] = 1;
   if (type == 'command' && asList(out['commands']).isEmpty) {
-    out['commands'] = <Object?>[<String, Object?>{'command': 'say {player} bought a ticket', 'as': 'console'}];
+    out['commands'] = <Object?>[<String, Object?>{'command': '', 'as': 'console'}];
   }
   if (type == 'trade') {
     final String item = asString(asMap(entry['item'])['id']) ?? 'minecraft:bread';

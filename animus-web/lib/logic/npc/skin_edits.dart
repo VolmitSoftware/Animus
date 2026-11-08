@@ -206,8 +206,9 @@ SkinChange skinFromPng({
   required bool slim,
   required SkinTarget target,
   String? url,
+  String? label,
 }) {
-  final ({String id, String source}) made = newSkin(slim: slim, url: url != null && isMojangSkinUrl(url) ? url.trim() : null, image: png);
+  final ({String id, String source}) made = newSkin(slim: slim, url: url != null && isMojangSkinUrl(url) ? url.trim() : null, image: png, label: label);
   return SkinChange(
     documents: <DocumentChange>[
       if (_find(documents, DocumentKind.skin, made.id) == null) _create(made),

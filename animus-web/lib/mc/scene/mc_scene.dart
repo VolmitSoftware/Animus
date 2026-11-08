@@ -109,8 +109,17 @@ final class McModelNode extends McSceneNode {
   String get signature => 'model:$modelSignature';
 }
 
+/// The outline a glowing entity gets: [keys] are the nodes of its body and
+/// what it wears, drawn as one silhouette edge in [color] (`0xRRGGBB`).
+final class McGlow {
+  const McGlow(this.color, this.keys);
+
+  final int color;
+  final Set<String> keys;
+}
+
 final class McScene {
-  McScene(this.nodes, {this.frame = const <McVec3>[]}) : byKey = <String, McSceneNode>{} {
+  McScene(this.nodes, {this.frame = const <McVec3>[], this.glow}) : byKey = <String, McSceneNode>{} {
     for (final McSceneNode node in nodes) {
       if (byKey.containsKey(node.key)) {
         throw ArgumentError.value(node.key, 'key', 'duplicate scene node key');
@@ -127,4 +136,7 @@ final class McScene {
   /// Points the home camera keeps in view, world blocks: the body's mesh
   /// and the text above it.
   final List<McVec3> frame;
+
+  /// The glowing outline, or null when nothing glows.
+  final McGlow? glow;
 }

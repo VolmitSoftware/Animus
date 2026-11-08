@@ -92,7 +92,13 @@ public final class Administration {
                 Optional.ofNullable(runtime.npcs().groupProblems().get(draft.path())));
     }
 
+    /** {@link #create(String, String, String, double, double, double, String, String, Optional)} with no owner, as from the console. */
     public String create(String id, String type, String world, double x, double y, double z, String group, String name) throws IOException {
+        return create(id, type, world, x, y, z, group, name, Optional.empty());
+    }
+
+    /** Saves a new dormant NPC; {@code owner} is the player who made it, written as {@code owner} and editable afterwards. */
+    public String create(String id, String type, String world, double x, double y, double z, String group, String name, Optional<UUID> owner) throws IOException {
         if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) throw new IOException("Coordinates must be numbers, such as x=0 y=64 z=0");
         JsonObject object = new JsonObject();
         object.addProperty("schemaVersion", 1); object.addProperty("revision", 1);
@@ -100,6 +106,7 @@ public final class Administration {
         object.addProperty("type", type); object.addProperty("group", group);
         object.addProperty("name", name);
         object.addProperty("spawned", false);
+        owner.ifPresent((UUID player) -> object.addProperty("owner", player.toString()));
         JsonObject position = new JsonObject(); position.addProperty("world", world);
         position.addProperty("x", x); position.addProperty("y", y); position.addProperty("z", z);
         position.addProperty("yaw", 0); position.addProperty("pitch", 0); object.add("position", position);

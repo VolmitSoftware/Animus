@@ -212,6 +212,14 @@ async function run(browser, viewport, tag, theme) {
   assert.equal(json.routines.main.steps[1].else.steps[0].arguments.text, null);
   assert.deepEqual(json.routines.main.steps[1].else.steps[0].templates, {'/text': 'Hi {{ player.name }}'});
 
+  // A new action step is valid as added: it says a line, no empty required text.
+  await choose(wave.locator('.animus-add-node button[role="combobox"]').last(), 'action');
+  await editor.locator('[data-node-path="$.routines.wave.steps[6]"]').waitFor();
+  await page.waitForTimeout(300);
+  json = await codeOf(page);
+  assert.deepEqual(json.routines.wave.steps[6], {type: 'action', capability: 'animus:say', arguments: {text: 'Hello, {player_name}.'}});
+  assert.equal(await page.locator('.animus-diagnostics li.is-error').count(), 0, 'a new action step leaves the document valid');
+
   // Keyboard: Down moves to the next row, Left closes it.
   const rows = editor.locator('[data-routine="wave"] .animus-node-summary');
   await rows.first().focus();

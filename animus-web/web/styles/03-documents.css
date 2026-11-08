@@ -34,6 +34,12 @@
   overflow-wrap: anywhere;
 }
 
+.animus-document-revision {
+  align-self: center;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
 .animus-eyebrow {
   font-size: 0.8125rem;
   color: var(--animus-muted);

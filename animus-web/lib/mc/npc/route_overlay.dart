@@ -56,7 +56,11 @@ NpcScene withRoute(NpcScene base, RouteSpec spec, (double, double, double) origi
     ));
   }
   return NpcScene(
-    scene: McScene(<McSceneNode>[...base.scene.nodes, ...extra], frame: <McVec3>[...base.scene.frame, for (final RouteNode node in placed) at(node)]),
+    scene: McScene(
+      <McSceneNode>[...base.scene.nodes, ...extra],
+      frame: <McVec3>[...base.scene.frame, for (final RouteNode node in placed) at(node)],
+      glow: base.scene.glow,
+    ),
     texts: <NpcText>[...base.texts, ...texts],
     notes: base.notes,
     presentable: base.presentable,

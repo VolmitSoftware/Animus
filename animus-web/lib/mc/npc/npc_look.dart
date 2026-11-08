@@ -7,6 +7,7 @@ library;
 import '../../logic/minecraft_ids.dart';
 import '../../logic/npc/npc_appearance.dart';
 import '../../logic/npc/npc_attributes.dart';
+import 'mc_text.dart';
 
 /// `NpcPose`.
 enum NpcPose {
@@ -220,6 +221,7 @@ final class NpcLook {
     this.yawDeg = 0,
     this.scale = 1,
     this.settings = const <String, Object?>{},
+    this.glowColor,
   });
 
   static const String player = 'minecraft:player';
@@ -264,6 +266,7 @@ final class NpcLook {
       skin: skin is String && _skin.hasMatch(skin) ? skin : null,
       yawDeg: yaw is num && yaw.isFinite ? yaw.toDouble() : 0,
       scale: definitionScale(json),
+      glowColor: json['glowing'] == true ? _teamColor(json['teamColor']) : null,
       settings: switch (json[bodySettingsField(type) ?? '']) {
         final Map<String, Object?> own => own,
         _ => const <String, Object?>{},
@@ -290,6 +293,21 @@ final class NpcLook {
   /// The body type's own settings (`horse`, `llama`, ...) as written;
   /// settings of another body are ignored, as the server refuses them.
   final Map<String, Object?> settings;
+
+  /// The outline colour (`0xRRGGBB`) of a glowing body: its `teamColor`,
+  /// white without one, as the client draws it. Null when it does not glow.
+  final int? glowColor;
+
+  /// `teamColor` names in `ChatFormatting` order, codes 0 to f.
+  static const List<String> teamColors = <String>[
+    'black', 'dark_blue', 'dark_green', 'dark_aqua', 'dark_red', 'dark_purple', 'gold', 'gray', //
+    'dark_gray', 'blue', 'green', 'aqua', 'red', 'light_purple', 'yellow', 'white',
+  ];
+
+  static int _teamColor(Object? name) {
+    final int index = teamColors.indexOf(name is String ? name : 'white');
+    return mcLegacyColors[(index < 0 ? 15 : index).toRadixString(16)]!;
+  }
 
   bool get isPlayer => type == player;
 

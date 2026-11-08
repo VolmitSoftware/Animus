@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "harbor-crew",
+  "description": "Dockside workers",
+  "values": {
+    "glowing": true,
+    "teamColor": "light_purple"
+  }
+}

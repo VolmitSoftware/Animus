@@ -159,6 +159,21 @@ void main() {
       expect(jsonEncode(edited), contains('"ticks":10'));
     });
 
+    test('should add an action step that is valid as added, with a flag name of its own', () {
+      final JsonMap edited = _edit(newConversationBehavior('town:talk'), (Conversation conversation) {
+        insertStep(conversation, const StepAt('main', <Object>[1]), newAction(conversation));
+        insertStep(conversation, const StepAt('main', <Object>[1]), newAction(conversation));
+      });
+      expect(_schemaErrors('town:talk', edited), isEmpty);
+      final Conversation back = _read(edited);
+      expect(checkConversation(back).where((ConversationIssue issue) => issue.error), isEmpty);
+      final List<String> names = <String>[
+        for (final ConversationStep step in back.blocks['main']!.steps)
+          if (step is ConversationAction && step.capability == 'animus:set-flag') asString(step.arguments['name'])!,
+      ];
+      expect(names.toSet(), hasLength(names.length), reason: 'each new action names a flag no other step sets');
+    });
+
     test('should write placeholders the server does not fill as template holes', () {
       final JsonMap edited = _edit(newConversationBehavior('town:talk'), (Conversation conversation) {
         (conversation.blocks['main']!.steps.first as ConversationLine).text = 'I am {npc.name}, {player_name}.';

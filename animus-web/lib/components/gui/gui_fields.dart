@@ -24,6 +24,7 @@ import '../../logic/suggest/field_profile.dart';
 import '../info_tip.dart';
 import '../select/animus_select.dart';
 import '../suggest/autocomplete_input.dart';
+import '../typing_pause.dart';
 
 /// What a text field holds, which decides its checks and completion.
 enum GuiTextMode {
@@ -56,7 +57,7 @@ String guiPathId(String path) => 'animus-at-${path.replaceAll(RegExp(r'[^A-Za-z0
 /// A labelled row: the control, an optional help line and the diagnostics
 /// the document has at [path]. With [forId] the label is a `<label for>`
 /// naming the control with that id.
-class GuiRow extends StatelessWidget {
+class GuiRow extends StatefulWidget {
   const GuiRow({required this.label, required this.child, this.help, this.tip, this.problems = const <Diagnostic>[], this.forId, super.key});
 
   final String label;
@@ -69,16 +70,22 @@ class GuiRow extends StatelessWidget {
   final String? forId;
 
   @override
+  State<GuiRow> createState() => _GuiRowState();
+}
+
+class _GuiRowState extends State<GuiRow> with TypingPause<GuiRow> {
+  @override
   Widget build(BuildContext context) {
-    final ({String? hint, String? tip}) split = tip == null ? splitHelp(help) : (hint: help == null || help!.isEmpty ? null : help, tip: tip);
-    return dom.div(classes: 'animus-gui-row${problems.any((Diagnostic d) => d.severity == DiagnosticSeverity.error) ? ' has-error' : ''}', <Widget>[
-      forId != null
-          ? dom.label(htmlFor: forId, classes: 'animus-gui-label', <Widget>[withTip(Component.text(label), split.tip)])
-          : dom.span(classes: 'animus-gui-label', <Widget>[withTip(Component.text(label), split.tip)]),
+    final List<Diagnostic> shown = typing ? const <Diagnostic>[] : component.problems;
+    final ({String? hint, String? tip}) split = component.tip == null ? splitHelp(component.help) : (hint: component.help == null || component.help!.isEmpty ? null : component.help, tip: component.tip);
+    return dom.div(classes: 'animus-gui-row${shown.any((Diagnostic d) => d.severity == DiagnosticSeverity.error) ? ' has-error' : ''}', events: typingEvents, <Widget>[
+      component.forId != null
+          ? dom.label(htmlFor: component.forId, classes: 'animus-gui-label', <Widget>[withTip(Component.text(component.label), split.tip)])
+          : dom.span(classes: 'animus-gui-label', <Widget>[withTip(Component.text(component.label), split.tip)]),
       dom.div(classes: 'animus-gui-control', <Widget>[
-        child,
+        component.child,
         if (split.hint != null) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(split.hint!)]),
-        for (final Diagnostic problem in problems)
+        for (final Diagnostic problem in shown)
           dom.span(
             classes: 'animus-gui-problem is-${problem.severity.name}',
             attributes: const <String, String>{'role': 'note'},
@@ -269,6 +276,7 @@ class GuiSelect extends StatelessWidget {
     this.id,
     this.label,
     this.hiddenLabel,
+    this.onNew,
     super.key,
   });
 
@@ -303,6 +311,9 @@ class GuiSelect extends StatelessWidget {
   /// the surrounding layout already shows.
   final String? hiddenLabel;
 
+  /// See [AnimusSelect.onNew].
+  final void Function(String search)? onNew;
+
   @override
   Widget build(BuildContext context) {
     final List<String> all = <String>[...options, if (value != null && value!.isNotEmpty && !options.contains(value)) value!];
@@ -314,6 +325,7 @@ class GuiSelect extends StatelessWidget {
       placeholder: noneLabel,
       references: references,
       disabled: inactive,
+      onNew: onNew,
       options: <SelectOption>[
         if (allowNone || value == null) SelectOption(label: noneLabel, value: ''),
         for (final String option in all)

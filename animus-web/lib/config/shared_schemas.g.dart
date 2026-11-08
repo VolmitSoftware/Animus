@@ -312,7 +312,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "groups": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"}, "description": "NPC groups the token may touch; absent means all."},
         "expiresAt": {"$ref": "#/$defs/instant"},
         "fingerprint": {"$ref": "#/$defs/fingerprint"},
-        "counter": {"type": "integer", "minimum": 0, "description": "The last X-Animus-Counter value accepted for this token."}
+        "counter": {"type": "integer", "minimum": 0, "description": "The last X-Animus-Counter value accepted for this token."},
+        "admin": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "description": "The UUID of the player who issued the pairing; absent when it came from the console. The editor makes it the owner of NPCs it creates."}
       }
     },
     "capabilities-response": {

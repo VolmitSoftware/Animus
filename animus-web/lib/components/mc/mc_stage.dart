@@ -22,6 +22,7 @@ import 'package:jaspr/jaspr.dart' show ChangeNotifier, Component;
 import 'package:web/web.dart' as web;
 
 import '../../config/docs_links.dart';
+import '../../logic/held_notes.dart';
 import '../../mc/assets/mc_ids.dart';
 import '../../mc/npc/mc_text.dart';
 import '../../mc/npc/npc_scene.dart';
@@ -33,6 +34,7 @@ import 'mc_gl.dart';
 import '../info_tip.dart';
 import 'mc_gl_renderer.dart';
 import '../shortcut_sheet.dart' show platformKeys;
+import '../typing_pause.dart' show typingPause;
 
 /// Pixels of drag one arrow key press stands for.
 const double mcStageKeyStepPx = 24;
@@ -74,7 +76,9 @@ final class McStageController extends ChangeNotifier {
 
   List<McVec3> _frame = const <McVec3>[];
   double _yawDeg = 0;
-  double _aspect = 4 / 3;
+  /// Zero until the stage is measured; the framing assumes 4:3 till then.
+  double _widthPx = 0;
+  double _heightPx = 0;
 
   /// Shows [scene]; [frame] moves the home framing to the new subject (and
   /// the camera with it when the camera was home).
@@ -87,17 +91,24 @@ final class McStageController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The stage's width over height; a home camera refits to it.
-  set aspect(double value) {
-    if (!(value > 0) || (value - _aspect).abs() < 1e-3) return;
-    _aspect = value;
+  /// The stage's size in CSS pixels; a home camera refits to it.
+  void resize(double widthPx, double heightPx) {
+    if (!(widthPx > 0) || !(heightPx > 0) || (widthPx == _widthPx && heightPx == _heightPx)) return;
+    _widthPx = widthPx;
+    _heightPx = heightPx;
     _reframe();
     notifyListeners();
   }
 
   void _reframe({bool force = false}) {
     if (_frame.isEmpty) return;
-    final McCamera home = mcCameraFraming(_frame, yawDeg: _yawDeg + 180, aspect: _aspect);
+    final McCamera home = mcFrameTexts(
+      mcCameraFraming(_frame, yawDeg: _yawDeg + 180, aspect: _heightPx > 0 ? _widthPx / _heightPx : 4 / 3),
+      _texts,
+      _frame,
+      widthPx: _widthPx,
+      heightPx: _heightPx,
+    );
     if (force || _camera == _home) _camera = home;
     _home = home;
   }
@@ -155,6 +166,10 @@ class _McStageState extends State<McStage> {
   bool _lost = false;
   List<String> _notes = const <String>[];
 
+  /// The renderer's latest notes; new ones reach [_notes] after a pause.
+  List<String> _latestNotes = const <String>[];
+  Timer? _notesPause;
+
   bool _dragging = false;
   bool _panning = false;
   int? _pointerId;
@@ -190,6 +205,7 @@ class _McStageState extends State<McStage> {
   @override
   void dispose() {
     _disposed = true;
+    _notesPause?.cancel();
     _c.removeListener(_onController);
     McAssetLoader.removeListener(_onPack);
     _resize?.disconnect();
@@ -283,7 +299,7 @@ class _McStageState extends State<McStage> {
       _widthPx = rect.width;
       _heightPx = rect.height;
     });
-    if (rect.height > 0) _c.aspect = rect.width / rect.height;
+    _c.resize(rect.width, rect.height);
     _invalidate();
   }
 
@@ -317,7 +333,16 @@ class _McStageState extends State<McStage> {
       for (final String id in renderer.failedTextures) mcTextureNote(id, fromPack: pack?.manifest.entityTextures.containsKey(id) ?? false),
       for (final MapEntry<String, String> item in renderer.undrawable.entries) mcItemNote(item.key, item.value),
     ];
-    if (notes.join('\n') != _notes.join('\n')) setState(() => _notes = notes);
+    if (notes.join('\n') == _latestNotes.join('\n')) return;
+    _latestNotes = notes;
+    _notesPause?.cancel();
+    final List<String> kept = keptNotes(_notes, notes);
+    if (kept.join('\n') != _notes.join('\n')) setState(() => _notes = kept);
+    if (kept.length < notes.length) {
+      _notesPause = Timer(typingPause, () {
+        if (!_disposed) setState(() => _notes = _latestNotes);
+      });
+    }
   }
 
   // --- input ---------------------------------------------------------------
@@ -555,7 +580,7 @@ class _McStageState extends State<McStage> {
           'data-pack': loading ? 'loading' : (McAssetLoader.failure?.name ?? (McAssetLoader.loaded == null ? 'waiting' : 'ready')),
         },
         <Widget>[
-          dom.div(id: _canvasHostId, classes: 'animus-mc-gl-host', attributes: <String, String>{'data-frames': '${_c.frames}'}, const <Widget>[]),
+          dom.div(id: _canvasHostId, classes: 'animus-mc-gl-host', attributes: <String, String>{'data-frames': '${_c.frames}', 'data-unbuilt': '${_c.unbuilt}'}, const <Widget>[]),
           dom.div(classes: 'animus-mc-text-layer', _textLayer()),
           if (component.overlay != null && _widthPx > 0 && _heightPx > 0)
             dom.div(classes: 'animus-mc-overlay', component.overlay!(_c.camera, _widthPx, _heightPx)),

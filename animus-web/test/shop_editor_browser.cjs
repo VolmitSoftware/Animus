@@ -148,8 +148,13 @@ async function run(browser, viewport, label, theme) {
   // A command offer by keyboard.
   await addByKeyboard(page, 'Command');
   const command = board.locator('.animus-shop-offer.is-open[data-id="command"]');
+  // A new command offer starts empty, so no allow-list note yet.
+  assert.equal(await command.getByLabel('Command 1', {exact: true}).inputValue(), '', 'a new command offer starts empty');
+  assert.equal(await page.getByText(/server refuses this shop/).count(), 0, 'no allow-list note before a command is written');
   await command.getByLabel('Command 1', {exact: true}).fill('give {player} diamond 1');
   await settle(page);
+  // Once written, the note names the config keys to add.
+  await command.getByText(`add "${shop.split(':')[0]}" to commandNamespaces, or "${shop}" to commandBehaviors, under [behaviors.actions]`).first().waitFor();
   await board.locator('.animus-shop-offer[data-id="command"]').waitFor();
   assert.deepEqual(await rowIds(page), ['buy', 'command', 'trade']);
   assert.deepEqual(await tradingIds(page), ['buy', 'command', 'trade']);
@@ -213,7 +218,16 @@ async function run(browser, viewport, label, theme) {
   await settings.locator('[data-user="npc:examples/greeter"]').waitFor();
   await chooseAndWait(settings.getByLabel('NPC to attach this shop to'), `npc:${baker}`);
   await settings.getByText('Replaces shop:bakery.').waitFor();
+  // Replacing another shop asks first; Escape keeps the old one.
   await settings.getByRole('button', {name: 'Attach', exact: true}).click();
+  const confirm = settings.getByRole('alertdialog', {name: /^Replace shop:bakery on /});
+  await confirm.waitFor();
+  await page.waitForFunction(() => document.activeElement && document.activeElement.closest('[role="alertdialog"]'));
+  await page.keyboard.press('Escape');
+  await confirm.waitFor({state: 'detached'});
+  assert.equal(await settings.getByRole('tab', {name: 'NPCs (2)'}).count(), 0, 'cancel keeps the old shop');
+  await settings.getByRole('button', {name: 'Attach', exact: true}).click();
+  await confirm.getByRole('button', {name: 'Replace', exact: true}).click();
   await settings.getByRole('tab', {name: 'NPCs (2)'}).waitFor();
   await check(page, `${label}-attached`);
 

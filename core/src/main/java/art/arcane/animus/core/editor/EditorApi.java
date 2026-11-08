@@ -318,6 +318,7 @@ public final class EditorApi implements EditorRequestHandler {
         response.addProperty("expiresAt", EditorMessages.instant(token.expires()));
         response.addProperty("fingerprint", parts.identity().fingerprint());
         response.addProperty("counter", token.counter());
+        token.admin().ifPresent((UUID admin) -> response.addProperty("admin", admin.toString()));
         return done(EditorResponse.json(200, response));
     }
 

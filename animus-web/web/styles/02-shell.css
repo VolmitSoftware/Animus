@@ -181,9 +181,10 @@
   color: var(--animus-muted);
 }
 
+/* Popups slide in opaque: a fade let the text beneath show through for a
+   frame, overlapping the popup's own rows. */
 @keyframes animus-pop {
   from {
-    opacity: 0;
     transform: translateY(-0.25rem);
   }
 }
@@ -539,9 +540,14 @@
   min-width: 0;
 }
 
+/* The skip link and the shortcut sheet's focus return land on these
+   regions; they are not controls, and the theme's ring on [tabindex] would
+   run down the sidebar's edge. */
 .animus-main:focus,
-.animus-home:focus {
-  outline: none;
+.animus-home:focus,
+#arcane-root main.animus-main[tabindex]:focus-visible,
+#arcane-root main.animus-home[tabindex]:focus-visible {
+  outline: none !important;
 }
 
 .animus-overview {

@@ -2,8 +2,10 @@
 // 390x844, dark and light, and checks the trait group, recording and random
 // route screens: the NPC browser's group form assigning a group to a folder
 // and undoing it in one step, unassigning by tag and by selection; an NPC's
-// Groups list and Effective part (each value with its source, a link to the
-// group that set it); the group editor (description, members, values parts);
+// Groups chips and Effective part (each value with its source, a link to the
+// group that set it), reordering by keyboard, "+ New group" from the search
+// text in one undo step; the group editor (description, member chips and
+// picker, values parts); revision read only in the header;
 // the recording view (facts, path, scrub, play, events), its details form
 // (description, tags, playback, speed), trimming the start and end on the
 // scrub, Code Apply refusing a draft that breaks a recording rule and
@@ -20,7 +22,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {sidebar, topbarAction} = require('./support/shell.cjs');
-const {choose, chooseAndWait, valueOf} = require('./support/select.cjs');
+const {choose, chooseAndWait, openDropdown, valueOf} = require('./support/select.cjs');
 
 const folder = path.resolve(__dirname, 'fixtures/groups_recordings');
 const site = process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })();
@@ -128,8 +130,12 @@ async function run(browser, viewport, theme, tag) {
   assert.equal(await source('modules.animus:look-close'), 'harbor');
   await shot(page, `${tag}-02-effective`);
   await noSidewaysScroll(page, `${tag} effective`);
-  // Moving harbor first makes town-guards win look-close.
-  await identity.getByRole('button', {name: 'Move group harbor earlier'}).click();
+  // The revision is shown, never edited.
+  assert.equal(await page.getByRole('spinbutton', {name: /revision/i}).count(), 0, 'no revision input');
+  await page.locator('.animus-document-header .animus-document-revision', {hasText: /^revision \d+$/}).waitFor();
+  // Moving harbor first (Alt+Left on its chip) makes town-guards win look-close.
+  await identity.getByRole('button', {name: 'Open group harbor'}).focus();
+  await page.keyboard.press('Alt+ArrowLeft');
   await settle(page);
   assert.equal(await source('modules.animus:look-close'), 'town-guards');
   await topbarAction(page, 'Undo');
@@ -139,17 +145,16 @@ async function run(browser, viewport, theme, tag) {
 
   // Group editor.
   const group = await part(page, 'group');
-  assert.ok(await group.locator('[data-group="members"]').getByText('town/gate-guard').count());
+  assert.ok(await group.locator('[data-group="members"] [data-member="town/gate-guard"]').count());
   await page.locator('#animus-group-description').fill('Harbor colors only');
   await settle(page);
   assert.equal((await codeOf(page)).description, 'Harbor colors only');
   // Adding a member from the group screen writes the NPC's groups; Undo takes it back.
   await choose(group.locator('#animus-group-add-member'), 'town/watchman');
-  await group.getByRole('button', {name: 'Add member'}).click();
-  await group.locator('[data-group="members"]').getByText('town/watchman').waitFor();
+  await group.locator('[data-group="members"] [data-member="town/watchman"]').waitFor();
   await topbarAction(page, 'Undo');
   await settle(page);
-  assert.equal(await group.locator('[data-group="members"]').getByText('town/watchman').count(), 0, 'Undo removes the added member');
+  assert.equal(await group.locator('[data-group="members"] [data-member="town/watchman"]').count(), 0, 'Undo removes the added member');
   await part(page, 'appearance');
   await shot(page, `${tag}-03-group`);
   await noSidewaysScroll(page, `${tag} group`);
@@ -163,6 +168,20 @@ async function run(browser, viewport, theme, tag) {
   await part(page, 'effective');
   await topbarAction(page, 'Undo');
   await settle(page);
+  // "+ New group" makes the group from the search text and lists it, one undo step.
+  const adder = await openDropdown(page.locator('#animus-npc-add-group'));
+  await page.locator('#animus-npc-add-group-search').fill('Dock crew');
+  await adder.getByText('+ New group "Dock crew"').click();
+  const made = (await part(page, 'identity')).getByRole('status').filter({hasText: 'Made group dock-crew.'});
+  await made.waitFor();
+  await made.getByRole('button', {name: 'Open dock-crew'}).waitFor();
+  await shot(page, `${tag}-03b-new-group`);
+  assert.deepEqual((await codeOf(page)).groups, ['dock-crew']);
+  assert.equal(await page.locator('#animus-sidebar').getByText('dock-crew', {exact: true}).count(), 1, 'the group document exists');
+  await topbarAction(page, 'Undo');
+  await settle(page);
+  assert.equal((await codeOf(page)).groups, undefined, 'one undo drops the list entry');
+  assert.equal(await page.locator('#animus-sidebar').getByText('dock-crew', {exact: true}).count(), 0, 'and the group');
 
   // Random route options on the watchman's inline route.
   const behaviour = await part(page, 'behaviour');

@@ -515,13 +515,16 @@ async function local(browser, viewport, tag, theme) {
 
   // Equipment and skin.
   const look = await part(inspector, 'appearance');
+  // A slot click opens its item field under the equipment grid.
+  const equipmentSlot = (key) => look.locator(`[data-slot-grid="animus-equipment"] [data-slot="${key}"]`);
+  await equipmentSlot('off_hand').scrollIntoViewIfNeeded();
+  await equipmentSlot('off_hand').click();
   const offHand = look.getByLabel('equipment.off_hand', {exact: true});
-  await offHand.scrollIntoViewIfNeeded();
   await offHand.fill('minecraft:shield');
   await offHand.blur();
   // A bare id is a minecraft item: kept as written, not flagged.
+  await equipmentSlot('head').click();
   const head = look.getByLabel('equipment.head', {exact: true});
-  await head.scrollIntoViewIfNeeded();
   await head.fill('netherite_helmet');
   await head.blur();
   await settle(page);

@@ -1,11 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:animus_editor/logic/npc/group_model.dart';
+import 'package:animus_editor/logic/npc/route_model.dart';
 import 'package:animus_editor/mc/assets/mc_display_pose.dart';
 import 'package:animus_editor/mc/npc/mc_text.dart';
 import 'package:animus_editor/mc/npc/npc_look.dart';
+import 'package:animus_editor/mc/npc/npc_playground.dart';
 import 'package:animus_editor/mc/npc/npc_scene.dart';
 import 'package:animus_editor/mc/npc/npc_skin.dart';
+import 'package:animus_editor/mc/npc/route_overlay.dart';
 import 'package:animus_editor/mc/rigs/mc_player_rig.dart';
 import 'package:animus_editor/mc/rigs/mc_rigs.dart';
 import 'package:animus_editor/mc/scene/mc_camera.dart';
@@ -335,6 +339,52 @@ void main() {
     });
   });
 
+  group('glowing', () {
+    NpcScene glowing(Map<String, Object?> extra) =>
+        npcScene(NpcLook.fromDefinition(<String, Object?>{'type': 'minecraft:player', 'name': 'Ferryman', ...extra}));
+
+    test('a glowing body is outlined in its team colour, white without one', () {
+      expect(glowing(const <String, Object?>{}).scene.glow, isNull);
+      expect(glowing(const <String, Object?>{'glowing': false, 'teamColor': 'gold'}).scene.glow, isNull);
+      final NpcScene white = glowing(const <String, Object?>{'glowing': true});
+      expect(white.scene.glow!.color, 0xFFFFFF);
+      expect(white.scene.glow!.keys, white.scene.byKey.keys.toSet());
+      expect(glowing(const <String, Object?>{'glowing': true, 'teamColor': 'gold'}).scene.glow!.color, 0xFFAA00);
+      expect(glowing(const <String, Object?>{'glowing': true, 'teamColor': 'dark_aqua'}).scene.glow!.color, 0x00AAAA);
+    });
+
+    test('glowing from a trait group reaches the effective look', () {
+      final NpcEffective effective = effectiveNpc(
+        <String, Object?>{'type': 'minecraft:player', 'name': 'Ferryman', 'groups': <Object?>['harbor-crew']},
+        <String, Map<String, Object?>>{
+          'harbor-crew': <String, Object?>{'values': <String, Object?>{'glowing': true, 'teamColor': 'aqua'}},
+        },
+      )!;
+      expect(npcScene(NpcLook.fromDefinition(effective.json)).scene.glow!.color, 0x55FFFF);
+    });
+
+    test('route markers do not glow; the playground body does', () {
+      final NpcScene body = glowing(const <String, Object?>{'glowing': true});
+      final NpcScene played = npcPlaygroundScene(
+        NpcLook.fromDefinition(const <String, Object?>{'type': 'minecraft:player', 'name': 'Ferryman', 'glowing': true}),
+        speech: 'Hi',
+      );
+      expect(played.scene.glow!.keys, body.scene.glow!.keys);
+      final NpcScene routed = withRoute(
+        body,
+        RouteSpec(const <String, Object?>{
+          'points': <Object?>[
+            <String, Object?>{'x': 3, 'y': 64, 'z': 0},
+            <String, Object?>{'x': 6, 'y': 64, 'z': 0},
+          ],
+        }),
+        (0, 64, 0),
+      );
+      expect(routed.scene.nodes.length, greaterThan(body.scene.nodes.length));
+      expect(routed.scene.glow!.keys, body.scene.glow!.keys);
+    });
+  });
+
   group('framing', () {
     /// The share of a 4:3 view the framed points span, on the tighter axis.
     double fill(NpcScene scene) {
@@ -378,6 +428,31 @@ void main() {
       expect(top(giant) - giant.texts.single.lines.length * 0.25, closeTo(body + 1.8, 1e-9));
       final McRigNode drawn = byKey(giant)['body']! as McRigNode;
       expect(drawn.transform, isNot(equals((byKey(normal)['body']! as McRigNode).transform)));
+    });
+
+    test('a name drawn larger than its quarter block still clears the top of a small stage', () {
+      const double w = 200, h = 150;
+      final NpcScene giant = npcScene(NpcLook.fromDefinition(<String, Object?>{
+        'type': 'minecraft:player',
+        'name': 'Baker',
+        'attributes': <String, Object?>{'scale': 16},
+      }));
+      final NpcText plate = giant.texts.single;
+      double plateTop(McCamera camera) {
+        final McVec3 at = mcProjectToPixels(camera, plate.anchor, widthPx: w, heightPx: h)!;
+        return at.y - plate.lines.length * 1.25 * mcTextFontPx(h, at.z);
+      }
+
+      const double margin = h * (1 - mcFramingFill) / 2 - 1;
+      final McCamera home = mcCameraFraming(giant.scene.frame, yawDeg: 180, aspect: w / h);
+      expect(plateTop(home), lessThan(margin / 2), reason: 'the minimum font size pushes the name to the top edge');
+      final McCamera fitted = mcFrameTexts(home, giant.texts, giant.scene.frame, widthPx: w, heightPx: h);
+      expect(plateTop(fitted), greaterThanOrEqualTo(margin));
+      expect(fitted.pivot, home.pivot);
+      // A name drawn at its world size is framed already.
+      final NpcScene hero = sceneOf('npcs/players/hero.json');
+      final McCamera heroHome = mcCameraFraming(hero.scene.frame, yawDeg: 180, aspect: 800 / 600);
+      expect(mcFrameTexts(heroHome, hero.texts, hero.scene.frame, widthPx: 800, heightPx: 600), heroHome);
     });
 
     test('every body fills the view about as much as the player does', () {

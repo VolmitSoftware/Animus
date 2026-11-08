@@ -1,8 +1,8 @@
 /// Built-in placeholder skins: original 64x64 PNGs under
 /// `web/assets/skins/placeholder/` (drawn by
 /// `tool/generate_placeholder_skins.dart`), worn by the browser preview when
-/// an NPC has no skin texture here. They are never written to a definition or
-/// sent to a server.
+/// an NPC has no skin texture here. The skin picker also offers them as
+/// built-in skins: picking one makes a skin document from its PNG.
 library;
 
 import 'dart:convert';
@@ -120,14 +120,6 @@ PlaceholderLook defaultPlaceholderLook(String npcId) {
     hash = (hash * 0x193 + ((hash & 0xff) << 24)) & 0xffffffff;
   }
   return placeholderLooks[hash % placeholderLooks.length];
-}
-
-/// The look with [id], or null when there is none.
-PlaceholderLook? placeholderLookById(String? id) {
-  for (final PlaceholderLook look in placeholderLooks) {
-    if (look.id == id) return look;
-  }
-  return null;
 }
 
 /// The PNG of [look] in the arm model the stage draws.

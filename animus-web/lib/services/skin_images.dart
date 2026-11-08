@@ -35,16 +35,10 @@ final class SkinImages {
 
   static LoadedSkin? forKey(String key) => _loaded[key];
 
-  /// Placeholder looks picked this page session, by NPC document id.
-  static final Map<String, String> _placeholders = <String, String>{};
-
-  /// The placeholder look [npcId] wears when it has no skin texture here:
-  /// the one picked this session, else [defaultPlaceholderLook].
-  static PlaceholderLook placeholderLook(String npcId) => placeholderLookById(_placeholders[npcId]) ?? defaultPlaceholderLook(npcId);
+  /// The placeholder look [npcId] wears when it has no skin texture here.
+  static PlaceholderLook placeholderLook(String npcId) => defaultPlaceholderLook(npcId);
 
   static PlaceholderSkin placeholderFor(String npcId, {required bool slim}) => placeholderSkinFor(placeholderLook(npcId), slim: slim);
-
-  static void choosePlaceholder(String npcId, PlaceholderLook look) => _placeholders[npcId] = look.id;
 
   /// The skin under [key], registering [png] (a 64x64 PNG the workspace
   /// keeps, see `skinImagePath`) the first time it is asked for.

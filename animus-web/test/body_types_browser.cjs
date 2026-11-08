@@ -90,8 +90,8 @@ async function offline(browser, viewport, label, dark) {
   assert.equal(await body.locator('button#animus-npc-pose').count(), 0, `${label}: no pose row on a horse`);
   const appearance = await openSection(page, 'appearance');
   await appearance.getByText('Only player bodies wear skins.').waitFor();
-  assert.equal(await page.getByRole('radiogroup', {name: 'Placeholder skins'}).count(), 0, `${label}: no skin picker on a horse`);
-  assert.equal(await appearance.locator('.animus-equipment-slot .animus-gui-problem.is-warning').count(), 6, `${label}: the six player slots warn`);
+  assert.equal(await page.getByRole('group', {name: 'Built-in skins'}).count(), 0, `${label}: no skin picker on a horse`);
+  assert.equal(await appearance.locator('[data-slot-grid="animus-equipment"] .is-warning, [data-slot-grid="animus-equipment"] .is-error').count(), 6, `${label}: the six player slots warn`);
   await left.getByRole('button', {name: 'Remove pose'}).click();
   await left.waitFor({state: 'detached'});
   const converted = await draft(page);

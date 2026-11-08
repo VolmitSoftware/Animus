@@ -70,5 +70,8 @@ NpcScene npcPlaygroundScene(
     // The camera frames the speech too, so a long body never pushes it off.
     frame.add(anchor + const McVec3(0, 0.3, 0));
   }
-  return NpcScene(scene: McScene(nodes, frame: frame), texts: texts, notes: notes, presentable: body.presentable);
+  // A glowing body glows with the rig it shows or wears.
+  final McGlow? bodyGlow = body.scene.glow;
+  final McGlow? glow = bodyGlow == null ? null : McGlow(bodyGlow.color, <String>{for (final McSceneNode node in nodes) node.key});
+  return NpcScene(scene: McScene(nodes, frame: frame, glow: glow), texts: texts, notes: notes, presentable: body.presentable);
 }

@@ -16,6 +16,7 @@ import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../conversation/conversation_attach.dart' show ConversationCommit;
 import '../gui/gui_fields.dart';
+import 'chip_row.dart';
 import 'npc_section.dart';
 
 /// Members listed before the rest fold into a count.
@@ -67,21 +68,22 @@ class GroupPart extends StatefulWidget {
 }
 
 class _GroupPartState extends State<GroupPart> {
-  String? _adding;
   bool _busy = false;
 
-  Future<void> _add(String key) async {
+  /// Adds or removes member [key] in one undoable change.
+  Future<void> _member(String key, {required bool assign}) async {
     final ConversationCommit? commit = component.onCommit;
     if (commit == null) return;
-    final NpcBulkResult result = addGroupMember(component.entries, component.groups, component.id, key);
+    final NpcBulkResult result = assign
+        ? addGroupMember(component.entries, component.groups, component.id, key)
+        : removeGroupMember(component.entries, component.groups, component.id, key);
     if (result.changes.isEmpty) {
-      ArcaneSonner.warning(describeGroupChange(component.id, result, assign: true));
+      ArcaneSonner.warning(describeGroupChange(component.id, result, assign: assign));
       return;
     }
     setState(() => _busy = true);
     try {
-      await commit(result.changes, 'assign group ${component.id}');
-      if (mounted) setState(() => _adding = null);
+      await commit(result.changes, '${assign ? 'assign' : 'unassign'} group ${component.id}');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -93,8 +95,8 @@ class _GroupPartState extends State<GroupPart> {
     final String description = asString(component.file['description']) ?? '';
     final List<NpcEntry> members = groupMembers(component.entries, id);
     final List<NpcEntry> candidates = groupCandidates(component.entries, id);
-    final String? adding = _adding != null && candidates.any((NpcEntry entry) => entry.key == _adding) ? _adding : null;
-    final bool picker = component.onCommit != null && candidates.isNotEmpty;
+    final bool editable = component.onCommit != null;
+    final List<NpcEntry> shown = members.take(_shownMembers).toList();
     const String descriptionId = 'animus-group-description';
     const String addId = 'animus-group-add-member';
     return NpcSection(
@@ -126,48 +128,41 @@ class _GroupPartState extends State<GroupPart> {
         ),
         GuiRow(
           label: 'Members',
-          forId: picker ? addId : null,
-          tip: 'NPCs whose groups list this one. Adding a member appends the group to that NPC, as /animus groups assign does.',
-          help: picker ? 'Or assign in bulk from Browse NPCs.' : 'Assign in bulk from Browse NPCs.',
-          child: dom.div(classes: 'animus-group-members-edit', <Widget>[
-            if (members.isEmpty)
-              dom.p(classes: 'animus-muted', <Widget>[
-                Component.text(picker ? 'No members yet. Pick an NPC below and press Add member.' : 'No members yet.'),
-              ])
-            else
-              dom.ul(classes: 'animus-group-members', attributes: const <String, String>{'data-group': 'members'}, <Widget>[
-                for (final NpcEntry entry in members.take(_shownMembers))
-                  dom.li(<Widget>[
-                    if (component.onOpen != null)
-                      Button.ghost(
-                        label: entry.name,
-                        size: ButtonSize.small,
-                        attributes: <String, String>{'aria-label': 'Open NPC ${entry.key}'},
-                        onPressed: () => component.onOpen!(DocumentKind.npc, entry.key),
-                      )
-                    else
-                      dom.span(<Widget>[Component.text(entry.name)]),
-                    dom.code(classes: 'animus-muted', <Widget>[Component.text(entry.key)]),
-                  ]),
-                if (members.length > _shownMembers) dom.li(classes: 'animus-muted', <Widget>[Component.text('and ${members.length - _shownMembers} more')]),
-              ]),
-            if (picker)
-              dom.div(classes: 'animus-gui-line', attributes: const <String, String>{'data-group': 'add-member'}, <Widget>[
-                GuiSelect(
-                  id: addId,
-                  value: adding,
-                  options: <String>[for (final NpcEntry entry in candidates) entry.key],
-                  labels: <String, String>{for (final NpcEntry entry in candidates) entry.key: '${guiPlainText(entry.name)} (${entry.key})'},
-                  noneLabel: 'Pick an NPC',
-                  onChanged: (String? key) => setState(() => _adding = key),
-                ),
-                Button.secondary(
-                  label: 'Add member',
-                  size: ButtonSize.small,
-                  disabled: _busy || adding == null,
-                  onPressed: () => _add(adding!),
-                ),
-              ]),
+          forId: editable ? addId : null,
+          tip: 'NPCs whose groups list this one. Adding a member appends the group to that NPC, as /animus groups assign does. Assign in bulk from Browse NPCs.',
+          child: dom.div(classes: 'animus-chip-line', attributes: const <String, String>{'data-group': 'members'}, <Widget>[
+            if (shown.isNotEmpty)
+              ChipRow(
+                noun: 'member',
+                attribute: 'member',
+                items: <ChipItem>[
+                  for (final NpcEntry entry in shown)
+                    ChipItem(
+                      entry.key,
+                      label: guiPlainText(entry.name),
+                      onOpen: component.onOpen == null ? null : () => component.onOpen!(DocumentKind.npc, entry.key),
+                    ),
+                ],
+                onRemove: editable
+                    ? (int index) {
+                        if (!_busy) _member(shown[index].key, assign: false);
+                      }
+                    : null,
+              ),
+            if (members.length > _shownMembers) dom.span(classes: 'animus-muted', <Widget>[Component.text('and ${members.length - _shownMembers} more')]),
+            if (editable)
+              GuiSelect(
+                id: addId,
+                value: null,
+                options: <String>[for (final NpcEntry entry in candidates) entry.key],
+                labels: <String, String>{for (final NpcEntry entry in candidates) entry.key: '${guiPlainText(entry.name)} (${entry.key})'},
+                noneLabel: 'Add member',
+                hiddenLabel: 'Add a member NPC',
+                inactive: _busy,
+                onChanged: (String? key) {
+                  if (key != null) _member(key, assign: true);
+                },
+              ),
           ]),
         ),
         component.tags,

@@ -634,6 +634,7 @@ class _EditorShellState extends State<EditorShell> {
             folder: route.folder,
             name: route.name,
             conversation: route.conversation,
+            owner: session?.connection.token?.admin,
             onNavigate: component.onNavigate,
           )
         else if (route is SyncRoute && workspace.server == null)

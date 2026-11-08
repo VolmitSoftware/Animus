@@ -330,7 +330,9 @@ NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
     if (text.anchor.y > bodyTop + mcFramedTextGap) continue;
     frame.add(text.anchor + McVec3(0, text.lines.length * 0.25, 0));
   }
-  return NpcScene(scene: McScene(nodes, frame: frame), texts: texts, notes: notes, presentable: true);
+  final int? glowColor = look.glowColor;
+  final McGlow? glow = glowColor == null ? null : McGlow(glowColor, <String>{for (final McSceneNode node in nodes) node.key});
+  return NpcScene(scene: McScene(nodes, frame: frame, glow: glow), texts: texts, notes: notes, presentable: true);
 }
 
 List<McSceneNode> _armorLayers(NpcLook look, McArmorPiece armor, NpcItem item, McRigPose pose, McMat4 root, {required bool small}) {
@@ -404,4 +406,34 @@ List<McVec3> _framePoints(McMesh mesh, McMat4 transform) {
     points.add(transform.transformPoint(McVec3(mesh.positions[v * 3], mesh.positions[v * 3 + 1], mesh.positions[v * 3 + 2])));
   }
   return points.toList();
+}
+
+/// [home] moved back until every framed text block (its top is one of the
+/// [frame] points) clears the top of a [widthPx] x [heightPx] view by the
+/// framing margin at the size the stage draws it. [mcTextFontPx] never goes
+/// below [mcTextMinFontPx], so over a large body a name is taller than the
+/// quarter block a line takes in the world, and the points alone let it run
+/// off the top.
+McCamera mcFrameTexts(McCamera home, List<NpcText> texts, List<McVec3> frame, {required double widthPx, required double heightPx}) {
+  if (widthPx <= 0 || heightPx <= 0) return home;
+  // One pixel of slack: a name at its world size sits on the margin already.
+  final double margin = heightPx * (1 - mcFramingFill) / 2 - 1;
+  final List<NpcText> framed = <NpcText>[
+    for (final NpcText text in texts)
+      if (frame.contains(text.anchor + McVec3(0, text.lines.length * 0.25, 0))) text,
+  ];
+  bool clear(McCamera camera) {
+    for (final NpcText text in framed) {
+      final McVec3? at = mcProjectToPixels(camera, text.anchor, widthPx: widthPx, heightPx: heightPx);
+      if (at == null) continue;
+      if (at.y - text.lines.length * 1.25 * mcTextFontPx(heightPx, at.z) * text.scaleY < margin) return false;
+    }
+    return true;
+  }
+
+  McCamera camera = home;
+  for (int step = 0; step < 32 && !clear(camera); step++) {
+    camera = camera.copyWith(distance: camera.distance * 1.08).clamped();
+  }
+  return camera;
 }

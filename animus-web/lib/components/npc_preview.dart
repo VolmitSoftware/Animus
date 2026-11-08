@@ -22,7 +22,6 @@ import '../mc/npc/npc_look.dart';
 import '../mc/npc/npc_playground.dart';
 import '../mc/npc/npc_scene.dart';
 import '../mc/npc/npc_skin.dart';
-import '../mc/npc/npc_skin_failure.dart';
 import '../mc/npc/route_overlay.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
@@ -69,10 +68,7 @@ class NpcPreview extends StatefulWidget {
 class _NpcPreviewState extends State<NpcPreview> {
   final McStageController _stage = McStageController();
   final Map<String, (Uint8List, String)> _textures = <String, (Uint8List, String)>{};
-  bool? _slim;
   String? _awaitingSkin;
-  String _url = '';
-  bool _loading = false;
   String? _shown;
   NpcScene? _scene;
   bool _showRoute = true;
@@ -81,7 +77,6 @@ class _NpcPreviewState extends State<NpcPreview> {
   bool _playing = false;
   double? _lastFrame;
   bool _backToIdle = false;
-  String? _skinProblem;
 
   NpcLook get _look {
     final Object? json = component.document.json;
@@ -92,7 +87,9 @@ class _NpcPreviewState extends State<NpcPreview> {
 
   String _skinKey(NpcLook look) => look.skin ?? 'npc:${component.document.id}';
 
-  bool _slimFor(NpcLook look) => _slim ?? _skinInfo?.slim ?? false;
+  /// The arm model is the skin document's; the inspector's Arms switch
+  /// changes it.
+  bool get _slim => _skinInfo?.slim ?? false;
 
   /// A PNG loaded this session, or the one a local skin keeps in the
   /// workspace.
@@ -100,7 +97,7 @@ class _NpcPreviewState extends State<NpcPreview> {
       SkinImages.forKeyOrWorkspace(_skinKey(look), look.skin == null ? null : component.resources[skinImagePath(look.skin!)]);
 
   NpcSkinChoice _skinFor(NpcLook look) {
-    final bool slim = _slimFor(look);
+    final bool slim = _slim;
     final LoadedSkin? loaded = _loaded(look);
     if (loaded != null) return NpcSkinChoice(textureId: loaded.textureId, slim: slim);
     return NpcSkinChoice(textureId: SkinImages.placeholderFor(component.document.id, slim: slim).textureId, slim: slim);
@@ -248,25 +245,6 @@ class _NpcPreviewState extends State<NpcPreview> {
     );
   }
 
-  Future<void> _load(Future<LoadedSkin?> Function(String key) load) async {
-    setState(() => _loading = true);
-    try {
-      final LoadedSkin? skin = await load(_skinKey(_look));
-      if (skin != null) {
-        _skinProblem = null;
-        ArcaneSonner.success('Skin loaded from ${skin.source}.');
-      }
-    } on Object catch (failure) {
-      _skinProblem = skinFailureText(failure);
-      ArcaneSonner.error(_skinProblem!);
-    } finally {
-      if (mounted) {
-        setState(() => _loading = false);
-        _sync();
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final NpcLook look = _look;
@@ -274,7 +252,7 @@ class _NpcPreviewState extends State<NpcPreview> {
     final bool player = look.isPlayer;
     final NpcSkinInfo? info = _skinInfo;
     final LoadedSkin? loaded = _loaded(look);
-    final bool slim = _slimFor(look);
+    final bool slim = _slim;
     return dom.section(classes: 'animus-panel animus-npc-preview', <Widget>[
       const dom.p(classes: 'animus-preview-label', <Widget>[
         Component.text('Browser preview'),
@@ -321,50 +299,6 @@ class _NpcPreviewState extends State<NpcPreview> {
             onPressed: _play,
           ),
         ],
-        if (player) ...<Widget>[
-          Button.secondary(
-            label: 'Load skin PNG',
-            size: ButtonSize.small,
-            disabled: _loading,
-            onPressed: () => _load(SkinImages.pickFile),
-          ),
-          dom.div(classes: 'animus-npc-skin-url', <Widget>[
-            TextInput(
-              placeholder: 'Skin PNG URL',
-              value: _url,
-              attributes: const <String, String>{'aria-label': 'Skin PNG URL'},
-              onChanged: (String value) => setState(() => _url = value),
-            ),
-            Button.ghost(
-              label: 'Load',
-              size: ButtonSize.small,
-              disabled: _loading || _url.trim().isEmpty,
-              onPressed: () => _load((String key) => SkinImages.fetchUrl(key, _url)),
-            ),
-          ]),
-          dom.div(classes: 'animus-segmented', attributes: const <String, String>{'role': 'group', 'aria-label': 'Arm model'}, <Widget>[
-            Button(
-              label: 'Classic',
-              size: ButtonSize.small,
-              variant: ButtonVariant.ghost,
-              attributes: <String, String>{'aria-pressed': '${!slim}'},
-              onPressed: () {
-                setState(() => _slim = false);
-                _sync();
-              },
-            ),
-            Button(
-              label: 'Slim',
-              size: ButtonSize.small,
-              variant: ButtonVariant.ghost,
-              attributes: <String, String>{'aria-pressed': '$slim'},
-              onPressed: () {
-                setState(() => _slim = true);
-                _sync();
-              },
-            ),
-          ]),
-        ],
       ]),
       McStage(controller: _stage, label: 'Preview of ${component.document.title}'),
       dom.dl(classes: 'animus-npc-facts', <Widget>[
@@ -377,7 +311,7 @@ class _NpcPreviewState extends State<NpcPreview> {
           const dom.dt(<Widget>[Component.text('Skin')]),
           dom.dd(attributes: const <String, String>{'data-testid': 'npc-skin-state'}, <Widget>[
             Component.text(_skinText(look, info, loaded, slim)),
-            if (loaded == null && look.skin != null && SkinImages.textures.stateOf(look.skin!)?.status == SkinTextureStatus.failed)
+            if (loaded == null && look.skin != null && info?.textureUrl != null && SkinImages.textures.stateOf(look.skin!)?.status == SkinTextureStatus.failed)
               Button.ghost(label: 'Retry texture', size: ButtonSize.small, onPressed: () => _fetchSkin(look, retry: true)),
           ]),
         ],
@@ -390,9 +324,8 @@ class _NpcPreviewState extends State<NpcPreview> {
         ),
         ..._fact('Text', look.textLines.isEmpty ? (look.nativeName ? 'nameplate only' : 'none') : '${look.textLines.length} line${look.textLines.length == 1 ? '' : 's'}'),
       ]),
-      if (scene.notes.isNotEmpty || _skinProblem != null)
+      if (scene.notes.isNotEmpty)
         dom.ul(classes: 'animus-npc-notes', <Widget>[
-          if (_skinProblem != null) dom.li(<Widget>[Component.text(_skinProblem!)]),
           for (final String note in scene.notes) dom.li(<Widget>[Component.text(note)]),
         ]),
     ]);
@@ -404,7 +337,9 @@ class _NpcPreviewState extends State<NpcPreview> {
     final String placeholder = 'placeholder ${SkinImages.placeholderLook(component.document.id).label} skin ($model)';
     if (look.skin == null) return 'none; preview shows the $placeholder';
     if (info == null) return 'skins/${look.skin}.json not in this workspace; showing the $placeholder';
-    final String signed = 'signed skin ${look.skin!.substring(0, look.skin!.length.clamp(0, 12))} ($model)';
+    final String short = look.skin!.substring(0, look.skin!.length.clamp(0, 12));
+    if (info.textureUrl == null) return 'skin $short has no PNG in this workspace; showing the $placeholder. Load its PNG under Appearance';
+    final String signed = '${info.signed ? 'signed ' : ''}skin ${look.skin!.substring(0, look.skin!.length.clamp(0, 12))} ($model)';
     final SkinTextureState? state = SkinImages.textures.stateOf(look.skin!);
     if (state?.status == SkinTextureStatus.failed) return '$signed; texture not loaded: ${state!.message}. Showing the $placeholder';
     return '$signed; loading texture';

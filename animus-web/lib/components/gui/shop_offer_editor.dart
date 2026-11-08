@@ -356,7 +356,7 @@ class ShopOfferEditor extends StatelessWidget {
               value: asString(asMap(commands[index])['command']) ?? '',
               label: 'Command ${index + 1}',
               profile: shopCommandProfile,
-              placeholder: 'no leading slash',
+              placeholder: 'give {player} diamond 1',
               onChanged: (String v) => onWrite(<JsonStep>[..._steps, 'commands', index, 'command'], v, coalesce: '${offer.ref.key}.commands.$index'),
             ),
             GuiSelect(
@@ -378,7 +378,7 @@ class ShopOfferEditor extends StatelessWidget {
           label: '+ Add command',
           size: ButtonSize.small,
           disabled: commands.length >= 16,
-          onPressed: () => _set('commands', <Object?>[...commands, <String, Object?>{'command': 'say {player} bought this', 'as': 'console'}]),
+          onPressed: () => _set('commands', <Object?>[...commands, <String, Object?>{'command': '', 'as': 'console'}]),
         ),
       ],
     );

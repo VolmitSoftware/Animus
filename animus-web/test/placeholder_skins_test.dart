@@ -70,10 +70,4 @@ void main() {
       expect(seen, hasLength(placeholderLooks.length));
     });
   });
-
-  test('placeholderLookById should find a look or answer null', () {
-    expect(placeholderLookById('miner')?.label, 'Miner');
-    expect(placeholderLookById('nobody'), isNull);
-    expect(placeholderLookById(null), isNull);
-  });
 }

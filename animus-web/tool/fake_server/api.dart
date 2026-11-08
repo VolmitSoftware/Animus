@@ -294,6 +294,7 @@ class FakeApi {
       'expiresAt': instant(token.expires),
       'fingerprint': identity.fingerprint,
       'counter': token.counter,
+      'admin': settings.viewer,
     });
   }
 

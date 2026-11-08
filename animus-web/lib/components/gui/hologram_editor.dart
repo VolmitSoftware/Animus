@@ -354,7 +354,6 @@ class _HologramEditorState extends State<HologramEditor> {
           onChanged: (String v) => _write(<JsonStep>['show'], v.trim().isEmpty ? null : (v.trim() == 'false' ? false : v)),
         ),
       ),
-      _number('Revision', r'$.revision', asInt(doc['revision']), (num? v) => _write(<JsonStep>['revision'], v)),
     ];
   }
 

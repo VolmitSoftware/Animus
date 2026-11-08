@@ -45,6 +45,18 @@ class AdministrationTest {
             assertEquals("Town Guard", runtime.npcs().find("guard").orElseThrow().name());
         }
     }
+    @Test void aPlayerCreatedNpcIsOwnedByThatPlayer() throws Exception {
+        try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            java.util.UUID player = java.util.UUID.fromString("0000000a-0000-4000-8000-0000000000b2");
+            List.of(admin.create("smith", "minecraft:player", "world", 1, 64, 2, "", "Smith", Optional.of(player)));
+            assertEquals(Optional.of(player), runtime.npcs().find("smith").orElseThrow().owner());
+            List.of(admin.create("console", "minecraft:player", "world", 1, 64, 2, "", "Console"));
+            assertEquals(Optional.empty(), runtime.npcs().find("console").orElseThrow().owner(), "the console leaves the owner unset");
+            List.of(admin.edit("smith", "{\"owner\":null}"));
+            assertEquals(Optional.empty(), runtime.npcs().find("smith").orElseThrow().owner(), "the owner stays editable");
+        }
+    }
     @Test void anEditTurnsAPlayerIntoAHorseByDroppingItsSkinAndPose() throws Exception {
         RuntimeEnvironment environment = new RuntimeEnvironment(Platform.BUKKIT, "26.3", root);
         try (AnimusRuntime runtime = new AnimusRuntime(environment)) {

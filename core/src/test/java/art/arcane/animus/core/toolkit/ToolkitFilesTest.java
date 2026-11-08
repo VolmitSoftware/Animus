@@ -54,6 +54,13 @@ class ToolkitFilesTest {
 
     static String tx(String line) { return line.substring(line.lastIndexOf(' ') + 1); }
 
+    @Test void createdNpcsAreOwnedByTheirMaker() throws IOException {
+        java.util.UUID player = java.util.UUID.fromString("0000000a-0000-4000-8000-0000000000c3");
+        String line = files.create("smith", "minecraft:player", "world", new art.arcane.animus.core.virtual.Vec3(1, 64, 2), 90, player);
+        assertTrue(line.startsWith("Created dormant smith"), line);
+        assertEquals(java.util.Optional.of(player), npcs.find("smith").orElseThrow().owner());
+    }
+
     @Test void assignAndUnassignWriteOneTransaction() throws IOException {
         String assigned = files.groups("watch", List.of("guard", "baker", "cow"), true);
         assertTrue(assigned.startsWith("Assigned watch to 2 NPCs, 1 unchanged; tx "), assigned);

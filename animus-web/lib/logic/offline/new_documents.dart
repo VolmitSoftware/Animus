@@ -21,6 +21,7 @@ import '../rig_sampler.dart' show TrackTarget;
 /// Kinds a workspace can create, in the order the New page lists them.
 const List<DocumentKind> creatableKinds = <DocumentKind>[
   DocumentKind.npc,
+  DocumentKind.group,
   DocumentKind.behavior,
   DocumentKind.pack,
   DocumentKind.route,
@@ -131,6 +132,7 @@ class NpcSeed {
     this.z = 0.5,
     this.yaw = 0,
     this.behaviors = const <String>[],
+    this.owner,
   });
 
   final String name;
@@ -148,6 +150,9 @@ class NpcSeed {
   final double z;
   final double yaw;
   final List<String> behaviors;
+
+  /// The UUID of the player creating it, when the workspace is paired.
+  final String? owner;
 
   String get documentId => npcIdIn(npcFolderSlug(group), id ?? slug(name));
 }
@@ -180,6 +185,7 @@ JsonMap newNpc(NpcSeed seed, {required String uuid}) {
     },
     if (seed.skin != null && seed.type == 'minecraft:player') 'skin': seed.skin,
     if (seed.behaviors.isNotEmpty) 'behaviors': seed.behaviors,
+    'owner': ?seed.owner,
   };
 }
 
@@ -517,7 +523,8 @@ JsonMap newRigAnimation(String id, String rigId, JsonMap rig, {AnimationStarter 
 /// different PNGs never share a document. Its id is the SHA-256 of the file
 /// text, as the server checks. Without a Mojang URL and a signature a server
 /// shows the default skin; the editor's preview wears the PNG.
-({String id, String source}) newSkin({required bool slim, String? url, List<int>? image}) {
+/// [label] names it in lists, as the toolkit's skin labels do.
+({String id, String source}) newSkin({required bool slim, String? url, List<int>? image, String? label}) {
   final Map<String, Object?> skin = <String, Object?>{
     'url': ?url,
     if (slim) 'metadata': <String, Object?>{'model': 'slim'},
@@ -527,7 +534,7 @@ JsonMap newRigAnimation(String id, String rigId, JsonMap rig, {AnimationStarter 
     if (image != null) 'profileName': 'animus-editor',
     'textures': <String, Object?>{'SKIN': skin},
   })));
-  final String source = prettyJson(<String, Object?>{'textureRaw': raw, 'signature': null});
+  final String source = prettyJson(<String, Object?>{'textureRaw': raw, 'signature': null, 'label': ?label});
   return (id: sha256.convert(utf8.encode(source)).toString(), source: source);
 }
 

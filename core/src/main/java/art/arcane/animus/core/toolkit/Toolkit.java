@@ -412,7 +412,7 @@ public final class Toolkit<P, S> implements AutoCloseable {
         String world = worldName(pose.get());
         Vec3 at = new Vec3(pose.get().x(), pose.get().y(), pose.get().z());
         float yaw = pose.get().yaw();
-        later(viewer, (ToolkitFiles files) -> files.create(id, type, world, at, yaw), (String line) -> {
+        later(viewer, (ToolkitFiles files) -> files.create(id, type, world, at, yaw, viewer.id()), (String line) -> {
             living().refresh();
             only(player, id);
             say(player, ChatLine.parse(Palette.success(line)));

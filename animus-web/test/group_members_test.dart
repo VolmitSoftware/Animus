@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:animus_editor/logic/data_folder.dart';
 import 'package:animus_editor/logic/gui/gui_json.dart';
 import 'package:animus_editor/logic/npc/group_members.dart';
+import 'package:animus_editor/logic/npc/group_model.dart';
 import 'package:animus_editor/logic/npc/npc_catalog.dart';
 import 'package:animus_editor/logic/shared_schemas.dart';
 import 'package:animus_editor/model/animus_document.dart';
@@ -54,5 +56,13 @@ void main() {
     expect(changes.single.id, 'town/watchman');
     expect(changes.single.source, contains('"harbor"'));
     expect(addGroupMember(entries, groups, 'harbor', 'harbor/porter').changes, isEmpty, reason: 'already a member');
+  });
+
+  test('should drop the group from a removed member in one change', () {
+    final Map<String, JsonMap> groups = <String, JsonMap>{'harbor': <String, Object?>{}, 'town-guards': <String, Object?>{}};
+    final List<DocumentChange> changes = removeGroupMember(entries, groups, 'harbor', 'harbor/porter').changes;
+    expect(changes.single.id, 'harbor/porter');
+    expect(jsonStrings(asMap(jsonDecode(changes.single.source!))['groups']), isNot(contains('harbor')));
+    expect(removeGroupMember(entries, groups, 'harbor', 'town/watchman').changes, isEmpty, reason: 'not a member');
   });
 }

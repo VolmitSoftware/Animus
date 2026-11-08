@@ -358,8 +358,6 @@ class _InventoryEditorState extends State<InventoryEditor> {
               onChanged: (String v) => setSelect('when', conditionValue(v)),
             )),
       ]),
-      guiFieldRow('Revision', r'$.revision', d,
-          (String id) => GuiNumberInput(id: id, value: asInt(doc['revision']), label: 'Revision', onChanged: (num? v) => _write(<JsonStep>['revision'], v))),
     ]);
   }
 

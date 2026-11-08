@@ -50,6 +50,7 @@ void main() {
         'scopes': <Object?>['read', 'validate'],
         'expiresAt': '2026-11-11T12:00:00Z',
         'fingerprint': fixtureFingerprint,
+        'admin': '0000000a-0000-4000-8000-0000000000b2',
       });
     }));
     network.down.add(ConnectionPath.direct);
@@ -58,6 +59,8 @@ void main() {
     expect(path, ConnectionPath.relay);
     expect(token.tokenId, 'tok_0001AbCd');
     expect(token.has('validate'), isTrue);
+    expect(token.admin, '0000000a-0000-4000-8000-0000000000b2', reason: 'the pairing player owns NPCs made here');
+    expect(ServerToken.fromJson(token.toJson())!.admin, token.admin, reason: 'kept with the stored token');
     expect(network.sent.last.$2.body, containsPair('secret', payload.secret));
   });
 

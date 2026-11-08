@@ -177,6 +177,23 @@ void Function() onKeyDown(void Function(web.KeyboardEvent event) handler) {
   return () => web.window.removeEventListener('keydown', callback);
 }
 
+/// Lets the mouse wheel scroll the page over a focused number box. Chrome
+/// otherwise steps the value on every wheel tick and keeps the page still,
+/// so scrolling past a field changed it (Yaw counted down from 90 to 30).
+/// The box gives up focus first; the wheel then scrolls as anywhere else.
+void releaseNumberBoxesOnWheel() {
+  web.document.addEventListener(
+    'wheel',
+    ((web.Event event) {
+      final web.EventTarget? target = event.target;
+      if (target == null || !target.isA<web.HTMLInputElement>()) return;
+      final web.HTMLInputElement input = target as web.HTMLInputElement;
+      if (input.type == 'number' && identical(web.document.activeElement, input)) input.blur();
+    }).toJS,
+    web.AddEventListenerOptions(capture: true, passive: true),
+  );
+}
+
 /// True when [target] takes typing (a text box, text area, select or
 /// editable element), where page shortcuts leave keys alone.
 bool isTypingTarget(web.EventTarget? target) {

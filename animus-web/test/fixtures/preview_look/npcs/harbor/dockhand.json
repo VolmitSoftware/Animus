@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "6e2c8d41-3b9a-4f07-a1d5-7c4e0b9f2a68",
+  "id": "dockhand",
+  "group": "harbor",
+  "name": "Dockhand",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {"world": "world", "x": 2.5, "y": 64, "z": 0.5, "yaw": 0, "pitch": 0}
+}

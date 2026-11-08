@@ -11,9 +11,11 @@ import 'package:web/web.dart' as web;
 
 import '../../logic/help_text.dart';
 import '../info_tip.dart';
+import '../typing_pause.dart';
 
-/// A visible label around one control, with a help line and a problem.
-class FieldRow extends StatelessWidget {
+/// A visible label around one control, with a help line and a problem. The
+/// problem waits while the control is being typed in ([TypingPause]).
+class FieldRow extends StatefulWidget {
   const FieldRow({required this.label, required this.child, this.help, this.error, super.key});
 
   final String label;
@@ -22,17 +24,23 @@ class FieldRow extends StatelessWidget {
   final String? error;
 
   @override
+  State<FieldRow> createState() => _FieldRowState();
+}
+
+class _FieldRowState extends State<FieldRow> with TypingPause<FieldRow> {
+  @override
   Widget build(BuildContext context) {
-    final ({String? hint, String? tip}) split = splitHelp(help);
-    return dom.div(classes: 'animus-field${error == null ? '' : ' has-error'}', <Widget>[
+    final ({String? hint, String? tip}) split = splitHelp(component.help);
+    final String? error = typing ? null : component.error;
+    return dom.div(classes: 'animus-field${error == null ? '' : ' has-error'}', events: typingEvents, <Widget>[
         // Only the label text names the control; help and problems sit
         // outside the label so they do not join its accessible name.
         dom.label(classes: 'animus-field-control', <Widget>[
-          dom.span(classes: 'animus-field-label', <Widget>[withTip(Component.text(label), split.tip)]),
-          child,
+          dom.span(classes: 'animus-field-label', <Widget>[withTip(Component.text(component.label), split.tip)]),
+          component.child,
         ]),
         if (split.hint != null) dom.span(classes: 'animus-field-help', <Widget>[Component.text(split.hint!)]),
-        if (error != null) dom.span(classes: 'animus-field-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(error!)]),
+        if (error != null) dom.span(classes: 'animus-field-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(error)]),
       ]);
   }
 }

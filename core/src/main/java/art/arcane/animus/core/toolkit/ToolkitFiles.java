@@ -170,9 +170,9 @@ final class ToolkitFiles {
 
     /**
      * Saves a new dormant NPC where the player stands, as {@code /animus create} does: {@code npcs/<id>.json} with the
-     * id as its name. Refused when the id is taken or malformed.
+     * id as its name and {@code owner}, the player who made it, as its owner. Refused when the id is taken or malformed.
      */
-    String create(String id, String type, String world, Vec3 at, float yaw) throws IOException {
+    String create(String id, String type, String world, Vec3 at, float yaw, UUID owner) throws IOException {
         if (!id.matches(NpcPaths.SEGMENT)) throw new IOException("An id is 1 to 64 lowercase letters, digits, _ or -");
         if (npcs.stored().stream().anyMatch((NpcDefinition existing) -> existing.id().equals(id))) throw new IOException("An NPC named " + id + " already exists");
         JsonObject document = new JsonObject();
@@ -181,6 +181,7 @@ final class ToolkitFiles {
         document.addProperty("type", type); document.addProperty("group", "");
         document.addProperty("name", id);
         document.addProperty("spawned", false);
+        document.addProperty("owner", owner.toString());
         JsonObject position = new JsonObject();
         position.addProperty("world", world);
         position.addProperty("x", Math.round(at.x() * 100) / 100.0); position.addProperty("y", Math.round(at.y() * 100) / 100.0); position.addProperty("z", Math.round(at.z() * 100) / 100.0);

@@ -100,13 +100,6 @@ class _PresetsEditorState extends State<PresetsEditor> {
           ),
         ]),
         GuiRow(
-          label: 'Revision',
-          forId: guiPathId(r'$.revision'),
-          help: 'Raise on each change',
-          problems: diagnosticsAt(_diagnostics, r'$.revision'),
-          child: GuiNumberInput(id: guiPathId(r'$.revision'), value: asInt(doc['revision']), label: 'Revision', onChanged: (num? v) => _write(<JsonStep>['revision'], v)),
-        ),
-        GuiRow(
           label: 'Kind',
           forId: kindId,
           help: 'Kind the presets apply to',

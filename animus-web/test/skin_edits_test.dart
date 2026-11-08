@@ -202,6 +202,14 @@ void main() {
       expect(NpcSkinInfo.fromDocument(jsonDecode(other.documents.firstWhere((DocumentChange c) => c.kind == DocumentKind.skin).source!))!.textureUrl, isNull);
     });
 
+    test('a built-in skin carries its name as the label', () {
+      final SkinChange change = skinFromPng(documents: const <AnimusDocument>[], png: png, slim: false, label: 'Guard', target: const SkinTarget(DocumentKind.npc, 'town/a'));
+      final DocumentChange made = change.documents.firstWhere((DocumentChange c) => c.kind == DocumentKind.skin);
+      expect(skinDocumentLabel(jsonDecode(made.source!)), 'Guard');
+      expect(change.skin, newSkin(slim: false, image: png, label: 'Guard').id);
+      expect(change.skin, isNot(newSkin(slim: false, image: png).id), reason: 'the label is part of the hashed text');
+    });
+
     test('the same PNG twice reuses the document', () {
       final List<AnimusDocument> documents = <AnimusDocument>[_skin(classic), _npc('town/a')];
       final SkinChange change = skinFromPng(documents: documents, png: png, slim: false, target: const SkinTarget(DocumentKind.npc, 'town/a'));

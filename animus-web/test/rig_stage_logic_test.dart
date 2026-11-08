@@ -132,7 +132,7 @@ void main() {
       expect(skinFailureText(const FormatException('A skin is 64x64 or 64x32 pixels; this image is 10x10.')), endsWith('Pick a 64x64 Minecraft skin PNG.'));
       expect(skinFailureText(StateError('HTTP 404')), contains('Nothing is at that address'));
       expect(skinFailureText(StateError('HTTP 500')), contains('HTTP 500'));
-      expect(skinFailureText(Exception('TypeError: Failed to fetch')), contains('cross-origin reads. Use Load skin PNG.'));
+      expect(skinFailureText(Exception('TypeError: Failed to fetch')), contains('cross-origin reads. Use From PNG file.'));
     });
   });
 }

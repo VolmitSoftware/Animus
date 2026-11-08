@@ -146,7 +146,7 @@ public final class AnimusCommandTree extends CommandGroup {
         catch (IllegalArgumentException missing) { actor.tell(Palette.error(missing.getMessage())); return; }
         String shown = name.isEmpty() ? id : name;
         files(actor, () -> {
-            String line = administration().create(id, type, placement.world(), placement.x(), placement.y(), placement.z(), folder, shown);
+            String line = administration().create(id, type, placement.world(), placement.x(), placement.y(), placement.z(), folder, shown, actor.player());
             living().refresh();
             return List.of(Palette.success(line + "; /" + BuildIdentity.ID + " spawn " + id + " shows it"));
         });

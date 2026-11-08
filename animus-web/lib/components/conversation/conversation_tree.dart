@@ -144,7 +144,7 @@ class _TreeBuilder {
   List<MenuAction> _insertActions(StepAt at, {String suffix = ''}) => <MenuAction>[
         MenuAction('Question$suffix', () => edit((Conversation c) => insertStep(c, at, newChoices(c, '', <String>['', ''])), focus: promptId(at), focusValue: '')),
         MenuAction('Condition$suffix', () => edit((Conversation c) => insertStep(c, at, newBranch()))),
-        MenuAction('Action$suffix', () => edit((Conversation c) => insertStep(c, at, ConversationAction('animus:set-flag', arguments: <String, Object?>{'name': ''})))),
+        MenuAction('Action$suffix', () => edit((Conversation c) => insertStep(c, at, newAction(c)))),
         MenuAction('Go to$suffix', () => edit((Conversation c) => insertStep(c, at, ConversationGoto(c.entry)))),
         MenuAction('End$suffix', () => edit((Conversation c) => insertStep(c, at, ConversationEnd()))),
       ];
@@ -153,7 +153,7 @@ class _TreeBuilder {
   static ConversationStep? _slashStep(Conversation c, String text) => switch (text.trim().toLowerCase()) {
         '/ask' || '/question' => newChoices(c, '', <String>['', '']),
         '/if' || '/condition' => newBranch(),
-        '/do' || '/action' => ConversationAction('animus:set-flag', arguments: <String, Object?>{'name': ''}),
+        '/do' || '/action' => newAction(c),
         '/goto' || '/go' => ConversationGoto(c.entry),
         '/end' => ConversationEnd(),
         _ => null,

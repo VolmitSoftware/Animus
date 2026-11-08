@@ -41,13 +41,19 @@ List<Diagnostic> validateGui(DocumentKind kind, Object? json, {String? id}) {
 
 /// Drops schema errors inside a value the GUI checks already refused by
 /// name, so a Gloss-only action shows one clear line instead of every shape
-/// it fails to match.
+/// it fails to match, and schema errors at a field the GUI checks already
+/// explain.
 List<Diagnostic> mergeGuiDiagnostics(List<Diagnostic> schema, List<Diagnostic> gui) {
   final List<String> refusedRoots = <String>[
     for (final Diagnostic diagnostic in gui)
       if (diagnostic.code == refusedCode) _parentOf(diagnostic.path),
   ];
-  bool covered(String path) => refusedRoots.any((String root) => path == root || path.startsWith('$root.') || path.startsWith('$root['));
+  final Set<String> explained = <String>{
+    for (final Diagnostic diagnostic in gui)
+      if (diagnostic.code == layoutCode && diagnostic.severity == DiagnosticSeverity.error) diagnostic.path,
+  };
+  bool covered(String path) =>
+      explained.contains(path) || refusedRoots.any((String root) => path == root || path.startsWith('$root.') || path.startsWith('$root['));
   final List<Diagnostic> kept = <Diagnostic>[
     for (final Diagnostic diagnostic in schema)
       if (!covered(diagnostic.path)) diagnostic,
@@ -473,12 +479,8 @@ final class _Checker {
               entryIds[entryId] = path;
             }
           }
-          if (asList(entry['commands']).isNotEmpty) {
-            warning(
-              childPath(path, 'commands'),
-              'runs commands: the server refuses this shop unless its id or namespace is on commandBehaviors or commandNamespaces under [behaviors.actions]',
-              allowListCode,
-            );
+          if (asList(entry['commands']).any((Object? command) => (asString(asMap(command)['command']) ?? '').trim().isNotEmpty)) {
+            warning(childPath(path, 'commands'), _shopAllowListNote(asString(json['id'])), allowListCode);
           }
           final JsonMap discount = asMap(entry['discount']);
           final DateTime? start = DateTime.tryParse(asString(discount['start']) ?? '');
@@ -543,9 +545,24 @@ final class _Checker {
       if (type == 'trade' && asList(entry[key]).isEmpty) error(childPath(path, key), 'expected a non-empty array of items', code: layoutCode);
     }
     if (type == 'command' && asList(entry['commands']).isEmpty) error(childPath(path, 'commands'), 'command entries need at least one command', code: layoutCode);
+    final JsonList commands = asList(entry['commands']);
+    for (int index = 0; index < commands.length; index++) {
+      if ((asString(asMap(commands[index])['command']) ?? '').trim().isEmpty) {
+        error('${childPath(path, 'commands')}[$index].command', 'write the command to run, without a leading slash', code: layoutCode);
+      }
+    }
     if (type == 'static' && asList(entry['commands']).isNotEmpty) error(childPath(path, 'commands'), 'static entries cannot run commands', code: layoutCode);
     if (type == 'static' && entry.containsKey('limit')) error(childPath(path, 'limit'), 'static entries have no limits', code: layoutCode);
   }
+}
+
+/// The command allow-list note for a shop, naming the config keys that let
+/// the server load shop [id].
+String _shopAllowListNote(String? id) {
+  const String lead = 'runs commands, so the server refuses this shop until config.toml allows it: ';
+  final int colon = id?.indexOf(':') ?? -1;
+  if (id == null || colon <= 0) return '${lead}add its id to commandBehaviors, or its namespace to commandNamespaces, under [behaviors.actions]';
+  return '${lead}add "${id.substring(0, colon)}" to commandNamespaces, or "$id" to commandBehaviors, under [behaviors.actions]';
 }
 
 /// Core's wording for an icon type the surface refuses.

@@ -9,41 +9,7 @@
   min-width: 0;
 }
 
-.animus-npc-group-list,
-.animus-group-skin-list,
-.animus-group-members {
-  display: grid;
-  gap: 0.25rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  min-width: 0;
-}
-
-.animus-npc-group-list {
-  counter-reset: animus-group;
-}
-
-.animus-npc-group-list > li {
-  display: grid;
-  gap: 0.25rem;
-  counter-increment: animus-group;
-}
-
-.animus-npc-group-list > li > .animus-gui-line::before {
-  content: counter(animus-group);
-  min-width: 1.25rem;
-  color: var(--animus-muted);
-  font-size: 0.8125rem;
-}
-
-.animus-npc-group-list code,
-.animus-group-skin-list code {
-  overflow-wrap: anywhere;
-}
-
-.animus-group-skin-list > li,
-.animus-group-members > li {
+.animus-chip-line {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -51,9 +17,74 @@
   min-width: 0;
 }
 
-.animus-group-members code {
-  font-size: 0.8125rem;
+.animus-chip-line > .animus-select {
+  flex: 0 1 11rem;
+  min-width: 8rem;
+}
+
+.animus-chip-row {
+  display: contents;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.animus-chip {
+  min-height: 1.75rem;
+}
+
+.animus-chip[draggable='true'] {
+  cursor: grab;
+}
+
+.animus-chip.is-dragging {
+  opacity: 0.5;
+}
+
+.animus-chip.is-warning {
+  border-style: dashed;
+  border-color: var(--animus-warning);
+}
+
+.animus-chip-label {
+  padding: 0 0.125rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
   overflow-wrap: anywhere;
+}
+
+button.animus-chip-label {
+  cursor: pointer;
+}
+
+button.animus-chip-label:hover {
+  text-decoration: underline;
+}
+
+.animus-chip-label:focus-visible {
+  outline: 2px solid var(--ring, #ffb3d6);
+  outline-offset: 1px;
+}
+
+/* Phone widths and touch screens: 44 px tap targets. */
+@media (max-width: 520px), (pointer: coarse) {
+  .animus-chip {
+    min-height: 44px;
+  }
+
+  button.animus-chip-label {
+    min-height: 44px;
+  }
+}
+
+.animus-made-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0;
 }
 
 .animus-effective-wrap {

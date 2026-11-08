@@ -9,6 +9,8 @@ import 'package:animus_editor/logic/inspect/json_completion.dart';
 import 'package:animus_editor/logic/inspect/json_outline.dart';
 import 'package:animus_editor/logic/inspect/json_syntax.dart';
 import 'package:animus_editor/logic/inspect/schema_fields.dart';
+import 'package:animus_editor/logic/shared_schemas.dart';
+import 'package:animus_editor/model/animus_document.dart';
 import 'package:animus_editor/model/document_kind.dart';
 import 'package:test/test.dart';
 
@@ -257,10 +259,23 @@ void main() {
     test('a new action has its capability and required arguments', () {
       final JsonMap action = defaultNode('action', catalog);
       expect(action['capability'], 'animus:say');
-      expect(asMap(action['arguments'])['text'], '');
+      expect(asMap(action['arguments'])['text'], 'Hello, {player_name}.');
       final JsonMap condition = defaultNode('condition', catalog);
       expect(catalog.capability(condition['capability']! as String)!.kind, 'condition');
       expect(asMap(condition['then'])['type'], 'sequence');
+    });
+
+    test('a new action, server action or condition leaves the behavior valid', () {
+      for (final (String type, bool server) in <(String, bool)>[('action', false), ('action', true), ('condition', false)]) {
+        final JsonMap behavior = _fixture('behaviors/greeter/greeter.json');
+        final JsonMap main = asMap(asMap(behavior['routines'])['main']);
+        final JsonMap added = asMap(writeIn(behavior, <JsonStep>['routines', 'main', 'steps'], <Object?>[...asList(main['steps']), defaultNode(type, catalog, server: server)]));
+        final List<String> errors = <String>[
+          for (final Diagnostic d in SharedSchemas.embedded.validate(DocumentKind.behavior, added))
+            if (d.severity == DiagnosticSeverity.error) '${d.path}: ${d.message}',
+        ];
+        expect(errors, isEmpty, reason: '$type${server ? ' (server)' : ''}');
+      }
     });
 
     test('changing the capability keeps unknown arguments only', () {

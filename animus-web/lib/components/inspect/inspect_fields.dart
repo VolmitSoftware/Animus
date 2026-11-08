@@ -20,6 +20,7 @@ import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
 import '../../logic/help_text.dart';
 import '../info_tip.dart';
+import '../typing_pause.dart';
 import '../select/suggest_input.dart';
 import 'typed_values_editor.dart';
 
@@ -33,7 +34,7 @@ String controlId(String path) => 'animus-field-${path.replaceAll(RegExp(r'[^A-Za
 /// [labelFor], for selects and other controls without their own name. Without
 /// [labelFor] the label is plain text, for groups and controls that name
 /// themselves.
-class InspectRow extends StatelessWidget {
+class InspectRow extends StatefulWidget {
   const InspectRow({required this.label, required this.child, this.labelFor, this.help, this.tip, this.problems = const <Diagnostic>[], super.key});
 
   final String label;
@@ -48,17 +49,23 @@ class InspectRow extends StatelessWidget {
   final List<Diagnostic> problems;
 
   @override
+  State<InspectRow> createState() => _InspectRowState();
+}
+
+class _InspectRowState extends State<InspectRow> with TypingPause<InspectRow> {
+  @override
   Widget build(BuildContext context) {
-    final ({String? hint, String? tip}) split = tip == null ? splitHelp(help) : (hint: help == null || help!.isEmpty ? null : help, tip: tip);
-    return dom.div(classes: 'animus-gui-row${problems.any((Diagnostic d) => d.severity == DiagnosticSeverity.error) ? ' has-error' : ''}', <Widget>[
-      if (labelFor case final String target)
-        dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': target}, <Widget>[withTip(Component.text(label), split.tip)])
+    final List<Diagnostic> shown = typing ? const <Diagnostic>[] : component.problems;
+    final ({String? hint, String? tip}) split = component.tip == null ? splitHelp(component.help) : (hint: component.help == null || component.help!.isEmpty ? null : component.help, tip: component.tip);
+    return dom.div(classes: 'animus-gui-row${shown.any((Diagnostic d) => d.severity == DiagnosticSeverity.error) ? ' has-error' : ''}', events: typingEvents, <Widget>[
+      if (component.labelFor case final String target)
+        dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': target}, <Widget>[withTip(Component.text(component.label), split.tip)])
       else
-        dom.span(classes: 'animus-gui-label', <Widget>[withTip(Component.text(label), split.tip)]),
+        dom.span(classes: 'animus-gui-label', <Widget>[withTip(Component.text(component.label), split.tip)]),
       dom.div(classes: 'animus-gui-control', <Widget>[
-        child,
+        component.child,
         if (split.hint != null) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(split.hint!)]),
-        for (final Diagnostic problem in problems)
+        for (final Diagnostic problem in shown)
           dom.span(
             classes: 'animus-gui-problem is-${problem.severity.name}',
             attributes: const <String, String>{'role': 'note'},

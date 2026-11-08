@@ -3,7 +3,9 @@
 /// Per frame: clear to transparent (the stage paints the sky), the grass patch, then every node with alpha
 /// test 0.1, in the order the scene lists them (armour layers after the
 /// body, so `LEQUAL` lets a layer win on shared faces). A glinting node
-/// draws with a violet overlay. Meshes are cached per node signature and GPU
+/// draws with a violet overlay. A glowing body first draws its silhouette in
+/// the glow colour, shifted a little each way and over everything, so the
+/// body drawn on top leaves an outline round it. Meshes are cached per node signature and GPU
 /// buffers per scene key; a node whose signature is unchanged only moves. A
 /// node whose texture is still decoding is retried on the next frame the
 /// stage draws. Adapted from Gloss Web's renderer without its block world,
@@ -34,6 +36,12 @@ const List<double> _fog = <double>[0.62, 0.75, 0.96];
 const List<double> _noOverlay = <double>[0, 0, 0, 0];
 const List<double> _glint = <double>[0.62, 0.32, 0.95, 0.32];
 const List<double> _noFlat = <double>[0, 0, 0, 0];
+
+/// How far the glow outline reaches past the silhouette, CSS pixels.
+const double _glowPx = 2;
+
+/// The eight steps the glow silhouette is drawn at.
+const List<(int, int)> _glowSteps = <(int, int)>[(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)];
 
 /// Half the grass patch's side, blocks.
 const int mcStageGroundHalf = 6;
@@ -126,7 +134,8 @@ final class McGlRenderer {
 
     final McGlProgram p = _gl.program;
     gl.useProgram(p.program);
-    gl.uniformMatrix4fv(p.uniforms['uProjection'], false, mcGlProjection(widthPx: widthPx, heightPx: heightPx).toFloat32().toJS);
+    final McMat4 projection = mcGlProjection(widthPx: widthPx, heightPx: heightPx);
+    gl.uniformMatrix4fv(p.uniforms['uProjection'], false, projection.toFloat32().toJS);
     gl.uniformMatrix4fv(p.uniforms['uView'], false, camera.view().toFloat32().toJS);
     gl.uniform3f(p.uniforms['uFogColor'], _fog[0], _fog[1], _fog[2]);
     gl.uniform1f(p.uniforms['uFogStart'], _fogOff);
@@ -137,6 +146,8 @@ final class McGlRenderer {
     _setDraw(McMat4.identity(), _noOverlay);
     gl.bindTexture(web.WebGL2RenderingContext.TEXTURE_2D, _blocks.texture);
     _gl.draw(_ground);
+    final McGlow? glow = scene.glow;
+    if (glow != null) _outline(glow, projection, widthPx: widthPx, heightPx: heightPx);
 
     for (final McSceneNode node in scene.nodes) {
       final _Drawable? d = _nodes[node.key];
@@ -180,6 +191,33 @@ final class McGlRenderer {
     gl.bindTexture(web.WebGL2RenderingContext.TEXTURE_2D, d.texture.texture);
     _gl.draw(d.buffer);
     return true;
+  }
+
+  /// [glow]'s nodes flat in its colour at each of [_glowSteps], [_glowPx]
+  /// apart in clip space, with no depth test or write; then the projection
+  /// back.
+  void _outline(McGlow glow, McMat4 projection, {required double widthPx, required double heightPx}) {
+    final web.WebGL2RenderingContext gl = _gl.gl;
+    final McGlProgram p = _gl.program;
+    final double dx = 2 * _glowPx / widthPx, dy = 2 * _glowPx / heightPx;
+    gl.disable(web.WebGL2RenderingContext.DEPTH_TEST);
+    gl.depthMask(false);
+    for (final (int, int) step in _glowSteps) {
+      // Clip-space x + dx * w is a shift of dx after the perspective divide.
+      final McMat4 shifted = McMat4.translation(step.$1 * dx, step.$2 * dy, 0).multiply(projection);
+      gl.uniformMatrix4fv(p.uniforms['uProjection'], false, shifted.toFloat32().toJS);
+      for (final String key in glow.keys) {
+        final _Drawable? d = _nodes[key];
+        if (d == null) continue;
+        _setDraw(d.model, _noOverlay);
+        gl.uniform4f(p.uniforms['uFlat'], ((glow.color >> 16) & 0xFF) / 255, ((glow.color >> 8) & 0xFF) / 255, (glow.color & 0xFF) / 255, 1);
+        gl.bindTexture(web.WebGL2RenderingContext.TEXTURE_2D, d.texture.texture);
+        _gl.draw(d.buffer);
+      }
+    }
+    gl.uniformMatrix4fv(p.uniforms['uProjection'], false, projection.toFloat32().toJS);
+    gl.enable(web.WebGL2RenderingContext.DEPTH_TEST);
+    gl.depthMask(true);
   }
 
   void _setDraw(McMat4 model, List<double> overlay) {

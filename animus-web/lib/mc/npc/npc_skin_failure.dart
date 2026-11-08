@@ -1,4 +1,4 @@
-/// What the preview says when a skin PNG does not load: the cause in plain
+/// What the skin picker says when a skin PNG does not load: the cause in plain
 /// terms and what to do next.
 library;
 
@@ -14,8 +14,8 @@ String skinFailureText(Object failure) {
   if (status != null) {
     final String code = status.group(1)!;
     return code == '404'
-        ? 'Nothing is at that address (HTTP 404). Check the URL or use Load skin PNG.'
-        : 'The address answered HTTP $code. Retry later or use Load skin PNG.';
+        ? 'Nothing is at that address (HTTP 404). Check the URL or use From PNG file.'
+        : 'The address answered HTTP $code. Retry later or use From PNG file.';
   }
-  return 'Could not read the skin: not a PNG, or the site blocks cross-origin reads. Use Load skin PNG.';
+  return 'Could not read the skin: not a PNG, or the site blocks cross-origin reads. Use From PNG file.';
 }

@@ -3,9 +3,8 @@
 /// new skin document from a PNG file or address; the arm model; and removing
 /// it. Skin documents are content-addressed, so a model change or a new PNG
 /// writes a new document and repoints this NPC or group in one undo step
-/// (`lib/logic/npc/skin_edits.dart`). The placeholder grid picks which
-/// built-in skin the preview wears while the NPC has no skin texture here;
-/// that choice is never written.
+/// (`lib/logic/npc/skin_edits.dart`). The built-in skins make a skin
+/// document from their PNG and wear it the same way.
 library;
 
 import 'dart:typed_data';
@@ -20,6 +19,7 @@ import '../../logic/npc/skin_edits.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../logic/suggest/field_profiles.dart';
 import '../../mc/npc/npc_skin.dart';
+import '../../mc/npc/npc_skin_failure.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../../services/skin_images.dart';
@@ -92,7 +92,7 @@ class _SkinPickerState extends State<SkinPicker> {
       ];
 
   /// Loads a PNG, makes its skin document and points the target at it.
-  Future<void> _create(Future<LoadedSkin?> Function(String key) load, {String? url}) async {
+  Future<void> _create(Future<LoadedSkin?> Function(String key) load, {String? url, String? label}) async {
     final SkinCommit? commit = component.onCommit;
     if (commit == null) return;
     setState(() {
@@ -104,13 +104,13 @@ class _SkinPickerState extends State<SkinPicker> {
       if (skin == null) return;
       final AnimusDocument? current = _current;
       final bool slim = current != null && (NpcSkinInfo.fromDocument(current.json)?.slim ?? false);
-      final SkinChange change = skinFromPng(documents: component.workspaceDocuments, png: SkinImages.pngBytes(skin), slim: slim, url: url, target: component.target);
-      SkinImages.alias(change.skin!, skin);
+      final SkinChange change = skinFromPng(documents: component.workspaceDocuments, png: SkinImages.pngBytes(skin), slim: slim, url: url, label: label, target: component.target);
+      SkinImages.alias(change.skin!, label == null ? skin : LoadedSkin(textureId: skin.textureId, source: 'the built-in $label skin', dataUrl: skin.dataUrl));
       await commit(change);
       if (mounted) setState(() => _url = '');
       component.onLoaded?.call();
     } on Object catch (failure) {
-      if (mounted) setState(() => _failure = 'Skin did not load ($failure). Use a 64x64 PNG or a cross-origin address.');
+      if (mounted) setState(() => _failure = skinFailureText(failure));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -178,7 +178,7 @@ class _SkinPickerState extends State<SkinPicker> {
         ]),
       ),
       if (current != null) _modelRow(current),
-      if (component.onCommit != null) _newSkin(),
+      if (component.onCommit != null) ...<Widget>[_builtIn(), _newSkin()],
       GuiRow(
         label: 'Skin hash',
         tip: 'SHA-256 of a skin under skins/.',
@@ -190,7 +190,6 @@ class _SkinPickerState extends State<SkinPicker> {
           onChanged: (String text) => component.onChanged(text.trim().isEmpty ? null : text.trim()),
         ),
       ),
-      _placeholders(),
     ]);
   }
 
@@ -234,42 +233,42 @@ class _SkinPickerState extends State<SkinPicker> {
         ]),
       );
 
-  Widget _placeholders() {
-    final PlaceholderLook worn = SkinImages.placeholderLook(component.npcId);
-    return dom.div(classes: 'animus-skin-placeholders', attributes: const <String, String>{'role': 'group', 'aria-label': 'Preview placeholder'}, <Widget>[
-      const dom.p(classes: 'animus-gui-help', <Widget>[
-        Component.text('Preview only. Not saved.'),
-      ]),
-      dom.div(classes: 'animus-skin-grid', attributes: const <String, String>{'role': 'radiogroup', 'aria-label': 'Placeholder skins'}, <Widget>[
+  /// The built-in skins: a click makes a skin document from the PNG, in
+  /// the arm model the current skin has, and wears it, in one undo step.
+  Widget _builtIn() {
+    final String? worn = skinDocumentLabel(_current?.json);
+    final bool slim = _current != null && (NpcSkinInfo.fromDocument(_current!.json)?.slim ?? false);
+    return GuiRow(
+      label: 'Built-in',
+      tip: 'Skins drawn for Animus. Picking one makes a skin document from its PNG and wears it. Servers need a signed texture to show it in game.',
+      child: dom.div(classes: 'animus-skin-grid', attributes: const <String, String>{'role': 'group', 'aria-label': 'Built-in skins'}, <Widget>[
         for (final PlaceholderLook look in placeholderLooks)
           dom.button(
-            classes: 'animus-skin-card${look.id == worn.id ? ' is-selected' : ''}',
+            classes: 'animus-skin-card${look.label == worn ? ' is-selected' : ''}',
             attributes: <String, String>{
               'type': 'button',
-              'role': 'radio',
-              'aria-checked': '${look.id == worn.id}',
-              'aria-label': 'Placeholder ${look.label}',
-              'data-placeholder': look.id,
+              'aria-pressed': '${look.label == worn}',
+              'aria-label': 'Wear the built-in ${look.label} skin',
+              'data-builtin': look.id,
+              if (_loading) 'disabled': '',
             },
             events: <String, void Function(web.Event)>{
-              'click': (web.Event _) {
-                setState(() => SkinImages.choosePlaceholder(component.npcId, look));
-                component.onLoaded?.call();
-              },
+              'click': (web.Event _) => _create(
+                    (String key) => SkinImages.fetchUrl(key, Uri.base.resolve(placeholderSkinFor(look, slim: slim).url).toString()),
+                    label: look.label,
+                  ),
             },
             <Widget>[
               dom.span(
                 classes: 'animus-skin-face',
+                attributes: const <String, String>{'aria-hidden': 'true'},
                 styles: dom.Styles(raw: <String, String>{'background-image': 'url("${placeholderSkinFor(look, slim: false).url}")'}),
                 const <Widget>[],
               ),
-              dom.span(classes: 'animus-skin-card-text', <Widget>[
-                dom.span(<Widget>[Component.text(look.label)]),
-                dom.span(classes: 'animus-muted', <Widget>[Component.text(look.id == worn.id ? 'worn in the preview' : 'placeholder')]),
-              ]),
+              dom.span(classes: 'animus-skin-card-text', <Widget>[Component.text(look.label)]),
             ],
           ),
       ]),
-    ]);
+    );
   }
 }

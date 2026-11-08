@@ -137,11 +137,24 @@ async function run(browser, {viewport, theme}) {
   await page.getByRole('button', {name: 'Close'}).last().click();
   await sheet.waitFor({state: 'detached'});
 
-  // Sidebar, New document and Browse NPCs from the keyboard.
+  // Sidebar, New document and Browse NPCs from the keyboard. A click on
+  // empty page space focuses the main region; the sheet hands focus back
+  // there, and no ring runs down the sidebar's edge then or after the
+  // sidebar is hidden and shown.
   if (!compact) {
-    await page.locator('body').click({position: {x: 1, y: 1}});
+    const main = page.locator('#animus-main');
+    const ring = () => main.evaluate(el => getComputedStyle(el).outlineStyle);
+    const box = await main.boundingBox();
+    await page.mouse.click(box.x + box.width - 8, box.y + box.height - 8);
+    await page.keyboard.press('?');
+    await sheet.waitFor();
+    await page.keyboard.press('Escape');
+    await sheet.waitFor({state: 'detached'});
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'animus-main', `${label}: focus back on the main region`);
+    assert.equal(await ring(), 'none', `${label}: no ring along the sidebar after the sheet`);
     await page.keyboard.press(`${modKey}+b`);
     await page.locator('#animus-sidebar').waitFor({state: 'hidden'});
+    assert.equal(await ring(), 'none', `${label}: no ring with the sidebar hidden`);
     await page.getByRole('button', {name: 'Show sidebar'}).click();
     await page.locator('#animus-sidebar').waitFor({state: 'visible'});
   }

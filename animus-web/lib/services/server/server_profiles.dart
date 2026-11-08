@@ -56,13 +56,16 @@ class MemoryKeyValueStore implements KeyValueStore {
 
 /// A token from `POST /v1/pair`.
 class ServerToken {
-  const ServerToken({required this.token, required this.tokenId, required this.scopes, required this.expiresAt, this.groups});
+  const ServerToken({required this.token, required this.tokenId, required this.scopes, required this.expiresAt, this.groups, this.admin});
 
   final String token;
   final String tokenId;
   final List<String> scopes;
   final List<String>? groups;
   final DateTime expiresAt;
+
+  /// The UUID of the player who issued the pairing; null for the console.
+  final String? admin;
 
   bool has(String scope) => scopes.contains(scope);
 
@@ -74,6 +77,7 @@ class ServerToken {
         'scopes': scopes,
         if (groups != null) 'groups': groups,
         'expiresAt': expiresAt.toUtc().toIso8601String(),
+        'admin': ?admin,
       };
 
   static ServerToken? fromJson(Object? json) {
@@ -86,6 +90,7 @@ class ServerToken {
       scopes: <String>[for (final Object? scope in (json['scopes'] as List<Object?>?) ?? const <Object?>[]) if (scope is String) scope],
       groups: json['groups'] is List<Object?> ? <String>[for (final Object? group in json['groups']! as List<Object?>) '$group'] : null,
       expiresAt: expires.toUtc(),
+      admin: json['admin'] is String ? json['admin']! as String : null,
     );
   }
 }

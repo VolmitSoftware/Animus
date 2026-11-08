@@ -57,7 +57,7 @@ const List<String> tippedFiles = <String>[
   'lib/components/npc/npc_browser.dart',
   'lib/components/npc/npc_folders.dart',
   'lib/components/npc/group_parts.dart',
-  'lib/components/npc/equipment_editor.dart',
+  'lib/components/npc/equipment_slots.dart',
   'lib/components/npc/attributes_editor.dart',
   'lib/components/npc/appearance_editor.dart',
   'lib/components/npc/position_grid.dart',

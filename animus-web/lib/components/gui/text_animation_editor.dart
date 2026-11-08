@@ -214,12 +214,6 @@ class TextAnimationEditor extends StatelessWidget {
               onChanged: (String v) => _write(<JsonStep>['show'], v.trim().isEmpty ? null : (v.trim() == 'false' ? false : v)),
             ),
           ),
-          GuiRow(
-            label: 'Revision',
-            forId: guiPathId(r'$.revision'),
-            problems: diagnosticsAt(diagnostics, r'$.revision'),
-            child: GuiNumberInput(id: guiPathId(r'$.revision'), value: asInt(doc['revision']), label: 'Revision', onChanged: (num? v) => _write(<JsonStep>['revision'], v)),
-          ),
         ]),
       ]),
     ]);
