@@ -156,7 +156,11 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
 
   static const String _recordingNote = 'Record in game with /animus record start <id>.';
 
-  String get _namespace => slug(component.workspace.name, fallback: 'local');
+  String get _namespace => defaultNamespace(
+        <String>[for (final AnimusDocument document in component.workspace.documents) document.id],
+        component.workspace.name,
+        server: component.workspace.server != null,
+      );
 
   /// The namespace a dropdown's "+ New" asked for, when it is a valid one.
   String? get _folderNamespace {

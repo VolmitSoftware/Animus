@@ -70,6 +70,9 @@ html.light {
   min-height: 16rem;
   max-height: 72vh;
   overflow: hidden;
+  /* The labels' depth z-index stays inside the stage, so a nameplate never
+     paints over the sticky top bar or a toast. */
+  isolation: isolate;
   border: 1px solid var(--animus-border);
   background: var(--animus-stage-sky, #1a171b);
   /* Vertical swipes scroll the page; a horizontal drag orbits. A drag in
@@ -101,6 +104,11 @@ html.light {
 .animus-mc-gl-host canvas {
   display: block;
   image-rendering: pixelated;
+  /* A WebGL canvas composited straight to the screen is drawn shifted, or
+     not at all, where an opaque fixed or sticky layer (the top bar, a toast)
+     covers part of it. A filter gives it its own surface, which Chrome clips
+     correctly, so a stage partly scrolled under the bar keeps its picture. */
+  filter: opacity(1);
 }
 
 .animus-mc-text-layer {

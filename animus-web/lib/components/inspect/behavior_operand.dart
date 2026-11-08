@@ -98,6 +98,9 @@ class OperandControl extends StatelessWidget {
   }
 }
 
+/// The element id of the argument at diagnostic [path].
+String argumentElementId(String path) => 'animus-argument:$path';
+
 /// One argument of an action or condition: the typed field as written, or
 /// a null placeholder filled at run time, with the filling shown inline.
 class ArgumentField extends StatelessWidget {
@@ -138,7 +141,7 @@ class ArgumentField extends StatelessWidget {
       label: fieldLabel(argument),
       help: argument.help,
       problems: problems,
-      child: dom.div(classes: 'animus-operand', attributes: <String, String>{'data-argument': key, 'data-source': source.name}, <Widget>[
+      child: dom.div(id: argumentElementId(path), classes: 'animus-operand', attributes: <String, String>{'data-argument': key, 'data-source': source.name}, <Widget>[
         GuiSelect(
           value: source.name,
           options: <String>[for (final ArgumentSource option in ArgumentSource.values) option.name],

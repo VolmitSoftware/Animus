@@ -126,6 +126,25 @@ async function run(browser, {viewport, theme}) {
   assert.equal(look.radius, '0px', `${label}: the sheet is square`);
   assert.equal(look.shadow, 'none', `${label}: the sheet is flat`);
   await noSideways(page, `${label} shortcut sheet`);
+  // A list taller than the sheet says so in the foot until it is scrolled to its end.
+  if (!compact) {
+    await page.keyboard.press('Escape');
+    await sheet.waitFor({state: 'detached'});
+    await page.setViewportSize({width: viewport.width, height: 600});
+    if (opener) await opener.focus();
+    await page.keyboard.press('?');
+    await sheet.waitFor();
+    const more = sheet.getByTestId('shortcuts-more');
+    await more.waitFor({timeout: 2000});
+    await sheet.locator('.animus-shortcuts-body').evaluate(el => el.scrollTo(0, el.scrollHeight));
+    await more.waitFor({state: 'detached', timeout: 2000});
+    await page.keyboard.press('Escape');
+    await sheet.waitFor({state: 'detached'});
+    await page.setViewportSize(viewport);
+    if (opener) await opener.focus();
+    await page.keyboard.press('?');
+    await sheet.waitFor();
+  }
   await page.keyboard.press('Escape');
   await sheet.waitFor({state: 'detached'});
   if (opener) assert.match(await page.evaluate(() => document.activeElement.textContent), /Commands/, `${label}: focus back where it was`);

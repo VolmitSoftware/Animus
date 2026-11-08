@@ -20,6 +20,7 @@ import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
 import '../info_tip.dart';
+import '../pending_field.dart';
 import 'conversation_attach.dart';
 import 'conversation_fields.dart';
 import 'conversation_input.dart';
@@ -65,6 +66,8 @@ class _ConversationViewState extends State<ConversationView> {
   final Set<String> _expanded = <String>{};
 
   void _edit(void Function(Conversation conversation) change, {String? coalesce, String? focus, String? focusValue}) {
+    // A field added empty to be typed in is pending until it loses focus.
+    if (focus != null && focusValue == '') holdField(focus);
     component.onJson((Object? latest) {
       final JsonMap json = asMap(latest);
       final Conversation? conversation = conversationOf(json);
@@ -122,7 +125,11 @@ class _ConversationViewState extends State<ConversationView> {
       for (final AnimusDocument behavior in _of(DocumentKind.behavior))
         if (behavior.id.split(':').first == _namespace) behavior.json,
     ];
-    final List<ConversationIssue> issues = checkConversation(conversation, names: knownNames(namespace));
+    final String? pending = pendingProblems.field;
+    final List<ConversationIssue> issues = <ConversationIssue>[
+      for (final ConversationIssue issue in checkConversation(conversation, names: knownNames(namespace)))
+        if (pending == null || !_pendingIssue(issue, pending)) issue,
+    ];
     final ConversationScope scope = ConversationScope(
       conversation: conversation,
       issues: issues,
@@ -161,6 +168,14 @@ class _ConversationViewState extends State<ConversationView> {
           ),
       ]),
     ]);
+  }
+
+  /// Whether [issue] belongs to the field [pending] the user is filling.
+  static bool _pendingIssue(ConversationIssue issue, String pending) {
+    final StepAt? at = issue.at;
+    if (at == null) return false;
+    final int? option = issue.option;
+    return option == null ? pending == lineId(at) || pending == promptId(at) : pending == optionId(at, option);
   }
 
   Widget _start(Conversation conversation) {

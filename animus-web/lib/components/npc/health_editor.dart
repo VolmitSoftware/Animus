@@ -11,6 +11,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
+import '../../logic/select/select_model.dart' show withDefault;
 import '../../logic/inspect/typed_values.dart';
 import '../../logic/npc/health_settings.dart';
 import '../../model/animus_document.dart';
@@ -291,8 +292,8 @@ class HealthEditor extends StatelessWidget {
           tip: 'permadeath keeps it dead until revived here or in game.',
           problems: _at(const <JsonStep>['respawn', 'afterDeath']),
           child: GuiSelect(
-            value: after,
-            options: healthAfterDeath,
+            value: withDefault(after, healthAfterDeath, 'respawn').value,
+            options: withDefault(after, healthAfterDeath, 'respawn').options,
             allowNone: true,
             noneLabel: 'respawn (default)',
             hiddenLabel: 'health.respawn.afterDeath',
@@ -306,8 +307,8 @@ class HealthEditor extends StatelessWidget {
             tip: 'How the next point is picked.',
             problems: _at(const <JsonStep>['respawn', 'order']),
             child: GuiSelect(
-              value: asString(readIn(module, const <JsonStep>['respawn', 'order'])),
-              options: healthOrders,
+              value: withDefault(asString(readIn(module, const <JsonStep>['respawn', 'order'])), healthOrders, 'in_order').value,
+              options: withDefault(asString(readIn(module, const <JsonStep>['respawn', 'order'])), healthOrders, 'in_order').options,
               labels: _orderLabels,
               allowNone: true,
               noneLabel: 'in order (default)',

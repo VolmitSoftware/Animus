@@ -2,7 +2,9 @@
 // both themes: pair, open the greeter NPC, make a conversation from the
 // sidebar, build a question with three answers and their follow-ups by
 // keyboard (a placeholder from the picker, Enter for the next line, inline
-// [answers], Ctrl+Enter for what follows, arrows between fields), play it in
+// [answers], Ctrl+Enter for what follows, arrows between fields), check that
+// a step menu names keys per platform and closes when its line scrolls away
+// and that the new id takes the opened NPC's namespace, play it in
 // the preview with a condition flipped, attach it to the NPC, apply both
 // documents, read them back from the fake server and reopen the behavior.
 // No console errors, no native selects and no sideways scrolling.
@@ -77,6 +79,8 @@ async function run(browser, viewport, label, theme) {
   await page.getByRole('button', {name: 'Create behavior'}).click();
   await page.waitForFunction(() => location.hash.includes('/behavior/') && location.hash.includes('view=conversation'));
   const behavior = decodeURIComponent(/\/behavior\/([^?]+)/.exec(page.url())[1]);
+  // The new id takes the namespace the opened documents use, not the server's name.
+  assert.equal(behavior.split(':')[0], npc.split('/')[0], `${label}: new id ${behavior}`);
   const tab = page.locator('.animus-conv');
   await tab.locator('[data-block="main"]').waitFor();
 
@@ -147,6 +151,18 @@ async function run(browser, viewport, label, theme) {
   await page.waitForFunction(() => !document.querySelector('[data-conv-errors]'));
   assert.equal(await page.locator('.animus-diagnostics li.is-error').count(), 0, 'a new action step leaves the document valid');
   await shot(page, `${label}-built`);
+
+  // A step menu names its keys as the shortcut sheet does, and closes once
+  // its line scrolls away instead of floating over the top bar.
+  const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await tab.locator('[data-block="main"] li[data-kind="line"]').first().locator('.animus-conv-row').first().getByRole('button', {name: 'Step options'}).click();
+  const stepMenu = page.getByRole('menu');
+  await stepMenu.waitFor();
+  assert.equal(await stepMenu.getByRole('menuitem', {name: /Move down/}).locator('.animus-menu-hint').textContent(), mac ? 'Option+Down' : 'Alt+Down', `${label}: menu key names`);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await stepMenu.waitFor({state: 'detached', timeout: 2000});
+  await page.evaluate(() => window.scrollTo(0, 0));
 
   // The written behavior: the start, one trigger per answer, ids kept.
   await page.waitForFunction(() => !document.querySelector('[data-conv-errors]'));

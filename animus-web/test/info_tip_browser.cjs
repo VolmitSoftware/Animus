@@ -1,9 +1,10 @@
 // Help tips (lib/components/info_tip.dart) on an NPC of the example packs, at
 // 1440 px with a mouse and 390 px with touch, in both themes. The label text
-// itself carries the tip: a dotted muted underline, no icon or box. Hover and
-// keyboard focus show the tooltip named by aria-describedby, Escape hides it,
-// Enter and the tooltip's Docs link open the wiki heading, a click on a label
-// still focuses its field, and a tap toggles the tooltip. Nothing scrolls
+// itself carries the tip: a dotted muted underline, no icon or box. Hover
+// shows the tooltip named by aria-describedby; Tab onto the text only shows
+// the focus ring and Space opens it; Escape hides it, Enter and the
+// tooltip's Docs link open the wiki heading, a click on a label still
+// focuses its field and opens nothing, and a tap toggles the tooltip. Nothing scrolls
 // sideways. Requests to the wiki are answered locally.
 //
 //   python3 tool/serve_site.py --port <port>
@@ -118,21 +119,27 @@ async function run(browser, {viewport, touch, theme}) {
     await page.mouse.move(0, 0);
     await tip.waitFor({state: 'hidden'});
 
-    // A click on a field label's tip text focuses the field and opens nothing.
+    // A click on a field label's tip text focuses the field and opens nothing,
+    // not even under the resting pointer.
     const fieldTip = await labelTip(page);
     await fieldTip.click();
     assert.equal(await fieldTip.evaluate(el => document.activeElement === el.closest('label').control), true, `${label}: the label still focuses its field`);
     assert.equal(context.pages().length, 1, `${label}: a click opens no page`);
+    await page.waitForTimeout(500);
+    assert.equal(await fieldTip.evaluate(el => getComputedStyle(el.closest('.animus-tip').querySelector('.animus-tip-pop')).display), 'none', `${label}: a label click keeps the tip shut`);
     await page.mouse.move(0, 0);
 
-    // Keyboard focus shows it with a visible ring; Escape hides it; Enter
-    // opens the wiki heading.
+    // Tab gives it a visible ring and leaves the tooltip shut; Space opens
+    // it, Escape hides it, Enter opens the wiki heading.
     await text.focus();
     await page.keyboard.press('Shift+Tab');
     await page.keyboard.press('Tab');
     assert.equal(await text.evaluate(el => el === document.activeElement), true, `${label}: the text takes focus`);
-    await tip.waitFor({state: 'visible'});
     assert.notEqual(await text.evaluate(el => getComputedStyle(el).outlineStyle), 'none', `${label}: visible focus`);
+    await page.waitForTimeout(300);
+    assert.equal(await tip.isVisible(), false, `${label}: Tab passing through leaves the tooltip shut`);
+    await page.keyboard.press('Space');
+    await tip.waitFor({state: 'visible'});
     await page.keyboard.press('Escape');
     await tip.waitFor({state: 'hidden'});
     const [fromKey] = await Promise.all([context.waitForEvent('page'), page.keyboard.press('Enter')]);

@@ -70,6 +70,21 @@ String slug(String text, {String fallback = 'npc', int maximum = 64}) {
   return cut.isEmpty ? fallback : cut;
 }
 
+/// The namespace new ids start with: the one most of [ids] use (`town` in
+/// `town:greeting` and in the NPC folder of `town/baker`), else [workspace]
+/// as a slug. A server's workspace is
+/// named after the server, which is nobody's namespace, so it falls back to
+/// `local` instead.
+String defaultNamespace(Iterable<String> ids, String workspace, {bool server = false}) {
+  final Map<String, int> counts = <String, int>{};
+  for (final String id in ids) {
+    final RegExpMatch? match = RegExp(r'^([a-z0-9_.-]+)[:/]').firstMatch(id);
+    if (match != null) counts.update(match.group(1)!, (int count) => count + 1, ifAbsent: () => 1);
+  }
+  if (counts.isNotEmpty) return counts.entries.reduce((MapEntry<String, int> best, MapEntry<String, int> next) => next.value > best.value ? next : best).key;
+  return server ? 'local' : slug(workspace, fallback: 'local');
+}
+
 /// [base], or `base-2`, `base-3`... when [taken] has it.
 String freeId(String base, Set<String> taken) {
   if (!taken.contains(base)) return base;

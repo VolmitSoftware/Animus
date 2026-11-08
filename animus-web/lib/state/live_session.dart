@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../logic/change_sets.dart';
 import '../logic/gui/gui_json.dart';
+import '../logic/inspect/json_outline.dart' show parseJsonPath;
 import '../logic/json_merge.dart';
 import '../logic/suggest/completion_sources.dart';
 import '../services/terrain/terrain_worlds.dart';
@@ -111,6 +112,10 @@ class LiveSession {
   /// Why the last catalog load failed, until one succeeds.
   ErrorCopy? catalogProblem;
   final Map<String, List<Diagnostic>> serverDiagnostics = <String, List<Diagnostic>>{};
+
+  /// Each document's JSON as the server last checked it, so an edit drops
+  /// the server diagnostics at the paths it changed.
+  final Map<String, Object?> _checked = <String, Object?>{};
   final Map<String, ConflictView> conflicts = <String, ConflictView>{};
 
   /// Drafts edited here whose server version changed since they were opened.
@@ -151,6 +156,7 @@ class LiveSession {
   }
 
   void start() {
+    store.addListener(_storeChanged);
     _subscriptions.add(connection.statuses.listen(_status));
     _subscriptions.add(connection.events.listen((Map<String, Object?> event) => unawaited(_event(event))));
     // A tab that opens while another holds the session has waited from the start.
@@ -184,6 +190,7 @@ class LiveSession {
   /// Stops the session: a preview it started ends (it shows nothing once the
   /// editor moved away), and another tab may take over.
   Future<void> dispose() async {
+    store.removeListener(_storeChanged);
     for (final StreamSubscription<Object?> subscription in _subscriptions) {
       await subscription.cancel();
     }
@@ -391,6 +398,46 @@ class LiveSession {
     );
   }
 
+  /// Server diagnostics for document [key], checked against its JSON now.
+  void _diagnose(String key, List<Diagnostic> diagnostics) {
+    serverDiagnostics[key] = diagnostics;
+    final (DocumentKind, String)? parsed = parseDocumentKey(key);
+    final AnimusDocument? document = parsed == null ? null : store.document(parsed.$1, parsed.$2);
+    if (document == null) {
+      _checked.remove(key);
+    } else {
+      _checked[key] = document.json;
+    }
+  }
+
+  /// Drops each server diagnostic whose path the last edit changed: the
+  /// server has not seen that value, so its verdict is stale.
+  void _storeChanged() {
+    bool changed = false;
+    for (final String key in List<String>.of(serverDiagnostics.keys)) {
+      final (DocumentKind, String)? parsed = parseDocumentKey(key);
+      final AnimusDocument? document = parsed == null ? null : store.document(parsed.$1, parsed.$2);
+      if (document == null) continue;
+      if (!_checked.containsKey(key)) {
+        // Diagnostics that came before their document: checked as it arrived.
+        _checked[key] = document.json;
+        continue;
+      }
+      final Object? before = _checked[key];
+      if (identical(before, document.json)) continue;
+      _checked[key] = document.json;
+      final List<Diagnostic> kept = staleServerDiagnosticsDropped(serverDiagnostics[key]!, before, document.json);
+      if (kept.length == serverDiagnostics[key]!.length) continue;
+      changed = true;
+      if (kept.isEmpty) {
+        serverDiagnostics.remove(key);
+      } else {
+        serverDiagnostics[key] = kept;
+      }
+    }
+    if (changed) _changed();
+  }
+
   /// Adds documents from the catalog to the workspace. A document already
   /// here keeps its draft.
   Future<void> openDocuments(List<CatalogEntry> entries) => _run<void>('Opening', () async {
@@ -403,7 +450,7 @@ class LiveSession {
           if (base == null) continue;
           bases[entry.key] = base;
           changes.add(DocumentChange(entry.kind, entry.id, prettyJson(base.source), path: base.path));
-          if (fetched!.$2.isNotEmpty) serverDiagnostics[entry.key] = fetched.$2;
+          if (fetched!.$2.isNotEmpty) _diagnose(entry.key, fetched.$2);
         }
         if (changes.isEmpty) return;
         await store.commit(
@@ -462,7 +509,7 @@ class LiveSession {
         for (final Object? raw in (body['documents'] as List<Object?>?) ?? const <Object?>[]) {
           if (raw is! Map<String, Object?>) continue;
           final List<Diagnostic> diagnostics = diagnosticsOf(raw['diagnostics']);
-          if (diagnostics.isNotEmpty) serverDiagnostics['${raw['kind']}:${raw['id']}'] = diagnostics;
+          if (diagnostics.isNotEmpty) _diagnose('${raw['kind']}:${raw['id']}', diagnostics);
           errors += diagnostics.where((Diagnostic diagnostic) => diagnostic.severity == DiagnosticSeverity.error).length;
         }
         final bool valid = body['valid'] == true;
@@ -522,7 +569,7 @@ class LiveSession {
         final Object? body = response.body;
         if (!response.ok || body is! Map<String, Object?>) {
           final List<Diagnostic> diagnostics = _errorDiagnostics(response);
-          if (diagnostics.isNotEmpty && drafts.length == 1) serverDiagnostics[drafts.first.key] = diagnostics;
+          if (diagnostics.isNotEmpty && drafts.length == 1) _diagnose(drafts.first.key, diagnostics);
           if (response.errorCode == 'not-found') preview = null;
           _notice(NoticeLevel.error, 'Could not preview. ${response.problem.text}');
           return;
@@ -535,7 +582,7 @@ class LiveSession {
           <String>[for (final Object? id in (body['hidden'] as List<Object?>?) ?? const <Object?>[]) '$id'],
         );
         for (final Object? raw in (body['documents'] as List<Object?>?) ?? const <Object?>[]) {
-          if (raw is Map<String, Object?>) serverDiagnostics['${raw['kind']}:${raw['id']}'] = diagnosticsOf(raw['diagnostics']);
+          if (raw is Map<String, Object?>) _diagnose('${raw['kind']}:${raw['id']}', diagnosticsOf(raw['diagnostics']));
         }
         _notice(NoticeLevel.success, 'Previewing ${preview!.npcs.length} NPC${preview!.npcs.length == 1 ? '' : 's'} for your player only.');
       });
@@ -667,7 +714,7 @@ class LiveSession {
         _notice(NoticeLevel.warning, 'Apply stopped: $documents changed on the server. Merge below, then apply again.');
       case final ChangeInvalid invalid:
         await _dropPending(pending.idempotencyKey);
-        serverDiagnostics.addAll(invalid.diagnostics);
+        invalid.diagnostics.forEach(_diagnose);
         _notice(NoticeLevel.error, 'Not applied: $documents have errors. Fix the marked fields, then apply again.');
       case null when response.errorCode == 'counter-replayed':
         // A browser resends a request whose connection closed before the
@@ -1005,7 +1052,7 @@ class LiveSession {
         }
       case 'diagnostics':
         for (final Object? raw in (event['documents'] as List<Object?>?) ?? const <Object?>[]) {
-          if (raw is Map<String, Object?>) serverDiagnostics['${raw['kind']}:${raw['id']}'] = diagnosticsOf(raw['diagnostics']);
+          if (raw is Map<String, Object?>) _diagnose('${raw['kind']}:${raw['id']}', diagnosticsOf(raw['diagnostics']));
         }
         _changed();
       case 'change':
@@ -1020,4 +1067,16 @@ class LiveSession {
     next.sort((CatalogEntry a, CatalogEntry b) => a.path.compareTo(b.path));
     catalog = next;
   }
+}
+
+/// [diagnostics] less those whose path holds a different value in [after]
+/// than in [before]. A path that does not parse is kept.
+List<Diagnostic> staleServerDiagnosticsDropped(List<Diagnostic> diagnostics, Object? before, Object? after) => <Diagnostic>[
+      for (final Diagnostic diagnostic in diagnostics)
+        if (_unchangedAt(diagnostic.path, before, after)) diagnostic,
+    ];
+
+bool _unchangedAt(String path, Object? before, Object? after) {
+  final List<JsonStep>? steps = parseJsonPath(path);
+  return steps == null || jsonEquals(readIn(before, steps), readIn(after, steps));
 }

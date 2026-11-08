@@ -306,3 +306,11 @@ SelectState searchChanged(SelectState state, List<SelectOption> all, String quer
   final SelectRows rows = SelectRows(filterOptions(all, query), actionCount);
   return state.copyWith(query: query, active: rows.first, typed: '');
 }
+
+/// The value and options of a dropdown whose empty entry stands for
+/// [fallback] ("sequence (default)"): the fallback is not listed a second
+/// time, and a stored value equal to it shows as that empty entry.
+({String? value, List<String> options}) withDefault(String? value, List<String> options, String fallback) => (
+      value: value == fallback ? null : value,
+      options: <String>[for (final String option in options) if (option != fallback) option],
+    );

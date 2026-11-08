@@ -1,9 +1,12 @@
 /// Help on a label or heading: the text itself carries a short tooltip. It
 /// gets a dotted underline and takes keyboard focus. Hover (after a short
-/// delay) or focus shows the tooltip (the text's aria-describedby), Escape
-/// hides it, Enter opens the wiki page, and a tap toggles it. The tooltip
-/// holds a Docs link and stays open while the pointer is over it. A mouse
-/// click does nothing of its own, so a label still focuses its control.
+/// delay) shows the tooltip (the text's aria-describedby), and so does focus
+/// that lands on the text by other means than Tab: Tab only passes through,
+/// so the tooltip never covers the fields being tabbed to. Space or Down on
+/// the focused text shows it, Escape hides it, Enter opens the wiki page,
+/// and a tap toggles it. The tooltip holds a Docs link and stays open while
+/// the pointer is over it. A mouse click focuses a label's control and
+/// keeps the tooltip shut until the pointer leaves.
 library;
 
 import 'dart:js_interop';
@@ -17,6 +20,18 @@ import '../config/docs_links.dart';
 import '../logic/help_text.dart';
 
 int _nextTipId = 0;
+
+/// True from a Tab press until the next other key or pointer press: focus
+/// is passing through, not resting on a tip.
+bool _tabbing = false;
+bool _watching = false;
+
+void _watchTabbing() {
+  if (_watching) return;
+  _watching = true;
+  web.document.addEventListener('keydown', ((web.Event event) => _tabbing = (event as web.KeyboardEvent).key == 'Tab').toJS, true.toJS);
+  web.document.addEventListener('pointerdown', ((web.Event _) => _tabbing = false).toJS, true.toJS);
+}
 
 /// The wiki page an [InfoTip] without its own link points at: the page of
 /// the document kind being edited.
@@ -53,6 +68,12 @@ class _InfoTipState extends State<InfoTip> {
   bool _dismissed = false;
   bool _touch = false;
   JSFunction? _outside;
+
+  @override
+  void initState() {
+    super.initState();
+    _watchTabbing();
+  }
 
   @override
   void dispose() {
@@ -99,7 +120,12 @@ class _InfoTipState extends State<InfoTip> {
 
   void _onKey(web.Event raw, String url) {
     final web.KeyboardEvent event = raw as web.KeyboardEvent;
-    if (event.key == 'Enter') {
+    if ((event.key == ' ' || event.key == 'ArrowDown') && !_open) {
+      event.preventDefault();
+      event.stopPropagation();
+      setState(() => _dismissed = false);
+      _setOpen(true);
+    } else if (event.key == 'Enter') {
       event.preventDefault();
       event.stopPropagation();
       web.window.open(url, '_blank', 'noopener');
@@ -125,10 +151,22 @@ class _InfoTipState extends State<InfoTip> {
         'pointerleave': (web.Event _) {
           if (_dismissed) setState(() => _dismissed = false);
         },
-        'focusin': (web.Event _) => _place(),
+        'focusin': (web.Event event) {
+          final web.EventTarget? raw = event.target;
+          final web.Element? target = raw != null && raw.isA<web.Element>() ? raw as web.Element : null;
+          // Focus resting on the text shows the tip; Tab passing through,
+          // or a mouse press on a label, does not.
+          if (target != null && target.classList.contains('animus-tip-text') && !_tabbing && !_dismissed && target.matches(':focus-visible')) {
+            _setOpen(true);
+          } else {
+            _place();
+          }
+        },
         'focusout': (web.Event event) {
           if (_inside((event as web.FocusEvent).relatedTarget)) return;
-          if (_dismissed) setState(() => _dismissed = false);
+          // Under the pointer it stays shut until the pointer leaves.
+          final bool hovered = web.document.getElementById('$_id-wrap')?.matches(':hover') ?? false;
+          if (_dismissed && !hovered) setState(() => _dismissed = false);
           if (_open && !_touch) _setOpen(false);
         },
       },
@@ -138,7 +176,12 @@ class _InfoTipState extends State<InfoTip> {
           attributes: <String, String>{'tabindex': '0', 'role': 'link', 'aria-describedby': _id},
           events: <String, void Function(web.Event)>{
             'keydown': (web.Event event) => _onKey(event, url),
-            'pointerdown': (web.Event raw) => _touch = (raw as web.PointerEvent).pointerType == 'touch',
+            'pointerdown': (web.Event raw) {
+              _touch = (raw as web.PointerEvent).pointerType == 'touch';
+              // A mouse press on a label is for its control: keep the tip
+              // shut over the next field until the pointer leaves.
+              if (!_touch && !_dismissed) setState(() => _dismissed = true);
+            },
             'click': (web.Event event) {
               if (!_touch) return;
               // A tap shows the tip instead of focusing a label's control

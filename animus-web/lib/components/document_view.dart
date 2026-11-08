@@ -53,6 +53,7 @@ import 'npc/pack_editor.dart';
 import 'npc/route_editor.dart';
 import 'npc/skin_summary.dart';
 import 'npc_preview.dart';
+import 'pending_field.dart';
 import 'info_tip.dart';
 import 'suggest/suggest_sources.dart';
 import '../config/docs_links.dart';
@@ -195,6 +196,7 @@ class _DocumentPaneState extends State<DocumentPane> {
     super.initState();
     // Closing the tab with Code text that was never applied asks first.
     _stopGuard = guardUnload(() => _draft != null);
+    pendingProblems.addListener(_pendingChanged);
     // A behavior shaped like a conversation opens on its Conversation tab.
     if (component.document.kind == DocumentKind.behavior && component.view == ViewMode.visual && conversationOf(component.document.json) != null) {
       Future<void>.microtask(() {
@@ -206,8 +208,16 @@ class _DocumentPaneState extends State<DocumentPane> {
   @override
   void dispose() {
     _stopGuard?.call();
+    pendingProblems.removeListener(_pendingChanged);
     super.dispose();
   }
+
+  void _pendingChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// The document's diagnostics less those of a field the user is filling.
+  List<Diagnostic> _shown(AnimusDocument document) => pendingProblems.visible(document.diagnostics);
 
   void _startRename({required bool copy}) {
     setState(() {
@@ -368,22 +378,24 @@ class _DocumentPaneState extends State<DocumentPane> {
 
   Widget _diagnostics(AnimusDocument document) {
     final List<Diagnostic> server = component.serverDiagnostics;
+    final List<Diagnostic> shown = _shown(document);
     if (_draftError != null) {
       return const dom.p(classes: 'animus-draft-error', attributes: <String, String>{'role': 'status'}, <Widget>[
         Component.text('The Code draft has a JSON error and is not applied.'),
       ]);
     }
-    if (document.diagnostics.isEmpty && server.isEmpty) {
+    if (shown.isEmpty && server.isEmpty) {
+      if (document.diagnostics.isNotEmpty) return const dom.p(classes: 'animus-muted', attributes: <String, String>{'role': 'status'}, <Widget>[Component.text('Checked once you leave the new field.')]);
       return const dom.p(classes: 'animus-ok', <Widget>[Component.text('Valid against the shared schema.')]);
     }
     // A kind without a shared schema gets one plain note, not a diagnostic
     // with a "$" path.
-    final List<Diagnostic> noSchema = <Diagnostic>[for (final Diagnostic d in document.diagnostics) if (d.code == 'no-schema') d];
-    if (noSchema.length == document.diagnostics.length && server.isEmpty) {
+    final List<Diagnostic> noSchema = <Diagnostic>[for (final Diagnostic d in shown) if (d.code == 'no-schema') d];
+    if (noSchema.length == shown.length && server.isEmpty) {
       return dom.p(classes: 'animus-muted animus-schema-note', <Widget>[Component.text(noSchema.first.message)]);
     }
     final List<DocumentFix> fixes = fixesFor(document);
-    final Widget list = _diagnosticList(document, server);
+    final Widget list = _diagnosticList(shown, server);
     if (fixes.isEmpty) return list;
     Future<void> apply(Object? json) => component.onSource(prettyJson(json));
     return dom.div(classes: 'animus-diagnostics-block', <Widget>[
@@ -403,9 +415,9 @@ class _DocumentPaneState extends State<DocumentPane> {
     ]);
   }
 
-  Widget _diagnosticList(AnimusDocument document, List<Diagnostic> server) {
+  Widget _diagnosticList(List<Diagnostic> shown, List<Diagnostic> server) {
     return dom.ul(classes: 'animus-diagnostics', <Widget>[
-      for (final Diagnostic diagnostic in document.diagnostics.where((Diagnostic d) => d.code != 'no-schema').take(50))
+      for (final Diagnostic diagnostic in shown.where((Diagnostic d) => d.code != 'no-schema').take(50))
         dom.li(classes: 'is-${diagnostic.severity.name}', <Widget>[
           dom.code(<Widget>[Component.text(diagnostic.path)]),
           Component.text(' ${diagnostic.message}'),
@@ -421,7 +433,7 @@ class _DocumentPaneState extends State<DocumentPane> {
 
   InspectSchemas get _schemas => InspectSchemas.from(component.liveSchemas);
 
-  List<Diagnostic> _allDiagnostics(AnimusDocument document) => <Diagnostic>[...document.diagnostics, ...component.serverDiagnostics];
+  List<Diagnostic> _allDiagnostics(AnimusDocument document) => <Diagnostic>[..._shown(document), ...component.serverDiagnostics];
 
   List<String> _ids(DocumentKind kind) => <String>[
         for (final AnimusDocument other in component.workspaceDocuments)

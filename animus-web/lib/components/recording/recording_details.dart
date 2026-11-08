@@ -8,6 +8,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
+import '../../logic/select/select_model.dart' show withDefault;
 import '../../logic/recording/recording_edit.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../model/animus_document.dart';
@@ -198,8 +199,8 @@ class _RecordingDetailsFormState extends State<RecordingDetailsForm> {
           problems: diagnosticsAt(diagnostics, r'$.playback'),
           child: GuiSelect(
             id: recordingPlaybackId,
-            value: details.playback,
-            options: recordingPlaybacks,
+            value: withDefault(details.playback, recordingPlaybacks, 'loop').value,
+            options: withDefault(details.playback, recordingPlaybacks, 'loop').options,
             allowNone: true,
             noneLabel: 'loop (default)',
             onChanged: (String? next) => _write(details.copyWith(playback: () => next), 'playback'),

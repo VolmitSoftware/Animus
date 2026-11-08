@@ -219,4 +219,16 @@ void main() {
       expect(opened.documents.where((AnimusDocument document) => document.kind == DocumentKind.pack).length, starterPacks().length);
     });
   });
+
+  group('defaultNamespace', () {
+    test('should use the namespace most workspace ids use, not the server name', () {
+      expect(defaultNamespace(const <String>['town:greeting', 'harbor:goods', 'town:crier', 'town/baker'], 'Animus fake server', server: true), 'town');
+    });
+
+    test('should fall back to the NPC folder, the workspace name, or local for a server', () {
+      expect(defaultNamespace(const <String>['examples/greeter'], 'Animus fake server', server: true), 'examples');
+      expect(defaultNamespace(const <String>['3f9a1c'], 'Harbor Pack'), 'harbor-pack');
+      expect(defaultNamespace(const <String>[], 'Animus fake server', server: true), 'local');
+    });
+  });
 }

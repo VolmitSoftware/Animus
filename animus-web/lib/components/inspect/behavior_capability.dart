@@ -19,6 +19,7 @@ import '../../logic/suggest/field_profile.dart';
 import '../../logic/suggest/field_profiles.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
+import '../pending_field.dart';
 import 'behavior_inputs.dart';
 import 'behavior_nodes.dart';
 import 'behavior_operand.dart';
@@ -41,6 +42,8 @@ class CapabilityFields extends StatelessWidget {
 
   String _at(List<JsonStep> rest) => formatPath(<JsonStep>[...steps, ...rest]);
 
+  String get _blockId => 'animus-capability:${_at(const <JsonStep>[])}';
+
   @override
   Widget build(BuildContext build) {
     final String? id = asString(node['capability']);
@@ -49,7 +52,7 @@ class CapabilityFields extends StatelessWidget {
     final JsonMap arguments = asMap(node['arguments']);
     final Set<String> declared = argumentKnownKeys(spec);
     final Set<String> topPointers = <String>{for (final String key in declared) argumentPointer(key)};
-    return dom.div(classes: 'animus-capability', <Widget>[
+    return dom.div(id: _blockId, classes: 'animus-capability', <Widget>[
       GuiRow(
         label: 'Capability *',
         tip: spec == null ? 'What this step does: a built-in capability or one a module adds, written namespace:name such as animus:say.' : null,
@@ -72,7 +75,12 @@ class CapabilityFields extends StatelessWidget {
             noneLabel: 'Pick a capability',
             label: 'Capability of this $kind',
             onChanged: (String? next) {
-              if (next != null) _put(changeCapability(node, next, context.catalog));
+              if (next == null) return;
+              // The new required arguments start empty: they are pending,
+              // with focus on the first, until the user leaves the step.
+              final FieldSpec? first = context.catalog.capability(next)?.arguments.where((FieldSpec argument) => argument.required).firstOrNull;
+              if (first != null) holdField(_blockId, focus: argumentElementId(_at(<JsonStep>['arguments', first.key])));
+              _put(changeCapability(node, next, context.catalog));
             },
           ),
           if (spec == null)

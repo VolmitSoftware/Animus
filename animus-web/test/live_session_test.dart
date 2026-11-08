@@ -297,6 +297,20 @@ void main() {
     expect(session.serverDiagnostics['npc:town/guard']!.single.path, r'$.name');
   });
 
+  test('should drop a server diagnostic once its path is edited and keep the others', () async {
+    await session.openDocuments(session.catalog);
+    await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'A very long name indeed');
+    expect(await session.validate(), isFalse);
+    session.serverDiagnostics['npc:town/guard'] = <Diagnostic>[
+      ...session.serverDiagnostics['npc:town/guard']!,
+      const Diagnostic(DiagnosticSeverity.error, r'$.type', 'type is not loaded'),
+    ];
+    await edit('town/guard', (Map<String, Object?> json) => json..['spawned'] = false);
+    expect(session.serverDiagnostics['npc:town/guard']!.map((Diagnostic d) => d.path), <String>[r'$.name', r'$.type'], reason: 'an edit elsewhere keeps them');
+    await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Short');
+    expect(session.serverDiagnostics['npc:town/guard']!.map((Diagnostic d) => d.path), <String>[r'$.type'], reason: 'the edited path is no longer the one the server saw');
+  });
+
   test('should start a preview with the focused NPC even when unchanged', () async {
     await session.openDocuments(session.catalog);
     await session.startPreview(focus: <String>{'npc:town/baker'});

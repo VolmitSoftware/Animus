@@ -21,6 +21,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 import '../../config/docs_links.dart';
 import '../../logic/citizens/definition_validation.dart' show effectiveActivationDiagnostics;
 import '../../logic/gui/gui_json.dart';
+import '../../logic/select/select_model.dart' show withDefault;
 import '../../logic/inspect/inspect_schemas.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/npc/combat_settings.dart';
@@ -528,8 +529,8 @@ class _NpcInspectorState extends State<NpcInspector> {
           problems: diagnosticsAt(_diagnostics, r'$.pose'),
           child: GuiSelect(
             id: poseId,
-            value: asString(doc['pose']),
-            options: poses,
+            value: withDefault(asString(doc['pose']), poses, 'standing').value,
+            options: withDefault(asString(doc['pose']), poses, 'standing').options,
             allowNone: true,
             noneLabel: 'standing (default)',
             onChanged: (String? pose) => _write(<JsonStep>['pose'], pose == 'standing' ? null : pose),

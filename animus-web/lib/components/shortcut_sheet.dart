@@ -40,8 +40,19 @@ class ShortcutSheet extends StatefulWidget {
 class _ShortcutSheetState extends State<ShortcutSheet> {
   static const String _panelId = 'animus-shortcuts';
   static const String _closeId = 'animus-shortcuts-close';
+  static const String _bodyId = 'animus-shortcuts-body';
   web.HTMLElement? _returnTo;
   void Function()? _stopKeys;
+
+  /// The list runs past the bottom of the sheet: the foot says so.
+  bool _more = false;
+
+  void _measure() {
+    final web.Element? body = web.document.getElementById(_bodyId);
+    if (body == null || !mounted) return;
+    final bool more = body.scrollTop + body.clientHeight < body.scrollHeight - 2;
+    if (more != _more) setState(() => _more = more);
+  }
 
   @override
   void initState() {
@@ -55,6 +66,7 @@ class _ShortcutSheetState extends State<ShortcutSheet> {
       _close();
     });
     focusWhenShown(_closeId);
+    web.window.setTimeout(_measure.toJS, 0.toJS);
   }
 
   @override
@@ -113,8 +125,10 @@ class _ShortcutSheetState extends State<ShortcutSheet> {
               ),
             ]),
             dom.div(
+              id: _bodyId,
               classes: 'animus-shortcuts-body',
               attributes: const <String, String>{'tabindex': '0', 'data-stop': '', 'aria-label': 'Shortcut list'},
+              events: <String, void Function(web.Event)>{'scroll': (web.Event _) => _measure()},
               <Widget>[
                 for (final ShortcutGroup group in shortcutGroups)
                   dom.section(classes: 'animus-shortcuts-group', <Widget>[
@@ -136,6 +150,7 @@ class _ShortcutSheetState extends State<ShortcutSheet> {
               ],
             ),
             dom.p(classes: 'animus-shortcuts-foot', <Widget>[
+              if (_more) const dom.span(classes: 'animus-shortcuts-more', attributes: <String, String>{'data-testid': 'shortcuts-more'}, <Widget>[Component.text('More below. Scroll the list.')]),
               dom.a(
                 href: Docs.editorKeyboard.url,
                 attributes: const <String, String>{'target': '_blank', 'rel': 'noopener', 'data-stop': ''},

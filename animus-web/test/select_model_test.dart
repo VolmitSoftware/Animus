@@ -174,4 +174,17 @@ void main() {
       expect(SelectRows(filterOptions(fruit, next.query), 2).enabled(next.active), isTrue);
     });
   });
+
+  group('withDefault', () {
+    test('should list the default once, as the empty entry', () {
+      final ({String? value, List<String> options}) picked = withDefault(null, const <String>['sequence', 'pingpong', 'random'], 'sequence');
+      expect(picked.options, <String>['pingpong', 'random']);
+      expect(picked.value, isNull);
+    });
+
+    test('should show a stored default as the empty entry', () {
+      expect(withDefault('sequence', const <String>['sequence', 'random'], 'sequence').value, isNull);
+      expect(withDefault('random', const <String>['sequence', 'random'], 'sequence').value, 'random');
+    });
+  });
 }

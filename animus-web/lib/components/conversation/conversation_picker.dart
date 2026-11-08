@@ -1,7 +1,8 @@
 /// The conversation editor's pickers: [ConversationPicker] picks one value
 /// with the editor's dropdown, [ConversationMenu] runs one action from a
 /// menu that opens under its button, moves with the arrow keys, Home and
-/// End, and closes with Escape or Tab, giving focus back to the button.
+/// End, and closes with Escape or Tab, giving focus back to the button. It
+/// also closes once its button scrolls out of view.
 library;
 
 import 'dart:js_interop';
@@ -13,6 +14,7 @@ import 'package:web/web.dart' as web;
 
 import '../../logic/select/select_model.dart';
 import '../select/animus_select.dart';
+import '../shortcut_sheet.dart' show platformKeys;
 
 int _nextPickerId = 0;
 
@@ -33,6 +35,9 @@ class MenuAction {
 
   /// Null shows the item disabled.
   final void Function()? onSelect;
+
+  /// A shortcut written as in the shortcut sheet (`Alt+Up`, `Mod+D`),
+  /// shown in the reader's platform names, or other short text.
   final String? hint;
 }
 
@@ -41,6 +46,7 @@ abstract class _PopState<T extends StatefulWidget> extends State<T> {
   final String id = 'animus-pick-${_nextPickerId++}';
   bool open = false;
   JSFunction? _outside;
+  JSFunction? _scrolled;
 
   String get popId => '$id-pop';
 
@@ -55,7 +61,20 @@ abstract class _PopState<T extends StatefulWidget> extends State<T> {
 
   void _stopOutside() {
     if (_outside != null) web.document.removeEventListener('pointerdown', _outside);
+    if (_scrolled != null) web.window.removeEventListener('scroll', _scrolled, true.toJS);
     _outside = null;
+    _scrolled = null;
+  }
+
+  /// Whether the menu's button is on screen below the sticky top bar. A
+  /// menu whose button has scrolled away would float detached over the
+  /// page and the top bar, so it closes instead.
+  bool _anchored() {
+    final web.Element? button = web.document.getElementById(id);
+    if (button == null) return false;
+    final web.DOMRect box = button.getBoundingClientRect();
+    final double top = web.document.querySelector('.animus-topbar')?.getBoundingClientRect().bottom ?? 0;
+    return box.top >= top && box.bottom <= web.window.innerHeight;
   }
 
   void show({int focus = 0}) {
@@ -67,6 +86,11 @@ abstract class _PopState<T extends StatefulWidget> extends State<T> {
       close(refocus: false);
     }).toJS;
     web.document.addEventListener('pointerdown', _outside);
+    if (!_anchored()) (web.document.getElementById(id) as web.HTMLElement?)?.scrollIntoView(web.ScrollIntoViewOptions(block: 'center'));
+    _scrolled = ((web.Event _) {
+      if (!_anchored()) close(refocus: false);
+    }).toJS;
+    web.window.addEventListener('scroll', _scrolled, true.toJS);
     web.window.setTimeout((() {
       _place();
       focusItem(focus);
@@ -234,7 +258,7 @@ class _ConversationMenuState extends _PopState<ConversationMenu> {
                   },
                   <Widget>[
                     dom.span(<Widget>[Component.text(action.label)]),
-                    if (action.hint != null) dom.span(classes: 'animus-menu-hint', <Widget>[Component.text(action.hint!)]),
+                    if (action.hint != null) dom.span(classes: 'animus-menu-hint', <Widget>[Component.text(platformKeys(action.hint!))]),
                   ],
                 ),
             ],

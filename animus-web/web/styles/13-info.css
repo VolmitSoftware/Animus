@@ -63,7 +63,8 @@
   }
 }
 
-.animus-tip:not(.is-dismissed):has(.animus-tip-text:focus-visible) .animus-tip-pop,
+/* Focus alone does not show it: the component opens it when focus rests on
+   the text, not when Tab passes through. */
 .animus-tip.is-open .animus-tip-pop {
   display: grid;
   transition-delay: 0s;

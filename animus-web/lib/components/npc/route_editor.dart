@@ -24,6 +24,7 @@ import 'package:web/web.dart' as web;
 
 import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
+import '../../logic/select/select_model.dart' show withDefault;
 import '../../logic/npc/route_model.dart';
 import '../../logic/terrain/terrain_snap.dart';
 import '../../logic/terrain/terrain_volume.dart';
@@ -470,7 +471,7 @@ class _RouteEditorState extends State<RouteEditor> {
         label: 'Order',
         labelFor: '$_gridId-order',
         help: 'Sequence walks in order, pingpong back and forth, random picks points by guides, wander roams near a center.',
-        child: GuiSelect(id: '$_gridId-order', value: asString(route['order']), options: routeOrders, allowNone: true, noneLabel: 'sequence (default)', onChanged: (String? value) {
+        child: GuiSelect(id: '$_gridId-order', value: withDefault(asString(route['order']), routeOrders, 'sequence').value, options: withDefault(asString(route['order']), routeOrders, 'sequence').options, allowNone: true, noneLabel: 'sequence (default)', onChanged: (String? value) {
           if (value == null) {
             _write(setRouteOrder(route, 'sequence')..remove('order'));
           } else {
@@ -483,7 +484,7 @@ class _RouteEditorState extends State<RouteEditor> {
         label: 'Mode',
         labelFor: '$_gridId-mode',
         help: 'Only walk needs whole-block points.',
-        child: GuiSelect(id: '$_gridId-mode', value: asString(route['mode']), options: routeModes, allowNone: true, noneLabel: 'walk (default)', onChanged: (String? value) => _field('mode', value)),
+        child: GuiSelect(id: '$_gridId-mode', value: withDefault(asString(route['mode']), routeModes, 'walk').value, options: withDefault(asString(route['mode']), routeModes, 'walk').options, allowNone: true, noneLabel: 'walk (default)', onChanged: (String? value) => _field('mode', value)),
       ),
       InspectRow(
         label: 'Style',
@@ -509,7 +510,7 @@ class _RouteEditorState extends State<RouteEditor> {
         labelFor: '$_gridId-seed',
         help: 'npc: stable per NPC. random: new each run.',
         problems: _inline('seed'),
-        child: GuiSelect(id: '$_gridId-seed', value: asString(route['seed']), options: routeSeeds, allowNone: true, noneLabel: 'npc (default)', onChanged: (String? value) => _field('seed', value)),
+        child: GuiSelect(id: '$_gridId-seed', value: withDefault(asString(route['seed']), routeSeeds, 'npc').value, options: withDefault(asString(route['seed']), routeSeeds, 'npc').options, allowNone: true, noneLabel: 'npc (default)', onChanged: (String? value) => _field('seed', value)),
       ),
       InspectRow(
         label: 'Start offset',
@@ -518,8 +519,8 @@ class _RouteEditorState extends State<RouteEditor> {
         problems: _inline('startOffset'),
         child: GuiSelect(
           id: '$_gridId-start',
-          value: asString(route['startOffset']),
-          options: routeStartOffsets,
+          value: withDefault(asString(route['startOffset']), routeStartOffsets, 'first').value,
+          options: withDefault(asString(route['startOffset']), routeStartOffsets, 'first').options,
           allowNone: true,
           noneLabel: 'first (default)',
           onChanged: (String? value) => _field('startOffset', value),

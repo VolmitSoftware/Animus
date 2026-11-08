@@ -8,6 +8,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
+import '../../logic/select/select_model.dart' show withDefault;
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
@@ -121,8 +122,8 @@ class ShopBindingEditor extends StatelessWidget {
         problems: diagnosticsAt(diagnostics, '$path.openOn'),
         child: GuiSelect(
           id: openOnId,
-          value: asString(module['openOn']),
-          options: const <String>['right', 'left', 'both'],
+          value: withDefault(asString(module['openOn']), const <String>['right', 'left', 'both'], 'right').value,
+          options: withDefault(asString(module['openOn']), const <String>['right', 'left', 'both'], 'right').options,
           allowNone: true,
           noneLabel: 'right (default)',
           onChanged: (String? click) {

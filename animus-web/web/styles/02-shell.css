@@ -739,10 +739,18 @@
 }
 
 .animus-shortcuts-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
   margin: 0;
   padding: 0.5rem 1rem;
   border-top: 1px solid var(--animus-border);
   font-size: 0.8125rem;
+}
+
+.animus-shortcuts-more {
+  color: var(--animus-muted);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -839,6 +847,17 @@
   .animus-palette-layer {
     padding-top: 0.75rem;
   }
+}
+
+/* A toast never takes a click meant for the control under it: only its own
+   buttons and links catch the pointer. The toast sets pointer-events
+   inline, which only !important overrides. */
+.arcane-toast {
+  pointer-events: none !important;
+}
+
+.arcane-toast :is(button, a) {
+  pointer-events: auto !important;
 }
 
 /* Toasts: on phones they dock full width at the bottom edge. The toaster
