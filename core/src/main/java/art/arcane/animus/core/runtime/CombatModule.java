@@ -136,6 +136,7 @@ public final class CombatModule implements AutoCloseable {
             case RELEASE -> engine.release(npc);
             case TARGET -> engine.target(npc, participant(target.orElseThrow(() -> new IllegalArgumentException("Name a target UUID"))));
             case GUARD -> engine.guard(npc, target.map(this::participant));
+            case REVIVE -> engine.revive(npc);
         };
         return "Combat " + id + ": " + result.status() + " " + result.detail();
     }
@@ -204,6 +205,7 @@ public final class CombatModule implements AutoCloseable {
             if (!enabled) {
                 engine.tick();
                 for (UUID npc : engine.drainDeletions()) deleteDead(npc);
+                for (UUID npc : engine.drainPermadeaths()) markDead(npc);
                 if (engine.drained()) {
                     engine.close();
                     engine = null;
@@ -215,6 +217,7 @@ public final class CombatModule implements AutoCloseable {
             reconcile();
             engine.tick();
             for (UUID npc : engine.drainDeletions()) deleteDead(npc);
+            for (UUID npc : engine.drainPermadeaths()) markDead(npc);
         } finally { metrics.stop(Subsystem.COMBAT, started); }
     }
     /** Combat NPCs waiting for a slot; owner thread. */
@@ -241,13 +244,33 @@ public final class CombatModule implements AutoCloseable {
         }
     }
 
+    private Executor files() {
+        if (files == null) files = runtime.fileExecutor((Runnable task, MutationLane.EngineTaskEvent event, Throwable failure) -> {
+            if (event == MutationLane.EngineTaskEvent.FAILED) warnings.accept("Combat could not record a death: " + failure);
+        });
+        return files;
+    }
+
+    /** Marks a permadeath NPC dead in its definition on the file lane, so it stays dead across restarts until revived. */
+    private void markDead(UUID npc) {
+        try {
+            files().execute(() -> {
+                try {
+                    HealthRecords.markDead(runtime.npcs(), npc).ifPresent((HealthRecords.Recorded recorded) ->
+                            warnings.accept("NPC " + recorded.id() + " died for good; /animus npc revive " + recorded.id() + " brings it back; tx " + recorded.transaction()));
+                } catch (java.io.IOException failure) {
+                    warnings.accept("Combat could not record the permadeath of " + npc + ": " + failure.getMessage());
+                }
+            });
+        } catch (IllegalStateException | RejectedExecutionException stopping) {
+            warnings.accept("Combat could not record the permadeath of " + npc + " while Animus stops: " + stopping.getMessage());
+        }
+    }
+
     /** Deletes the definition on the file lane as one transaction, and names the transaction that undoes it. */
     private void deleteDead(UUID npc) {
         try {
-            if (files == null) files = runtime.fileExecutor((Runnable task, MutationLane.EngineTaskEvent event, Throwable failure) -> {
-                if (event == MutationLane.EngineTaskEvent.FAILED) warnings.accept("Combat could not delete a dead NPC: " + failure);
-            });
-            files.execute(() -> {
+            files().execute(() -> {
                 try {
                     CombatDeletions.delete(runtime.npcs(), npc).ifPresent((CombatDeletions.Deleted deleted) -> {
                         deletedOnDeath.incrementAndGet();
@@ -314,7 +337,10 @@ public final class CombatModule implements AutoCloseable {
         if (settingsListener != null) {
             try { settingsListener.close(); } catch (Exception ignored) { }
         }
-        if (engine != null) engine.close();
+        if (engine != null) {
+            engine.close();
+            for (UUID npc : engine.drainPermadeaths()) markDead(npc);
+        }
         candidates.clear();
     }
 }

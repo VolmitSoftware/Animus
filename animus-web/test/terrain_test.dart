@@ -238,6 +238,20 @@ void main() {
       expect(peak, 3);
     });
 
+    test('worlds the server does not list, or answered 404 for, are never requested', () async {
+      final List<String> asked = <String>[];
+      final TerrainClient client = TerrainClient(server: 's', send: (ApiRequest request) async {
+        asked.add(request.path);
+        return const ApiResponse(404, <String, Object?>{'error': 'unknown world'});
+      }, cache: MemoryTerrainCache());
+      expect(await client.slice('ghost', 0, 0, 0, 16), isNull);
+      expect(await client.slice('ghost', 1, 0, 0, 16), isNull);
+      expect(asked, hasLength(1));
+      client.worlds = <String>{'world'};
+      expect(await client.surface('nether', 0, 0), isNull);
+      expect(asked, hasLength(1));
+    });
+
     test('a failed request answers the cached copy, and a later call retries', () async {
       final MemoryTerrainCache cache = MemoryTerrainCache();
       final Map<String, Object?> body = _answer(fakeTerrainSurface(_get('/v1/terrain/surface?world=world&tx=0&tz=0'), _anchors));

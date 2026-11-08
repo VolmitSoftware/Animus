@@ -35,9 +35,9 @@ class CombatPeersTest {
             if (settings == null || snapshot.isEmpty() || !snapshot.get().active()) return Optional.empty();
             return Optional.of(CombatEngine.npcTarget(npc, "npc-" + npc, snapshot.get(), "npc-" + npc, settings, CombatLoadout.NONE));
         }
-        @Override public DamageOutcome strikePeer(TargetRef attacker, WorldPosition from, CombatTarget target, double amount, double knockback) {
+        @Override public DamageOutcome strikePeer(TargetRef attacker, WorldPosition from, CombatTarget target, double amount, double knockback, DamageKind kind) {
             CombatEngine holder = holders.get(target.ref().id());
-            mail.add(() -> { delivered.add("strike"); holder.struck(target.ref().id(), attacker, from, amount, knockback); });
+            mail.add(() -> { delivered.add("strike"); holder.struck(target.ref().id(), attacker, from, amount, knockback, kind); });
             return new DamageOutcome(DamageStatus.SCHEDULED, 0, false);
         }
         @Override public int alertPeers(String squad, UUID source, WorldPosition from, double range, TargetRef target, int limit) {

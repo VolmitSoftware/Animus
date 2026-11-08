@@ -449,11 +449,11 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         return Optional.of(new ActiveNpc(actor.id, view.name(), view.snapshot()));
     }
     Player onlinePlayer(UUID id) { return online.get(id); }
-    void damaged(UUID npc, double amount, boolean died) {
+    void damaged(UUID npc, double amount, boolean died, Optional<TriggerEvent.Attacker> attacker) {
         TriggerDispatcher dispatcher = triggers;
         if (dispatcher == null) return;
-        dispatcher.publish(new TriggerEvent.Damage(npc, amount));
-        if (died) { dispatcher.publish(new TriggerEvent.Death(npc)); dispatcher.dead(npc); }
+        dispatcher.publish(new TriggerEvent.Damage(npc, amount, attacker));
+        if (died) { dispatcher.publish(new TriggerEvent.Death(npc, attacker)); dispatcher.dead(npc); }
     }
     @Override public Optional<ActiveNpc> active(UUID npc) {
         RegionActor actor = available() ? byUuid.get(npc) : null;

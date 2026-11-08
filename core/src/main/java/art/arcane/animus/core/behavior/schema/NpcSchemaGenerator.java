@@ -2,6 +2,7 @@ package art.arcane.animus.core.behavior.schema;
 
 import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.combat.FightKind;
+import art.arcane.animus.core.combat.HealthSettings;
 import art.arcane.animus.core.combat.RangedWeapon;
 import art.arcane.animus.core.combat.TargetCategory;
 import art.arcane.animus.core.control.LookClose;
@@ -122,6 +123,7 @@ public final class NpcSchemaGenerator {
         JsonObject known = new JsonObject();
         known.add("animus:navigation", navigation());
         known.add(COMBAT, CombatSchema.module());
+        known.add(HealthSettings.MODULE, HealthSchema.module());
         known.add(ShopBinding.MODULE, shop());
         known.add(GuiBinding.MODULE, gui());
         known.add(HireTerms.MODULE, hire());
@@ -912,13 +914,13 @@ public final class NpcSchemaGenerator {
         }
     }
 
-    private static JsonObject closed() { JsonObject schema = type("object"); schema.addProperty("additionalProperties", false); return schema; }
-    private static JsonObject type(String type) { JsonObject schema = new JsonObject(); schema.addProperty("type", type); return schema; }
-    private static JsonObject pattern(String pattern) { JsonObject schema = type("string"); schema.addProperty("pattern", pattern); return schema; }
-    private static JsonObject text(int maximum) { JsonObject schema = pattern(NONBLANK); schema.addProperty("maxLength", maximum); return schema; }
-    private static JsonObject required(String key) { JsonObject schema = new JsonObject(); schema.add("required", strings(key)); return schema; }
-    private static JsonObject requiredAll(String... keys) { JsonObject schema = new JsonObject(); schema.add("required", strings(keys)); return schema; }
-    private static JsonObject constant(Object value) {
+    static JsonObject closed() { JsonObject schema = type("object"); schema.addProperty("additionalProperties", false); return schema; }
+    static JsonObject type(String type) { JsonObject schema = new JsonObject(); schema.addProperty("type", type); return schema; }
+    static JsonObject pattern(String pattern) { JsonObject schema = type("string"); schema.addProperty("pattern", pattern); return schema; }
+    static JsonObject text(int maximum) { JsonObject schema = pattern(NONBLANK); schema.addProperty("maxLength", maximum); return schema; }
+    static JsonObject required(String key) { JsonObject schema = new JsonObject(); schema.add("required", strings(key)); return schema; }
+    static JsonObject requiredAll(String... keys) { JsonObject schema = new JsonObject(); schema.add("required", strings(keys)); return schema; }
+    static JsonObject constant(Object value) {
         JsonObject schema = new JsonObject();
         switch (value) {
             case Integer number -> schema.addProperty("const", number);
@@ -927,14 +929,14 @@ public final class NpcSchemaGenerator {
         }
         return schema;
     }
-    private static JsonObject choices(List<String> values) { JsonObject schema = new JsonObject(); schema.add("enum", strings(values.toArray(String[]::new))); return schema; }
-    private static JsonObject range(String type, Number minimum, Number maximum) {
+    static JsonObject choices(List<String> values) { JsonObject schema = new JsonObject(); schema.add("enum", strings(values.toArray(String[]::new))); return schema; }
+    static JsonObject range(String type, Number minimum, Number maximum) {
         JsonObject schema = type(type);
         schema.addProperty("minimum", minimum);
         schema.addProperty("maximum", maximum);
         return schema;
     }
-    private static JsonObject list(JsonObject items, int minimum, int maximum, String description) {
+    static JsonObject list(JsonObject items, int minimum, int maximum, String description) {
         JsonObject schema = type("array");
         if (!description.isEmpty()) schema.addProperty("description", description);
         schema.addProperty("minItems", minimum);
@@ -942,14 +944,14 @@ public final class NpcSchemaGenerator {
         schema.add("items", items);
         return schema;
     }
-    private static JsonObject reference(String definition) { JsonObject schema = new JsonObject(); schema.addProperty("$ref", "#/$defs/" + definition); return schema; }
-    private static JsonObject described(JsonObject schema, String description) { schema.addProperty("description", description); return schema; }
-    private static JsonObject property(String name, JsonObject schema) {
+    static JsonObject reference(String definition) { JsonObject schema = new JsonObject(); schema.addProperty("$ref", "#/$defs/" + definition); return schema; }
+    static JsonObject described(JsonObject schema, String description) { schema.addProperty("description", description); return schema; }
+    static JsonObject property(String name, JsonObject schema) {
         JsonObject wrapper = new JsonObject();
         JsonObject properties = new JsonObject();
         properties.add(name, schema);
         wrapper.add("properties", properties);
         return wrapper;
     }
-    private static JsonArray strings(String... values) { JsonArray array = new JsonArray(); for (String value : values) array.add(value); return array; }
+    static JsonArray strings(String... values) { JsonArray array = new JsonArray(); for (String value : values) array.add(value); return array; }
 }

@@ -358,6 +358,33 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         return result;
     }
 
+    /** A damage event: the client flashes the body red and plays its own type's hurt sound. Nothing when unbound. */
+    @Override public CompletionStage<Void> hurt(Player viewer, BodyTransport.Body presented) {
+        return feedback(viewer, presented, "hurt", (int id) -> nativeApi.hurt(id));
+    }
+    /** The death event and zero health: the body falls over and plays its own type's death sound. */
+    @Override public CompletionStage<Void> die(Player viewer, BodyTransport.Body presented) {
+        return feedback(viewer, presented, "death", (int id) -> nativeApi.die(id));
+    }
+    @FunctionalInterface private interface Feedback { List<Object> packets(int id) throws ReflectiveOperationException; }
+    private CompletionStage<Void> feedback(Player viewer, BodyTransport.Body presented, String label, Feedback feedback) {
+        Body body = checkBody(presented);
+        if (nativeApi.damageType == null) return CompletableFuture.completedFuture(null);
+        Session session = sessions.get(viewer.getUniqueId());
+        if (session == null || session.viewer != viewer || !current(session)) return unwatched("Viewer is not watched");
+        Presentation presentation = session.visible.get(body.entityId);
+        if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
+        List<Object> packets;
+        try { packets = feedback.packets(body.entityId); }
+        catch (ReflectiveOperationException | RuntimeException failure) { return failed("Body " + label + " failed: " + failure.getClass().getSimpleName()); }
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        submit(session, result, false, () -> {
+            if (session.visible.get(body.entityId) != presentation) throw new CancellationException("Body was despawned");
+            write(session, body, PacketKind.METADATA, packets).whenComplete((nothing, failure) -> complete(result, failure));
+        });
+        return result;
+    }
+
     /** One metadata packet with the body's shared flags, pose and item use from {@code look}; nothing without presentation support. */
     @Override public CompletionStage<Void> look(Player viewer, BodyTransport.Body presented, BodyLook look) {
         Body body = checkBody(presented);
@@ -804,7 +831,9 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         private final Method identifierParse, registryContains, registryValue, typeWidth, typeHeight;
         private final Constructor<?> addEntity, removeEntities, removePlayerInfo, vector, movement, positionValues;
         private final Method positionPath;
-        private final Constructor<?> friendlyBuffer, rotateHead, setPassengers, animate;
+        private final Constructor<?> friendlyBuffer, rotateHead, setPassengers, animate, entityEvent, damageEvent;
+        /** The generic damage type a hurt event names, or null when this server's registries could not be read. */
+        private final Object damageType, healthAccessor;
         private final Method writeVarInt, writeVarIntArray;
         private final Constructor<?> profile, property, propertyMap, playerInfoEntry, playerInfoPacket, metadataPacket;
         private final Method multimapCreate, multimapPut, dataValueCreate;
@@ -847,6 +876,24 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             rotateHead = decodedPacketConstructor("net.minecraft.network.protocol.game.ClientboundRotateHeadPacket", friendly);
             setPassengers = decodedPacketConstructor("net.minecraft.network.protocol.game.ClientboundSetPassengersPacket", friendly);
             animate = decodedPacketConstructor("net.minecraft.network.protocol.game.ClientboundAnimatePacket", friendly);
+            Constructor<?> boundEvent = null, boundDamageEvent = null;
+            Object boundDamage = null, boundHealth = null;
+            try {
+                Class<?> resourceKey = type("net.minecraft.resources.ResourceKey");
+                boundEvent = decodedPacketConstructor("net.minecraft.network.protocol.game.ClientboundEntityEventPacket", friendly);
+                boundDamageEvent = type("net.minecraft.network.protocol.game.ClientboundDamageEventPacket").getConstructor(int.class, type("net.minecraft.core.Holder"), int.class, int.class, Optional.class);
+                boundHealth = field(type("net.minecraft.world.entity.LivingEntity"), "DATA_HEALTH_ID").get(null);
+                Object server = plugin.getServer().getClass().getMethod("getServer").invoke(plugin.getServer());
+                Object registries = server.getClass().getMethod("registryAccess").invoke(server);
+                Object lookup = type("net.minecraft.core.HolderLookup$Provider").getMethod("lookupOrThrow", resourceKey)
+                        .invoke(registries, type("net.minecraft.core.registries.Registries").getField("DAMAGE_TYPE").get(null));
+                boundDamage = type("net.minecraft.core.HolderGetter").getMethod("getOrThrow", resourceKey)
+                        .invoke(lookup, type("net.minecraft.world.damagesource.DamageTypes").getField("GENERIC").get(null));
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError missing) {
+                boundDamage = null;
+                plugin.getLogger().warning("NPC hurt and death animations unavailable: " + missing.getClass().getSimpleName());
+            }
+            entityEvent = boundEvent; damageEvent = boundDamageEvent; damageType = boundDamage; healthAccessor = boundHealth;
             Class<?> positionSync = type("net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket");
             steppedMovement = version.equals("26.3");
             if (steppedMovement) {
@@ -1049,6 +1096,22 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                 bytes.writeByte((byte) (int) Math.floor((yaw % 360.0) * 256.0 / 360.0));
                 return rotateHead.newInstance(buffer);
             } finally { bytes.release(); }
+        }
+        /** A damage event from no entity: the client's own hurt handling flashes the body and plays its hurt sound. */
+        private List<Object> hurt(int id) throws ReflectiveOperationException {
+            return List.of(damageEvent.newInstance(id, damageType, -1, -1, Optional.empty()));
+        }
+        /** Entity event 3 plays the death sound and, for every body but a player's, the fall; zero health makes a player fall too. */
+        private List<Object> die(int id) throws ReflectiveOperationException {
+            ByteBuf bytes = Unpooled.buffer(8);
+            Object event;
+            try {
+                Object buffer = friendlyBuffer.newInstance(bytes);
+                bytes.writeInt(id);
+                bytes.writeByte(3);
+                event = entityEvent.newInstance(buffer);
+            } finally { bytes.release(); }
+            return List.of(event, metadataPacket.newInstance(id, List.of(dataValueCreate.invoke(null, healthAccessor, 0f))));
         }
         /** Animation 0 swings the main arm. */
         private Object swing(int id) throws ReflectiveOperationException {

@@ -76,6 +76,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     private final ArrayDeque<Fight> fights = new ArrayDeque<>();
     private final ArrayDeque<Chat> chats = new ArrayDeque<>();
     private final List<UUID> deletions = new ArrayList<>();
+    private final List<UUID> permadeaths = new ArrayList<>();
     private final ArrayDeque<CombatBrain> waiting = new ArrayDeque<>();
     private int active;
     private int peakWaiting;
@@ -331,6 +332,14 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     }
 
     void requestDeletion(UUID npc) { if (!deletions.contains(npc)) deletions.add(npc); }
+    void requestPermadeath(UUID npc) { if (!permadeaths.contains(npc)) permadeaths.add(npc); }
+
+    /** NPCs that died for good since the last call, whose definitions must be marked dead. Each death is returned once. */
+    public List<UUID> drainPermadeaths() {
+        List<UUID> drained = List.copyOf(permadeaths);
+        permadeaths.clear();
+        return drained;
+    }
 
     /** NPCs that died with {@code deleteOnDeath} since the last call. Each death is returned once. */
     public List<UUID> drainDeletions() {
@@ -516,26 +525,27 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
             return outcome;
         }
         CombatBrain defender = brains.get(target.ref().id());
-        if (defender == null) return world.strikePeer(attacker, from, target, amount, knockback);
-        return strike(defender, attacker, from, target, amount, knockback);
+        if (defender == null) return world.strikePeer(attacker, from, target, amount, knockback, kind);
+        return strike(defender, attacker, from, target, amount, knockback, kind);
     }
 
     /**
      * A hit on an NPC this engine holds, delivered by the engine that dealt it. The attacker's engine already asked
      * protection; this side applies defense and the one damage authority.
      */
-    public CombatWorld.DamageOutcome struck(UUID npc, TargetRef attacker, WorldPosition from, double amount, double knockback) {
+    public CombatWorld.DamageOutcome struck(UUID npc, TargetRef attacker, WorldPosition from, double amount, double knockback, CombatWorld.DamageKind kind) {
         CombatBrain defender = brains.get(npc);
         Optional<VirtualNpcState.Snapshot> snapshot = world.npc(npc);
         if (closed || stopping || defender == null || snapshot.isEmpty() || !snapshot.get().active() || !(amount > 0))
             return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.NO_CHANGE, 0, false);
-        CombatWorld.DamageOutcome outcome = strike(defender, attacker, from, view(defender, snapshot.get()), amount, knockback);
+        CombatWorld.DamageOutcome outcome = strike(defender, attacker, from, view(defender, snapshot.get()), amount, knockback, kind);
         wake(defender);
         return outcome;
     }
-    private CombatWorld.DamageOutcome strike(CombatBrain defender, TargetRef attacker, WorldPosition from, CombatTarget target, double amount, double knockback) {
+    private CombatWorld.DamageOutcome strike(CombatBrain defender, TargetRef attacker, WorldPosition from, CombatTarget target, double amount, double knockback,
+                                             CombatWorld.DamageKind kind) {
         if (defender.settings().defense().invincible()) return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.PROTECTED, 0, false);
-        double mitigated = defender.mitigate(attacker, from, amount, resolve(attacker));
+        double mitigated = defender.mitigate(attacker, from, amount, resolve(attacker), kind);
         if (mitigated <= 0) return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.NO_CHANGE, 0, false);
         CombatWorld.DamageOutcome outcome = world.damageVirtual(defender.npc(), attacker, mitigated);
         if (outcome.status() != CombatWorld.DamageStatus.APPLIED) return outcome;
@@ -560,8 +570,9 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
 
     private void afterVirtualHit(CombatBrain defender, TargetRef attacker, WorldPosition from, CombatTarget target, double knockback, boolean killed) {
         fought(attacker, target.ref());
+        showHealth(defender, attacker);
         if (killed) {
-            defender.die(target.position());
+            defender.die(target.position(), attacker);
             return;
         }
         if (knockback > 0 && defender.settings().defense().knockback()) {
@@ -577,6 +588,18 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         CombatSettings.Melee melee = brain.settings().melee();
         return hit(new TargetRef(TargetKind.NPC, brain.npc()), self.position(), target, brain.meleeDamage(), CombatWorld.DamageKind.MELEE,
                 melee.reach(), melee.knockback(), brain.settings().death().victimDrops());
+    }
+
+    /** With {@code showHealth}, the player who hit the NPC sees its name and health above the hotbar. */
+    private void showHealth(CombatBrain defender, TargetRef attacker) {
+        if (!defender.settings().defense().showHealth() || attacker.kind() != TargetKind.PLAYER) return;
+        String name = world.npcName(defender.npc());
+        world.npc(defender.npc()).ifPresent((VirtualNpcState.Snapshot self) -> world.actionBar(attacker.id(),
+                (name.isBlank() ? defender.handle() : name) + " " + amount(self.health()) + "/" + amount(defender.settings().defense().maximumHealth())));
+    }
+    private static String amount(double value) {
+        double tenths = Math.ceil(value * 10) / 10;
+        return tenths == Math.rint(tenths) ? Long.toString((long) tenths) : Double.toString(tenths);
     }
 
     /** Launches one real helper projectile toward the target and records it before anything can touch it. */
@@ -697,7 +720,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         else if (effect.id().equals("minecraft:instant_damage")) {
             CombatBrain defender = brains.get(target.ref().id());
             if (defender == null) return;
-            double mitigated = defender.mitigate(attacker, from, 6 << effect.amplifier(), resolve(attacker));
+            double mitigated = defender.mitigate(attacker, from, 6 << effect.amplifier(), resolve(attacker), CombatWorld.DamageKind.PROJECTILE);
             if (mitigated <= 0) return;
             CombatWorld.DamageOutcome outcome = world.damageVirtual(defender.npc(), attacker, mitigated);
             if (outcome.status() == CombatWorld.DamageStatus.APPLIED) afterVirtualHit(defender, attacker, from, target, 0, outcome.killed());
@@ -729,7 +752,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     /** Applies this NPC's defense to a hit from outside the engine. Returns the amount to apply, or 0. */
     public double mitigateExternal(UUID npc, TargetRef attacker, WorldPosition from, double amount) {
         CombatBrain brain = stopping ? null : brains.get(npc);
-        return brain == null ? amount : brain.mitigate(attacker, from, amount, resolve(attacker));
+        return brain == null ? amount : brain.mitigate(attacker, from, amount, resolve(attacker), CombatWorld.DamageKind.MELEE);
     }
 
     /** Reports a hit applied outside the engine, such as a controlled mob's. */
@@ -737,7 +760,8 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         CombatBrain brain = stopping ? null : brains.get(npc);
         if (brain == null) return;
         fought(attacker, new TargetRef(TargetKind.NPC, npc));
-        if (after.health() == 0) brain.die(after.position());
+        showHealth(brain, attacker);
+        if (after.health() == 0) brain.die(after.position(), attacker);
         else brain.attacked(attacker);
     }
 
@@ -793,6 +817,16 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
             return new Result(CombatOperations.Status.APPLIED, guarded.isPresent() ? "Guarding" : "Guard cleared");
         });
     }
+    /** Brings a dead NPC back at once at its next respawn point, or heals a living one fully. */
+    public Result revive(UUID npc) {
+        if (closed || stopping) return new Result(CombatOperations.Status.UNAVAILABLE, "Combat is shutting down");
+        CombatBrain brain = brains.get(npc);
+        if (brain == null) return new Result(CombatOperations.Status.NOT_COMBATANT, "NPC has no health or combat settings running");
+        if (!brain.revive()) return new Result(CombatOperations.Status.UNAVAILABLE, "No respawn point is loaded");
+        wake(brain);
+        return new Result(CombatOperations.Status.APPLIED, "Revived");
+    }
+
     private interface Control { Result apply(CombatBrain brain); }
     private Result control(UUID npc, Control control) {
         if (closed || stopping) return new Result(CombatOperations.Status.UNAVAILABLE, "Combat is shutting down");
@@ -809,7 +843,11 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         if (closed) return;
         closed = true;
         for (UUID helper : helpers.retireAll()) world.removeHelper(helper);
-        for (CombatBrain brain : List.copyOf(brains.values())) brain.retire();
+        for (CombatBrain brain : List.copyOf(brains.values())) {
+            // A permadeath still waiting for its fall to play is recorded now; drainPermadeaths still returns it.
+            if (brain.permadeathPending()) requestPermadeath(brain.npc());
+            brain.retire();
+        }
         brains.clear();
         squads.clear();
         guardians.clear();

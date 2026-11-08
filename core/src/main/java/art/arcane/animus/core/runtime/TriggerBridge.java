@@ -29,12 +29,12 @@ public final class TriggerBridge {
     }
     public void waypoint(UUID npc, int waypoint) { dispatcher.publish(new TriggerEvent.Waypoint(npc, waypoint)); }
     public void animationFinished(UUID npc, String animation, int layer) { dispatcher.publish(new TriggerEvent.AnimationFinished(npc, animation, layer)); }
-    /** before is null when the NPC was not indexed, such as a change after its death. */
-    public void changed(VirtualNpcState.Snapshot before, VirtualNpcState.Snapshot after) {
+    /** before is null when the NPC was not indexed, such as a change after its death. {@code attacker} dealt the change, when known. */
+    public void changed(VirtualNpcState.Snapshot before, VirtualNpcState.Snapshot after, Optional<TriggerEvent.Attacker> attacker) {
         if (before == null || after.health() >= before.health()) return;
         UUID npc = after.npcId();
-        dispatcher.publish(new TriggerEvent.Damage(npc, before.health() - after.health()));
-        if (after.health() == 0) { dispatcher.publish(new TriggerEvent.Death(npc)); dispatcher.dead(npc); }
+        dispatcher.publish(new TriggerEvent.Damage(npc, before.health() - after.health(), attacker));
+        if (after.health() == 0) { dispatcher.publish(new TriggerEvent.Death(npc, attacker)); dispatcher.dead(npc); }
     }
     public void proximity(Collection<UUID> viewers, Function<UUID, Optional<WorldPosition>> positions) {
         proximity.tick(dispatcher.proximityPlan(), viewers, positions, dispatcher::publish);

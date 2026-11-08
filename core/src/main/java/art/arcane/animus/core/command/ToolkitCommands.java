@@ -43,7 +43,7 @@ final class ToolkitCommands extends CommandGroup {
         CommandActor actor = actor();
         UUID player = actor.player().orElseThrow();
         toolkit(actor).ifPresent((Toolkit<?, ?> toolkit) -> toolkit.open(player, tool, new Toolkit.Commands(this::inspect,
-                (CommandActor viewer) -> services.editor().pair(viewer, "", "", "", ""))));
+                (CommandActor viewer) -> services.editor().pair(viewer, "", "", "", ""), (CommandActor viewer, String id) -> NpcCommands.revive(this, viewer, id))));
     }
 
     private Optional<Toolkit<?, ?>> toolkit(CommandActor actor) {

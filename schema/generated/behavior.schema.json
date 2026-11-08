@@ -5239,7 +5239,7 @@
     },
     "trigger-damage": {
       "type": "object",
-      "description": "Authoritative NPC health falls.",
+      "description": "Authoritative NPC health falls. Runs read context.damage, context.attacker and context.attacker_type (player, mob, npc or empty); a player attacker is the run's player.",
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -5267,7 +5267,7 @@
     },
     "trigger-death": {
       "type": "object",
-      "description": "Authoritative NPC health reaches zero.",
+      "description": "Authoritative NPC health reaches zero. Runs read context.killer and context.killer_type (player, mob, npc or empty); a player killer is the run's player.",
       "additionalProperties": false,
       "properties": {
         "id": {

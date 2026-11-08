@@ -1,4 +1,4 @@
-/* Combat editor. */
+/* Combat and health editors. */
 
 .animus-combat-editor {
   display: grid;
@@ -81,4 +81,25 @@
     width: auto;
     min-width: 0;
   }
+}
+
+/* Health editor: the combat editor's lists, switches and chips. */
+
+.animus-health-editor {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.animus-health-editor .animus-gui-section-body {
+  min-width: 0;
+}
+
+.animus-health-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
 }

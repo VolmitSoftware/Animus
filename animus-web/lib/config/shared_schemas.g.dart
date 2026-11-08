@@ -6034,7 +6034,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "trigger-damage": {
       "type": "object",
-      "description": "Authoritative NPC health falls.",
+      "description": "Authoritative NPC health falls. Runs read context.damage, context.attacker and context.attacker_type (player, mob, npc or empty); a player attacker is the run's player.",
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -6062,7 +6062,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "trigger-death": {
       "type": "object",
-      "description": "Authoritative NPC health reaches zero.",
+      "description": "Authoritative NPC health reaches zero. Runs read context.killer and context.killer_type (player, mob, npc or empty); a player killer is the run's player.",
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -8827,7 +8827,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     },
     "damage": {
-      "description": "Authoritative NPC health falls.",
+      "description": "Authoritative NPC health falls. Runs read context.damage, context.attacker and context.attacker_type (player, mob, npc or empty); a player attacker is the run's player.",
       "carriesPlayer": false,
       "reach": "npc",
       "fields": {
@@ -8856,7 +8856,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     },
     "death": {
-      "description": "Authoritative NPC health reaches zero.",
+      "description": "Authoritative NPC health reaches zero. Runs read context.killer and context.killer_type (player, mob, npc or empty); a player killer is the run's player.",
       "carriesPlayer": false,
       "reach": "npc",
       "fields": {
@@ -13902,6 +13902,161 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             },
             "migrationReport": {
               "description": "Kept from an import."
+            }
+          }
+        },
+        "animus:health": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Health and death without combat AI. On a combat NPC it replaces defense, death and respawn.",
+          "properties": {
+            "killable": {
+              "type": "boolean",
+              "description": "Players, mobs and NPCs can hurt and kill it. Off by default."
+            },
+            "maximumHealth": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 2048,
+              "description": "Left out, the max_health attribute or 20."
+            },
+            "armor": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Share of each hit absorbed. Left out, the armor attributes apply."
+            },
+            "armorFromEquipment": {
+              "type": "boolean",
+              "description": "Armor from worn pieces instead."
+            },
+            "invulnerableTicks": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Repeat hits ignored for this long. 10 by default."
+            },
+            "knockback": {
+              "type": "boolean",
+              "description": "Hits push it back, less by knockback_resistance. True by default."
+            },
+            "regenerate": {
+              "type": "boolean",
+              "description": "Heals 1 health each regenerateTicks."
+            },
+            "regenerateTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 72000,
+              "description": "100 by default."
+            },
+            "sources": {
+              "type": "array",
+              "description": "What can hurt it. All by default.",
+              "items": {
+                "enum": [
+                  "players",
+                  "mobs",
+                  "npcs",
+                  "projectiles"
+                ]
+              },
+              "uniqueItems": true
+            },
+            "attackerPermission": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,128}$",
+              "description": "Players need this node to hurt it."
+            },
+            "showHealth": {
+              "type": "boolean",
+              "description": "Shows its health on the attacker's action bar."
+            },
+            "death": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "drops": {
+                  "type": "array",
+                  "description": "At most 32.",
+                  "minItems": 0,
+                  "maxItems": 32,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "item"
+                    ],
+                    "properties": {
+                      "item": {
+                        "$ref": "#/$defs/item",
+                        "description": "Its count is the fewest that drop."
+                      },
+                      "maxCount": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 99,
+                        "description": "The most that drop. The item count by default."
+                      },
+                      "chance": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "1 by default."
+                      }
+                    }
+                  }
+                },
+                "experience": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                },
+                "dropEquipment": {
+                  "type": "boolean",
+                  "description": "Its worn and held items drop too."
+                }
+              }
+            },
+            "respawn": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "afterDeath": {
+                  "enum": [
+                    "respawn",
+                    "permadeath"
+                  ],
+                  "description": "permadeath keeps it dead until revived. respawn by default."
+                },
+                "delayTicks": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 72000,
+                  "description": "100 by default."
+                },
+                "points": {
+                  "type": "array",
+                  "description": "At most 16. None means its own position.",
+                  "minItems": 0,
+                  "maxItems": 16,
+                  "items": {
+                    "$ref": "#/$defs/location"
+                  }
+                },
+                "order": {
+                  "enum": [
+                    "in_order",
+                    "random",
+                    "nearest"
+                  ],
+                  "description": "in_order by default."
+                }
+              }
+            },
+            "dead": {
+              "type": "boolean",
+              "description": "Set when a permadeath NPC dies. False revives it."
             }
           }
         },

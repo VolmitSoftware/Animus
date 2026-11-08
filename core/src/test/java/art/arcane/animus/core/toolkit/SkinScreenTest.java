@@ -48,7 +48,7 @@ class SkinScreenTest {
     final MockScreenHost host = new MockScreenHost();
     final Player alex = new Player("Alex");
     final ScreenManager<Player, Stack> manager = new ScreenManager<>(host, (UUID npc) -> true, (String warning) -> { throw new AssertionError(warning); });
-    final Toolkit.Commands commands = new Toolkit.Commands((CommandActor actor, String id) -> {}, (CommandActor actor) -> {});
+    final Toolkit.Commands commands = new Toolkit.Commands((CommandActor actor, String id) -> {}, (CommandActor actor) -> {}, (CommandActor actor, String id) -> {});
     final List<String> looked = new ArrayList<>();
     SkinLookup.Found answer = SkinLookup.Found.missing("unset");
     Toolkit<Player, Stack> toolkit;

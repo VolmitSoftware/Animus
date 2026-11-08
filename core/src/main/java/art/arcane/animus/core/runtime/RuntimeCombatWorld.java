@@ -103,6 +103,7 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
         return false;
     }
     @Override public Optional<WorldPosition> post(UUID npc) { return living.combatant(npc).flatMap((NpcRuntime.ActiveNpc active) -> living.post(active.id())); }
+    @Override public Optional<WorldPosition> home(UUID npc) { return living.home(npc); }
     /** A short step onto the post's footing, swept for collisions like knockback; anything else leaves the NPC in place. */
     @Override public boolean step(UUID npc, WorldPosition to) {
         Optional<NpcRuntime.ActiveNpc> active = living.combatant(npc);
@@ -169,10 +170,16 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
         Optional<NpcRuntime.ActiveNpc> active = living.combatant(npc);
         Optional<PersistedNpcService.CombatBinding> binding = active.flatMap((NpcRuntime.ActiveNpc value) -> living.combat(value.id()));
         if (binding.isEmpty()) return new DamageOutcome(DamageStatus.INVALID, 0, false);
+        living.blame(npc, attacker(attacker));
         double before = binding.get().state().snapshot().health();
         VirtualNpcState.Snapshot after = binding.get().state().damage(amount);
         binding.get().changed().accept(after);
         return new DamageOutcome(DamageStatus.APPLIED, before - after.health(), after.health() == 0);
+    }
+
+    /** How triggers name an attacker. */
+    public static art.arcane.animus.core.behavior.trigger.TriggerEvent.Attacker attacker(art.arcane.animus.core.combat.TargetRef attacker) {
+        return new art.arcane.animus.core.behavior.trigger.TriggerEvent.Attacker(attacker.kind().name().toLowerCase(java.util.Locale.ROOT), attacker.id());
     }
 
     /** Every chunk the straight line between the points crosses is loaded. */

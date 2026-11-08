@@ -24,10 +24,14 @@ import java.util.UUID;
  * current health is never stored here. Unknown keys are rejected so that a typo cannot silently weaken a rule.
  * {@code targetableByMobs} lets nearby hostile mobs with nothing else to fight walk up to the NPC and attack it, where the
  * platform can drive real mobs.
+ * <p>
+ * {@code modules["animus:health"]} ({@link HealthSettings}) is the damage-taking half on its own: when present it supplies
+ * defense, death and respawn, and an NPC with it but no enabled combat runs {@code passive}: it can be hurt, dies and
+ * respawns, but never scans, targets or fights back.
  */
 public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRules targets, TargetRules ignores, TargetRules avoids,
                              Targeting targeting, Avoidance avoidance, Squad squad, Guard guard, Pursuit pursuit, Melee melee,
-                             Ranged ranged, Defense defense, Death death, Respawn respawn, Greetings greetings, boolean targetableByMobs) {
+                             Ranged ranged, Defense defense, Death death, Respawn respawn, Greetings greetings, boolean targetableByMobs, boolean passive) {
     /** The farthest {@code avoidance.range} may reach, in blocks. */
     public static final double MAXIMUM_AVOIDANCE_RANGE = 64;
     public static final String MODULE = "animus:combat";
@@ -83,14 +87,53 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
      * @param armorPoints vanilla armor points from the {@code armor} attribute, used with {@code armorToughness} when the module sets no armor
      * @param knockbackResistance the {@code knockback_resistance} attribute: the share of knockback ignored
      */
+    /**
+     * @param sources            what may hurt the NPC; combat NPCs accept every source
+     * @param attackerPermission a node a player needs to hurt the NPC
+     * @param showHealth         the player who hits the NPC sees its health on the action bar
+     */
     public record Defense(double maximumHealth, double armor, boolean invincible, boolean knockback, boolean protectedFromIgnored, double protectFromRange,
-                          int healRateTicks, int invulnerableTicks, boolean armorFromEquipment, double armorPoints, double armorToughness, double knockbackResistance) {}
-    public record DropRule(String item, int amount, double chance) {}
-    public record Death(List<DropRule> drops, int experience, boolean victimDrops) {
+                          int healRateTicks, int invulnerableTicks, boolean armorFromEquipment, double armorPoints, double armorToughness, double knockbackResistance,
+                          Set<DamageSource> sources, Optional<String> attackerPermission, boolean showHealth) {
+        public Defense { sources = sources.isEmpty() ? EnumSet.noneOf(DamageSource.class) : EnumSet.copyOf(sources); }
+        @Override public Set<DamageSource> sources() { return sources.isEmpty() ? Set.of() : EnumSet.copyOf(sources); }
+        /** Whether a hit of this kind from this attacker counts. */
+        public boolean accepts(TargetKind attacker, CombatWorld.DamageKind kind) { return sources.contains(DamageSource.of(attacker, kind)); }
+    }
+    /** What may hurt an NPC: player and mob melee, another NPC's melee, and shots from combat NPCs. */
+    public enum DamageSource {
+        PLAYERS, MOBS, NPCS, PROJECTILES;
+        public static final Set<DamageSource> ALL = Set.of(values());
+        public String jsonName() { return name().toLowerCase(Locale.ROOT); }
+        public static Optional<DamageSource> parse(String name) {
+            for (DamageSource source : values()) if (source.jsonName().equals(name)) return Optional.of(source);
+            return Optional.empty();
+        }
+        static DamageSource of(TargetKind attacker, CombatWorld.DamageKind kind) {
+            if (kind == CombatWorld.DamageKind.PROJECTILE) return PROJECTILES;
+            return switch (attacker) { case PLAYER -> PLAYERS; case MOB -> MOBS; case NPC -> NPCS; };
+        }
+    }
+    /** {@code amount} to {@code maximum} items drop, rolled evenly; {@code components} as in a give command. */
+    public record DropRule(String item, int amount, int maximum, Optional<String> components, double chance) {
+        public DropRule(String item, int amount, double chance) { this(item, amount, amount, Optional.empty(), chance); }
+    }
+    /** @param dropEquipment the items the NPC wears and holds drop too */
+    public record Death(List<DropRule> drops, int experience, boolean victimDrops, boolean dropEquipment) {
         public Death { drops = List.copyOf(drops); }
     }
-    /** @param deleteOnDeath delete the definition when the NPC dies; requires {@code delayTicks} -1 */
-    public record Respawn(int delayTicks, List<Location> locations, boolean deleteOnDeath) {
+    /** How a respawn picks one of several points. */
+    public enum Order {
+        IN_ORDER, RANDOM, NEAREST;
+        public String jsonName() { return name().toLowerCase(Locale.ROOT); }
+    }
+    /**
+     * @param deleteOnDeath delete the definition when the NPC dies; requires {@code delayTicks} -1
+     * @param home          with no locations, respawn at the definition's position rather than where the NPC fell
+     * @param permadeath    the NPC stays dead and its definition is marked {@code dead}, which survives restarts
+     * @param dead          the definition says the NPC died for good; it is not presented until revived
+     */
+    public record Respawn(int delayTicks, List<Location> locations, boolean deleteOnDeath, Order order, boolean home, boolean permadeath, boolean dead) {
         public Respawn { locations = List.copyOf(locations); }
     }
     /** Lines said to players who come within range: {@code hostile} to players it would target, {@code friendly} to the rest. */
@@ -98,33 +141,61 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
         public boolean enabled() { return friendly.isPresent() || hostile.isPresent(); }
     }
 
-    /** Parses the module from a raw definition document; empty when it has no combat module. */
+    /**
+     * Parses combat and health from a raw definition document; empty when it has neither module. With only
+     * {@code animus:health}, the settings are passive and enabled exactly when the NPC is killable.
+     */
     public static Optional<CombatSettings> parse(JsonObject definition) {
         JsonElement modules = definition.get("modules");
-        if (modules == null || !modules.isJsonObject() || !modules.getAsJsonObject().has(MODULE)) return Optional.empty();
-        JsonElement module = modules.getAsJsonObject().get(MODULE);
-        if (!module.isJsonObject()) throw new IllegalArgumentException(ROOT + ": expected object");
+        JsonObject known = modules != null && modules.isJsonObject() ? modules.getAsJsonObject() : new JsonObject();
+        Optional<JsonObject> health = HealthSettings.module(known);
+        if (!known.has(MODULE) && health.isEmpty()) return Optional.empty();
+        JsonObject module = new JsonObject();
+        if (known.has(MODULE)) {
+            if (!known.get(MODULE).isJsonObject()) throw new IllegalArgumentException(ROOT + ": expected object");
+            module = known.getAsJsonObject(MODULE);
+            if (health.isPresent()) for (String section : List.of("defense", "death", "respawn"))
+                if (module.has(section)) throw new IllegalArgumentException(ROOT + "." + section + ": set by " + HealthSettings.MODULE + " on this NPC; remove one of them");
+        }
         NpcAttributes attributes = NpcAttributes.of(definition);
-        if (attributes.isEmpty()) return Optional.of(parseModule(module.getAsJsonObject()));
         JsonElement type = definition.get("type");
         boolean player = type != null && type.isJsonPrimitive() && type.getAsString().equals(BodyRules.PLAYER);
-        JsonObject filled = CombatAttributes.fill(module.getAsJsonObject(), attributes, player);
+        JsonObject filled = attributes.isEmpty() ? module : CombatAttributes.fill(module, attributes, player);
         CombatSettings settings = parseModule(filled);
         Defense defense = settings.defense();
-        boolean armor = CombatAttributes.armorFromAttributes(filled);
-        Defense attributed = new Defense(defense.maximumHealth(), defense.armor(), defense.invincible(), defense.knockback(), defense.protectedFromIgnored(),
-                defense.protectFromRange(), defense.healRateTicks(), defense.invulnerableTicks(), defense.armorFromEquipment(),
-                armor ? attributes.value("armor") : 0, armor ? attributes.value("armor_toughness") : 0, attributes.value("knockback_resistance"));
-        return Optional.of(new CombatSettings(settings.enabled(), settings.reviewAccepted(), settings.targets(), settings.ignores(), settings.avoids(),
+        Death death = settings.death();
+        Respawn respawn = settings.respawn();
+        boolean enabled = settings.enabled(), accepted = settings.reviewAccepted(), passive = false;
+        if (health.isPresent()) {
+            HealthSettings parsed = HealthSettings.parse(health.get(), attributes);
+            defense = parsed.defense();
+            death = parsed.death();
+            respawn = parsed.respawn();
+            if (!known.has(MODULE) || !enabled) {
+                passive = true;
+                enabled = parsed.killable();
+                accepted = true;
+            }
+        } else if (!attributes.isEmpty()) {
+            boolean armor = CombatAttributes.armorFromAttributes(filled);
+            defense = new Defense(defense.maximumHealth(), defense.armor(), defense.invincible(), defense.knockback(), defense.protectedFromIgnored(),
+                    defense.protectFromRange(), defense.healRateTicks(), defense.invulnerableTicks(), defense.armorFromEquipment(),
+                    armor ? attributes.value("armor") : 0, armor ? attributes.value("armor_toughness") : 0, attributes.value("knockback_resistance"),
+                    defense.sources(), defense.attackerPermission(), defense.showHealth());
+        }
+        return Optional.of(new CombatSettings(enabled, accepted, settings.targets(), settings.ignores(), settings.avoids(),
                 settings.targeting(), settings.avoidance(), settings.squad(), settings.guard(), settings.pursuit(), settings.melee(), settings.ranged(),
-                attributed, settings.death(), settings.respawn(), settings.greetings(), settings.targetableByMobs()));
+                defense, death, respawn, settings.greetings(), settings.targetableByMobs(), passive));
     }
 
-    /** The settings to run, or empty when combat is absent, off, or an import whose review was not accepted. */
+    /**
+     * The settings to run, or empty when combat is absent, off, or an import whose review was not accepted. A health-only
+     * NPC runs when it is killable; a permanently dead one does not run until it is revived.
+     */
     public static Optional<CombatSettings> active(NpcDefinition definition) {
         JsonObject document = definition.json();
         Optional<CombatSettings> settings = parse(document);
-        if (settings.isEmpty() || !settings.get().enabled()) return Optional.empty();
+        if (settings.isEmpty() || !settings.get().enabled() || settings.get().respawn().dead()) return Optional.empty();
         if (document.has("migration") && !settings.get().reviewAccepted()) return Optional.empty();
         return settings;
     }
@@ -137,7 +208,7 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
                 rules(root.child("targets"), Level.SEEKING), rules(root.child("ignores"), Level.IGNORING), rules(root.child("avoids"), Level.SEEKING),
                 targeting(root.child("targeting")), avoidance(root.child("avoidance")), squad(root.child("squad")), guard(root.child("guard")),
                 pursuit(root.child("pursuit")), melee(root.child("melee")), ranged(root.child("ranged")), defense(root.child("defense")),
-                death(root.child("death")), respawn(root.child("respawn")), greetings(root.child("greetings")), root.bool("targetableByMobs", false));
+                death(root.child("death")), respawn(root.child("respawn")), greetings(root.child("greetings")), root.bool("targetableByMobs", false), false);
     }
 
     /** A wrong type is simply not an acceptance. Other fields reject; these two gate activation. */
@@ -293,7 +364,7 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
                 "armorFromEquipment");
         return new Defense(reader.number("maximumHealth", 20, 1, 2048), reader.number("armor", 0, 0, 1), reader.bool("invincible", false), reader.bool("knockback", true),
                 reader.bool("protectedFromIgnored", false), reader.number("protectFromRange", 0, 0, 256), reader.integer("healRateTicks", 0, 0, 72000),
-                reader.integer("invulnerableTicks", 10, 0, 100), reader.bool("armorFromEquipment", false), 0, 0, 0);
+                reader.integer("invulnerableTicks", 10, 0, 100), reader.bool("armorFromEquipment", false), 0, 0, 0, DamageSource.ALL, Optional.empty(), false);
     }
     private static Death death(Reader reader) {
         reader.known("drops", "experience", "victimDrops");
@@ -308,7 +379,7 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
             if (!MinecraftIds.valid(item)) throw new IllegalArgumentException(path + ".item: expected namespace:item");
             drops.add(new DropRule(MinecraftIds.normalize(item), drop.integer("amount", 1, 1, 64), drop.number("chance", 1, 0, 1)));
         }
-        return new Death(drops, reader.integer("experience", 0, 0, 10000), reader.bool("victimDrops", true));
+        return new Death(drops, reader.integer("experience", 0, 0, 10000), reader.bool("victimDrops", true), false);
     }
     private static Respawn respawn(Reader reader) {
         reader.known("delayTicks", "locations", "deleteOnDeath");
@@ -322,7 +393,7 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
         int delay = reader.integer("delayTicks", 100, -1, 72000);
         boolean delete = reader.bool("deleteOnDeath", false);
         if (delete && delay != -1) throw new IllegalArgumentException(reader.field("deleteOnDeath") + ": requires delayTicks -1");
-        return new Respawn(delay, locations, delete);
+        return new Respawn(delay, locations, delete, Order.RANDOM, false, false, false);
     }
     private static Greetings greetings(Reader reader) {
         reader.known("friendly", "hostile", "range", "cooldownTicks");
@@ -335,14 +406,14 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
             throw new IllegalArgumentException(reader.field(key) + ": expected text without control characters");
         return Optional.of(text);
     }
-    private static Location location(Reader reader) {
+    static Location location(Reader reader) {
         reader.known("world", "x", "y", "z");
         String world = reader.string("world", "");
         if (world.isBlank()) throw new IllegalArgumentException(reader.field("world") + ": expected nonblank string");
         return new Location(world, reader.requiredNumber("x"), reader.requiredNumber("y"), reader.requiredNumber("z"));
     }
 
-    private record Reader(JsonObject object, String path) {
+    record Reader(JsonObject object, String path) {
         String field(String key) { return path + "." + key; }
         boolean has(String key) { return object.has(key); }
         void known(String... keys) {

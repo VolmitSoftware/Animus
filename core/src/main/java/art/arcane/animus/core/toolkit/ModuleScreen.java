@@ -13,8 +13,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * The NPC's modules, a switch above an Edit button for each. A module with an {@code enabled} field turns off by
- * setting it false, which keeps its settings; one without (shop, GUI) is on while its object exists, so turning it off
+ * The NPC's modules, a switch above an Edit button for each. A module with an {@code enabled} field (or {@code killable},
+ * which is off until set) turns off by setting it false, which keeps its settings; one without (shop, GUI) is on while its object exists, so turning it off
  * removes the object and asks twice, and turning it on opens its fields.
  */
 final class ModuleScreen<P, S> extends ValueScreen<P, S> {
@@ -47,10 +47,12 @@ final class ModuleScreen<P, S> extends ValueScreen<P, S> {
 
     private void draw(int slot, String key, JsonObject node, JsonObject module) {
         JsonObject properties = node.has("properties") ? node.getAsJsonObject("properties") : new JsonObject();
-        boolean switched = properties.has("enabled"), literal = switched && !properties.getAsJsonObject("enabled").has("type");
-        JsonElement enabled = module == null ? null : module.get("enabled");
-        // An untyped enabled (combat) reads only a literal true, so leaving it out means off.
-        boolean on = module != null && (enabled != null ? enabled.isJsonPrimitive() && enabled.getAsJsonPrimitive().isBoolean() && enabled.getAsBoolean() : !literal);
+        String toggle = properties.has("enabled") ? "enabled" : properties.has(KILLABLE) ? KILLABLE : null;
+        boolean switched = toggle != null, literal = switched && !properties.getAsJsonObject(toggle).has("type");
+        JsonElement enabled = module == null || toggle == null ? null : module.get(toggle);
+        // An untyped enabled (combat) reads only a literal true, and killable is off by default, so leaving either out means off.
+        boolean on = module != null && (enabled != null ? enabled.isJsonPrimitive() && enabled.getAsJsonPrimitive().isBoolean() && enabled.getAsBoolean()
+                : !literal && !KILLABLE.equals(toggle));
         List<String> target = append(path, key), lines = new ArrayList<>(describe(node));
         lines.add("&7Now &f" + (on ? "on" : "off"));
         String name = title(key + (on ? ": on" : ": off"));
@@ -60,7 +62,7 @@ final class ModuleScreen<P, S> extends ValueScreen<P, S> {
             if (arm(slot, target)) return;
             apply((JsonObject root) -> {
                 boolean fresh = at(root, target) == null;
-                with(root, append(target, "enabled"), Optional.of(new JsonPrimitive(!on)));
+                with(root, append(target, toggle), Optional.of(new JsonPrimitive(!on)));
                 JsonObject made = at(root, target).getAsJsonObject();
                 if (fresh) for (Map.Entry<String, JsonElement> seeded : seeded(node).entrySet()) if (!made.has(seeded.getKey())) made.add(seeded.getKey(), seeded.getValue());
                 return root;
@@ -69,6 +71,9 @@ final class ModuleScreen<P, S> extends ValueScreen<P, S> {
         button(slot + WIDTH, FieldScreen.FIELDS, title("Edit " + key), lore(List.of("&7" + (module == null ? "Not set" : text(module))), any("open its fields")),
                 (GuiModel.Click click) -> viewer.push(edit(key, node)));
     }
+
+    /** The switch of {@code animus:health}. */
+    private static final String KILLABLE = "killable";
 
     private FieldScreen<P, S> edit(String key, JsonObject node) { return new FieldScreen<>(toolkit, viewer, commands, label(label, key), node, scope, append(path, key)); }
 

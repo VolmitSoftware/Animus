@@ -1,6 +1,7 @@
 package art.arcane.animus.core.npc;
 
 import art.arcane.animus.core.combat.CombatSettings;
+import art.arcane.animus.core.combat.HealthSettings;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.storage.NpcPaths;
 import art.arcane.animus.core.control.RideSettings;
@@ -18,12 +19,13 @@ public final class NpcDefinition {
     /** The most trait groups one NPC may list. */
     public static final int MAX_GROUPS = 16;
     private final JsonObject data;
-    private final boolean spawned, imported;
+    private final boolean spawned, imported, dead;
     private final List<String> behaviors, tags, groups;
     private NpcDefinition(JsonObject data) {
         this.data = normalized(data);
         spawned = data.get("spawned").getAsBoolean();
         imported = data.has("migration");
+        dead = HealthSettings.dead(data);
         List<String> references = new ArrayList<>();
         if (data.has("behaviors")) for (JsonElement reference : data.getAsJsonArray("behaviors")) references.add(reference.getAsString());
         behaviors = List.copyOf(references);
@@ -207,6 +209,8 @@ public final class NpcDefinition {
     /** The id with its folder, {@code world/town/blacksmith}, or the bare id for a file directly in {@code npcs/}. */
     public String qualifiedId() { return group().isEmpty() ? id() : group() + "/" + id(); }
     public boolean spawned() { return spawned; }
+    /** A permadeath NPC that died: {@code modules["animus:health"].dead}. It stays unpresented until revived. */
+    public boolean dead() { return dead; }
     /** True for a definition installed by an import, which keeps its {@code migration} record. */
     public boolean imported() { return imported; }
     /** The numeric Citizens id of an NPC migrated from Citizens, from its {@code migration} record. */

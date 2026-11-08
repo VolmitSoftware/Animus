@@ -209,6 +209,14 @@ final class VanillaCombatWorld extends RuntimeCombatWorld<ServerPlayer, ItemStac
         ServerPlayer online = server.getPlayerList().getPlayer(player);
         if (online != null) online.sendSystemMessage(ModText.component(DialogueFormat.speech(speaker, message)));
     }
+    @Override public void actionBar(UUID player, String text) {
+        ServerPlayer online = server.getPlayerList().getPlayer(player);
+        if (online != null) online.sendSystemMessage(ModText.component(text), true);
+    }
+    @Override public void credit(TargetRef killer, UUID npc) {
+        ServerPlayer online = killer.kind() == TargetKind.PLAYER ? server.getPlayerList().getPlayer(killer.id()) : null;
+        if (online != null) online.awardStat(net.minecraft.stats.Stats.MOB_KILLS);
+    }
     @Override public Optional<UUID> launchHelper(UUID owner, WorldPosition from, Vec3 velocity, RangedWeapon weapon) {
         ServerLevel level = terrain.level(from.world());
         Vec3 point = from.point();
@@ -244,11 +252,9 @@ final class VanillaCombatWorld extends RuntimeCombatWorld<ServerPlayer, ItemStac
         Vec3 point = at.point();
         if (level == null || !level.getChunkSource().hasChunk(((int) Math.floor(point.x())) >> 4, ((int) Math.floor(point.z())) >> 4)) return;
         for (Drop drop : items) {
-            Identifier id = Identifier.tryParse(drop.item());
-            if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) continue;
-            Item item = BuiltInRegistries.ITEM.getValue(id);
-            if (item == Items.AIR) continue;
-            ItemEntity dropped = new ItemEntity(level, point.x(), point.y(), point.z(), new ItemStack(item, drop.amount()));
+            ItemStack stack = VanillaRuntimeHost.stack(server, new art.arcane.animus.core.npc.NpcItem(drop.item(), drop.amount(), drop.components(), Optional.empty()), "drop", new ArrayList<>());
+            if (stack == null) continue;
+            ItemEntity dropped = new ItemEntity(level, point.x(), point.y(), point.z(), stack);
             dropped.setDefaultPickUpDelay();
             level.addFreshEntity(dropped);
         }

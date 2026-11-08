@@ -68,6 +68,7 @@ import java.util.EnumMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import art.arcane.animus.core.behavior.trigger.TriggerEvent;
 import java.util.OptionalDouble;
 import com.google.gson.JsonObject;
 import art.arcane.animus.core.runtime.RuntimeAttributes;
@@ -104,7 +105,7 @@ final class RegionActor implements RegionOwner.Body {
                        Map<EquipmentSlot, ItemStack> equipment, long equipmentRevision, int ids,
                        String navigation, long arrivals, boolean ride, boolean mount, long revision, NpcRig.Snapshot<ItemStack> rig, int dragonPhase,
                        List<UUID> passengers, Player rider, CombatView combat, BodyLook look, long lookRevision, long swings, long attackSwings,
-                       NpcAttributes attributes, long attributeRevision) {}
+                       NpcAttributes attributes, long attributeRevision, long hurts, long deaths) {}
     /** What other combat engines and status read of this NPC's combat; null when it has none. */
     record CombatView(CombatSettings settings, CombatLoadout loadout, UUID guarded, String status, int helpers) {}
     /** A passenger whose vehicle another region owns steps onto its seat at most this often. */
@@ -157,6 +158,10 @@ final class RegionActor implements RegionOwner.Body {
     float yaw, pitch;
     private boolean onGround = true;
     private long pose, arrivals, turns, appearance, equipmentRevision, revision, swings, attackSwings;
+    /** Hits and deaths so far, which viewers show; a body that died stays shown lying down until {@link #dyingUntil}. */
+    private long hurts, deaths, dyingUntil;
+    /** A body that died stays shown lying down this many turns, as a vanilla death does. */
+    private static final int DYING_TURNS = 20;
     private double fallSpeed;
     private Route route;
     private WaypointProgress waypoints;
@@ -358,6 +363,7 @@ final class RegionActor implements RegionOwner.Body {
 
     @Override public ChunkPosition tick() {
         turns++;
+        if (turns == dyingUntil) publish(true);
         Desired wanted = desired;
         if (wanted != applied) {
             if (wanted.spec() == null) { owner.retire(); return anchor(); }
@@ -574,17 +580,26 @@ final class RegionActor implements RegionOwner.Body {
         if (state.snapshot().health() > 0 || !DefinitionSpec.spawned(host.runtime.npcs().snapshot().get(id))) return false;
         host.index.upsert(state.respawn(at));
         pose++;
+        // A body still lying where it fell is replaced by a fresh one, standing at full health.
+        dyingUntil = 0;
+        appearance++;
         host.activated(uuid);
         publish(true);
         return true;
     }
     /** Owner only: publishes a combat change of the authoritative state and turns it into damage and death triggers. */
-    void combatChanged(VirtualNpcState.Snapshot before, VirtualNpcState.Snapshot after) {
+    void combatChanged(VirtualNpcState.Snapshot before, VirtualNpcState.Snapshot after) { combatChanged(before, after, Optional.empty()); }
+    /** As above, naming who dealt the change for the damage and death triggers. Viewers see the hurt flash or the fall. */
+    void combatChanged(VirtualNpcState.Snapshot before, VirtualNpcState.Snapshot after, Optional<TriggerEvent.Attacker> attacker) {
         boolean moved = !before.position().equals(after.position());
         if (after.active()) host.index.upsert(after); else host.index.remove(uuid);
         if (!after.active() || moved) stopRoute("cancelled by combat lifecycle/position change");
         if (moved) pose++;
-        if (after.health() < before.health()) host.damaged(uuid, before.health() - after.health(), after.health() == 0);
+        if (after.health() < before.health()) {
+            host.damaged(uuid, before.health() - after.health(), after.health() == 0, attacker);
+            if (after.health() == 0) { deaths++; dyingUntil = turns + DYING_TURNS; }
+            else hurts++;
+        }
         publish(true);
     }
 
@@ -1561,17 +1576,18 @@ final class RegionActor implements RegionOwner.Body {
     private void publish(boolean live) {
         Publication previous = publication;
         VirtualNpcState.Snapshot snapshot = state.snapshot();
-        boolean presented = live && snapshot.active();
+        boolean presented = live && (snapshot.active() || turns < dyingUntil);
         if (previous != null && previous.live() == presented && previous.snapshot().equals(snapshot) && previous.appearance() == appearance
                 && previous.pose() == pose && previous.equipmentRevision() == equipmentRevision && previous.arrivals() == arrivals
                 && Objects.equals(previous.navigation(), navigation()) && previous.rig() == rigSnapshot() && previous.dragonPhase() == dragonPhase
                 && previous.passengers().equals(passengers()) && previous.rider() == rider() && Objects.equals(previous.combat(), combatView())
-                && previous.lookRevision() == lookRevision && previous.swings() == swings && previous.attackSwings() == attackSwings && previous.attributeRevision() == attributeRevision) return;
+                && previous.lookRevision() == lookRevision && previous.swings() == swings && previous.attackSwings() == attackSwings && previous.attributeRevision() == attributeRevision
+                && previous.hurts() == hurts && previous.deaths() == deaths) return;
         Map<EquipmentSlot, ItemStack> items = new EnumMap<>(EquipmentSlot.class);
         (rig == null ? equipment : rig.bodyEquipment(equipment)).forEach((slot, item) -> items.put(slot, item.clone()));
         publication = new Publication(presented, snapshot, spec, spec.type(), displayName, displaySkin, appearance, yaw, pitch, onGround, pose,
                 Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision, rigSnapshot(), dragonPhase, passengers(), rider(), combatView(), look, lookRevision, swings, attackSwings,
-                attributes, attributeRevision);
+                attributes, attributeRevision, hurts, deaths);
     }
     private Player rider() { return riding.rider(); }
     private NpcRig.Snapshot<ItemStack> rigSnapshot() {

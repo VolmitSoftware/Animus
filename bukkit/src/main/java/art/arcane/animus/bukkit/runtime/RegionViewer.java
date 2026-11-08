@@ -181,6 +181,10 @@ final class RegionViewer {
                     if (!admit(PresentationPressure.Tier.AUTHORITATIVE)) return sent;
                     attackSwing(body, now.attackSwings()); sent++; if (!host.current(this)) return sent;
                 }
+                if (body.spawnFinished && sent < packetBudget && (body.hurts != now.hurts() || body.deaths != now.deaths())) {
+                    if (!admit(PresentationPressure.Tier.AUTHORITATIVE)) return sent;
+                    feedback(body, now); sent++; if (!host.current(this)) return sent;
+                }
                 if (body.spawnFinished && !body.attributing && sent < packetBudget && body.attributes != now.attributeRevision()) {
                     if (!admit(PresentationPressure.Tier.AUTHORITATIVE)) return sent;
                     attribute(body, now); sent++; if (!host.current(this)) return sent;
@@ -305,6 +309,20 @@ final class RegionViewer {
                 if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) host.cosmeticFailed(this, "attack swing", body.actor, failure); });
             });
         } catch (RuntimeException failure) { host.cosmeticFailed(this, "attack swing", body.actor, failure); }
+    }
+    /**
+     * The hurt flash and the body's own hurt sound, or its death fall and death sound, once for every change the owner
+     * published since the last; several hits between updates show as one. Admitted like an attack swing.
+     */
+    private void feedback(Presented body, RegionActor.Publication now) {
+        boolean death = body.deaths != now.deaths();
+        body.hurts = now.hurts(); body.deaths = now.deaths();
+        String label = death ? "death" : "hurt";
+        try {
+            handOver(() -> death ? host.packets.die(player, body.body) : host.packets.hurt(player, body.body)).whenComplete((nothing, failure) -> {
+                if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) host.cosmeticFailed(this, label, body.actor, failure); });
+            });
+        } catch (RuntimeException failure) { host.cosmeticFailed(this, label, body.actor, failure); }
     }
     /** Cosmetic: the dragon's wing phase from its owner's publication. A failed send is tried again on a later update. */
     private boolean phase(Presented body, int phase) {
@@ -662,7 +680,7 @@ final class RegionViewer {
     private static final class Presented {
         final RegionActor actor; final NativePacketAdapter.Body body; final long appearance; final int ids;
         boolean bound, retired, spawnFinished, despawnFinished, moving, equipping, looking, bonesShown, rigFailed, attributing;
-        long pose, equipment, rigIdentity, socketRevision, look, swings, attackSwings, attributes;
+        long pose, equipment, rigIdentity, socketRevision, look, swings, attackSwings, attributes, hurts, deaths;
         int dragonPhase = DragonBody.PHASE_HOVERING;
         /** The passenger roster last sent for this vehicle; null when unknown, so the next update sends it again. */
         List<Integer> sentRoster;
@@ -673,7 +691,7 @@ final class RegionViewer {
             // A body spawns with its definition's look; a playback look published before the spawn is sent after it.
             look = now.look() == null ? now.lookRevision() : -1;
             swings = now.swings(); attackSwings = now.attackSwings();
-            attributes = now.attributeRevision();
+            attributes = now.attributeRevision(); hurts = now.hurts(); deaths = now.deaths();
         }
     }
 }

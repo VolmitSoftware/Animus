@@ -24,6 +24,14 @@ public sealed interface TriggerEvent {
     UUID npc();
     TriggerKind kind();
     default Optional<UUID> player() { return Optional.empty(); }
+    /** What a run reads as {@code context}. */
+    default Map<String, Object> context() { return Map.of(); }
+
+    /** Who hurt an NPC: {@code kind} is {@code player}, {@code mob} or {@code npc}. */
+    record Attacker(String kind, UUID id) {
+        public Attacker { Objects.requireNonNull(kind); Objects.requireNonNull(id); }
+        Optional<UUID> player() { return kind.equals("player") ? Optional.of(id) : Optional.empty(); }
+    }
 
     /** {@code sneaking} is the client's secondary-action flag on a right click, and the player's sneaking state for other actions. */
     record Interaction(UUID npc, UUID viewer, Action action, boolean sneaking, Hand hand) implements TriggerEvent {
@@ -33,7 +41,7 @@ public sealed interface TriggerEvent {
         @Override public TriggerKind kind() { return TriggerKind.INTERACTION; }
         @Override public Optional<UUID> player() { return Optional.of(viewer); }
         /** What a run and a consume condition read as {@code context.action}, {@code context.sneaking} and {@code context.hand} ({@code main_hand} or {@code off_hand}). */
-        public Map<String, Object> context() { return Map.of("action", action.jsonName(), "sneaking", sneaking, "hand", hand.name().toLowerCase(Locale.ROOT)); }
+        @Override public Map<String, Object> context() { return Map.of("action", action.jsonName(), "sneaking", sneaking, "hand", hand.name().toLowerCase(Locale.ROOT)); }
         /** The platform's hand name: {@code OFF_HAND} is the off hand, anything else the main hand. */
         public static Hand hand(String name) { return "OFF_HAND".equals(name) ? Hand.OFF_HAND : Hand.MAIN_HAND; }
     }
@@ -51,13 +59,23 @@ public sealed interface TriggerEvent {
         public Despawn { Objects.requireNonNull(npc); }
         @Override public TriggerKind kind() { return TriggerKind.DESPAWN; }
     }
-    record Damage(UUID npc, double amount) implements TriggerEvent {
-        public Damage { Objects.requireNonNull(npc); }
+    /** A player attacker is the run's player; runs read {@code context.damage}, {@code context.attacker} and {@code context.attacker_type}. */
+    record Damage(UUID npc, double amount, Optional<Attacker> attacker) implements TriggerEvent {
+        public Damage { Objects.requireNonNull(npc); Objects.requireNonNull(attacker); }
         @Override public TriggerKind kind() { return TriggerKind.DAMAGE; }
+        @Override public Optional<UUID> player() { return attacker.flatMap(Attacker::player); }
+        @Override public Map<String, Object> context() {
+            return Map.of("damage", amount, "attacker", attacker.map((Attacker who) -> who.id().toString()).orElse(""), "attacker_type", attacker.map(Attacker::kind).orElse(""));
+        }
     }
-    record Death(UUID npc) implements TriggerEvent {
-        public Death { Objects.requireNonNull(npc); }
+    /** A player killer is the run's player; runs read {@code context.killer} and {@code context.killer_type}. */
+    record Death(UUID npc, Optional<Attacker> killer) implements TriggerEvent {
+        public Death { Objects.requireNonNull(npc); Objects.requireNonNull(killer); }
         @Override public TriggerKind kind() { return TriggerKind.DEATH; }
+        @Override public Optional<UUID> player() { return killer.flatMap(Attacker::player); }
+        @Override public Map<String, Object> context() {
+            return Map.of("killer", killer.map((Attacker who) -> who.id().toString()).orElse(""), "killer_type", killer.map(Attacker::kind).orElse(""));
+        }
     }
     /** waypoint is the route index, or -1 for a manually requested destination. */
     record Waypoint(UUID npc, int waypoint) implements TriggerEvent {

@@ -41,6 +41,10 @@ class MockCombatWorld implements CombatWorld {
     int playerChecks;
     /** Where each NPC with a post stands guard; an NPC missing here has none, as a patrolling NPC. */
     final Map<UUID, WorldPosition> posts = new HashMap<>();
+    /** Each NPC's definition position, where a health NPC with no respawn points comes back. */
+    final Map<UUID, WorldPosition> homes = new HashMap<>();
+    final Map<UUID, List<String>> actionBars = new HashMap<>();
+    final List<TargetRef> credits = new ArrayList<>();
     final Map<UUID, Integer> poseRestores = new HashMap<>();
     /** An instant walk ends this far short of its goal across, as a path that stops beside a goal it cannot reach. */
     double stopShort;
@@ -131,6 +135,9 @@ class MockCombatWorld implements CombatWorld {
         return new WorldPosition(goal.world(), new Vec3(from.point().x() + delta.x() * kept, goal.point().y(), from.point().z() + delta.z() * kept));
     }
     @Override public Optional<WorldPosition> post(UUID npc) { return Optional.ofNullable(posts.get(npc)); }
+    @Override public Optional<WorldPosition> home(UUID npc) { return Optional.ofNullable(homes.get(npc)); }
+    @Override public void actionBar(UUID player, String text) { actionBars.computeIfAbsent(player, (UUID key) -> new ArrayList<>()).add(text); }
+    @Override public void credit(TargetRef killer, UUID npc) { credits.add(killer); }
     @Override public boolean step(UUID npc, WorldPosition to) {
         if (refuseSteps) return false;
         steps++;

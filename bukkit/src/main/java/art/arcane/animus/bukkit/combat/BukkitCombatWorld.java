@@ -1,6 +1,8 @@
 package art.arcane.animus.bukkit.combat;
 
 import art.arcane.animus.bukkit.BukkitWorldLookup;
+import art.arcane.animus.bukkit.runtime.DefinitionItems;
+import art.arcane.animus.core.npc.NpcItem;
 
 import art.arcane.animus.core.behavior.builtin.DialogueFormat;
 import art.arcane.animus.core.virtual.VirtualNpcState;
@@ -31,6 +33,7 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
+import org.bukkit.Statistic;
 import org.bukkit.World;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.attribute.Attribute;
@@ -221,6 +224,18 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
         Player online = plugin.getServer().getPlayer(player);
         if (online != null) online.sendMessage(DialogueFormat.speech(speaker, message));
     }
+    @Override public void actionBar(UUID player, String text) {
+        Player online = plugin.getServer().getPlayer(player);
+        if (online != null) actionBar(online, text);
+    }
+    /** A health line above the hotbar, as Spigot sends one. */
+    public static void actionBar(Player player, String text) {
+        player.spigot().sendMessage(net.md_5.bungee.api.ChatMessageType.ACTION_BAR, net.md_5.bungee.api.chat.TextComponent.fromLegacy(text));
+    }
+    @Override public void credit(TargetRef killer, UUID npc) {
+        Player online = killer.kind() == TargetKind.PLAYER ? plugin.getServer().getPlayer(killer.id()) : null;
+        if (online != null) online.incrementStatistic(Statistic.MOB_KILLS);
+    }
     /** Every helper is a shooterless projectile tagged as a helper; it never saves with its chunk and never breaks blocks. */
     @Override public Optional<UUID> launchHelper(UUID owner, WorldPosition from, Vec3 velocity, RangedWeapon weapon) {
         World world = world(from.world());
@@ -291,8 +306,8 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
     public static void drop(World world, Vec3 point, List<Drop> items, int experience) {
         Location place = location(world, point);
         for (Drop drop : items) {
-            Material material = Material.matchMaterial(drop.item());
-            if (material != null && material.isItem()) world.dropItemNaturally(place, new ItemStack(material, drop.amount()));
+            ItemStack stack = DefinitionItems.stack(new NpcItem(drop.item(), drop.amount(), drop.components(), Optional.empty()), "drop", new ArrayList<>());
+            if (stack != null) world.dropItemNaturally(place, stack);
         }
         if (experience > 0) world.spawn(place, ExperienceOrb.class, (ExperienceOrb orb) -> orb.setExperience(experience));
     }

@@ -51,7 +51,7 @@ class ToolkitRoutesTest {
     final ScreenManager<Player, Stack> manager = new ScreenManager<>(host, (UUID npc) -> true, (String warning) -> { throw new AssertionError(warning); });
     final List<Runnable> queue = new ArrayList<>();
     final List<String> calls = new ArrayList<>();
-    final Toolkit.Commands commands = new Toolkit.Commands((CommandActor actor, String id) -> {}, (CommandActor actor) -> {});
+    final Toolkit.Commands commands = new Toolkit.Commands((CommandActor actor, String id) -> {}, (CommandActor actor) -> {}, (CommandActor actor, String id) -> {});
     Toolkit<Player, Stack> toolkit;
 
     static String npc(String id, UUID uuid, String modules) {

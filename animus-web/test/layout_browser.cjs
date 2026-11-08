@@ -7,7 +7,7 @@
 // are checked too.
 // Screens: home, the example-packs workspace and each of its documents,
 // every document in the gui_editors, rig_editor, groups_recordings,
-// npc_browser and npc_preview fixtures and ../schema/fixtures/export (NPCs,
+// npc_browser, npc_preview and health_part fixtures and ../schema/fixtures/export (NPCs,
 // behaviors, routes, groups, recordings, shops, chest GUIs, menus,
 // holograms, text animations, rigs, animations), one document per kind in
 // the preview, code and split views, New document, the NPC and recording
@@ -26,7 +26,7 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const url = process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })();
 const shots = process.env.ANIMUS_SCREENSHOTS;
 const folders = [
-  ...['gui_editors', 'rig_editor', 'groups_recordings', 'npc_browser', 'npc_preview'].map(name => path.resolve(__dirname, 'fixtures', name)),
+  ...['gui_editors', 'rig_editor', 'groups_recordings', 'npc_browser', 'npc_preview', 'health_part'].map(name => path.resolve(__dirname, 'fixtures', name)),
   path.resolve(__dirname, '../../schema/fixtures/export'),
 ];
 const widths = (process.env.ANIMUS_LAYOUT_WIDTHS || '1440,1280,1024,768,390').split(',').map(Number);

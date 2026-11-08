@@ -111,6 +111,9 @@ abstract class ValueScreen<P, S> extends ToolScreen<P, S> {
         return shaped;
     }
 
+    /** What one item holds; the item in the player's main hand sets them all at once. */
+    static final List<String> ITEM_FIELDS = List.of("id", "count", "components", "imported");
+
     static boolean item(JsonObject node) { return node.has("$ref") && node.get("$ref").getAsString().endsWith("/item"); }
 
     static Kind kind(String key, JsonObject node) {
@@ -152,7 +155,8 @@ abstract class ValueScreen<P, S> extends ToolScreen<P, S> {
                 case FIELDS -> covered(shaped, at + ".", out);
                 case LIST -> entry(shape(shaped.getAsJsonObject("items")), at + "[]", out);
                 case MAP -> entry(shape(shaped.getAsJsonObject("additionalProperties")), at + ".*", out);
-                case ITEM, UNKNOWN -> { }
+                case ITEM -> { if (item(node)) for (String part : ITEM_FIELDS) out.add(at + "." + part); }
+                case UNKNOWN -> { }
             }
         }
     }

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "3c1e5a70-2b4d-4e8f-9a61-0d7c2f4b8e11",
+  "id": "dummy",
+  "group": "town",
+  "name": "Training Dummy",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 4.5,
+    "y": 64,
+    "z": -2.5,
+    "yaw": 0,
+    "pitch": 0
+  }
+}

@@ -45,7 +45,7 @@ class ToolkitShopScreensTest {
     final Player alex = new Player("Alex");
     final ScreenManager<Player, Stack> manager = new ScreenManager<>(host, (UUID npc) -> true, (String warning) -> { throw new AssertionError(warning); });
     Toolkit<Player, Stack> toolkit;
-    final Toolkit.Commands commands = new Toolkit.Commands((CommandActor actor, String id) -> {}, (CommandActor actor) -> {});
+    final Toolkit.Commands commands = new Toolkit.Commands((CommandActor actor, String id) -> {}, (CommandActor actor) -> {}, (CommandActor actor, String id) -> {});
 
     @BeforeEach void setUp() throws IOException {
         store = new DocumentStore(root);

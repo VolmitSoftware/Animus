@@ -12,7 +12,7 @@ import java.util.function.Supplier;
  * row of the tools that edit it. Delete asks twice through {@link #guarded}.
  */
 final class ManageScreen<P, S> extends ToolScreen<P, S> {
-    static final int SUMMARY = 4, SPAWN = 10, DESPAWN = 11, CLONE = 12, DELETE = 13, TELEPORT = 14, INSPECT = 15, EDITOR = 16,
+    static final int SUMMARY = 4, SPAWN = 10, DESPAWN = 11, CLONE = 12, DELETE = 13, TELEPORT = 14, INSPECT = 15, EDITOR = 16, REVIVE = 17,
             EDIT = 18, EQUIPMENT = 19, COMBAT = 20, MOUNTS = 21, SKIN = 22, GROUPS = 23, FOLDER = 24, ROUTE = 25, BEHAVIORS = 26, CLEAR = 35;
 
     ManageScreen(Toolkit<P, S> toolkit, ScreenManager<P, S>.Viewer viewer, Toolkit.Commands commands) { super(toolkit, viewer, commands); }
@@ -40,6 +40,9 @@ final class ManageScreen<P, S> extends ToolScreen<P, S> {
         action(EDITOR, "minecraft:ender_eye", "Open in editor", "Sends a pairing link", () -> {
             viewer.close();
             commands.pair().accept(toolkit.actor(viewer.player()));
+        });
+        action(REVIVE, "minecraft:totem_of_undying", "Revive", "Brings dead NPCs back at full health", () -> {
+            for (String id : selected) commands.revive().accept(toolkit.actor(viewer.player()), id);
         });
         screen(EDIT, "minecraft:writable_book", "Edit", () -> new PropertyScreen<>(toolkit, viewer, commands, selected));
         screen(EQUIPMENT, "minecraft:armor_stand", "Equipment", () -> new EquipmentScreen<>(toolkit, viewer, commands));

@@ -71,6 +71,10 @@ public interface BodyTransport<P, I> extends AutoCloseable {
     /** Viewer-local passenger list; the client replaces the whole roster. {@code realRider} may be null. */
     CompletionStage<Void> passengers(P viewer, Body vehicle, List<? extends Body> passengers, P realRider, boolean authoritative);
     CompletionStage<Void> dragonPhase(P viewer, Body dragon, int phase);
+    /** The hurt flash, the body type's own hurt sound and a stagger, as a vanilla hit shows them. */
+    default CompletionStage<Void> hurt(P viewer, Body body) { return java.util.concurrent.CompletableFuture.completedFuture(null); }
+    /** The death fall and the body type's own death sound; the body stays lying until it is despawned. */
+    default CompletionStage<Void> die(P viewer, Body body) { return java.util.concurrent.CompletableFuture.completedFuture(null); }
     /** Swings the body's main arm once, as a player placing or breaking a block does. */
     default CompletionStage<Void> swing(P viewer, Body body) { return java.util.concurrent.CompletableFuture.completedFuture(null); }
     /**

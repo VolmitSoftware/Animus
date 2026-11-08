@@ -346,8 +346,10 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     }
     private final class EngineDefense implements BukkitCombatBridge.Defense {
         @Override public double mitigate(UUID npc, LivingEntity attacker, double amount) {
+            TargetRef mob = new TargetRef(TargetKind.MOB, attacker.getUniqueId());
+            living.blame(npc, art.arcane.animus.core.runtime.RuntimeCombatWorld.attacker(mob));
             if (!module.running()) return amount;
-            return module.engine().mitigateExternal(npc, new TargetRef(TargetKind.MOB, attacker.getUniqueId()), position(attacker.getLocation()), amount);
+            return module.engine().mitigateExternal(npc, mob, position(attacker.getLocation()), amount);
         }
         @Override public void damaged(UUID npc, LivingEntity attacker, VirtualNpcState.Snapshot after) {
             if (module.running()) module.engine().externalHit(npc, new TargetRef(TargetKind.MOB, attacker.getUniqueId()), after);

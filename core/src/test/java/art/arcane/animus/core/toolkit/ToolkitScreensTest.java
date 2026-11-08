@@ -51,7 +51,7 @@ class ToolkitScreensTest {
     long now = 1_000_000_000L;
     String primary;
     Toolkit<Player, Stack> toolkit;
-    final Toolkit.Commands commands = new Toolkit.Commands((CommandActor actor, String id) -> calls.add("inspect " + id), (CommandActor actor) -> calls.add("pair"));
+    final Toolkit.Commands commands = new Toolkit.Commands((CommandActor actor, String id) -> calls.add("inspect " + id), (CommandActor actor) -> calls.add("pair"), (CommandActor actor, String id) -> calls.add("revive " + id));
 
     record NpcRuntimeView(String id, VirtualNpcState.Snapshot state) {}
 
@@ -205,6 +205,9 @@ class ToolkitScreensTest {
         toolkit.open(alex.id, Toolkit.Tool.MANAGE, commands);
         click("Open in editor", Click.LEFT);
         assertEquals(List.of("inspect guard", "pair"), calls);
+        toolkit.open(alex.id, Toolkit.Tool.MANAGE, commands);
+        click("Revive", Click.LEFT);
+        assertEquals(List.of("inspect guard", "pair", "revive guard"), calls);
     }
 
     @Test void newNpcAsksForAnIdThenSavesSelectsAndSpawnsItWhereThePlayerStands() {

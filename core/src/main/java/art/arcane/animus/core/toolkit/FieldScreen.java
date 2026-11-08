@@ -6,6 +6,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import java.util.ArrayList;
+import art.arcane.animus.core.npc.EquipmentSlot;
+import art.arcane.animus.core.npc.NpcItem;
+import art.arcane.animus.core.text.ChatLine;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -120,8 +123,19 @@ final class FieldScreen<P, S> extends ValueScreen<P, S> {
                 });
             }
             case ITEM -> {
-                lines.add("&7The Equipment screen sets items");
-                icon(slot, "minecraft:item_frame", name, lines, Optional.empty());
+                if (!item(node)) {
+                    lines.add("&7The Equipment screen sets items");
+                    icon(slot, "minecraft:item_frame", name, lines, Optional.empty());
+                    break;
+                }
+                Optional<NpcItem> now = value == null ? Optional.empty() : NpcItem.parse(value, key, new ArrayList<>());
+                lines.add("&7Now &f" + now.map((NpcItem held) -> held.count() + "x " + held.id() + (held.components().isPresent() ? " &7with components" : "")).orElse("not set"));
+                field(slot, now.map(NpcItem::id).orElse("minecraft:item_frame"), name, lines, hints("put the item in your hand here", "put the item in your hand here", "clear it"), target, (GuiModel.Click click) -> {
+                    if (sneak(click)) { if (!arm(slot, target)) put(key, Optional.empty()); return; }
+                    Optional<NpcItem> held = toolkit.host().worn(viewer.player(), EquipmentSlot.MAIN_HAND);
+                    if (held.isEmpty()) { toolkit.say(viewer.player(), ChatLine.error("Hold the item in your main hand first")); return; }
+                    put(key, Optional.of(held.get().toJson()));
+                });
             }
             case UNKNOWN -> {
                 lines.add("&7Now &f" + text(value));

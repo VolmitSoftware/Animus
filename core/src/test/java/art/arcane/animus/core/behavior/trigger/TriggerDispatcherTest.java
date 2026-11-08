@@ -223,7 +223,7 @@ class TriggerDispatcherTest {
     }
     @Test void deathFiresThenTimersStopAndNoDespawnFollows()throws Exception{
         behavior("[{\"id\":\"dead\",\"event\":\"death\"},{\"id\":\"gone\",\"event\":\"despawn\"},{\"id\":\"clock\",\"event\":\"timer\",\"intervalTicks\":2}]");npc(true);dispatcher.activated(npc);pump();
-        dispatcher.publish(new TriggerEvent.Death(npc));dispatcher.dead(npc);pump();
+        dispatcher.publish(new TriggerEvent.Death(npc, java.util.Optional.empty()));dispatcher.dead(npc);pump();
         assertEquals(List.of("example:greeter#dead"),started.stream().map(request->request.binding().key()).toList());
         pump(6);dispatcher.deactivated(npc);npc(false);pump(3);assertEquals(1,started.size());
     }

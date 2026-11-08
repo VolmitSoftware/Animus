@@ -8,8 +8,11 @@ import java.util.UUID;
  * refusal throws with its reason. Called on the actor's owner.
  */
 public interface CombatControl {
-    /** The operations {@link #npc} takes. {@code target} needs a target; {@code guard} without one stops guarding. */
-    enum Operation { STATUS, ENGAGE, DISENGAGE, RELEASE, TARGET, GUARD }
+    /**
+     * The operations {@link #npc} takes. {@code target} needs a target; {@code guard} without one stops guarding;
+     * {@code revive} brings a dead NPC back now, or heals a living one.
+     */
+    enum Operation { STATUS, ENGAGE, DISENGAGE, RELEASE, TARGET, GUARD, REVIVE }
 
     String status();
 

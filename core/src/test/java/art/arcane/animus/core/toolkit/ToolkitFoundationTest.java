@@ -40,7 +40,7 @@ class ToolkitFoundationTest {
     final ScreenManager<Player, Stack> manager = new ScreenManager<>(host, (UUID npc) -> true, (String warning) -> { throw new AssertionError(warning); });
     final List<String> answers = new ArrayList<>();
     Toolkit<Player, Stack> toolkit;
-    final Toolkit.Commands commands = new Toolkit.Commands((CommandActor actor, String id) -> {}, (CommandActor actor) -> {});
+    final Toolkit.Commands commands = new Toolkit.Commands((CommandActor actor, String id) -> {}, (CommandActor actor) -> {}, (CommandActor actor, String id) -> {});
 
     /** A screen with one of each shared button. */
     final class ProbeScreen extends ToolScreen<Player, Stack> {

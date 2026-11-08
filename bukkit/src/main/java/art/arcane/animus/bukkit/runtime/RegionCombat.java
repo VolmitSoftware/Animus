@@ -17,6 +17,7 @@ import art.arcane.animus.core.extension.CapabilityRefusal;
 import art.arcane.animus.core.extension.MutationLane;
 import art.arcane.animus.core.hire.HireDesk;
 import art.arcane.animus.core.runtime.CombatDeletions;
+import art.arcane.animus.core.runtime.HealthRecords;
 import art.arcane.animus.core.virtual.SpatialNpcIndex;
 import art.arcane.animus.core.virtual.VirtualNpcState;
 import art.arcane.animus.core.virtual.WorldPosition;
@@ -234,6 +235,23 @@ public final class RegionCombat implements Listener, AutoCloseable {
             });
         } catch (IllegalStateException | RejectedExecutionException stopping) {
             warn("Combat could not delete dead NPC " + npc + " while Animus stops: " + stopping.getMessage());
+        }
+    }
+
+    /** Marks a permadeath NPC dead in its definition on the file lane, as the single-owner module does. */
+    void markDead(UUID npc) {
+        try {
+            if (files == null) files = host.runtime.fileExecutor((Runnable task, MutationLane.EngineTaskEvent event, Throwable failure) -> {
+                if (event == MutationLane.EngineTaskEvent.FAILED) warn("Combat could not record a permadeath: " + failure);
+            });
+            files.execute(() -> {
+                try {
+                    HealthRecords.markDead(host.runtime.npcs(), npc).ifPresent((HealthRecords.Recorded done) ->
+                            warn("NPC " + done.id() + " died for good; /animus npc revive " + done.id() + " brings it back; tx " + done.transaction()));
+                } catch (java.io.IOException failure) { warn("Combat could not record the permadeath of " + npc + ": " + failure.getMessage()); }
+            });
+        } catch (IllegalStateException | RejectedExecutionException stopping) {
+            warn("Combat could not record the permadeath of " + npc + " while Animus stops: " + stopping.getMessage());
         }
     }
 

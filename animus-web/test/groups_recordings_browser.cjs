@@ -310,10 +310,10 @@ async function run(browser, viewport, theme, tag) {
   await page.locator('#animus-recording-route').fill('market-walk-route');
   await page.locator('#animus-recording-make-route').click();
   await page.waitForFunction(() => location.hash.endsWith('/route/market-walk-route'));
-  const made = await codeOf(page);
-  assert.equal(made.waitTicks, 0);
-  assert.ok(made.points.length >= 2, JSON.stringify(made));
-  assert.ok(made.points.some((point) => point.style === 'sprint'), `the sprinted stretch keeps its style: ${JSON.stringify(made.points)}`);
+  const madeRoute = await codeOf(page);
+  assert.equal(madeRoute.waitTicks, 0);
+  assert.ok(madeRoute.points.length >= 2, JSON.stringify(madeRoute));
+  assert.ok(madeRoute.points.some((point) => point.style === 'sprint'), `the sprinted stretch keeps its style: ${JSON.stringify(madeRoute.points)}`);
   await openDocument(page, workspace, 'recording', 'market-loop');
 
   // Rename from the id field carries the NPC that plays it.

@@ -48,7 +48,7 @@ class ToolkitGroupsTest {
     final ScreenManager<Player, Stack> manager = new ScreenManager<>(host, (UUID npc) -> true, (String warning) -> { throw new AssertionError(warning); });
     final Map<UUID, String> active = new HashMap<>();
     Toolkit<Player, Stack> toolkit;
-    final Toolkit.Commands commands = new Toolkit.Commands((CommandActor actor, String id) -> {}, (CommandActor actor) -> {});
+    final Toolkit.Commands commands = new Toolkit.Commands((CommandActor actor, String id) -> {}, (CommandActor actor) -> {}, (CommandActor actor, String id) -> {});
 
     static String npc(String id, UUID uuid, String folder, String extra) {
         return ToolkitScreensTest.npc(id, uuid, extra).replace("\"group\":\"town\"", "\"group\":\"" + folder + "\"");

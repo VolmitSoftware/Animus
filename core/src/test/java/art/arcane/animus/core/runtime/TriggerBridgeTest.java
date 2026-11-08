@@ -65,13 +65,23 @@ class TriggerBridgeTest {
     }
     @Test void healthLossFiresDamageAndZeroHealthAlsoFiresDeathWithoutDespawn(){
         active();VirtualNpcState state=state();
-        VirtualNpcState.Snapshot before=state.snapshot(),after=state.damage(5);bridge.changed(before,after);pump();assertEquals(List.of("hurt"),fired);fired.clear();
-        before=after;after=state.damage(100);bridge.changed(before,after);pump();assertEquals(List.of("hurt","dead"),fired);fired.clear();
+        VirtualNpcState.Snapshot before=state.snapshot(),after=state.damage(5);bridge.changed(before,after,java.util.Optional.empty());pump();assertEquals(List.of("hurt"),fired);fired.clear();
+        before=after;after=state.damage(100);bridge.changed(before,after,java.util.Optional.empty());pump();assertEquals(List.of("hurt","dead"),fired);fired.clear();
         bridge.removed(npc);pump();assertEquals(List.of(),fired);
+    }
+    @Test void aPlayerKillerIsTheDeathRunsPlayerWithKillerFacts(){
+        active();VirtualNpcState state=state();
+        List<Optional<UUID>> players=new ArrayList<>();List<Map<String,Object>> contexts=new ArrayList<>();
+        VirtualNpcState.Snapshot before=state.snapshot();
+        bridge.changed(before,state.damage(100),Optional.of(new TriggerEvent.Attacker("player",viewer)));
+        dispatcher.pump(request->{players.add(request.player());contexts.add(request.event());return Outcome.ok(UUID.randomUUID());});
+        assertEquals(List.of(Optional.of(viewer),Optional.of(viewer)),players);
+        assertEquals(Map.of("damage",20.0,"attacker",viewer.toString(),"attacker_type","player"),contexts.get(0));
+        assertEquals(Map.of("killer",viewer.toString(),"killer_type","player"),contexts.get(1));
     }
     @Test void movementAndUnobservedStateFireNothing(){
         active();VirtualNpcState state=state();VirtualNpcState.Snapshot before=state.snapshot();
-        bridge.changed(before,state.move(new WorldPosition("world",new Vec3(1,64,0))));bridge.changed(null,state.snapshot());pump();assertEquals(List.of(),fired);
+        bridge.changed(before,state.move(new WorldPosition("world",new Vec3(1,64,0))),java.util.Optional.empty());bridge.changed(null,state.snapshot(),java.util.Optional.empty());pump();assertEquals(List.of(),fired);
     }
     @Test void proximityUsesTheSpatialIndexAndSleepsWithoutViewers(){
         bridge.activated(npc);pump();pump();fired.clear();index.upsert(state().snapshot());

@@ -51,9 +51,17 @@ final class TerrainClient {
   int fresh = 0;
   int unchanged = 0;
 
+  /// Worlds the server lists; null until it has said. A world outside the
+  /// list, or one the server answered 404 for, is never asked about.
+  Set<String>? worlds;
+  final Set<String> _missing = <String>{};
+
+  bool _asks(String world) => !_missing.contains(world) && (worlds == null || worlds!.contains(world));
+
   /// The surface tile [tx], [tz] of [world], or null when neither the
   /// server nor the cache has it.
   Future<TerrainSurfaceTile?> surface(String world, int tx, int tz) async {
+    if (!_asks(world)) return null;
     final Map<String, Object?>? json = await _get('surface|$world|$tx|$tz',
         '/v1/terrain/surface?world=${Uri.encodeQueryComponent(world)}&tx=$tx&tz=$tz');
     return json == null ? null : TerrainSurfaceTile.fromJson(json);
@@ -61,12 +69,13 @@ final class TerrainClient {
 
   /// The slice of chunk [cx], [cz] from [y] up [height] blocks.
   Future<TerrainSlice?> slice(String world, int cx, int cz, int y, int height) async {
+    if (!_asks(world)) return null;
     final Map<String, Object?>? json = await _get('blocks|$world|$cx|$cz|$y|$height',
         '/v1/terrain/blocks?world=${Uri.encodeQueryComponent(world)}&cx=$cx&cz=$cz&y=$y&height=$height');
     return json == null ? null : TerrainSlice.fromJson(json);
   }
 
-  Future<Map<String, Object?>?> _get(String place, String path) => _asked.putIfAbsent(place, () => _slot(() => _fetch('$server|$place', path)));
+  Future<Map<String, Object?>?> _get(String place, String path) => _asked.putIfAbsent(place, () => _slot(() => _fetch('$server|$place', path, place.split('|')[1])));
 
   Future<T> _slot<T>(Future<T> Function() work) {
     final Completer<T> done = Completer<T>();
@@ -86,7 +95,8 @@ final class TerrainClient {
     return done.future;
   }
 
-  Future<Map<String, Object?>?> _fetch(String key, String path) async {
+  Future<Map<String, Object?>?> _fetch(String key, String path, String world) async {
+    if (!_asks(world)) return null;
     Map<String, Object?>? cached;
     try {
       final String? text = await cache.read(key);
@@ -103,6 +113,7 @@ final class TerrainClient {
         unchanged++;
         return cached;
       }
+      if (response.status == 404) _missing.add(world);
       final Object? body = response.body;
       if (!response.ok || body is! Map<String, Object?>) return cached;
       fresh++;

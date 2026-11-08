@@ -99,6 +99,7 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
         delivered.clear();
         engine.tick();
         for (UUID npc : engine.drainDeletions()) combat.deleteDead(npc);
+        for (UUID npc : engine.drainPermadeaths()) combat.markDead(npc);
         refreshIndexes();
         return !engine.drained();
     }
@@ -114,6 +115,7 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
             case "release" -> engine.release(actor.uuid);
             case "target" -> engine.target(actor.uuid, target.orElseThrow());
             case "guard" -> engine.guard(actor.uuid, target);
+            case "revive" -> engine.revive(actor.uuid);
             default -> throw new IllegalArgumentException("Unknown combat operation: " + operation);
         };
         refreshIndexes();
@@ -126,10 +128,10 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
     }
 
     /** A message from another owner: a hit on this NPC. Checked against where this NPC stands now. */
-    void struck(TargetRef attacker, WorldPosition from, double amount, double knockback) {
+    void struck(TargetRef attacker, WorldPosition from, double amount, double knockback, DamageKind kind) {
         WorldPosition at = actor.state.snapshot().position();
         if (!at.world().equals(from.world()) || at.point().distance(from.point()) > combat.budgets.maximumScanRange() + HIT_SLACK) return;
-        engine.struck(actor.uuid, attacker, from, amount, knockback);
+        engine.struck(actor.uuid, attacker, from, amount, knockback, kind);
     }
     /** A message from the projectile's owner: a helper this NPC launched touched a real entity, observed there. */
     void helperHit(UUID helper, TargetRef struck, CombatTarget observed) {
@@ -149,6 +151,7 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
     int helpers() { return helpers.size(); }
     @Override public void close() {
         engine.close();
+        for (UUID npc : engine.drainPermadeaths()) combat.markDead(npc);
         combat.closed(actor);
         combat.guarding(actor, guarded, null); guarded = null;
         combat.watching(actor, false);
@@ -174,10 +177,10 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
         if (view == null || view.combat() == null || !view.snapshot().active()) return Optional.empty();
         return Optional.of(CombatEngine.npcTarget(npc, view.name(), view.snapshot(), other.id, view.combat().settings(), view.combat().loadout()));
     }
-    @Override public DamageOutcome strikePeer(TargetRef attacker, WorldPosition from, CombatTarget target, double amount, double knockback) {
+    @Override public DamageOutcome strikePeer(TargetRef attacker, WorldPosition from, CombatTarget target, double amount, double knockback, DamageKind kind) {
         RegionActor other = combat.actor(target.ref().id());
         if (other == null) return new DamageOutcome(DamageStatus.INVALID, 0, false);
-        if (!combat.send(other, "hit", (ActorCombat defender) -> defender.struck(attacker, from, amount, knockback))) return new DamageOutcome(DamageStatus.FAILED, 0, false);
+        if (!combat.send(other, "hit", (ActorCombat defender) -> defender.struck(attacker, from, amount, knockback, kind))) return new DamageOutcome(DamageStatus.FAILED, 0, false);
         return new DamageOutcome(DamageStatus.SCHEDULED, 0, false);
     }
     @Override public int alertPeers(String squad, UUID source, WorldPosition from, double range, TargetRef target, int limit) {
@@ -213,7 +216,7 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
         if (!npc.equals(actor.uuid) || !actor.state.snapshot().active()) return new DamageOutcome(DamageStatus.INVALID, 0, false);
         VirtualNpcState.Snapshot before = actor.state.snapshot();
         VirtualNpcState.Snapshot after = actor.state.damage(amount);
-        actor.combatChanged(before, after);
+        actor.combatChanged(before, after, Optional.of(art.arcane.animus.core.runtime.RuntimeCombatWorld.attacker(attacker)));
         return new DamageOutcome(DamageStatus.APPLIED, before.health() - after.health(), after.health() == 0);
     }
 
@@ -315,6 +318,11 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
         return online != null && combat.owns(online) && online.hasPermission(node);
     }
     @Override public void tell(UUID player, String speaker, String message) { combat.deliver(player, (Player online) -> online.sendMessage(DialogueFormat.speech(speaker, message))); }
+    @Override public void actionBar(UUID player, String text) { combat.deliver(player, (Player online) -> BukkitCombatWorld.actionBar(online, text)); }
+    @Override public void credit(TargetRef killer, UUID npc) {
+        if (killer.kind() == TargetKind.PLAYER) combat.deliver(killer.id(), (Player online) -> online.incrementStatistic(org.bukkit.Statistic.MOB_KILLS));
+    }
+    @Override public Optional<WorldPosition> home(UUID npc) { return npc.equals(actor.uuid) ? Optional.of(actor.spec.position()) : Optional.empty(); }
 
     /** Helpers are spawned only in a chunk this region holds and tagged with their NPC, so a hit anywhere finds its owner. */
     @Override public Optional<UUID> launchHelper(UUID owner, WorldPosition from, Vec3 velocity, RangedWeapon weapon) {

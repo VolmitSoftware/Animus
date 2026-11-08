@@ -102,6 +102,12 @@ final class CombatBrain {
     private long nextProtectionCheck;
     private long invulnerableUntil;
     private long respawnAt = -1;
+    /** The next respawn point for {@code in_order}; runtime only, so a restart starts from the first. */
+    private int nextPoint;
+    /** When a permadeath is recorded: after the body's fall has played, since recording it despawns the NPC. -1 for none. */
+    private long permadeathAt = -1;
+    /** Ticks a dead body lies before a permadeath is recorded, as long as the death animation. */
+    static final int DEATH_ANIMATION_TICKS = 20;
     private int stuck;
     private int ammunition;
     private final int fullAmmunition;
@@ -141,6 +147,7 @@ final class CombatBrain {
     SpatialNpcIndex.Cursor npcCursor() { return npcCursor; }
     void npcCursor(SpatialNpcIndex.Cursor cursor) { npcCursor = cursor; }
     void retire() { retired = true; }
+    boolean permadeathPending() { return permadeathAt >= 0; }
     Slot slot() { return slot; }
     void slot(Slot slot) { this.slot = slot; }
     boolean awaitsTarget() { return target == null && !disengaged && state != CombatState.DEAD; }
@@ -172,9 +179,10 @@ final class CombatBrain {
         if (!self.active()) { showDraw(); engine.vacate(this); return idle; }
         heal(now, self);
         boolean engaged = engaged();
-        if (!engaged && (disengaged || !engine.playersNear(self.position(), searchRadius() + WAKE_MARGIN))) {
-            // Nothing to fight and nobody to see it: sleep without scanning and without a slot.
+        if (!engaged && (disengaged || settings.passive() || !engine.playersNear(self.position(), searchRadius() + WAKE_MARGIN))) {
+            // Nothing to fight and nobody to see it: sleep without scanning and without a slot. A passive NPC never scans.
             engine.vacate(this);
+            if (settings.passive()) return healing(self) ? Math.max(1, Math.min(idle, nextHeal - now)) : idle;
             if (!disengaged) return idle;
         } else if (!engine.claim(this)) return idle;
         long next = turn(now, self);
@@ -191,6 +199,7 @@ final class CombatBrain {
     }
 
     private boolean engaged() { return target != null || threat != null || state == CombatState.RETURNING; }
+    private boolean healing(VirtualNpcState.Snapshot self) { return self.health() < settings.defense().maximumHealth() && settings.defense().healRateTicks() > 0; }
     private double searchRadius() {
         double radius = Math.max(scanRange(), settings.avoids().empty() ? 0 : settings.avoidance().range());
         return settings.greetings().enabled() ? Math.max(radius, settings.greetings().range() + 1) : radius;
@@ -235,8 +244,7 @@ final class CombatBrain {
         }
         long until = disengaged ? engine.budgets().idleSleepTicks() : Math.max(1, nextScan - now);
         if (guarded != null) return Math.min(until, guarding(now, self));
-        if (self.health() < settings.defense().maximumHealth() && settings.defense().healRateTicks() > 0)
-            until = Math.min(until, Math.max(1, nextHeal - now));
+        if (healing(self)) until = Math.min(until, Math.max(1, nextHeal - now));
         return until;
     }
 
@@ -796,7 +804,7 @@ final class CombatBrain {
     /** This NPC took damage. Wakes it, and it may fight back or flee. */
     void attacked(TargetRef attacker) {
         engine.wake(this);
-        if (disengaged || attacker.id().equals(npc)) return;
+        if (disengaged || settings.passive() || attacker.id().equals(npc)) return;
         Optional<CombatTarget> seen = engine.resolve(attacker);
         if (seen.isEmpty() || friendly(attacker, seen.get().squad())) return;
         Optional<VirtualNpcState.Snapshot> self = world.npc(npc);
@@ -811,11 +819,15 @@ final class CombatBrain {
         }
     }
 
-    /** The damage that remains after this NPC's defense, or 0. Starts invulnerability frames when any remains. */
-    double mitigate(TargetRef attacker, WorldPosition from, double amount, Optional<CombatTarget> attackerView) {
+    /**
+     * The damage that remains after this NPC's defense, or 0. Starts invulnerability frames when any remains. A source the
+     * NPC does not accept, or a player without its attacker permission, deals nothing.
+     */
+    double mitigate(TargetRef attacker, WorldPosition from, double amount, Optional<CombatTarget> attackerView, CombatWorld.DamageKind kind) {
         CombatSettings.Defense defense = settings.defense();
         long now = engine.now();
-        if (defense.invincible() || now < invulnerableUntil || state == CombatState.DEAD) return 0;
+        if (defense.invincible() || now < invulnerableUntil || state == CombatState.DEAD || !defense.accepts(attacker.kind(), kind)) return 0;
+        if (attacker.kind() == TargetKind.PLAYER && defense.attackerPermission().isPresent() && !world.permitted(attacker, defense.attackerPermission().get())) return 0;
         Optional<VirtualNpcState.Snapshot> self = world.npc(npc);
         if (self.isEmpty()) return 0;
         if (defense.protectFromRange() > 0 && (!from.world().equals(self.get().position().world())
@@ -841,8 +853,11 @@ final class CombatBrain {
         }
     }
 
-    /** Processes a death exactly once: helpers, drops, experience, and then the respawn timer or the deletion request. */
-    void die(WorldPosition place) {
+    /**
+     * Processes a death exactly once: helpers, drops, experience, kill credit, and then the respawn timer, the permadeath
+     * record or the deletion request. {@code killer} is null when the last blow came from no known attacker.
+     */
+    void die(WorldPosition place, TargetRef killer) {
         if (deathHandled) return;
         deathHandled = true;
         deathPlace = place;
@@ -856,27 +871,83 @@ final class CombatBrain {
         CombatSettings.Death death = settings.death();
         List<CombatWorld.Drop> drops = new ArrayList<>();
         for (CombatSettings.DropRule rule : death.drops()) {
-            if (engine.random().nextDouble() < rule.chance()) drops.add(new CombatWorld.Drop(rule.item(), rule.amount()));
+            if (engine.random().nextDouble() >= rule.chance()) continue;
+            int amount = rule.maximum() > rule.amount() ? rule.amount() + engine.random().nextInt(rule.maximum() - rule.amount() + 1) : rule.amount();
+            drops.add(new CombatWorld.Drop(rule.item(), amount, rule.components()));
         }
+        if (death.dropEquipment()) drops.addAll(loadout.worn());
         if (!drops.isEmpty() || death.experience() > 0) world.drop(place, drops, death.experience());
+        if (killer != null && !killer.id().equals(npc)) world.credit(killer, npc);
         int delay = settings.respawn().delayTicks();
         respawnAt = delay < 0 ? -1 : engine.now() + delay;
         if (settings.respawn().deleteOnDeath()) engine.requestDeletion(npc);
+        if (settings.respawn().permadeath()) permadeathAt = engine.now() + DEATH_ANIMATION_TICKS;
         engine.wake(this);
     }
 
     private long updateDead(long now, VirtualNpcState.Snapshot self) {
-        if (!deathHandled) die(self.position());
+        if (!deathHandled) die(self.position(), null);
         long idle = engine.budgets().idleSleepTicks();
+        if (permadeathAt >= 0) {
+            if (now < permadeathAt) return permadeathAt - now;
+            permadeathAt = -1;
+            engine.requestPermadeath(npc);
+        }
         if (respawnAt < 0) return idle;
         if (now < respawnAt) return respawnAt - now;
-        List<CombatSettings.Location> locations = settings.respawn().locations();
-        Optional<WorldPosition> at = locations.isEmpty() ? Optional.of(deathPlace)
-                : world.resolve(locations.get(engine.random().nextInt(locations.size())));
-        if (at.isEmpty() || !world.revive(npc, at.get())) {
+        if (!respawn(now)) {
             respawnAt = now + 20;
             return 20;
         }
+        return 1;
+    }
+
+    /** Brings a dead NPC back now at its next respawn point, or heals a living one fully. False when it cannot come back yet. */
+    boolean revive() {
+        permadeathAt = -1;
+        Optional<VirtualNpcState.Snapshot> self = world.npc(npc);
+        if (self.isEmpty()) return false;
+        if (self.get().health() > 0) {
+            double missing = settings.defense().maximumHealth() - self.get().health();
+            if (missing > 0) world.heal(npc, missing);
+            return true;
+        }
+        if (!deathHandled) die(self.get().position(), null);
+        if (!respawn(engine.now())) return false;
+        engine.wake(this);
+        return true;
+    }
+
+    /** Where the NPC comes back: the next listed point by the respawn order, else its home or where it fell. */
+    private Optional<WorldPosition> respawnPoint() {
+        List<CombatSettings.Location> locations = settings.respawn().locations();
+        if (locations.isEmpty()) return settings.respawn().home() ? world.home(npc).or(() -> Optional.ofNullable(deathPlace)) : Optional.ofNullable(deathPlace);
+        return switch (settings.respawn().order()) {
+            case RANDOM -> world.resolve(locations.get(engine.random().nextInt(locations.size())));
+            case IN_ORDER -> world.resolve(locations.get(Math.floorMod(nextPoint, locations.size())));
+            case NEAREST -> {
+                WorldPosition best = null;
+                for (CombatSettings.Location location : locations) {
+                    Optional<WorldPosition> resolved = world.resolve(location);
+                    if (resolved.isEmpty()) continue;
+                    if (best == null || nearer(resolved.get(), best)) best = resolved.get();
+                }
+                yield Optional.ofNullable(best);
+            }
+        };
+    }
+    /** Whether this point is nearer to where the NPC fell than the other; a point in its own world beats any elsewhere. */
+    private boolean nearer(WorldPosition point, WorldPosition other) {
+        if (deathPlace == null) return false;
+        boolean here = point.world().equals(deathPlace.world()), there = other.world().equals(deathPlace.world());
+        if (here != there) return here;
+        return here && point.point().distance(deathPlace.point()) < other.point().distance(deathPlace.point());
+    }
+
+    private boolean respawn(long now) {
+        Optional<WorldPosition> at = respawnPoint();
+        if (at.isEmpty() || !world.revive(npc, at.get())) return false;
+        nextPoint++;
         deathHandled = false;
         respawnAt = -1;
         state = CombatState.IDLE;
@@ -892,7 +963,9 @@ final class CombatBrain {
         progressFrom = null;
         stallReported = false;
         homeward(at.get());
-        return 1;
+        // Nothing to walk back to: a patrol starts its route again from the first point.
+        if (state != CombatState.RETURNING) world.release(npc);
+        return true;
     }
 
     /** A respawn away from the post walks back to it, as the end of a fight does. */

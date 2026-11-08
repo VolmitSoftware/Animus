@@ -28,6 +28,7 @@ import '../../logic/npc/group_create.dart';
 import '../../logic/npc/group_merge.dart';
 import '../../logic/npc/group_model.dart';
 import '../../logic/npc/item_slots.dart' show hireModule;
+import '../../logic/npc/health_settings.dart';
 import '../../logic/npc/npc_appearance.dart';
 import '../../logic/npc/npc_attributes.dart';
 import '../../logic/npc/npc_catalog.dart';
@@ -50,6 +51,7 @@ import '../npc/equipment_slots.dart';
 import '../npc/group_part.dart';
 import '../npc/group_parts.dart';
 import '../npc/inventory_slots.dart';
+import '../npc/health_editor.dart';
 import '../npc/npc_modules.dart';
 import '../npc/route_editor.dart' show routeRecordings;
 import '../npc/npc_section.dart';
@@ -109,7 +111,7 @@ List<Diagnostic> _valuesDiagnostics(List<Diagnostic> diagnostics) => <Diagnostic
 const List<String> _traits = <String>['glowing', 'teamColor', 'baby', 'usingItem', 'listed', 'gravity'];
 
 /// Modules with their own editor here.
-const Set<String> _typedModules = <String>{navigationModule, combatModule, shopModule, mountModule};
+const Set<String> _typedModules = <String>{navigationModule, combatModule, healthModule, shopModule, mountModule};
 
 class NpcInspector extends StatefulWidget {
   const NpcInspector({
@@ -801,7 +803,7 @@ class _NpcInspectorState extends State<NpcInspector> {
       summary: keys.isEmpty ? 'none' : keys.map((String key) => key.startsWith('animus:') ? key.substring(7) : key).join(', '),
       open: _open('modules', false),
       onToggle: (bool open) => setState(() => _opened['modules'] = open),
-      children: <Widget>[_combat(doc), _shop(), _mount(), _otherModules()],
+      children: <Widget>[_combat(doc), _health(), _shop(), _mount(), _otherModules()],
     );
   }
 
@@ -836,6 +838,15 @@ class _NpcInspectorState extends State<NpcInspector> {
       ),
     ]);
   }
+
+  Widget _health() => HealthEditor(
+    value: _modules[healthModule],
+    combat: _modules[combatModule],
+    diagnostics: _diagnostics,
+    origin: _origin,
+    onChanged: (Object? value) => _putModule(healthModule, value),
+    onCombatChanged: (Object? value) => _putModule(combatModule, value),
+  );
 
   Widget _shop() => ShopBindingEditor(
     value: _modules[shopModule],

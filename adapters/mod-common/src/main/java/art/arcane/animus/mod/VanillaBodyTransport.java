@@ -364,6 +364,42 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         } finally { buffer.release(); }
     }
 
+    /** A damage event from no entity: the client flashes the body red and plays its own type's hurt sound. */
+    @Override public CompletionStage<Void> hurt(ServerPlayer viewer, BodyTransport.Body presented) {
+        Body body = checkBody(presented);
+        Session session = existing(viewer);
+        if (session == null) return unwatched("Viewer is not watched");
+        if (session.visible.get(body.entityId) != body) return failed("Body is not visible to this viewer");
+        return send(session, body, PacketKind.METADATA, List.of(new net.minecraft.network.protocol.game.ClientboundDamageEventPacket(body.entityId,
+                viewer.level().damageSources().generic().typeHolder(), -1, -1, Optional.empty())));
+    }
+
+    /** Entity event 3 plays the death sound and, for every body but a player's, the fall; zero health makes a player fall too. */
+    @Override public CompletionStage<Void> die(ServerPlayer viewer, BodyTransport.Body presented) {
+        Body body = checkBody(presented);
+        Session session = existing(viewer);
+        if (session == null) return unwatched("Viewer is not watched");
+        if (session.visible.get(body.entityId) != body) return failed("Body is not visible to this viewer");
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer(8));
+        try {
+            buffer.writeInt(body.entityId);
+            buffer.writeByte(3);
+            Packet<ClientGamePacketListener> event = net.minecraft.network.protocol.game.ClientboundEntityEventPacket.STREAM_CODEC.decode(buffer);
+            return send(session, body, PacketKind.METADATA, HEALTH == null ? List.of(event)
+                    : List.of(event, new ClientboundSetEntityDataPacket(body.entityId, List.of(SynchedEntityData.DataValue.create(HEALTH, 0f)))));
+        } finally { buffer.release(); }
+    }
+    /** {@code LivingEntity.DATA_HEALTH_ID}, private in vanilla; null where it cannot be read, and then only the death event is sent. */
+    private static final net.minecraft.network.syncher.EntityDataAccessor<Float> HEALTH = healthAccessor();
+    @SuppressWarnings("unchecked")
+    private static net.minecraft.network.syncher.EntityDataAccessor<Float> healthAccessor() {
+        try {
+            java.lang.reflect.Field field = net.minecraft.world.entity.LivingEntity.class.getDeclaredField("DATA_HEALTH_ID");
+            field.setAccessible(true);
+            return (net.minecraft.network.syncher.EntityDataAccessor<Float>) field.get(null);
+        } catch (ReflectiveOperationException | RuntimeException unavailable) { return null; }
+    }
+
     /** The shared flags, pose and item use of a visible body from {@code look}; all are always sent, so standing again clears a crouch. */
     @Override public CompletionStage<Void> look(ServerPlayer viewer, BodyTransport.Body presented, BodyLook look) {
         Body body = checkBody(presented);

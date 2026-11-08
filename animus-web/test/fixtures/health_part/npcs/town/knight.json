@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "8f2d6b91-4c3a-4e7d-b150-6a9e3c2d7f42",
+  "id": "knight",
+  "group": "town",
+  "name": "Fallen Knight",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 10.5,
+    "y": 64,
+    "z": 10.5,
+    "yaw": 90,
+    "pitch": 0
+  },
+  "modules": {
+    "animus:combat": {
+      "enabled": true,
+      "targets": {
+        "categories": [
+          "monsters"
+        ]
+      },
+      "defense": {
+        "maximumHealth": 40
+      },
+      "death": {
+        "experience": 5
+      }
+    },
+    "animus:health": {
+      "killable": true,
+      "maximumHealth": 40,
+      "respawn": {
+        "afterDeath": "permadeath"
+      },
+      "dead": true
+    }
+  }
+}

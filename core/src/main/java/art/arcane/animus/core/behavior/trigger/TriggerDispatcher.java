@@ -421,7 +421,7 @@ public final class TriggerDispatcher implements TriggerSink {
             if (!binding.trigger.matches(event, binding.key())) continue;
             if (!presented) { drop(binding, DropReason.INACTIVE); continue; }
             if (cooling) { suppress(binding); continue; }
-            admitted |= enqueue(binding, event.player(), event instanceof TriggerEvent.Interaction click ? click.context() : Map.of());
+            admitted |= enqueue(binding, event.player(), event.context());
         }
         if (admitted && settings.npcCooldownTicks() > 0) npcAdmitted.put(event.npc(), tick);
     }

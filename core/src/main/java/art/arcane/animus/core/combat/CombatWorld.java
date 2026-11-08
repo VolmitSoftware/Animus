@@ -18,7 +18,10 @@ public interface CombatWorld {
 
     /** @param applied health and absorption actually removed; killed whether the target died from this hit */
     record DamageOutcome(DamageStatus status, double applied, boolean killed) {}
-    record Drop(String item, int amount) {}
+    /** {@code components} is the text after the item id in a give command. */
+    record Drop(String item, int amount, Optional<String> components) {
+        public Drop(String item, int amount) { this(item, amount, Optional.empty()); }
+    }
 
     /** The authoritative NPC state, including a dead NPC, or empty when it has no runtime. */
     Optional<VirtualNpcState.Snapshot> npc(UUID npc);
@@ -47,6 +50,8 @@ public interface CombatWorld {
      * route, whose fights end where it left the route, and for a platform that does not know.
      */
     default Optional<WorldPosition> post(UUID npc) { return Optional.empty(); }
+    /** The definition's own position, dead or alive, patrolling or not; where a health NPC with no respawn points comes back. */
+    default Optional<WorldPosition> home(UUID npc) { return post(npc); }
     /** A short straight step onto clear, supported ground at the point, checked along the way; false leaves the NPC in place. */
     default boolean step(UUID npc, WorldPosition to) { return false; }
     /** Turns the NPC back to its definition's facing and pose, standing. */
@@ -74,6 +79,10 @@ public interface CombatWorld {
     boolean applyEffect(UUID attacker, CombatTarget target, CombatSettings.Effect effect);
     /** Whether an online player has this permission node. False for anything else. */
     boolean permitted(TargetRef player, String node);
+    /** Shows a line above one online player's hotbar. */
+    default void actionBar(UUID player, String text) {}
+    /** Credits a kill of this NPC to the player who dealt the last blow, as a mob kill counts. Other killers are ignored. */
+    default void credit(TargetRef killer, UUID npc) {}
     /** Sends a line of NPC speech to one online player. */
     void tell(UUID player, String speaker, String message);
 
@@ -89,7 +98,7 @@ public interface CombatWorld {
     /** A combat NPC that this engine does not hold, as its owner last published it; empty when there is none. */
     default Optional<CombatTarget> peer(UUID npc) { return Optional.empty(); }
     /** Delivers a hit on a combat NPC this engine does not hold to that NPC's owner, which applies its own defense. */
-    default DamageOutcome strikePeer(TargetRef attacker, WorldPosition from, CombatTarget target, double amount, double knockback) {
+    default DamageOutcome strikePeer(TargetRef attacker, WorldPosition from, CombatTarget target, double amount, double knockback, DamageKind kind) {
         return new DamageOutcome(DamageStatus.NO_CHANGE, 0, false);
     }
     /** Offers the target to idle squad members this engine does not hold, at most {@code limit}; returns how many were asked. */

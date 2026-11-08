@@ -79,7 +79,8 @@ public final class NativeProtocolClient {
         "keep_alive", "ping", "disconnect", "chunk_batch_finished", "set_entity_data",
         "set_entity_motion", "set_equipment", "set_passengers", "animate", "rotate_head", "set_health",
         "login", "sound", "level_particles", "boss_event", "move_entity_rot", "move_entity_pos_rot",
-        "command_suggestions", "open_screen", "container_set_content", "container_set_slot", "container_close", "merchant_offers", "block_update", "section_blocks_update");
+        "command_suggestions", "open_screen", "container_set_content", "container_set_slot", "container_close", "merchant_offers", "block_update", "section_blocks_update",
+        "damage_event", "hurt_animation", "entity_event", "set_action_bar_text");
 
     private NativeProtocolClient(int port, String username) throws Exception {
         this.username = username;
@@ -320,6 +321,10 @@ public final class NativeProtocolClient {
         }
         else if (packet instanceof ClientboundRotateHeadPacket p) event("head", "id", reflectedId(p), "yaw", p.getYHeadRot());
         else if (packet instanceof ClientboundAnimatePacket p) event("animate", "id", p.getId(), "action", p.getAction());
+        else if (packet instanceof ClientboundDamageEventPacket p) event("damage_event", "id", p.entityId(), "type", p.sourceType().unwrapKey().map(key -> key.identifier().toString()).orElse(""));
+        else if (packet instanceof ClientboundHurtAnimationPacket p) event("hurt_animation", "id", p.id(), "yaw", p.yaw());
+        else if (packet instanceof ClientboundEntityEventPacket p) event("entity_event", "id", reflectedId(p), "status", (int) p.getEventId());
+        else if (packet instanceof ClientboundSetActionBarTextPacket p) event("action_bar", "text", p.text().getString());
         else if (packet instanceof ClientboundMoveEntityPacket p && p.hasRotation()) event("rotation", "id", reflectedId(p), "yaw", p.getYRot(), "pitch", p.getXRot());
         else if (packet instanceof ClientboundSetEntityDataPacket p) {
             List<Map<String, Object>> fields = new ArrayList<>();

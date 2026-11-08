@@ -151,6 +151,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private static final int MOTION_CELLS = 256, STUCK_CELLS = 1024;
     /** A sleeping route looks for a nearby player again after this many ticks. */
     private static final int AWAKE_RECHECK_TICKS = 20;
+    /** How long a body that died stays shown lying down, as a vanilla death does. */
+    private static final int DYING_TICKS = 20;
     private static final int SUPPORT_CELLS = 4096;
     private static final double HULL_WIDTH_LIMIT = 4, HULL_HEIGHT_LIMIT = 8;
     /** Fastest route leg in blocks per second; combat pursuit is limited further by {@code [combat] maximumSpeed}. */
@@ -696,6 +698,12 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (value == null || value.state.snapshot().health() > 0 || !DefinitionSpec.spawned(runtime.npcs().snapshot().get(entry.id))) return false;
         index.upsert(value.state.respawn(at));
         value.poseRevision++;
+        // A body still lying where it fell is replaced by a fresh one, standing at full health.
+        value.dyingUntil = 0;
+        for (Viewer viewer : showing.of(npc)) {
+            Presented shown = viewer.visible.get(npc);
+            if (shown != null && shown.value == value) retire(viewer, shown);
+        }
         if (triggers != null) triggers.activated(npc);
         return true;
     }
@@ -1183,6 +1191,31 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             });
         } catch (RuntimeException failure) { cosmeticFailed(viewer, "attack swing", body.value, failure); }
         return true;
+    }
+    /**
+     * The hurt flash and the body's own hurt sound, or its death fall and death sound, for one viewer. Admitted like an
+     * attack swing: the viewer may have dealt the hit, so it neither waits for cosmetic budget nor goes stale.
+     */
+    private void feedback(Viewer viewer, Presented body, boolean death) {
+        if (!admit(viewer, PresentationPressure.Tier.AUTHORITATIVE)) return;
+        String label = death ? "death" : "hurt";
+        try {
+            handOver(viewer, () -> death ? packets.die(viewer.player, body.body) : packets.hurt(viewer.player, body.body)).whenComplete((Void nothing, Throwable failure) -> {
+                if (failure != null) enqueue(viewer, () -> { if (current(viewer) && !body.retired) cosmeticFailed(viewer, label, body.value, failure); });
+            });
+        } catch (RuntimeException failure) { cosmeticFailed(viewer, label, body.value, failure); }
+    }
+    /** Shows who dealt the health change applied next, for its damage and death triggers. Owner thread. */
+    public void blame(UUID npc, TriggerEvent.Attacker attacker) {
+        if (!available()) return;
+        owner(); Entry entry = byUuid.get(npc);
+        if (entry != null && entry.value != null) entry.value.attacker = attacker;
+    }
+    /** The definition's own position, alive or dead: where a health NPC with no respawn points comes back. */
+    public Optional<WorldPosition> home(UUID npc) {
+        if (!available()) return Optional.empty();
+        owner(); Entry entry = byUuid.get(npc);
+        return entry == null || entry.value == null ? Optional.empty() : Optional.of(entry.value.spec.position());
     }
     /** Reserves a place in the viewer's outbox; a full queue counts as a short budget, so cosmetic work yields while it drains. */
     boolean admit(Viewer viewer, PresentationPressure.Tier tier) {
@@ -1938,15 +1971,23 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             if (!value.state.snapshot().equals(snapshot)) throw new IllegalArgumentException("Snapshot is not authoritative NPC state");
             VirtualNpcState.Snapshot before = index.find(snapshot.npcId()).orElse(null);
             boolean moved = before != null && !before.position().equals(snapshot.position());
+            boolean hurt = before != null && snapshot.health() < before.health(), died = hurt && snapshot.health() == 0;
             index.upsert(snapshot);
-            if (triggers != null) triggers.changed(before, snapshot);
+            Optional<TriggerEvent.Attacker> attacker = Optional.ofNullable(value.attacker);
+            value.attacker = null;
+            if (triggers != null) triggers.changed(before, snapshot, attacker);
             if (!snapshot.active() || moved) stopRoute(value, "cancelled by combat lifecycle/position change");
             if (moved) value.poseRevision++;
+            if (died) value.dyingUntil = tickNumber + DYING_TICKS;
             for (Viewer viewer : showing.of(snapshot.npcId())) {
                 Presented p = viewer.visible.get(snapshot.npcId());
                 if (p == null || p.value != value) continue;
-                if (!snapshot.active()) retire(viewer, p);
-                else if (p.bound) viewer.guard.updateSnapshot(p.body.entityId(), snapshot);
+                if (died && p.spawnFinished) feedback(viewer, p, true);
+                else if (!snapshot.active()) retire(viewer, p);
+                else {
+                    if (hurt && p.spawnFinished) feedback(viewer, p, false);
+                    if (p.bound) viewer.guard.updateSnapshot(p.body.entityId(), snapshot);
+                }
             }
         }));
     }
@@ -2217,7 +2258,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private boolean eligible(Viewer viewer, Value value, WorldPosition at, Predicate<ChunkPosition> delivered) {
         Entry entry = byUuid.get(value.spec.definition().uuid());
         VirtualNpcState.Snapshot snapshot = value.state.snapshot();
-        return entry != null && entry.value == value && snapshot.active() && !previews.hides(viewer.id, entry.id, value.spec.definition().uuid())
+        return entry != null && entry.value == value && (snapshot.active() || value.dyingUntil > tickNumber) && !previews.hides(viewer.id, entry.id, value.spec.definition().uuid())
                 && snapshot.position().world().equals(at.world())
                 && snapshot.position().point().distance(at.point()) <= settings.viewDistance() && delivered.test(snapshot.position().chunk());
     }
@@ -2357,6 +2398,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         RuntimeHost.Interaction action = input.action() == BodyTransport.Action.ATTACK ? RuntimeHost.Interaction.ATTACK : RuntimeHost.Interaction.INTERACT;
         boolean allowed = host.interactionAllowed(viewer.player, body.body.uuid(), action, validated.distance());
         if (!allowed || !current(viewer) || host.dead(viewer.player) || viewer.visible.get(body.body.uuid()) != body || !eligibleNow(viewer, body.value)
+                || !body.value.state.snapshot().active()
                 || body.value.state.snapshot().revision() != validated.npc().revision()
                 || !DefinitionSpec.spawned(runtime.npcs().snapshot().get(body.value.spec.definition().id()))) return;
         accepted++;
@@ -2573,6 +2615,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         NpcPose lookPose; int lookMotion; long lookRevision; BodyLook look;
         /** Attacks so far, sent with moves; and whether a fight holds the bow drawn, shown through {@link #look}. */
         long attackSwings; boolean drawing;
+        /** Who dealt the health change being applied now, for its damage and death triggers; cleared once they fire. */
+        TriggerEvent.Attacker attacker;
+        /** A body that just died stays shown, lying down, until this tick. */
+        long dyingUntil;
         final MountReference mountReference; final RideSettings ride; final SeatGeometry seat;
         boolean supportQueued; double fallSpeed;
         final LookClose lookClose; long nextLook, nextRandomLook;

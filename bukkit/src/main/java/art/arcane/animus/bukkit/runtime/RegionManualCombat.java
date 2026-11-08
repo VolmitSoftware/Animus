@@ -316,7 +316,7 @@ public final class RegionManualCombat implements AutoCloseable {
             double left = combat == null ? amount : combat.engine.mitigateExternal(actor.uuid, attacker, origin, amount);
             if (!(left > 0)) return;
             VirtualNpcState.Snapshot after = actor.state.damage(left);
-            actor.combatChanged(before, after);
+            actor.combatChanged(before, after, java.util.Optional.of(art.arcane.animus.core.runtime.RuntimeCombatWorld.attacker(attacker)));
             if (combat != null) combat.engine.externalHit(actor.uuid, attacker, after);
             mobHits.incrementAndGet();
         }

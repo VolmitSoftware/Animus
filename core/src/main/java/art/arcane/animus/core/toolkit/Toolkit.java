@@ -59,8 +59,9 @@ public final class Toolkit<P, S> implements AutoCloseable {
     @FunctionalInterface public interface Relocator { boolean relocate(String id, WorldPosition destination); }
 
     /** What the command layer lends the screens: the inspect reply and the editor pairing link. */
-    public record Commands(BiConsumer<CommandActor, String> inspect, Consumer<CommandActor> pair) {
-        public Commands { Objects.requireNonNull(inspect); Objects.requireNonNull(pair); }
+    /** @param revive brings a dead NPC back, as {@code /animus npc revive} does */
+    public record Commands(BiConsumer<CommandActor, String> inspect, Consumer<CommandActor> pair, BiConsumer<CommandActor, String> revive) {
+        public Commands { Objects.requireNonNull(inspect); Objects.requireNonNull(pair); Objects.requireNonNull(revive); }
     }
 
     /** {@code skins} reads a player's signed textures; {@code clock} is nanoseconds. */

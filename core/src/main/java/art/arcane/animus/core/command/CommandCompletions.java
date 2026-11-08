@@ -54,6 +54,7 @@ final class CommandCompletions {
             case "folder", "folders" -> folders();
             case "tag" -> tree.runtime().npcs().all().stream().flatMap((NpcDefinition definition) -> definition.tags().stream()).distinct().sorted().limit(LIMIT).toList();
             case "attribute" -> NpcCommands.ids();
+            case "setting" -> HealthSetting.NAMES;
             case "value" -> List.of(NpcCommands.RESET);
             case "shop" -> services.shops().shopIds();
             case "gui" -> services.guis().guiIds();

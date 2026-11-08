@@ -1,6 +1,7 @@
 package art.arcane.animus.core.command;
 
 import art.arcane.animus.core.npc.GroupMerge;
+import art.arcane.animus.core.runtime.HealthRecords;
 import art.arcane.animus.core.npc.NpcAttributes;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
@@ -73,6 +74,37 @@ final class NpcCommands extends CommandGroup {
         else document.add(NpcAttributes.FIELD, attributes);
         String transaction = repository.apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
         return id + ": " + known.id() + (reset ? " reset" : " = " + NpcAttributes.format(number)) + "; tx " + transaction;
+    }
+
+    @Director(description = "Bring a dead NPC back: clears a permadeath, or respawns it now")
+    void revive(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
+        CommandActor actor = actor();
+        npc(actor, npc).ifPresent((String id) -> revive(this, actor, id));
+    }
+
+    /** A permadeath is cleared in the definition; any other NPC is brought back by its running health on its owner. */
+    static void revive(CommandGroup group, CommandActor actor, String id) {
+        boolean[] running = {false};
+        group.files(actor, () -> {
+            java.util.Optional<HealthRecords.Recorded> cleared = HealthRecords.revive(group.runtime().npcs(), id);
+            if (cleared.isEmpty()) { running[0] = true; return List.of(); }
+            group.living().refresh();
+            return List.of(Palette.success(id + " revived; it spawns at its own position; tx " + cleared.get().transaction()));
+        }, () -> { if (running[0]) WorldCommands.combat(actor, () -> group.services.combat().npc(id, CombatControl.Operation.REVIVE, java.util.Optional.empty())); });
+    }
+
+    @Director(description = "Show or set one health setting of an NPC: killable, maximum, regenerate, after-death, delay or show-health")
+    void health(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
+                @Param(name = "setting", defaultValue = "", description = "killable, maximum, regenerate, after-death, delay or show-health; nothing shows them all") String setting,
+                @Param(name = "value", defaultValue = "", description = "The new value, or reset to remove it") String value) {
+        CommandActor actor = actor();
+        NpcRepository repository = runtime().npcs();
+        npc(actor, npc).ifPresent((String id) -> files(actor, () -> {
+            if (setting.isEmpty() || value.isEmpty()) return List.of(HealthSetting.show(repository, id, setting));
+            String line = HealthSetting.set(repository, id, setting, value);
+            living().refresh();
+            return List.of(Palette.success(line));
+        }));
     }
 
     /** Attribute ids for completion, bare. */
