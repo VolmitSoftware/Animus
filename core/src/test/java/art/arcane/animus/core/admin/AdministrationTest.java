@@ -17,6 +17,7 @@ class AdministrationTest {
     @Test void statusShowsTheBudgetsInEffectAfterAHotload() throws Exception {
         try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
             runtime.start(); Administration admin = new Administration(runtime);
+            assertTrue(admin.status().getFirst().contains(" on Bukkit 26.3 | "), admin.status().getFirst());
             assertTrue(admin.status().stream().anyMatch((String line) -> line.startsWith("Settings in effect:") && line.contains("packetsPerTick=32")));
             art.arcane.animus.core.config.SettingsEdit.apply(runtime, "npcs", (com.google.gson.JsonObject npcs) -> npcs.addProperty("packetsPerTick", 12));
             art.arcane.animus.core.config.SettingsEdit.apply(runtime, "editor", (com.google.gson.JsonObject editor) -> editor.addProperty("port", 9811));
@@ -38,6 +39,12 @@ class AdministrationTest {
             assertEquals(2, runtime.npcs().all().size());
             assertNotEquals(runtime.npcs().find("guard").orElseThrow().uuid(), runtime.npcs().find("deputy").orElseThrow().uuid());
             assertThrows(IOException.class, () -> List.of(admin.edit("guard", "{\"spawned\":\"true\"}")));
+            IOException unknown = assertThrows(IOException.class, () -> admin.edit("guard", "{\"x\": 1}"));
+            assertEquals("$.x: unknown field", unknown.getMessage());
+            String hash = "ab".repeat(32);
+            IOException missing = assertThrows(IOException.class, () -> admin.edit("guard", "{\"skin\": \"" + hash + "\"}"));
+            assertEquals("$.skin: no skin file skins/" + hash + ".json", missing.getMessage());
+            assertEquals(java.util.Optional.empty(), Administration.patchProblem(runtime.documents(), com.google.gson.JsonParser.parseString("{\"migration\": null, \"name\": \"A\"}").getAsJsonObject()));
             List.of(admin.delete("deputy"));
         }
         try (AnimusRuntime runtime = new AnimusRuntime(environment)) {
@@ -62,7 +69,9 @@ class AdministrationTest {
         try (AnimusRuntime runtime = new AnimusRuntime(environment)) {
             runtime.start(); Administration admin = new Administration(runtime);
             List.of(admin.create("steed", "minecraft:player", "world", 1, 64, 2, "town", "Steed"));
-            List.of(admin.edit("steed", "{\"skin\":\"" + "a".repeat(64) + "\",\"pose\":\"sitting\"}"));
+            String skin = "{\"textureRaw\":\"e30=\"}";
+            runtime.documents().commit(List.of(new art.arcane.animus.core.storage.DocumentStore.Change("skins/" + art.arcane.animus.core.storage.JsonDocuments.hash(skin) + ".json", "missing", skin)));
+            List.of(admin.edit("steed", "{\"skin\":\"" + art.arcane.animus.core.storage.JsonDocuments.hash(skin) + "\",\"pose\":\"sitting\"}"));
             List.of(admin.edit("steed", "{\"type\":\"minecraft:horse\",\"skin\":null,\"pose\":null,\"horse\":{\"color\":\"black\"}}"));
             com.google.gson.JsonObject json = runtime.npcs().find("steed").orElseThrow().json();
             assertEquals("minecraft:horse", json.get("type").getAsString());
@@ -155,7 +164,7 @@ class AdministrationTest {
         try (AnimusRuntime runtime = new AnimusRuntime(environment)) {
             runtime.start(); Administration admin = new Administration(runtime);
             assertEquals("Captain", runtime.npcs().find("citizens-1").orElseThrow().name());
-            assertTrue(RichText.plain(admin.rollback(replacementTransaction).getFirst()).matches("\\[Animus]: Rolled back " + replacementTransaction + "; tx [0-9a-f-]{36}"));
+            assertTrue(RichText.plain(admin.rollback(replacementTransaction).getFirst()).matches("\\[Animus]: Rolled back " + replacementTransaction.substring(0, 8) + "; tx [0-9a-f-]{36}"));
             assertEquals("Guard", runtime.npcs().find("citizens-1").orElseThrow().name());
             assertEquals(1, runtime.npcs().find("citizens-1").orElseThrow().revision());
             admin.rollback(copyTransaction);

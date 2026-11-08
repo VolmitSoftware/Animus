@@ -40,7 +40,7 @@ final class RecordingScreen<P, S> extends ToolScreen<P, S> {
         List<String> selected = toolkit.selected(viewer.id());
         Set<String> picked = new HashSet<>(selected);
         if (recordings == null) icon(22, "minecraft:clock", "&7Reading recordings/", List.of(), Optional.empty());
-        else list(recordings, "No recordings yet; Start recording below", (Integer slot, RecordingFiles.Recording recording) -> {
+        else list(recordings, "No recordings yet; record one below", (Integer slot, RecordingFiles.Recording recording) -> {
             List<String> lines = new ArrayList<>(describe(recording));
             List<String> mine = recording.playerIds().stream().filter(picked::contains).toList();
             if (!mine.isEmpty()) lines.add("&7Selection plays it &f" + recording.players().get(mine.getFirst()).orElse(Playback.DEFAULT).key() + "&7 on " + ToolkitFiles.count(mine.size()));

@@ -49,7 +49,7 @@ final class FolderScreen<P, S> extends ToolScreen<P, S> {
                             return;
                         }
                         if (name.isEmpty()) { guard.clear(); toolkit.say(viewer.player(), ChatLine.error("npcs/ itself cannot be renamed")); return; }
-                        if (guard.ready(rename, inside)) prompt("New name for npcs/" + name + "/", name,
+                        if (guard.ready(rename, inside)) prompt("Rename folder", name,
                                 (String to) -> toolkit.write(viewer, (ToolkitFiles files) -> new FolderFiles(toolkit.npcs(), toolkit.documents()).rename(name, to.trim())));
                     });
         });
@@ -58,7 +58,7 @@ final class FolderScreen<P, S> extends ToolScreen<P, S> {
         guarded(CREATE, "minecraft:ender_chest", "New folder", "Moves the selection into it", selected.size(), false, () -> {
             guard.clear();
             if (chosen().isEmpty()) return;
-            prompt("New folder under npcs/", "", (String typed) -> {
+            prompt("Folder in npcs/", "", (String typed) -> {
                 String folder = typed.trim();
                 if (folder.isEmpty()) { toolkit.say(viewer.player(), ChatLine.error("A new folder needs a name")); return; }
                 List<String> ids = toolkit.selected(viewer.id());

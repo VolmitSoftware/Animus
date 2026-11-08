@@ -102,8 +102,7 @@ final class RiderService<P, I> implements AutoCloseable {
         List<String> lines = new ArrayList<>();
         for (Ride ride : rides.values()) {
             Vec3 at = ride.vehicle.snapshot().position().point();
-            lines.add(host.name(ride.player) + " on " + ride.vehicle.id() + " state=" + ride.session.state() + " generation=" + ride.session.generation()
-                    + " steps=" + ride.session.steps() + " x=" + at.x() + " y=" + at.y() + " z=" + at.z());
+            lines.add(ride.session.line(host.name(ride.player), ride.vehicle.id(), at));
         }
         return lines;
     }

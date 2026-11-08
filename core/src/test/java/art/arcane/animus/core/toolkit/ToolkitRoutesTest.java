@@ -207,7 +207,7 @@ class ToolkitRoutesTest {
         click("Speed 2.0 blocks/s", Click.LEFT);
         drain();
         assertEquals(2.5, JsonDocuments.object(store.read("routes/market.json")).get("speed").getAsDouble());
-        assertTrue(alex.messages.getLast().contains("Route market speed saved; tx "), alex.messages.getLast());
+        assertTrue(alex.messages.getLast().contains("Route market speed set to 2.5; tx "), alex.messages.getLast());
         click("Order sequence", Click.LEFT);
         drain();
         JsonObject route = JsonDocuments.object(store.read("routes/market.json"));
@@ -255,7 +255,7 @@ class ToolkitRoutesTest {
         toolkit.interacted(alex, GUARD, false, false);
         click("wave", Click.LEFT);
         drain();
-        assertTrue(alex.messages.getLast().contains("Recording wave on 1 NPC; tx "), alex.messages.getLast());
+        assertTrue(alex.messages.getLast().contains("Recording wave on guard; tx "), alex.messages.getLast());
         assertEquals(Map.of("enabled", true, "recording", "wave", "playback", "loop"), Map.of("enabled", navigation("guard").get("enabled").getAsBoolean(),
                 "recording", navigation("guard").get("recording").getAsString(), "playback", navigation("guard").get("playback").getAsString()));
         assertFalse(navigation("guard").has("route"), "a recording replaces the route");

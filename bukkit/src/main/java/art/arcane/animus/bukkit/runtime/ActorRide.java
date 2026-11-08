@@ -105,8 +105,7 @@ final class ActorRide {
         Ride current = riding;
         if (current == null) return null;
         Vec3 at = actor.publication.snapshot().position().point();
-        return current.player.getName() + " on " + actor.id + " state=" + current.session.state() + " generation=" + current.session.generation()
-                + " steps=" + current.session.steps() + " x=" + at.x() + " y=" + at.y() + " z=" + at.z();
+        return current.session.line(current.player.getName(), actor.id, at);
     }
 
     void tick() {

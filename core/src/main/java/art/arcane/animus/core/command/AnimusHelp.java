@@ -1,7 +1,9 @@
 package art.arcane.animus.core.command;
 
 import art.arcane.animus.core.text.DocsLink;
+import art.arcane.volmlib.util.director.help.DirectorHelpMessages;
 import art.arcane.volmlib.util.director.help.DirectorMiniMenu;
+import art.arcane.volmlib.util.localization.MessageArgs;
 import art.arcane.volmlib.util.director.runtime.DirectorParameterDescriptor;
 import art.arcane.volmlib.util.director.runtime.DirectorRuntimeNode;
 import java.util.ArrayList;
@@ -146,7 +148,7 @@ public final class AnimusHelp {
         int total = page.entries().size();
         DirectorMiniMenu.ContentPage shown = new DirectorMiniMenu.ContentPage(index + 1, pages.size(), 0, 0, total);
         lines.add(DirectorMiniMenu.paginationBar(shown, group.path(), AnimusDirector.THEME, AnimusDirector.TEXT));
-        return lines;
+        return lines.stream().map(AnimusHelp::clicks).toList();
     }
 
     /** Every entry as plain text, one per line, under its topic heading. */
@@ -161,6 +163,11 @@ public final class AnimusHelp {
         }
         return lines;
     }
+
+    private static final java.util.regex.Pattern PAGE_CLICK = java.util.regex.Pattern.compile("(<click:run_command:[^>]*?) (?:help|page)=(\\d+)");
+
+    /** A link to a help page runs {@code help N}, which a client's command tree parses, rather than {@code help=N}. */
+    static String clicks(String line) { return PAGE_CLICK.matcher(line).replaceAll("$1 help $2"); }
 
     private static Row row(String line) { return new Row(line, Math.max(1, DirectorMiniMenu.chatRows(line))); }
 
@@ -179,7 +186,10 @@ public final class AnimusHelp {
     static String entry(DirectorRuntimeNode node) {
         DirectorRuntimeNode group = node.getParent() == null ? node : node.getParent();
         List<String> rendered = DirectorMiniMenu.render(new DirectorMiniMenu.DirectorHelpPage(group, List.of(node), 0, 1), AnimusDirector.THEME, AnimusDirector.TEXT);
-        return rendered.get(rendered.size() - 2);
+        String line = rendered.get(rendered.size() - 2);
+        if (node.isInvocable()) return line;
+        String category = DirectorMiniMenu.escapeText(AnimusDirector.TEXT.resolve(DirectorHelpMessages.CATEGORY, MessageArgs.empty()));
+        return line.replace(category, DirectorMiniMenu.escapeText(description(node)));
     }
 
     private static List<DirectorParameterDescriptor> shown(DirectorRuntimeNode node) {

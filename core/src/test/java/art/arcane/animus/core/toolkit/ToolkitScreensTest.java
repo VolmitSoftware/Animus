@@ -132,7 +132,10 @@ class ToolkitScreensTest {
         for (ScreenFrame.Item item : alex.frame.items().values()) {
             if (item.item().id().equals(ToolScreen.FILLER)) continue;
             String text = String.join("\n", item.lore().stream().map(RichText::plain).toList());
-            assertTrue(text.contains("Left ") && text.contains("Right ") && text.contains("Sneak "), item.name() + " lacks click hints: " + text);
+            assertTrue(text.contains("Any click ") || text.contains("Left ") && text.contains("Right") && text.contains("neak"), item.name() + " lacks click hints: " + text);
+            List<String> actions = item.lore().stream().map(RichText::plain).filter((String line) -> line.matches("^(Any click|Left|Right|Sneak).*"))
+                    .map((String line) -> line.replaceFirst("^(Any click|Left or right|Left or sneak|Right or sneak|Left|Right|Sneak) ", "")).toList();
+            assertEquals(actions.size(), Set.copyOf(actions).size(), item.name() + " repeats a click hint: " + text);
             buttons++;
         }
         assertEquals(18, buttons);
@@ -140,7 +143,7 @@ class ToolkitScreensTest {
         assertEquals("Trait groups", RichText.plain(alex.frame.title()));
         click("Back", Click.LEFT);
         assertEquals("Animus tools", RichText.plain(alex.frame.title()));
-        click("Selection wand", Click.LEFT);
+        click("Animus wand", Click.LEFT);
         assertTrue(alex.messages.getLast().contains("Wand given"), alex.messages.toString());
     }
 
@@ -210,7 +213,7 @@ class ToolkitScreensTest {
         assertEquals(List.of("inspect guard", "pair", "revive guard"), calls);
     }
 
-    @Test void newNpcAsksForAnIdThenSavesSelectsAndSpawnsItWhereThePlayerStands() {
+    @Test void newNpcAsksForAnIdThenSavesSelectsAndSpawnsItInFrontOfThePlayer() {
         alex.pose = new ScreenHost.Pose(Set.of("world", "minecraft:overworld"), 12.3, 64, -7.8, 65.62, 90, 0, false);
         toolkit.open(alex.id, Toolkit.Tool.PALETTE, commands);
         click("New NPC", Click.LEFT);
@@ -221,17 +224,21 @@ class ToolkitScreensTest {
         assertEquals(List.of("miller"), toolkit.selected(alex.id));
         com.google.gson.JsonObject position = npcs.find("miller").orElseThrow().json().getAsJsonObject("position");
         assertEquals("world", position.get("world").getAsString(), "the world NPC positions already use");
-        assertEquals(12.3, position.get("x").getAsDouble());
-        assertEquals(90f, position.get("yaw").getAsFloat());
-        assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("Created dormant miller; tx ")), alex.messages.toString());
+        assertEquals(10.3, position.get("x").getAsDouble(), "two blocks ahead, where the player looks");
+        assertEquals(-7.8, position.get("z").getAsDouble());
+        assertEquals(-90f, position.get("yaw").getAsFloat(), "facing the player");
+        assertTrue(npcs.find("miller").orElseThrow().spawned());
         drain();
-        assertTrue(alex.messages.getLast().contains("Spawning 1 NPC; tx "), alex.messages.getLast());
+        List<String> created = alex.messages.stream().filter((String line) -> line.contains("; tx ") || line.contains("[Undo]")).toList();
+        assertEquals(1, created.size(), "one transaction: " + alex.messages);
+        assertTrue(created.getFirst().contains("Created npcs/miller.json and spawned it; tx "), created.getFirst());
+        assertFalse(alex.messages.toString().contains("dormant"), alex.messages.toString());
         click("New NPC", Click.LEFT);
         MockScreenHost.answer(alex, Optional.of("miller"));
         drain();
         assertTrue(alex.messages.getLast().contains("already exists"), alex.messages.getLast());
         click("New NPC", Click.RIGHT);
-        assertEquals("Body type, such as minecraft:villager", alex.prompt.label());
+        assertEquals("Body type", alex.prompt.label());
         MockScreenHost.answer(alex, Optional.of("minecraft:villager"));
         MockScreenHost.answer(alex, Optional.of("trader"));
         drain();
@@ -279,11 +286,23 @@ class ToolkitScreensTest {
         toolkit.interacted(alex, GUARD, false, false);
         click("wp-alex", Click.LEFT);
         drain();
-        assertTrue(alex.messages.getLast().contains("Route wp-alex on 1 NPC; tx "), alex.messages.getLast());
+        assertTrue(alex.messages.getLast().contains("Route wp-alex on guard; tx "), alex.messages.getLast());
         click("wp-alex", Click.RIGHT);
         assertTrue(calls.contains("follow guard wp-alex"));
         click("Stop moving", Click.LEFT);
         assertTrue(calls.contains("stop guard"));
+        assertTrue(alex.messages.getLast().endsWith("Stopped guard"), alex.messages.getLast());
+    }
+
+    @Test void captureClosesTheWindowSoThePlayerWalksAndCountsOnePoint() {
+        toolkit.open(alex.id, Toolkit.Tool.PALETTE, commands);
+        click("Routes", Click.LEFT);
+        click("Capture a route", Click.LEFT);
+        assertNull(alex.window, "the window closes so the player can walk the route");
+        assertEquals(1, toolkit.capture(alex.id).orElseThrow().points().size());
+        toolkit.open(alex.id, Toolkit.Tool.PALETTE, commands);
+        click("Routes", Click.LEFT);
+        assertEquals("Capturing, 1 point", RichText.plain(alex.frame.items().get(MockScreenHost.slot(alex, "Capturing")).name().orElseThrow()));
     }
 
     @Test void findListsNearestFirstAndTeleportsOrSelects() {
@@ -294,6 +313,6 @@ class ToolkitScreensTest {
         click("baker", Click.RIGHT);
         assertEquals(List.of("baker"), toolkit.selected(alex.id));
         click("guard", Click.LEFT);
-        assertTrue(alex.effects.contains("teleport:world:3,64,0"), alex.effects.toString());
+        assertTrue(alex.effects.contains("teleport:world:1,64,0"), "beside the guard at 3 64 0, on the player's side: " + alex.effects);
     }
 }

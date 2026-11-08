@@ -264,6 +264,10 @@ class PropertyScreensTest {
         click("scale", Click.LEFT);
         drain();
         assertEquals(1.1, guard().getAsJsonObject("attributes").get("scale").getAsDouble(), 1e-9);
+        assertTrue(alex.messages.getLast().contains("Set attributes.scale to 1.1 on guard"), alex.messages.getLast());
+        click("scale", Click.LEFT);
+        drain();
+        assertTrue(alex.messages.getLast().contains("Set attributes.scale to 1.2 on guard"), alex.messages.getLast());
         click("scale", Click.SHIFT_RIGHT);
         drain();
         assertFalse(guard().has("attributes"));

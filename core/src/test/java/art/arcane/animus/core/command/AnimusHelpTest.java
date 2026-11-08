@@ -51,7 +51,7 @@ class AnimusHelpTest {
         assertEquals(ClickEvent.Action.RUN_COMMAND, first(MINI.deserialize(AnimusHelp.entry(child(root, "validate")))).action(), "a command without parameters runs on click");
         Component behaviors = MINI.deserialize(AnimusHelp.entry(child(root, "behaviors")));
         assertEquals("/animus behaviors help=1", ((ClickEvent.Payload.Text) first(behaviors).payload()).value());
-        assertEquals("⇀ behaviors - Category of Commands", PLAIN.serialize(behaviors));
+        assertEquals("⇀ behaviors - Load, run, trace and cancel behaviors", PLAIN.serialize(behaviors), "a group shows its own description");
         DirectorRuntimeNode navigation = child(root, "navigation");
         assertEquals(DirectorMiniMenu.render(new DirectorMiniMenu.DirectorHelpPage(navigation, List.of(child(navigation, "go")), 0, 1), AnimusDirector.THEME, AnimusDirector.TEXT).get(2),
                 AnimusHelp.entry(child(navigation, "go")), "the line is VolmLib's own");
@@ -70,11 +70,11 @@ class AnimusHelpTest {
             List<String> arrows = runs(MINI.deserialize(lines.getLast()));
             if (index + 1 < pages) {
                 assertTrue(bar.endsWith("Page " + (index + 2) + " ❭"), bar);
-                assertTrue(arrows.contains("/animus page=" + (index + 2)), arrows.toString());
+                assertTrue(arrows.contains("/animus help " + (index + 2)), arrows.toString());
             }
             if (index > 0) {
                 assertTrue(bar.startsWith("〈 Page " + index), bar);
-                assertTrue(arrows.contains("/animus page=" + index), arrows.toString());
+                assertTrue(arrows.contains("/animus help " + index), arrows.toString());
             }
             for (String line : lines) {
                 String plain = PLAIN.serialize(MINI.deserialize(line));
@@ -96,7 +96,7 @@ class AnimusHelpTest {
         DirectorRuntimeNode rigs = child(root, "rigs");
         List<String> lines = AnimusHelp.lines(AnimusHelp.page(rigs, visible(rigs), 0));
         assertEquals(DirectorMiniMenu.banner("/animus rigs", AnimusDirector.THEME), lines.get(0));
-        assertEquals(DirectorMiniMenu.backLink("/animus help=1", AnimusDirector.THEME, AnimusDirector.TEXT), lines.get(1));
+        assertEquals(AnimusHelp.clicks(DirectorMiniMenu.backLink("/animus help=1", AnimusDirector.THEME, AnimusDirector.TEXT)), lines.get(1), "help links run help N");
         assertTrue(PLAIN.serialize(MINI.deserialize(lines.get(2))).startsWith("⇀ "), "entries follow the back link without a heading: " + lines.get(2));
     }
 

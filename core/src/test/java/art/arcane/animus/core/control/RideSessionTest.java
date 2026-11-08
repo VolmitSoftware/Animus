@@ -161,4 +161,10 @@ class RideSessionTest {
         assertEquals(0.2, step.position().z(), 1e-9);
         assertTrue(step.grounded());
     }
+
+    @Test void theStatusLineShowsAShortRideId() {
+        RideSession session = new RideSession(UUID.randomUUID(), UUID.randomUUID(), new Vec3(1.5, 64, 2), SETTINGS, false, 0);
+        String line = session.line("Alex", "horse", new Vec3(1.5, 64, 2));
+        org.junit.jupiter.api.Assertions.assertEquals("Alex on horse: attaching, 0 steps, at 1.5 64 2; ride " + session.generation().toString().substring(0, 8), line);
+    }
 }

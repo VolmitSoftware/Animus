@@ -117,7 +117,7 @@ class RecordingSessionsTest {
         }
         sessions.stop(actor);
         host.tick();
-        assertTrue(actor.last().startsWith("Recording demo saved: 40 ticks"), actor.last());
+        assertTrue(actor.last().startsWith("Recording demo saved as recordings/demo.json: 40 ticks"), actor.last());
         RecordingDocument document = RecordingDocument.parse(Files.readString(saved("demo")), RecordingSettings.DEFAULT.maximumFileBytes());
         assertEquals(player.id, document.recordedBy());
         assertEquals("minecraft:overworld", document.world());
@@ -137,7 +137,7 @@ class RecordingSessionsTest {
         host.tick();
         host.tick();
         assertTrue(Files.isRegularFile(saved("walk")));
-        assertTrue(host.log.stream().anyMatch((String line) -> line.contains("saved (the recorder left)")), host.log.toString());
+        assertTrue(host.log.stream().anyMatch((String line) -> line.contains("saved as recordings/walk.json (the recorder left)")), host.log.toString());
 
         Player other = join();
         Actor second = new Actor(Optional.of(other.id));

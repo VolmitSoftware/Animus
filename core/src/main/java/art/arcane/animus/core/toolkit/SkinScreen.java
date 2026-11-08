@@ -2,6 +2,7 @@ package art.arcane.animus.core.toolkit;
 
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
+import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.text.ChatLine;
 import java.util.ArrayList;
 import java.util.List;
@@ -53,7 +54,7 @@ final class SkinScreen<P, S> extends ToolScreen<P, S> {
         if (!skin.groups().isEmpty()) lines.add("&7Groups &f" + names(skin.groups(), 4));
         lines.add("&8" + skin.shortHash());
         String sneak = skin.used() ? "delete (only when unused)" : armed ? "delete the file now" : "delete the file, asks once more";
-        button(slot, HEAD, armed ? "&cDelete " + skin.title() + "?" : title(skin.title()), lore(lines, hints("put on the selection", "rename", sneak)), (GuiModel.Click click) -> {
+        button(slot, skin.texture().map(ToolScreen::skinHead).orElse(new NpcItem(HEAD, 1, Optional.empty(), Optional.empty())), armed ? "&cDelete " + skin.title() + "?" : title(skin.title()), lore(lines, hints("put on the selection", "rename", sneak)), (GuiModel.Click click) -> {
             boolean wasArmed = skin.hash().equals(deleting);
             deleting = null;
             if (sneak(click)) delete(skin, wasArmed);
@@ -101,6 +102,18 @@ final class SkinScreen<P, S> extends ToolScreen<P, S> {
     }
 
     private void reload() {
-        toolkit.later(viewer, (ToolkitFiles ignored) -> new SkinFiles(toolkit.npcs(), toolkit.documents()).skins(), (List<SkinFiles.Entry> found) -> { skins = found; viewer.refresh(); });
+        toolkit.later(viewer, (ToolkitFiles ignored) -> new SkinFiles(toolkit.npcs(), toolkit.documents()).skins(), (List<SkinFiles.Entry> found) -> { skins = stable(skins, found); viewer.refresh(); });
+    }
+
+    /** {@code found} in the order the screen already shows, new skins last, so a click never moves the entry under the cursor. */
+    static List<SkinFiles.Entry> stable(List<SkinFiles.Entry> shown, List<SkinFiles.Entry> found) {
+        if (shown == null) return found;
+        List<String> order = shown.stream().map(SkinFiles.Entry::hash).toList();
+        List<SkinFiles.Entry> sorted = new ArrayList<>(found);
+        sorted.sort(java.util.Comparator.comparingInt((SkinFiles.Entry entry) -> {
+            int at = order.indexOf(entry.hash());
+            return at < 0 ? Integer.MAX_VALUE : at;
+        }));
+        return sorted;
     }
 }

@@ -186,7 +186,7 @@ public final class AnimusRuntime implements AutoCloseable {
     public String status() {
         PluginSettings active = settings;
         if (active == null) throw new IllegalStateException(BuildIdentity.NAME + " is not running");
-        return BuildIdentity.NAME + " " + BuildIdentity.VERSION + " | " + environment.platform()
+        return BuildIdentity.NAME + " " + BuildIdentity.VERSION + " | " + environment.server()
                 + " | Minecraft " + environment.minecraftVersion();
     }
 

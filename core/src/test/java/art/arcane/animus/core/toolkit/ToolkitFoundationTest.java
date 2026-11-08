@@ -12,7 +12,9 @@ import art.arcane.animus.core.gui.GuiModel.Click;
 import art.arcane.animus.core.gui.MockScreenHost;
 import art.arcane.animus.core.gui.MockScreenHost.Player;
 import art.arcane.animus.core.gui.ScreenHost;
+import art.arcane.animus.core.gui.ScreenFrame;
 import art.arcane.animus.core.gui.ScreenManager;
+import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.inventory.MockInventory.Stack;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
@@ -124,6 +126,40 @@ class ToolkitFoundationTest {
         assertTrue(toolkit.selected(alex.id).isEmpty(), "a picked NPC is not selected");
         assertNotNull(alex.window, "the screen is back");
         assertEquals(Optional.empty(), toolkit.picking(alex.id));
+    }
+
+    @Test void aPickCancelledByATeleportSaysSo() {
+        click(1, Click.LEFT);
+        manager.teleported(alex);
+        assertTrue(toolkit.interacted(alex, GUARD, false, false));
+        assertTrue(answers.isEmpty());
+        assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("Vehicle cancelled")), alex.messages.toString());
+    }
+
+    @Test void clickHintsSayEachActionOnce() {
+        assertEquals(List.of("&fAny click &7open it"), ToolScreen.hints("open it", "open it", "open it"));
+        assertEquals(List.of("&fLeft or sneak &7next", "&fRight &7previous"), ToolScreen.hints("next", "previous", "next"));
+        assertEquals(List.of("&fLeft or right &7page 2", "&fSneak &7last page"), ToolScreen.hints("page 2", "page 2", "last page"));
+        assertEquals(List.of("&fLeft &7save", "&fRight or sneak &7clear"), ToolScreen.hints("save", "clear", "clear"));
+        assertEquals(3, ToolScreen.hints("a", "b", "c").size());
+    }
+
+    @Test void buttonsHideVanillaAttributesAndFillerHasNoTooltip() {
+        ScreenFrame.Item button = alex.frame.items().get(0);
+        assertEquals(Optional.of("[tooltip_display={hidden_components:[\"minecraft:attribute_modifiers\"]}]"), button.item().components());
+        ScreenFrame.Item filler = alex.frame.items().get(8);
+        assertEquals(ToolScreen.FILLER, filler.item().id());
+        assertEquals(Optional.of("[tooltip_display={hide_tooltip:true}]"), filler.item().components());
+        assertEquals("[custom_name=\"x\",tooltip_display={hidden_components:[\"minecraft:attribute_modifiers\"]}]",
+                ToolScreen.shown(new NpcItem("minecraft:leather_boots", 1, Optional.of("[custom_name=\"x\"]"), Optional.empty())).components().orElseThrow());
+        assertEquals("[tooltip_display={hide_tooltip:true}]",
+                ToolScreen.shown(new NpcItem("minecraft:stone", 1, Optional.of("[tooltip_display={hide_tooltip:true}]"), Optional.empty())).components().orElseThrow());
+    }
+
+    @Test void promptTitlesFitTheAnvil() {
+        assertEquals("New name", new ScreenHost.Prompt("New name", "", (Optional<String> typed) -> {}).title());
+        String title = new ScreenHost.Prompt("minecraft:waypoint_transmit_range", "", (Optional<String> typed) -> {}).title();
+        assertTrue(title.length() <= ScreenHost.Prompt.TITLE, title);
     }
 
     @Test void guardedButtonsAskTwiceForDeletesAndBulkChangesOnly() {

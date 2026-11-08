@@ -48,6 +48,7 @@ public final class AnimusDirector {
     public static final DirectorTextResolver TEXT = (TextKey key, MessageArgs arguments) ->
             DirectorTextResolver.ENGLISH.resolve(key.id().equals(UNEXPECTED.id()) ? UNEXPECTED : key, arguments);
     private static final int SUGGESTIONS = 100;
+    private static final Set<String> HELP = Set.of("help", "?");
     private static final ThreadLocal<CommandActor> CURRENT = new ThreadLocal<>();
     private final String label;
     private final DirectorRuntimeEngine engine;
@@ -90,16 +91,18 @@ public final class AnimusDirector {
     /** Runs one command; true when it showed help or its handler returned. */
     private boolean run(CommandActor actor, String[] arguments) {
         List<String> tokens = pages(actor, ToolkitCommands.expand(CommandWords.tokens(arguments)));
+        DirectorRuntimeNode group = engine.getRoot();
+        for (String token : tokens) {
+            if (group.isInvocable() || token.contains("=") || HELP.contains(token.toLowerCase(Locale.ROOT))) break;
+            DirectorRuntimeNode next = named(group, token);
+            if (next == null) return unknown(actor, group, token);
+            group = next;
+        }
         Optional<DirectorMiniMenu.DirectorHelpPage> help = DirectorMiniMenu.resolveHelp(engine, tokens);
         if (help.isPresent()) { help(actor, help.get().node(), help.get().pageIndex()); return true; }
         ActorSender sender = new ActorSender(actor);
         DirectorRoute route = engine.route(DirectorInvocation.pretokenized(sender, label, tokens));
-        if (!route.invocable()) {
-            DirectorRuntimeNode reached = route.node() == null ? engine.getRoot() : route.node();
-            actor.tell(Palette.error("Unknown command /" + label + " " + String.join(" ", tokens) + "; the commands you may run are below"));
-            help(actor, reached, 0);
-            return false;
-        }
+        if (!route.invocable()) return unknown(actor, route.node() == null ? engine.getRoot() : route.node(), String.join(" ", tokens));
         DirectorRuntimeNode node = route.node();
         List<String> words = new ArrayList<>(tokens.subList(0, tokens.size() - route.remainingArgs().size()));
         words.addAll(coordinates(node, route.remainingArgs()));
@@ -125,8 +128,30 @@ public final class AnimusDirector {
         return false;
     }
 
-    /** A page bar's {@code page=N} after a group, such as {@code /animus page=2}, asks for that page of its help. */
+    /** A word that names nothing in {@code group}: the reason in red, then the group's usage line. */
+    private boolean unknown(CommandActor actor, DirectorRuntimeNode group, String word) {
+        DirectorRuntimeNode shown = group.isInvocable() && group.getParent() != null ? group.getParent() : group;
+        actor.tell(Palette.error("Unknown command \"" + word + "\" in " + shown.path()));
+        actor.rich(ChatLine.of(Palette.PREFIX + "&7Usage: &f" + shown.path() + " <command>").docs(DocsLink.COMMANDS));
+        return false;
+    }
+
+    private static DirectorRuntimeNode named(DirectorRuntimeNode group, String word) {
+        for (DirectorRuntimeNode child : group.getChildren())
+            if (child.allNames().stream().anyMatch((String name) -> name.equalsIgnoreCase(word))) return child;
+        return null;
+    }
+
+    /**
+     * A page bar's {@code page=N} after a group, such as {@code /animus page=2}, asks for that page of its help, as
+     * {@code help N} does; help's own links write {@code help N} so a client's command tree can parse them.
+     */
     private List<String> pages(CommandActor actor, List<String> tokens) {
+        if (tokens.size() >= 2 && tokens.get(tokens.size() - 2).equalsIgnoreCase("help") && tokens.getLast().matches("\\d{1,4}")) {
+            List<String> asked = new ArrayList<>(tokens.subList(0, tokens.size() - 2));
+            asked.add("help=" + tokens.getLast());
+            return asked;
+        }
         if (tokens.isEmpty() || !tokens.getLast().toLowerCase(Locale.ROOT).startsWith("page=")) return tokens;
         if (engine.route(DirectorInvocation.pretokenized(new ActorSender(actor), label, tokens)).invocable()) return tokens;
         List<String> asked = new ArrayList<>(tokens);

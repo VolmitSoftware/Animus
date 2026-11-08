@@ -1,6 +1,7 @@
 package art.arcane.animus.core.command;
 
 import art.arcane.animus.core.navigation.MovementProfile;
+import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
@@ -40,10 +41,15 @@ final class WorldCommands {
             try { target = Coordinates.point(x, y, z, Coordinates.origin(actor)); }
             catch (IllegalArgumentException unreadable) { actor.tell(Palette.error(unreadable.getMessage())); return; }
             npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Navigation", () -> {
-                Vec3 goal = new Vec3(blockCenter(target.x()), target.y(), blockCenter(target.z()));
+                Vec3 goal = goal(target, mode);
                 WorldPosition destination = new WorldPosition(living().navigationOrigin(id).world(), goal);
-                return id + " heading to " + goal.x() + " " + goal.y() + " " + goal.z() + " (" + mode.name().toLowerCase(Locale.ROOT) + "); route " + living().navigate(id, destination, mode, speed);
+                return id + " heading to " + goal.brief() + " (" + mode.name().toLowerCase(Locale.ROOT) + "); route " + ChatLine.shortId(living().navigate(id, destination, mode, speed).toString());
             }));
+        }
+
+        /** Whole-block x and z at the block centre; a walking goal stands on a block, so its feet height is rounded. */
+        static Vec3 goal(Vec3 target, MovementProfile.Mode mode) {
+            return new Vec3(blockCenter(target.x()), mode == MovementProfile.Mode.WALK ? Math.rint(target.y()) : target.y(), blockCenter(target.z()));
         }
 
         /**
@@ -63,7 +69,7 @@ final class WorldCommands {
             catch (IllegalArgumentException unreadable) { actor.tell(Palette.error(unreadable.getMessage())); return; }
             npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Navigation", () -> {
                 living().lookAt(id, new WorldPosition(living().navigationOrigin(id).world(), target));
-                return id + " looks at " + target.x() + " " + target.y() + " " + target.z();
+                return id + " looks at " + target.brief();
             }));
         }
 
@@ -71,7 +77,7 @@ final class WorldCommands {
         void status(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
             CommandActor actor = actor();
             npc(actor, npc).ifPresent((String id) -> {
-                try { actor.tell(living().navigationStatus(id)); }
+                try { actor.tell(NavigationReport.readable(living().navigationStatus(id))); }
                 catch (RuntimeException refused) { actor.tell(Palette.error("Navigation: " + refused.getMessage())); }
             });
         }
@@ -79,9 +85,10 @@ final class WorldCommands {
         @Director(description = "Stop an NPC's route")
         void stop(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
             CommandActor actor = actor();
-            npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Navigation",
-                    () -> (living().stopNavigation(id) ? "Stopped the route of " : "No route to stop for ") + id + "\n" + living().navigationStatus(id)));
+            npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Navigation", () -> stopped(id, living().stopNavigation(id))));
         }
+
+        static String stopped(String id, boolean running) { return running ? "Stopped " + id + "'s route" : id + " has no route to stop"; }
     }
 
     @Director(name = "ride", description = "Watch or end NPC rides")

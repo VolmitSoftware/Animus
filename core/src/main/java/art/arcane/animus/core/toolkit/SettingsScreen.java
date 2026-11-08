@@ -119,7 +119,7 @@ final class SettingsScreen<P, S> extends ToolScreen<P, S> {
             if (map.isEmpty()) clear(field); else stage(field, map);
             return;
         }
-        prompt("Damage for " + item, map.has(item) ? number(map.get(item).getAsDouble()) : "", (String typed) -> {
+        prompt("Weapon damage", map.has(item) ? number(map.get(item).getAsDouble()) : "", (String typed) -> {
             double damage;
             try { damage = Double.parseDouble(typed.strip()); }
             catch (NumberFormatException invalid) { toolkit.say(viewer.player(), ChatLine.error("Damage is a number from 0 to 100")); return; }

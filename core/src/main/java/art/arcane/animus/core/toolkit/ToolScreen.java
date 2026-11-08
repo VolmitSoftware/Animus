@@ -23,6 +23,11 @@ import java.util.function.BiConsumer;
 abstract class ToolScreen<P, S> implements Screen {
     static final int WIDTH = 9, LIST = 45, BACK = 45, PREVIOUS = 48, INFO = 49, NEXT = 50;
     static final String FILLER = "minecraft:gray_stained_glass_pane", HEAD = "minecraft:player_head";
+    /** Buttons never show an item's vanilla attribute lines; filler shows no tooltip at all. */
+    static final String TOOLTIP = "tooltip_display", PLAIN = TOOLTIP + "={hidden_components:[\"minecraft:attribute_modifiers\"]}",
+            HIDDEN = TOOLTIP + "={hide_tooltip:true}";
+    /** Lore lines longer than this many visible characters wrap. */
+    static final int LORE_WIDTH = 48;
 
     @FunctionalInterface interface Handler { void click(GuiModel.Click click); }
 
@@ -52,7 +57,7 @@ abstract class ToolScreen<P, S> implements Screen {
         handlers.clear();
         draw();
         for (int slot = 0; slot < rows() * WIDTH; slot++)
-            items.putIfAbsent(slot, new ScreenFrame.Item(new NpcItem(FILLER, 1, Optional.empty(), Optional.empty()), Optional.of(" "), List.of(), Optional.empty()));
+            items.putIfAbsent(slot, new ScreenFrame.Item(new NpcItem(FILLER, 1, Optional.of("[" + HIDDEN + "]"), Optional.empty()), Optional.of(" "), List.of(), Optional.empty()));
         return new ScreenFrame(RichText.colorize(Palette.DARK_GREY + title()), WIDTH + "x" + rows(), WIDTH, rows(), items);
     }
 
@@ -85,6 +90,9 @@ abstract class ToolScreen<P, S> implements Screen {
     /** The next wand click on an NPC answers {@code chosen}; the window hides meanwhile. */
     void pick(String label, java.util.function.Consumer<String> chosen) { toolkit.pick(viewer, label, chosen); }
 
+    /** As {@link #pick}, leaving the window closed afterwards so the result shows. */
+    void pickAndClose(String label, java.util.function.Consumer<String> chosen) { toolkit.pick(viewer, label, false, chosen); }
+
     /**
      * A number changed by clicking: left adds {@code step}, right subtracts it, sneak makes it ten steps. The result
      * stays within the bounds and loses floating-point noise past six decimals.
@@ -108,10 +116,54 @@ abstract class ToolScreen<P, S> implements Screen {
         handlers.put(slot, handler);
     }
 
+    /** A clickable item that shows {@code item} with its own components, such as a dyed boot. */
+    void button(int slot, NpcItem item, String name, List<String> lore, Handler handler) {
+        icon(slot, item, name, lore, Optional.empty());
+        handlers.put(slot, handler);
+    }
+
     void icon(int slot, String icon, String name, List<String> lore, Optional<String> head) {
+        icon(slot, new NpcItem(icon, 1, Optional.empty(), Optional.empty()), name, lore, head);
+    }
+
+    void icon(int slot, NpcItem item, String name, List<String> lore, Optional<String> head) {
         List<String> coloured = new ArrayList<>(lore.size());
-        for (String line : lore) coloured.add(RichText.colorize(line));
-        items.put(slot, new ScreenFrame.Item(new NpcItem(icon, 1, Optional.empty(), Optional.empty()), Optional.of(RichText.colorize(name)), coloured, head));
+        for (String line : lore) for (String part : wrap(line)) coloured.add(RichText.colorize(part));
+        items.put(slot, new ScreenFrame.Item(shown(item), Optional.of(RichText.colorize(name)), coloured, head));
+    }
+
+    /** A single item with its own components and its vanilla attribute lines hidden. */
+    static NpcItem shown(NpcItem item) {
+        String components = item.components().orElse("[]");
+        if (!components.contains(TOOLTIP + "="))
+            components = components.equals("[]") ? "[" + PLAIN + "]" : components.substring(0, components.length() - 1) + "," + PLAIN + "]";
+        return new NpcItem(item.id(), 1, Optional.of(components), Optional.empty());
+    }
+
+    /** The item's readable name, such as {@code Leather Boots} or {@code 3x Bread}. */
+    static String itemName(NpcItem item) {
+        String path = item.id().substring(item.id().indexOf(':') + 1);
+        StringBuilder name = new StringBuilder();
+        for (String word : path.split("_")) if (!word.isEmpty()) name.append(name.isEmpty() ? "" : " ").append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
+        return item.count() == 1 ? name.toString() : item.count() + "x " + name;
+    }
+
+    /** A {@code &}-coded line cut at spaces into lines of at most {@link #LORE_WIDTH} visible characters, each keeping the colour. */
+    static List<String> wrap(String line) {
+        if (RichText.plain(RichText.colorize(line)).length() <= LORE_WIDTH) return List.of(line);
+        String colour = line.length() > 1 && line.charAt(0) == '&' ? line.substring(0, 2) : "";
+        List<String> out = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        int visible = 0;
+        for (String word : line.substring(colour.length()).split(" ")) {
+            int length = RichText.plain(RichText.colorize(word)).length();
+            if (visible > 0 && visible + 1 + length > LORE_WIDTH) { out.add(colour + current); current.setLength(0); visible = 0; }
+            if (visible > 0) { current.append(' '); visible++; }
+            current.append(word);
+            visible += length;
+        }
+        if (!current.isEmpty()) out.add(colour + current);
+        return out;
     }
 
     void head(int slot, String name, List<String> lore, String player, Handler handler) {
@@ -119,8 +171,17 @@ abstract class ToolScreen<P, S> implements Screen {
         handlers.put(slot, handler);
     }
 
-    /** What each click does, the last lines of every button. */
+    /** A player head wearing a skin texture, the base64 {@code textures} value of a skin file. */
+    static NpcItem skinHead(String texture) {
+        return new NpcItem(HEAD, 1, Optional.of("[profile={properties:[{name:\"textures\",value:\"" + texture.replace("\"", "") + "\"}]}]"), Optional.empty());
+    }
+
+    /** What each click does, the last lines of every button; clicks that do the same share one line. */
     static List<String> hints(String left, String right, String sneak) {
+        if (left.equals(right) && left.equals(sneak)) return any(left);
+        if (left.equals(right)) return List.of("&fLeft or right &7" + left, "&fSneak &7" + sneak);
+        if (left.equals(sneak)) return List.of("&fLeft or sneak &7" + left, "&fRight &7" + right);
+        if (right.equals(sneak)) return List.of("&fLeft &7" + left, "&fRight or sneak &7" + right);
         return List.of("&fLeft &7" + left, "&fRight &7" + right, "&fSneak &7" + sneak);
     }
 

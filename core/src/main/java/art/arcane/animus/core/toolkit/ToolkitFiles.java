@@ -109,7 +109,7 @@ final class ToolkitFiles {
             return true;
         });
         if (drafts.isEmpty()) return "Route " + route + " already set";
-        return "Route " + route + " on " + count(drafts.size()) + "; tx " + npcs.applyAll(drafts);
+        return "Route " + route + " on " + named(drafts) + "; tx " + npcs.applyAll(drafts);
     }
 
     /** Sets or, when empty, removes the skin of every listed player body; other bodies are skipped. */
@@ -168,11 +168,14 @@ final class ToolkitFiles {
         return (spawn ? "Spawning " : "Despawned ") + count(batch.drafts().size()) + "; tx " + npcs.applyAll(batch.drafts());
     }
 
+    /** A new NPC's file, checked and ready to write. */
+    record Created(NpcDefinition definition, NpcRepository.Draft draft) {}
+
     /**
-     * Saves a new dormant NPC where the player stands, as {@code /animus create} does: {@code npcs/<id>.json} with the
-     * id as its name and {@code owner}, the player who made it, as its owner. Refused when the id is taken or malformed.
+     * The file {@code /animus create} would write for a new NPC: {@code npcs/<id>.json} with the id as its name and
+     * {@code owner}, the player who made it, as its owner. Refused when the id is taken or malformed.
      */
-    String create(String id, String type, String world, Vec3 at, float yaw, UUID owner) throws IOException {
+    Created draft(String id, String type, String world, Vec3 at, float yaw, UUID owner, boolean spawn) throws IOException {
         if (!id.matches(NpcPaths.SEGMENT)) throw new IOException("An id is 1 to 64 lowercase letters, digits, _ or -");
         if (npcs.stored().stream().anyMatch((NpcDefinition existing) -> existing.id().equals(id))) throw new IOException("An NPC named " + id + " already exists");
         JsonObject document = new JsonObject();
@@ -180,16 +183,21 @@ final class ToolkitFiles {
         document.addProperty("uuid", UUID.randomUUID().toString()); document.addProperty("id", id);
         document.addProperty("type", type); document.addProperty("group", "");
         document.addProperty("name", id);
-        document.addProperty("spawned", false);
+        document.addProperty("spawned", spawn);
         document.addProperty("owner", owner.toString());
         JsonObject position = new JsonObject();
         position.addProperty("world", world);
         position.addProperty("x", Math.round(at.x() * 100) / 100.0); position.addProperty("y", Math.round(at.y() * 100) / 100.0); position.addProperty("z", Math.round(at.z() * 100) / 100.0);
-        position.addProperty("yaw", yaw); position.addProperty("pitch", 0);
+        position.addProperty("yaw", Math.round(yaw * 100) / 100f); position.addProperty("pitch", 0);
         document.add("position", position);
         NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(document));
-        String tx = npcs.apply(new NpcRepository.Draft(definition.path(), "missing", 0, document));
-        return "Created dormant " + id + "; tx " + tx;
+        return new Created(definition, new NpcRepository.Draft(definition.path(), "missing", 0, document));
+    }
+
+    /** Writes the new NPC in one transaction. */
+    String create(Created created) throws IOException {
+        String tx = npcs.apply(created.draft());
+        return "Created " + created.definition().path() + (created.definition().spawned() ? " and spawned it" : ", despawned") + "; tx " + tx;
     }
 
     /** Deletes every listed NPC in one transaction; rollback restores them all. */
@@ -279,6 +287,13 @@ final class ToolkitFiles {
     }
 
     static String count(int npcs) { return npcs + (npcs == 1 ? " NPC" : " NPCs"); }
+
+    /** The one NPC's id, else how many. */
+    static String named(List<NpcRepository.Draft> drafts) {
+        if (drafts.size() != 1) return count(drafts.size());
+        JsonElement id = drafts.getFirst().document().get("id");
+        return id != null && id.isJsonPrimitive() ? id.getAsString() : count(1);
+    }
 
     private static List<String> strings(JsonElement value) {
         List<String> list = new ArrayList<>();

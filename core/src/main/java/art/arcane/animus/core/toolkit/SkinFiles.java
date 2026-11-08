@@ -30,7 +30,7 @@ final class SkinFiles {
     SkinFiles(NpcRepository npcs, DocumentStore store) { this.npcs = npcs; this.store = store; }
 
     /** A skin file, its optional label and who wears it. */
-    record Entry(String hash, Optional<String> label, List<String> npcs, List<String> groups) {
+    record Entry(String hash, Optional<String> label, Optional<String> texture, List<String> npcs, List<String> groups) {
         Entry { npcs = List.copyOf(npcs); groups = List.copyOf(groups); }
         boolean used() { return !npcs.isEmpty() || !groups.isEmpty(); }
         String shortHash() { return hash.substring(0, 12); }
@@ -45,7 +45,10 @@ final class SkinFiles {
     /** Every skin file with its label and wearers; most used first. */
     List<Entry> skins() throws IOException {
         List<Entry> entries = new ArrayList<>();
-        for (ToolkitFiles.Skin skin : new ToolkitFiles(npcs, store).skins()) entries.add(new Entry(skin.hash(), label(store.read(path(skin.hash()))), skin.npcs(), skin.groups()));
+        for (ToolkitFiles.Skin skin : new ToolkitFiles(npcs, store).skins()) {
+            String text = store.read(path(skin.hash()));
+            entries.add(new Entry(skin.hash(), label(text), texture(text), skin.npcs(), skin.groups()));
+        }
         return entries;
     }
 
@@ -128,6 +131,26 @@ final class SkinFiles {
             JsonElement label = JsonDocuments.object(text).get("label");
             return label != null && label.isJsonPrimitive() && label.getAsJsonPrimitive().isString() && !label.getAsString().isBlank() ? Optional.of(label.getAsString()) : Optional.empty();
         } catch (IOException | RuntimeException unreadable) { return Optional.empty(); }
+    }
+
+    /** The {@code textureRaw} of a skin file's text, or empty when it has none or cannot be read. */
+    static Optional<String> texture(String text) {
+        if (text == null) return Optional.empty();
+        try {
+            JsonElement texture = JsonDocuments.object(text).get("textureRaw");
+            return texture != null && texture.isJsonPrimitive() && texture.getAsJsonPrimitive().isString() ? Optional.of(texture.getAsString()) : Optional.empty();
+        } catch (IOException | RuntimeException unreadable) { return Optional.empty(); }
+    }
+
+    /** The skin texture each listed NPC wears, by id; NPCs without a readable skin are left out. Reads files, so run it on the file lane. */
+    Map<String, String> worn(List<NpcDefinition> definitions) throws IOException {
+        Map<String, String> textures = new HashMap<>();
+        for (NpcDefinition definition : definitions) {
+            JsonElement skin = definition.json().get("skin");
+            if (skin == null || !skin.isJsonPrimitive() || !skin.getAsString().matches("[a-f0-9]{64}")) continue;
+            texture(store.read(path(skin.getAsString()))).ifPresent((String texture) -> textures.put(definition.id(), texture));
+        }
+        return textures;
     }
 
     private static String path(String hash) { return "skins/" + hash + ".json"; }

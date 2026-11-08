@@ -251,4 +251,7 @@ public final class ChatLine {
 
     /** The console text without colour codes. */
     @Override public String toString() { return RichText.plain(console()); }
+
+    /** The first eight characters of a long id, as replies show transaction, route and ride ids. */
+    public static String shortId(String id) { return id.substring(0, Math.min(SHORT_ID, id.length())); }
 }

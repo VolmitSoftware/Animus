@@ -69,12 +69,12 @@ final class RouteDetailScreen<P, S> extends ToolScreen<P, S> {
         icon(HEADER, "minecraft:lead", title(shown.id()), info, Optional.empty());
 
         button(RENAME, "minecraft:name_tag", title("Rename"), lore(List.of("&7Renames the file and repoints its NPCs"), any("type the new id")),
-                (GuiModel.Click click) -> prompt("New id for route " + shown.id(), shown.id(), (String typed) -> {
+                (GuiModel.Click click) -> prompt("New route id", shown.id(), (String typed) -> {
                     String to = typed.strip();
                     write(to, (ToolkitFiles ignored) -> files().rename(shown.id(), to));
                 }));
         button(DUPLICATE, "minecraft:paper", title("Duplicate"), lore(List.of("&7A copy no NPC uses yet"), any("type the copy's id")),
-                (GuiModel.Click click) -> prompt("Id for the copy of " + shown.id(), shown.id() + "-copy", (String typed) -> {
+                (GuiModel.Click click) -> prompt("Id for the copy", shown.id() + "-copy", (String typed) -> {
                     String to = typed.strip();
                     write(shown.id(), (ToolkitFiles ignored) -> files().duplicate(shown.id(), to));
                 }));

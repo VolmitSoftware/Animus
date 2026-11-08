@@ -36,14 +36,14 @@ final class GroupDetailScreen<P, S> extends ToolScreen<P, S> {
         icon(SUMMARY, "minecraft:book", title(id), List.of("&7" + (document.description().isEmpty() ? "No description" : document.description()),
                 "&7Members &f" + members.size(), "&7Values &f" + names(keys, 6), "&7File groups/" + id + ".json"), Optional.empty());
         button(RENAME, "minecraft:name_tag", title("Rename"), lore(List.of("&7Renames the file and repoints", "&7" + ToolkitFiles.count(members.size()) + " in one transaction"), any("type the new id")),
-                (GuiModel.Click click) -> prompt("New id for " + id, id, (String to) -> toolkit.write(viewer, (ToolkitFiles files) -> {
+                (GuiModel.Click click) -> prompt("New group id", id, (String to) -> toolkit.write(viewer, (ToolkitFiles files) -> {
                     String line = files().rename(id, to.trim());
                     group = to.trim();
                     return line;
                 })));
         button(DESCRIPTION, "minecraft:writable_book", title("Description"), lore(List.of("&7" + (document.description().isEmpty() ? "None yet" : document.description()), "&7Empty text removes it"),
                 any("type a description")),
-                (GuiModel.Click click) -> prompt("Description of " + id, document.description(),
+                (GuiModel.Click click) -> prompt("Group description", document.description(),
                         (String text) -> toolkit.write(viewer, (ToolkitFiles files) -> files().describe(id, text.trim()))));
         button(MEMBERS, HEAD, title("Members"), lore(List.of("&7" + ToolkitFiles.count(members.size()), "&7" + names(members, 6)), any("list them")),
                 (GuiModel.Click click) -> viewer.push(new GroupMembersScreen<>(toolkit, viewer, commands, id)));

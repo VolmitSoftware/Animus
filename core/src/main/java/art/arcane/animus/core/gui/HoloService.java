@@ -194,10 +194,14 @@ public final class HoloService<P, S> implements AutoCloseable {
         if (scan) {
             Map<String, Candidate> wanted = new LinkedHashMap<>();
             PointGrid<HologramDocument> placed = placed(current);
+            Map<UUID, GuiBinding> bindings = bindings();
+            // A hologram an NPC binds is drawn at that NPC only, never also at its own anchor.
+            Set<String> boundIds = new HashSet<>();
+            for (GuiBinding binding : bindings.values()) binding.hologram().ifPresent((GuiBinding.Hologram hologram) -> boundIds.add(hologram.id()));
             for (String world : pose.worlds())
                 for (HologramDocument document : placed.reaching(world, pose.x(), pose.y(), pose.z(), MAXIMUM_HOLOGRAMS_PER_VIEWER - wanted.size()))
-                    wanted.put(document.id(), new Candidate(document, Optional.empty()));
-            for (Map.Entry<UUID, GuiBinding> bound : bindings().entrySet()) {
+                    if (!boundIds.contains(document.id())) wanted.put(document.id(), new Candidate(document, Optional.empty()));
+            for (Map.Entry<UUID, GuiBinding> bound : bindings.entrySet()) {
                 if (wanted.size() >= MAXIMUM_HOLOGRAMS_PER_VIEWER) break;
                 Optional<GuiBinding.Hologram> hologram = bound.getValue().hologram();
                 if (hologram.isEmpty()) continue;

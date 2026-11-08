@@ -129,8 +129,8 @@ final class FieldScreen<P, S> extends ValueScreen<P, S> {
                     break;
                 }
                 Optional<NpcItem> now = value == null ? Optional.empty() : NpcItem.parse(value, key, new ArrayList<>());
-                lines.add("&7Now &f" + now.map((NpcItem held) -> held.count() + "x " + held.id() + (held.components().isPresent() ? " &7with components" : "")).orElse("not set"));
-                field(slot, now.map(NpcItem::id).orElse("minecraft:item_frame"), name, lines, hints("put the item in your hand here", "put the item in your hand here", "clear it"), target, (GuiModel.Click click) -> {
+                lines.add("&7Now &f" + now.map(ToolScreen::itemName).orElse("not set"));
+                field(slot, now.orElse(new NpcItem("minecraft:item_frame", 1, Optional.empty(), Optional.empty())), name, lines, hints("put the item in your hand here", "put the item in your hand here", "clear it"), target, (GuiModel.Click click) -> {
                     if (sneak(click)) { if (!arm(slot, target)) put(key, Optional.empty()); return; }
                     Optional<NpcItem> held = toolkit.host().worn(viewer.player(), EquipmentSlot.MAIN_HAND);
                     if (held.isEmpty()) { toolkit.say(viewer.player(), ChatLine.error("Hold the item in your main hand first")); return; }

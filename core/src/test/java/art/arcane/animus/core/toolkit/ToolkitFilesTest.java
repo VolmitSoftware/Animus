@@ -56,8 +56,9 @@ class ToolkitFilesTest {
 
     @Test void createdNpcsAreOwnedByTheirMaker() throws IOException {
         java.util.UUID player = java.util.UUID.fromString("0000000a-0000-4000-8000-0000000000c3");
-        String line = files.create("smith", "minecraft:player", "world", new art.arcane.animus.core.virtual.Vec3(1, 64, 2), 90, player);
-        assertTrue(line.startsWith("Created dormant smith"), line);
+        String line = files.create(files.draft("smith", "minecraft:player", "world", new art.arcane.animus.core.virtual.Vec3(1, 64, 2), 90, player, false));
+        assertTrue(line.startsWith("Created npcs/smith.json, despawned; tx "), line);
+        assertEquals(1, store.paths(tx(line)).stream().filter((String path) -> path.startsWith("npcs/")).count());
         assertEquals(java.util.Optional.of(player), npcs.find("smith").orElseThrow().owner());
     }
 

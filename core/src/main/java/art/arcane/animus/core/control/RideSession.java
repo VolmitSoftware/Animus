@@ -33,6 +33,12 @@ public final class RideSession {
         started = now;
     }
     public UUID generation() { return generation; }
+
+    /** One rider for {@code /animus ride status}: {@code Alex on horse: riding, 12 steps, at 1.5 64 2; ride 7ac92395}. */
+    public String line(String player, String npc, Vec3 at) {
+        return player + " on " + npc + ": " + state().name().toLowerCase(java.util.Locale.ROOT) + ", " + steps() + (steps() == 1 ? " step" : " steps")
+                + ", at " + at.brief() + "; ride " + generation.toString().substring(0, 8);
+    }
     public UUID rider() { return rider; }
     public UUID npc() { return npc; }
     public Vec3 anchor() { return anchor; }

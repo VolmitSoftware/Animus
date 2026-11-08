@@ -2,6 +2,7 @@ package art.arcane.animus.core.toolkit;
 
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
+import art.arcane.animus.core.npc.NpcItem;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -65,6 +66,10 @@ abstract class ValueScreen<P, S> extends ToolScreen<P, S> {
      * another field disarms it.
      */
     void field(int slot, String icon, String name, List<String> lines, List<String> hints, List<String> target, Handler handler) {
+        field(slot, new NpcItem(icon, 1, Optional.empty(), Optional.empty()), name, lines, hints, target, handler);
+    }
+
+    void field(int slot, NpcItem icon, String name, List<String> lines, List<String> hints, List<String> target, Handler handler) {
         boolean ready = armed == slot;
         String shown = ready ? "&cClick again to change " + ToolkitFiles.count(scope.affected().applyAsInt(target)) : name;
         List<String> lore = ready ? List.of("&cSame click applies it", "&7Any other click cancels") : lore(lines, hints);

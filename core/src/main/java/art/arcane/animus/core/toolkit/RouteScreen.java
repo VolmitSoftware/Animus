@@ -44,12 +44,12 @@ final class RouteScreen<P, S> extends ToolScreen<P, S> {
         back();
         Optional<WaypointCapture> capture = toolkit.capture(viewer.id());
         int points = capture.map((WaypointCapture running) -> running.points().size()).orElse(0);
-        button(CAPTURE, "minecraft:compass", title(capture.isPresent() ? "Capturing, " + points + " points" : "Capture a route"),
-                lore(List.of("&7Or hold the wand and tap sneak"), hints(capture.isPresent() ? "add a point here" : "start with a point here", "points: move, insert, wait, delete", "remove the last point")),
+        button(CAPTURE, "minecraft:compass", title(capture.isPresent() ? "Capturing, " + points + (points == 1 ? " point" : " points") : "Capture a route"),
+                lore(List.of("&7Or hold the wand and tap sneak"), hints(capture.isPresent() ? "add a point here and walk" : "start here, then walk", "points: move, insert, wait, delete", "remove the last point")),
                 (GuiModel.Click click) -> {
                     if (sneak(click)) toolkit.undoPoint(viewer.player());
                     else if (right(click)) viewer.push(new PointsScreen<>(toolkit, viewer, commands, this::reload));
-                    else toolkit.point(viewer.player());
+                    else { toolkit.point(viewer.player()); viewer.close(); }
                 });
         if (capture.isPresent()) {
             String target = capture.get().source().orElse("wp-" + viewer.host().name(viewer.player()).toLowerCase(Locale.ROOT));

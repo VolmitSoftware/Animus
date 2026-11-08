@@ -91,7 +91,7 @@ final class BukkitPrompts implements Listener {
     private boolean anvil(Player player, ScreenHost.Prompt prompt) {
         AnvilView view;
         try {
-            view = MenuType.ANVIL.create(player, prompt.label());
+            view = MenuType.ANVIL.create(player, prompt.title());
             player.openInventory(view);
         } catch (RuntimeException | LinkageError unsupported) { return false; }
         Inventory top = view.getTopInventory();
@@ -174,6 +174,13 @@ final class BukkitPrompts implements Listener {
         String name = event.getView().getRenameText();
         event.setResult(paper(name == null ? waiting.map((TextPrompts.Waiting found) -> found.prompt().initial()).orElse("") : name));
         event.getView().setRepairCost(0);
+        Inventory anvil = event.getInventory();
+        // The client works out a rename cost of its own as the player types; a resend a tick later clears it.
+        later.test(player, () -> {
+            if (!prompts.owns(player.getUniqueId(), anvil) || !(player.getOpenInventory() instanceof AnvilView open)) return;
+            open.setRepairCost(0);
+            player.updateInventory();
+        });
     }
 
     /** The edited name: the anvil's rename text, else the result paper's name. */

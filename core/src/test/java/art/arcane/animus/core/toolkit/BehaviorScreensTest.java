@@ -117,7 +117,7 @@ class BehaviorScreensTest {
         assertTrue(lore("town:talk").contains("Conversation"));
         assertTrue(lore("town:patrol").contains("1 of 2 selected list it"), lore("town:patrol"));
         assertTrue(lore("town:patrol").contains("Node graph"), "a timer behavior is no conversation");
-        assertTrue(lore("harbor:ferryman").contains("0 of 2 selected list it, 1 more through a trait group"), lore("harbor:ferryman"));
+        assertTrue(lore("harbor:ferryman").replace("\n", " ").contains("0 of 2 selected list it, 1 more through a trait group"), lore("harbor:ferryman"));
         assertTrue(lore("town:talk").contains("Left attach to the selection"));
     }
 

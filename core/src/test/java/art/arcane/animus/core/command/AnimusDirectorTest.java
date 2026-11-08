@@ -141,15 +141,54 @@ class AnimusDirectorTest {
         assertFalse(director.complete(admin, new String[]{"se"}).contains("secret"));
     }
 
-    @Test void groupsAndUnknownWordsShowHelp() {
+    @Test void groupsShowHelpAndUnknownWordsAreRefused() {
         Actor admin = new Actor(false, AnimusDirector.ADMIN);
         run(admin, "group");
         assertEquals("/probe group", admin.pages.getLast().group().path());
         run(admin, "help");
         assertEquals("/probe", admin.pages.getLast().group().path());
+        int shown = admin.pages.size();
         run(admin, "nothing-like-this");
-        assertTrue(admin.text().contains("Unknown command"), admin.text());
-        assertEquals("/probe", admin.pages.getLast().group().path());
+        assertTrue(admin.text().contains("Unknown command \"nothing-like-this\" in /probe"), admin.text());
+        assertTrue(admin.text().contains("Usage: /probe <command>"), admin.text());
+        assertEquals(shown, admin.pages.size(), "an unknown word shows no help");
+    }
+
+    @Test void anUnknownCommandIsRefusedWithItsUsageAndNoHelp() {
+        AnimusDirector real = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
+        for (List<String> typed : List.of(List.of("nope"), List.of("npc", "nope"), List.of("navigation", "nope", "extra"))) {
+            Actor admin = new Actor(true, AnimusDirector.ADMIN);
+            List<CommandSound> heard = new ArrayList<>();
+            CommandActor listening = new Actor(true, AnimusDirector.ADMIN) {
+                @Override public void tell(String message) { admin.tell(message); }
+                @Override public void plain(String line) { admin.plain(line); }
+                @Override public void help(AnimusHelp.Page page) { admin.help(page); }
+                @Override public void play(CommandSound sound) { heard.add(sound); }
+            };
+            real.execute(listening, typed.toArray(String[]::new));
+            assertTrue(admin.pages.isEmpty(), typed + " showed help");
+            assertTrue(admin.text().contains("Unknown command \"" + typed.get(typed.size() == 3 ? 1 : typed.size() - 1) + "\""), typed + " -> " + admin.text());
+            String group = typed.size() == 1 ? "/animus" : "/animus " + typed.getFirst();
+            assertTrue(admin.text().contains("Usage: " + group + " <command>"), typed + " -> " + admin.text());
+            assertEquals(List.of(CommandSound.FAILURE), heard);
+        }
+        Actor paged = new Actor(true, AnimusDirector.ADMIN);
+        real.execute(paged, new String[]{"behaviors", "help", "2"});
+        assertEquals("/animus behaviors", paged.pages.getLast().group().path());
+        assertEquals(1, paged.pages.getLast().index(), "help N is page N, as help=N is");
+        assertTrue(AnimusHelp.lines(paged.pages.getLast()).stream().noneMatch((String line) -> line.matches("(?s).*run_command:[^>]*(help|page)=.*")),
+                "help links run help N");
+        Actor admin = new Actor(true, AnimusDirector.ADMIN);
+        real.execute(admin, new String[]{"npc"});
+        assertEquals("/animus npc", admin.pages.getLast().group().path(), "a group name still shows its help");
+        assertTrue(admin.lines.isEmpty(), admin.text());
+    }
+
+    @Test void completionOffersNothingAfterAnUnknownWord() {
+        AnimusDirector real = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
+        Actor admin = new Actor(true, AnimusDirector.ADMIN);
+        assertEquals(List.of(), real.complete(admin, new String[]{"nope"}));
+        assertEquals(List.of(), real.complete(admin, new String[]{"nope", ""}));
     }
 
     /** Every real command maps its required words and keyed defaults; it then fails only for lack of services. */

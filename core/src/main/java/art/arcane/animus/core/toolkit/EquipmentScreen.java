@@ -64,11 +64,11 @@ final class EquipmentScreen<P, S> extends ToolScreen<P, S> {
         boolean shown = BodyRules.equipmentSlots(type).contains(equipment);
         Optional<NpcItem> item = item(worn.get(equipment.key()));
         List<String> lines = new ArrayList<>();
-        lines.add(item.map((NpcItem held) -> "&f" + held.count() + "x " + held.id() + (held.components().isPresent() ? " &7with components" : "")).orElse("&7Empty"));
+        lines.add(item.map((NpcItem held) -> "&f" + itemName(held)).orElse("&7Empty"));
         if (!shown) lines.add("&c" + BodyRules.slotRefusal(type, equipment));
         boolean ready = confirming(slot);
         String name = ready ? "&cClick again: " + label.toLowerCase(Locale.ROOT) + " on " + ToolkitFiles.count(affected) : label;
-        String icon = item.map(NpcItem::id).orElse(shown ? "minecraft:white_stained_glass_pane" : "minecraft:red_stained_glass_pane");
+        NpcItem icon = item.orElse(new NpcItem(shown ? "minecraft:white_stained_glass_pane" : "minecraft:red_stained_glass_pane", 1, Optional.empty(), Optional.empty()));
         button(slot, icon, title(name), lore(lines, hints("put the item in your hand here", "clear the slot", "copy your whole outfit")), (GuiModel.Click click) -> {
             if (click == GuiModel.Click.SHIFT_LEFT) { confirm(slot, click, affected, this::copy); return; }
             if (!shown && !bulk) { toolkit.say(viewer.player(), ChatLine.error(BodyRules.slotRefusal(type, equipment))); return; }

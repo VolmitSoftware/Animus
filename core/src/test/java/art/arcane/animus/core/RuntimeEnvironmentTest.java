@@ -1,5 +1,6 @@
 package art.arcane.animus.core;
 
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -39,5 +40,11 @@ class RuntimeEnvironmentTest {
     @ValueSource(strings = {"", "Paper 26.2", " 26.2", "unknown", "-26.2"})
     void rejectsServerVersionWithoutLeadingRelease(String serverVersion) {
         assertThrows(IllegalArgumentException.class, () -> RuntimeEnvironment.bukkit(serverVersion, directory));
+    }
+
+    @Test void theServerNameIsWhatStatusShows() {
+        assertEquals("Paper", RuntimeEnvironment.bukkit("26.3-R0.1-SNAPSHOT", directory, "Paper").server());
+        assertEquals("NeoForge", new RuntimeEnvironment(Platform.NEOFORGE, "26.3", directory).server());
+        assertEquals("Bukkit", RuntimeEnvironment.bukkit("26.3", directory).server());
     }
 }

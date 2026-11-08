@@ -127,7 +127,7 @@ class ToolkitGroupsTest {
         openGroup();
         assertTrue(lore("guards").contains("Gate watch") && lore("guards").contains("Members 1"), lore("guards"));
         click("Rename", Click.LEFT);
-        assertEquals("New id for guards", alex.prompt.label());
+        assertEquals("New group id", alex.prompt.label());
         type("watch");
         String line = last();
         assertTrue(line.contains("Renamed group guards to watch, 1 NPC repointed; tx "), line);
@@ -254,7 +254,7 @@ class ToolkitGroupsTest {
         click("baker", Click.RIGHT);
         assertEquals(List.of("guard"), toolkit.selected(alex.id));
         click("guard", Click.LEFT);
-        assertTrue(alex.effects.contains("teleport:world:3,64,0"), alex.effects.toString());
+        assertTrue(alex.effects.contains("teleport:world:1,64,0"), "beside the guard at 3 64 0, on the player's side: " + alex.effects);
         select("guard", "baker");
         click("baker", Click.SHIFT_LEFT);
         assertEquals(List.of("baker"), toolkit.selected(alex.id));

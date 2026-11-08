@@ -2,6 +2,7 @@ package art.arcane.animus.core.toolkit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import art.arcane.animus.core.combat.CombatSettings;
@@ -235,9 +236,11 @@ class CombatScreensTest {
         open(MountScreen::new);
         click("Ride another NPC", Click.LEFT);
         pickNpc(BAKER);
+        assertNull(alex.window, "the window stays closed so the pick's reply shows");
         JsonObject mount = json("guard").getAsJsonObject("modules").getAsJsonObject("animus:mount");
         assertTrue(mount.get("enabled").getAsBoolean());
         assertEquals("baker", mount.get("vehicle").getAsString());
+        open(MountScreen::new);
         assertTrue(lore("guard").contains("Rides baker"), lore("guard"));
 
         select("baker");
@@ -247,6 +250,7 @@ class CombatScreensTest {
         pickNpc(GUARD);
         assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("cycle")), alex.messages.toString());
         assertFalse(json("baker").has("modules"));
+        open(MountScreen::new);
         click("Ride another NPC", Click.LEFT);
         pickNpc(BAKER);
         assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("cannot ride itself")), alex.messages.toString());
@@ -291,6 +295,8 @@ class CombatScreensTest {
         assertEquals("minecraft:diamond_sword", item.get("id").getAsString());
         assertEquals("[enchantment_glint_override=true]", item.get("components").getAsString());
         assertEquals("minecraft:diamond_sword", alex.frame.items().get(MockScreenHost.slot(alex, "Main hand")).item().id(), "the slot shows the item itself");
+        assertTrue(alex.frame.items().get(MockScreenHost.slot(alex, "Main hand")).item().components().orElseThrow().startsWith("[enchantment_glint_override=true,"), "the icon keeps its components");
+        assertTrue(lore("Main hand").startsWith("Diamond Sword"), lore("Main hand"));
 
         alex.worn.put(EquipmentSlot.HEAD, new NpcItem("minecraft:iron_helmet", 1, Optional.empty(), Optional.empty()));
         alex.worn.remove(EquipmentSlot.MAIN_HAND);
@@ -300,7 +306,7 @@ class CombatScreensTest {
 
         click("Head", Click.RIGHT);
         assertFalse(json("guard").has("equipment"));
-        assertTrue(lore("Saddle").contains("cannot show saddle"), lore("Saddle"));
+        assertTrue(lore("Saddle").replace("\n", " ").contains("cannot show saddle"), lore("Saddle"));
         click("Saddle", Click.LEFT);
         assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("cannot show saddle")), alex.messages.toString());
     }

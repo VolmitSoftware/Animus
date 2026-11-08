@@ -39,7 +39,7 @@ final class ModPrompts {
         OptionalInt id = player.openMenu(new SimpleMenuProvider((int container, Inventory inventory, Player owner) -> {
             made[0] = new PromptMenu(container, inventory, prompt.initial(), player.getUUID());
             return made[0];
-        }, ModText.component(prompt.label())));
+        }, ModText.component(prompt.title())));
         PromptMenu menu = made[0];
         if (id.isEmpty() || menu == null || player.containerMenu != menu) {
             prompts.start(player.getUUID(), new TextPrompts.Waiting(prompt, TextPrompts.Input.CHAT, null, owner(player, null)));

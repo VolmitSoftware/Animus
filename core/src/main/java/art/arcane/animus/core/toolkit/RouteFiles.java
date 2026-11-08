@@ -100,7 +100,9 @@ final class RouteFiles {
         if (next.equals(text)) return "Route " + id + " already has that " + what;
         try { WaypointSettings.document(next); }
         catch (IllegalArgumentException invalid) { throw new IOException("Route " + id + " " + what + " refused: " + invalid.getMessage()); }
-        return "Route " + id + " " + what + " saved; tx " + store.commit(List.of(new DocumentStore.Change(path(id), JsonDocuments.hash(text), next)));
+        JsonElement value = document.get(what);
+        String now = value == null ? "off" : value.isJsonPrimitive() ? value.getAsString() : JsonDocuments.write(value);
+        return "Route " + id + " " + what + " set to " + now + "; tx " + store.commit(List.of(new DocumentStore.Change(path(id), JsonDocuments.hash(text), next)));
     }
 
     /** The route ready for editing in the player's world. */

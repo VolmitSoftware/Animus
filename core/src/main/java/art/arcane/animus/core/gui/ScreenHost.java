@@ -100,7 +100,13 @@ public interface ScreenHost<P, S> {
      * owner with the typed text, or empty when the player cancelled, closed the input or left; it never runs twice.
      */
     record Prompt(String label, String initial, java.util.function.Consumer<Optional<String>> answer) {
+        /** The characters an anvil title shows before it runs past the window's edge. */
+        public static final int TITLE = 20;
+
         public Prompt { java.util.Objects.requireNonNull(label); java.util.Objects.requireNonNull(initial); java.util.Objects.requireNonNull(answer); }
+
+        /** The label cut to fit an anvil title; the chat line keeps the whole label. */
+        public String title() { return label.length() <= TITLE ? label : label.substring(0, TITLE - 3).stripTrailing() + "..."; }
     }
 
     /**

@@ -9,8 +9,11 @@ import art.arcane.animus.core.migration.ImportApplications;
 import art.arcane.animus.core.migration.ModuleImports;
 import art.arcane.animus.core.extension.ModuleHooks;
 import art.arcane.animus.api.ImportConverters;
+import art.arcane.animus.core.behavior.schema.NpcSchemaGenerator;
 import art.arcane.animus.core.npc.*;
+import art.arcane.animus.core.runtime.SkinDocuments;
 import art.arcane.animus.core.storage.*;
+import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.DocsLink;
 import art.arcane.animus.core.text.Palette;
 import com.google.gson.*;
@@ -43,7 +46,7 @@ public final class Administration {
      */
     public List<String> status() {
         int problems = runtime.npcs().diagnostics().size() + runtime.npcs().groupProblems().size(), groups = runtime.npcs().groups().groups().size();
-        String headline = "v" + art.arcane.animus.core.BuildIdentity.VERSION + " on " + runtime.environment().platform() + " " + runtime.environment().minecraftVersion()
+        String headline = "v" + art.arcane.animus.core.BuildIdentity.VERSION + " on " + runtime.environment().server() + " " + runtime.environment().minecraftVersion()
                 + " | " + runtime.npcs().all().size() + " NPCs" + (groups == 0 ? "" : ", " + groups + " groups")
                 + (problems == 0 ? "" : " | " + problems + " file problem" + (problems == 1 ? "" : "s") + ", see /animus validate");
         return List.of(headline, settingsInEffect(), runtime.status());
@@ -119,8 +122,35 @@ public final class Administration {
     public String edit(String id, String patch) throws IOException {
         NpcRepository.Draft draft = runtime.npcs().draft(id);
         JsonObject edited = draft.document();
-        merge(edited, JsonDocuments.object(patch));
+        JsonObject fields = JsonDocuments.object(patch);
+        Optional<String> problem = patchProblem(runtime.documents(), fields);
+        if (problem.isPresent()) throw new IOException(problem.get());
+        merge(edited, fields);
         return "Saved " + id + "; tx " + runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), edited));
+    }
+
+    /** Top-level fields an edit may set: the definition schema's, plus the importers' {@code migration}. */
+    private static final Set<String> FIELDS = fields();
+
+    private static Set<String> fields() {
+        Set<String> known = new java.util.HashSet<>(NpcSchemaGenerator.schema().getAsJsonObject("properties").keySet());
+        known.add("migration");
+        return Set.copyOf(known);
+    }
+
+    /**
+     * Why an edit is refused before the definition rules run: a field no definition has, or a skin with no file under
+     * {@code skins/}. Removing a field with {@code null} is always allowed. Read on the file lane.
+     */
+    public static Optional<String> patchProblem(DocumentStore documents, JsonObject patch) {
+        for (Map.Entry<String, JsonElement> entry : patch.entrySet())
+            if (!entry.getValue().isJsonNull() && !FIELDS.contains(entry.getKey())) return Optional.of("$." + entry.getKey() + ": unknown field");
+        JsonElement skin = patch.get("skin");
+        if (skin != null && skin.isJsonPrimitive() && skin.getAsJsonPrimitive().isString() && skin.getAsString().matches("[a-f0-9]{64}")) {
+            try { SkinDocuments.read(documents, skin.getAsString()); }
+            catch (IOException | RuntimeException missing) { return Optional.of("$.skin: no skin file skins/" + skin.getAsString() + ".json"); }
+        }
+        return Optional.empty();
     }
 
     /**
@@ -253,7 +283,7 @@ public final class Administration {
         List<String> errors = runtime.npcs().reloadAfterRollback();
         List<String> notes = catalogs(List.of(tx), true);
         if (!errors.isEmpty()) throw new IOException("Rollback stored, but reload failed: " + String.join("; ", errors));
-        List<String> lines = new ArrayList<>(List.of(Palette.success("Rolled back " + transaction + "; tx " + tx)));
+        List<String> lines = new ArrayList<>(List.of(Palette.success("Rolled back " + ChatLine.shortId(transaction) + "; tx " + tx)));
         lines.addAll(notes);
         return lines;
     }

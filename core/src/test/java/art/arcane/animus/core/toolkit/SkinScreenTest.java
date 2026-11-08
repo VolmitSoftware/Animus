@@ -99,6 +99,15 @@ class SkinScreenTest {
         assertTrue(lore("From a player name").contains("Any click type a name"));
     }
 
+    @Test void entriesDrawTheirOwnSkinAndKeepTheirPlaceWhenWorn() {
+        ScreenFrame.Item spare = alex.frame.items().get(MockScreenHost.slot(alex, "Spare"));
+        assertTrue(spare.item().components().orElseThrow().contains("profile={properties:[{name:\"textures\",value:\"e30=\"}]}"), spare.item().toString());
+        int before = MockScreenHost.slot(alex, "Spare");
+        select("guard");
+        click("Spare", Click.LEFT);
+        assertEquals(before, MockScreenHost.slot(alex, "Spare"), "wearing a skin does not move it under the cursor");
+    }
+
     @Test void renamingLabelsTheSkinAndMovesItsWearersInOneTransaction() throws IOException {
         click("guard", Click.RIGHT);
         assertNotNull(alex.prompt);

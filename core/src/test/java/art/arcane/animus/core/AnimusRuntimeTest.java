@@ -46,7 +46,7 @@ class AnimusRuntimeTest {
         assertAll(
                 () -> assertTrue(status.contains(BuildIdentity.NAME)),
                 () -> assertTrue(status.contains(BuildIdentity.VERSION)),
-                () -> assertTrue(status.contains(platform.name())),
+                () -> assertTrue(status.contains(runtime.environment().server()), status),
                 () -> assertTrue(status.contains("26.2"))
         );
     }

@@ -147,7 +147,7 @@ public final class AnimusPlugin extends JavaPlugin {
             AnimusMetrics measured = AnimusMetrics.restart();
             metrics = measured;
             RuntimeEnvironment environment = RuntimeEnvironment.bukkit(
-                    getServer().getBukkitVersion(), getDataFolder().toPath());
+                    getServer().getBukkitVersion(), getDataFolder().toPath(), serverName());
             runtime = new AnimusRuntime(environment, failure -> getLogger().log(Level.SEVERE, "Animus file cleanup failed", failure));
             runtime.start();
             CachedPlaceholders placeholders = BukkitPlaceholders.install(this);
@@ -272,6 +272,8 @@ public final class AnimusPlugin extends JavaPlugin {
             getServer().getPluginManager().registerEvents(new ReactWatcher(), this);
             bindReact();
             director = new AnimusCommandTree(commandServices).director();
+            CommandTreeHints.install(this, List.of(BuildIdentity.ID, getName().toLowerCase(java.util.Locale.ROOT) + ":" + BuildIdentity.ID), () -> director,
+                    (Player player) -> new BukkitActor(player, replies));
             extensions.start();
             startEditor(modulePlatform, regions);
             updateMetrics(runtime.metrics());
@@ -494,6 +496,15 @@ public final class AnimusPlugin extends JavaPlugin {
             ComponentLog.logMarkup(this, getLogger(), null, Level.INFO, SplashScreen.render(SplashScreen.Details.current(server, ready), SplashScreen.Colors.MINIMESSAGE), null);
         } catch (RuntimeException | LinkageError failure) {
             getLogger().log(Level.WARNING, "Splash screen failed to render", failure);
+        }
+    }
+
+    /** Paper, Folia or Spigot, as {@code /animus status} names the server. */
+    private String serverName() {
+        try { Class.forName("io.papermc.paper.threadedregions.RegionizedServer"); return "Folia"; }
+        catch (ClassNotFoundException notFolia) {
+            try { Class.forName("io.papermc.paper.ServerBuildInfo", false, getServer().getClass().getClassLoader()); return "Paper"; }
+            catch (ClassNotFoundException notPaper) { return "Spigot"; }
         }
     }
 

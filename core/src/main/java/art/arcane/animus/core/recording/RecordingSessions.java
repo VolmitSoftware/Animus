@@ -263,7 +263,7 @@ public final class RecordingSessions<P, I> implements RecordingControl, AutoClos
         String id = session.capture.id();
         if (outcome instanceof RecordingWriter.Saved saved) {
             retire(session);
-            report(session, "Recording " + id + " saved" + why + ": " + session.capture.durationTicks() + " ticks, " + saved.frames() + " frames, "
+            report(session, "Recording " + id + " saved as recordings/" + id + ".json" + why + ": " + session.capture.durationTicks() + " ticks, " + saved.frames() + " frames, "
                     + saved.events() + " events, " + saved.bytes() + " bytes; tx " + saved.transaction());
             idsRefreshed = 0;
             return;

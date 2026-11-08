@@ -22,4 +22,12 @@ public record Vec3(double x, double y, double z) {
         double length = Math.sqrt(sx * sx + sy * sy + sz * sz);
         return new Vec3(sx / length, sy / length, sz / length);
     }
+
+    /** {@code x y z} for chat, each rounded to two decimals without trailing zeros, such as {@code 14 64 0.5}. */
+    public String brief() { return brief(x) + " " + brief(y) + " " + brief(z); }
+
+    private static String brief(double value) {
+        double rounded = Math.round(value * 100) / 100.0;
+        return java.math.BigDecimal.valueOf(rounded == 0 ? 0 : rounded).stripTrailingZeros().toPlainString();
+    }
 }

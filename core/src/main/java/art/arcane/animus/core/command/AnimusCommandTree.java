@@ -14,6 +14,7 @@ import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.DocsLink;
 import art.arcane.animus.core.text.Palette;
+import art.arcane.animus.core.toolkit.Toolkit;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
 import art.arcane.volmlib.util.director.DirectorOrigin;
@@ -136,7 +137,7 @@ public final class AnimusCommandTree extends CommandGroup {
 
     @Director(description = "Save a new despawned NPC where you stand, or at x y z; ~ is relative to you")
     void create(@Param(name = "id", description = "The new NPC id; its file is npcs/<folder>/<id>.json") String id,
-                @Param(name = "type", defaultValue = DEFAULT_TYPE, description = "The entity type, such as minecraft:villager") String type,
+                @Param(name = "type", defaultValue = DEFAULT_TYPE, description = "The body type, such as minecraft:player") String type,
                 @Param(name = "name", defaultValue = "", description = "Its display name, the id when left out; quote it to use spaces") String name,
                 @Param(name = "folder", defaultValue = "", description = "The folder under npcs/ it lives in, such as world/town; npcs/ itself when left out") String folder,
                 @Param(name = "world", defaultValue = "", description = "The world it stands in; yours when left out") String world,
@@ -288,12 +289,30 @@ public final class AnimusCommandTree extends CommandGroup {
 
     static final String NOTHING_IN_VIEW = "No NPC in view or within " + (int) SelectionPick.REACH + " blocks.";
 
-    @Director(description = "Show your selected NPC", origin = DirectorOrigin.PLAYER)
+    @Director(description = "Show your selected NPCs", origin = DirectorOrigin.PLAYER)
     void selection() {
         CommandActor actor = actor();
-        Optional<String> selected = living().selection(actor.player().orElseThrow());
-        if (selected.isPresent()) actor.rich(ChatLine.reply("Selected ").copyable(selected.get()));
-        else actor.tell("No NPC selected; /animus select <npc> or right-click one");
+        UUID player = actor.player().orElseThrow();
+        List<String> picked = Toolkit.of(services.shops().screens()).map((Toolkit<?, ?> toolkit) -> toolkit.selected(player)).orElse(List.of());
+        Optional<ChatLine> reply = selection(picked, living().selection(player));
+        if (reply.isPresent()) actor.rich(reply.get());
+        else actor.tell("No NPC selected; /animus select <npc> or click one with the wand");
+    }
+
+    private static final int SELECTION_SHOWN = 10;
+
+    /** Every NPC the wand picked, or the one {@code /animus select} chose when the wand picked none. */
+    static Optional<ChatLine> selection(List<String> picked, Optional<String> selected) {
+        List<String> all = picked.isEmpty() ? selected.map(List::of).orElse(List.of()) : picked;
+        if (all.isEmpty()) return Optional.empty();
+        if (all.size() == 1) return Optional.of(ChatLine.reply("Selected ").copyable(all.getFirst()));
+        ChatLine line = ChatLine.reply("Selected " + all.size() + " NPCs: ");
+        for (int index = 0; index < Math.min(SELECTION_SHOWN, all.size()); index++) {
+            if (index > 0) line.text("&7, ");
+            line.copyable(all.get(index));
+        }
+        if (all.size() > SELECTION_SHOWN) line.text("&7 +" + (all.size() - SELECTION_SHOWN));
+        return Optional.of(line);
     }
 
     @Director(hidden = true, description = "Answer a dialogue choice")
@@ -318,7 +337,11 @@ public final class AnimusCommandTree extends CommandGroup {
                     JsonObject document = before.document();
                     JsonObject fields = patch.isEmpty() ? null : JsonDocuments.object(patch.get());
                     if (fields == null) document.addProperty("spawned", true);
-                    else Administration.merge(document, fields);
+                    else {
+                        Optional<String> problem = Administration.patchProblem(runtime().documents(), fields);
+                        if (problem.isPresent()) { reply(actor, Palette.error("Cannot save " + id + ": " + problem.get())); return; }
+                        Administration.merge(document, fields);
+                    }
                     NpcDefinition candidate;
                     try { candidate = NpcDefinition.parse(JsonDocuments.write(document)); }
                     catch (IOException refused) {

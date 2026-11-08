@@ -128,6 +128,21 @@ class HoloServiceTest {
         assertEquals(List.of("Page two"), displays.texts(alex));
     }
 
+    @Test void aHologramBoundToAnNpcShowsOnlyWithTheNpc() throws IOException {
+        write("gui/holograms", "town:sign", SIGN);
+        write("gui/text-animations", "town:blink", "{\"schemaVersion\": 1, \"revision\": 1, \"mode\": \"ascend\", \"frameIntervalMs\": 60000, \"frames\": [\"two\"]}");
+        write("npcs", "town:mayor", """
+                {"schemaVersion": 1, "revision": 1, "uuid": "8f0c2c52-6f0e-4f43-a3a3-9d1f8f8a0c12", "id": "mayor", "group": "town",
+                 "name": "Mayor", "type": "minecraft:villager", "spawned": false,
+                 "position": {"world": "world", "x": 0, "y": 64, "z": 5, "yaw": 0, "pitch": 0},
+                 "modules": {"animus:gui": {"hologram": {"id": "town:sign"}}}}
+                """);
+        runtime.npcs().reload();
+        reload();
+        tick(1);
+        assertTrue(displays.texts(alex).isEmpty(), "a bound hologram is not also drawn at its own anchor: " + displays.texts(alex));
+    }
+
     @Test void timedTextRefreshWaitsWhileNpcPacketsAreShortOfBudget() throws IOException {
         write("gui/holograms", "town:score", """
                 {"schemaVersion": 3, "revision": 1, "anchor": {"world": "world", "position": [0, 64, 5]},

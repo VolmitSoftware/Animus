@@ -49,7 +49,7 @@ final class PointsScreen<P, S> extends ToolScreen<P, S> {
             Vec3 point = points.get(index);
             boolean big = points.size() > BULK, armed = deleting == index;
             List<String> lines = new ArrayList<>();
-            lines.add("&7" + (int) Math.floor(point.x()) + " " + point.y() + " " + (int) Math.floor(point.z()));
+            lines.add("&7" + (int) Math.floor(point.x()) + " " + (int) Math.floor(point.y()) + " " + (int) Math.floor(point.z()));
             lines.add("&7Wait &f" + waits.get(index).map((String ticks) -> ticks + " ticks").orElse("route default"));
             if (index == current) lines.add("&aCurrent: inserts go after it");
             if (index == here) lines.add("&aHere: nearest to you");
@@ -114,7 +114,7 @@ final class PointsScreen<P, S> extends ToolScreen<P, S> {
     }
 
     private void waitAt(WaypointCapture capture, int index, String initial) {
-        prompt("Wait at point " + (index + 1) + " in ticks", initial, (String typed) -> {
+        prompt("Wait ticks, point " + (index + 1), initial, (String typed) -> {
             String text = typed.strip();
             try {
                 Optional<Integer> ticks = text.isEmpty() ? Optional.empty() : Optional.of(Integer.parseInt(text));

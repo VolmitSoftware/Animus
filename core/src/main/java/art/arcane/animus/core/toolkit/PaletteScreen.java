@@ -28,15 +28,15 @@ final class PaletteScreen<P, S> extends ToolScreen<P, S> {
                     else if (right(click)) viewer.push(new ManageScreen<>(toolkit, viewer, commands));
                     else viewer.push(new SelectionScreen<>(toolkit, viewer, commands));
                 });
-        button(WAND, "minecraft:blaze_rod", title("Selection wand"), lore(List.of("&7Click an NPC with it to select it"), hints("take a wand", "take a wand", "take a wand")),
+        button(WAND, "minecraft:blaze_rod", title("Animus wand"), lore(List.of("&7Click an NPC with it to select it"), any("put one in your inventory")),
                 (GuiModel.Click click) -> toolkit.giveWand(viewer.player()));
-        button(NEW, "minecraft:egg", title("New NPC"), lore(List.of("&7Saved where you stand and selected"), hints("player body, spawned", "choose the body type", "player body, kept dormant")),
+        button(NEW, "minecraft:egg", title("New NPC"), lore(List.of("&7Saved in front of you and selected"), hints("player body, spawned", "choose the body type", "player body, kept dormant")),
                 (GuiModel.Click click) -> {
-                    if (right(click)) prompt("Body type, such as minecraft:villager", PLAYER, (String type) -> prompt("New NPC id", "", (String id) -> toolkit.create(viewer, id.trim(), type.trim(), true)));
+                    if (right(click)) prompt("Body type", PLAYER, (String type) -> prompt("New NPC id", "", (String id) -> toolkit.create(viewer, id.trim(), type.trim(), true)));
                     else { boolean spawn = !sneak(click); prompt("New NPC id", "", (String id) -> toolkit.create(viewer, id.trim(), PLAYER, spawn)); }
                 });
         open(FIND, "minecraft:map", "Find", "Nearest NPCs; teleport or bring", () -> new FindScreen<>(toolkit, viewer, commands));
-        button(MANAGE, "minecraft:name_tag", title("Manage"), lore(List.of("&7Spawn, despawn, clone, delete"), hints("open", "inspect the first selected", "open")),
+        button(MANAGE, "minecraft:name_tag", title("Manage"), lore(List.of("&7Spawn, despawn, clone, delete"), hints("open the manage screen", "inspect the first selected", "open the manage screen")),
                 (GuiModel.Click click) -> {
                     if (right(click) && !selected.isEmpty()) { viewer.close(); commands.inspect().accept(toolkit.actor(viewer.player()), selected.getFirst()); }
                     else viewer.push(new ManageScreen<>(toolkit, viewer, commands));
@@ -45,7 +45,7 @@ final class PaletteScreen<P, S> extends ToolScreen<P, S> {
         open(FOLDERS, "minecraft:chest", "Folders", "Move the selection to a folder", () -> new FolderScreen<>(toolkit, viewer, commands));
         open(GROUPS, "minecraft:book", "Trait groups", "Assign groups to the selection", () -> new GroupScreen<>(toolkit, viewer, commands));
 
-        head(SKINS, title("Skins"), lore(List.of("&7Player bodies only"), hints("open", "put your skin on the selection", "open")), viewer.host().name(viewer.player()),
+        head(SKINS, title("Skins"), lore(List.of("&7Player bodies only"), hints("open the skin list", "put your skin on the selection", "open the skin list")), viewer.host().name(viewer.player()),
                 (GuiModel.Click click) -> {
                     if (right(click)) chosen().ifPresent((List<String> ids) -> toolkit.mySkin(viewer, ids));
                     else viewer.push(new SkinScreen<>(toolkit, viewer, commands));
@@ -53,7 +53,7 @@ final class PaletteScreen<P, S> extends ToolScreen<P, S> {
         open(EQUIPMENT, "minecraft:armor_stand", "Equipment", "Hands and armor from your own", () -> new EquipmentScreen<>(toolkit, viewer, commands));
         open(COMBAT, "minecraft:iron_sword", "Combat", "Fighting, guarding and targets", () -> new CombatScreen<>(toolkit, viewer, commands));
         open(MOUNTS, "minecraft:saddle", "Mounts", "Ride, carry and player riding", () -> new MountScreen<>(toolkit, viewer, commands));
-        button(ROUTES, "minecraft:lead", title("Routes"), lore(List.of("&7Assign, walk and capture routes"), hints("open", "add a route point here", "remove the last point")),
+        button(ROUTES, "minecraft:lead", title("Routes"), lore(List.of("&7Assign, walk and capture routes"), hints("open the route list", "add a route point here", "remove the last point")),
                 (GuiModel.Click click) -> {
                     if (sneak(click)) toolkit.undoPoint(viewer.player());
                     else if (right(click)) toolkit.point(viewer.player());
@@ -65,11 +65,11 @@ final class PaletteScreen<P, S> extends ToolScreen<P, S> {
         open(SHOPS, "minecraft:emerald", "Shops", "Bind, open and reset shops", () -> new ShopBindScreen<>(toolkit, viewer, commands));
         open(GUIS, "minecraft:item_frame", "GUIs", "Chest GUIs, menus and holograms", () -> new GuiBindScreen<>(toolkit, viewer, commands));
 
-        button(CLOSE, "minecraft:barrier", title("Close"), hints("close", "close", "close"), (GuiModel.Click click) -> viewer.close());
+        button(CLOSE, "minecraft:barrier", title("Close"), any("close the window"), (GuiModel.Click click) -> viewer.close());
     }
 
     /** A button every click opens the same way. */
     private void open(int slot, String icon, String name, String detail, Supplier<ToolScreen<P, S>> next) {
-        button(slot, icon, title(name), lore(List.of("&7" + detail), hints("open", "open", "open")), (GuiModel.Click click) -> viewer.push(next.get()));
+        button(slot, icon, title(name), lore(List.of("&7" + detail), any("open it")), (GuiModel.Click click) -> viewer.push(next.get()));
     }
 }

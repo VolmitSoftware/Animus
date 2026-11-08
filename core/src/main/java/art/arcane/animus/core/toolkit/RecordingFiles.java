@@ -75,7 +75,7 @@ final class RecordingFiles {
             drafts.add(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
         }
         if (drafts.isEmpty()) return "Recording " + id + " already plays on " + ToolkitFiles.count(ids.size());
-        return "Recording " + id + " on " + ToolkitFiles.count(drafts.size()) + "; tx " + RouteFiles.commit(npcs, store, drafts, List.of());
+        return "Recording " + id + " on " + ToolkitFiles.named(drafts) + "; tx " + RouteFiles.commit(npcs, store, drafts, List.of());
     }
 
     /**

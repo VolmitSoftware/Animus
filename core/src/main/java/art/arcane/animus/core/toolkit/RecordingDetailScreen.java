@@ -57,7 +57,7 @@ final class RecordingDetailScreen<P, S> extends ToolScreen<P, S> {
             viewer.close();
         });
         button(RENAME, "minecraft:name_tag", title("Rename"), lore(List.of("&7Repoints its NPCs and route steps"), any("type the new id")),
-                (GuiModel.Click click) -> prompt("New id for recording " + shown.id(), shown.id(), (String typed) -> {
+                (GuiModel.Click click) -> prompt("New recording id", shown.id(), (String typed) -> {
                     String to = typed.strip();
                     write(to, (ToolkitFiles ignored) -> RecordingScreen.files(toolkit).rename(shown.id(), to));
                 }));

@@ -55,4 +55,11 @@ class SelectCommandTest {
         assertTrue(living.selected.isEmpty() && living.glowed.isEmpty());
         assertEquals("[Animus]: No NPC in view or within 16 blocks.", player.lines.getFirst());
     }
+
+    @Test void theSelectionReplyNamesEveryWandPick() {
+        assertEquals("[Animus]: Selected 2 NPCs: baker, mayor", AnimusCommandTree.selection(List.of("baker", "mayor"), Optional.of("mayor")).orElseThrow().toString());
+        assertEquals("[Animus]: Selected mayor", AnimusCommandTree.selection(List.of(), Optional.of("mayor")).orElseThrow().toString());
+        assertEquals("[Animus]: Selected mayor", AnimusCommandTree.selection(List.of("mayor"), Optional.empty()).orElseThrow().toString());
+        assertTrue(AnimusCommandTree.selection(List.of(), Optional.empty()).isEmpty());
+    }
 }

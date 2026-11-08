@@ -106,7 +106,8 @@ export async function toolkit(t) {
     const palette = await openTools();
     assert.equal(palette.title, 'Animus tools');
     slotOf(palette, '1 selected');
-    for (const name of ['Selection wand', 'New NPC', 'Find', 'Manage', 'Edit', 'Folders', 'Trait groups', 'Skins', 'Equipment', 'Combat', 'Mounts', 'Routes', 'Recordings', 'Behaviors', 'Shops', 'GUIs', 'Close']) slotOf(palette, name);
+    for (const name of ['Animus wand', 'New NPC', 'Find', 'Manage', 'Edit', 'Folders', 'Trait groups', 'Skins', 'Equipment', 'Combat', 'Mounts', 'Routes', 'Recordings', 'Behaviors', 'Shops', 'GUIs', 'Close']) slotOf(palette, name);
+    assert(!palette.items.some(item => item.item === 'minecraft:barrier' && item.name !== 'Close'), `a button failed to build: ${JSON.stringify(palette.items.filter(item => item.item === 'minecraft:barrier'))}`);
     return `${palette.items.length} items`;
   });
 
@@ -235,8 +236,7 @@ export async function toolkit(t) {
     await click('New NPC');
     const palette = await answer('miller');
     assert.equal(palette.title, 'Animus tools');
-    await chatLine(/Created dormant miller; tx /);
-    await chatLine(/Spawning 1 NPC; tx /);
+    await chatLine(/Created npcs\/miller\.json and spawned it; tx /);
     await delay(500);
     const miller = json('npcs', 'miller.json');
     assert.equal(miller.type, 'minecraft:player');
@@ -258,14 +258,12 @@ export async function toolkit(t) {
     await clickAway('Ride another NPC');
     await owner.look(cartNow.x, cartNow.y + 0.9, cartNow.z);
     owner.send('use', { id: cartNow.id });
-    const back = await settle();
-    assert.equal(back.title, 'Mounts', 'the mounts screen comes back after the pick');
     const line = await chatLine(/ rides cart; tx /);
     const rider = line.text.match(/: (\S+) rides cart/)[1];
     await delay(300);
     const riderFile = existsSync(file('npcs', `${rider}.json`)) ? json('npcs', `${rider}.json`) : npcFile(rider);
     assert.equal(riderFile.modules['animus:mount'].vehicle, 'cart');
-    await click('Back');
+    assert.equal((await openTools()).title, 'Animus tools', 'the window stays closed after the pick, so the tools open again');
     return `${rider} rides cart`;
   });
 

@@ -56,6 +56,7 @@ final class PropertyFiles {
             if (was != null && was.equals(now)) continue;
             List<String> path = ValueScreen.append(prefix, key);
             if (was != null && now != null && was.isJsonObject() && now.isJsonObject()) { diff(was.getAsJsonObject(), now.getAsJsonObject(), path, out); continue; }
+            if (was == null && now != null && now.isJsonObject() && !now.getAsJsonObject().isEmpty()) { diff(new JsonObject(), now.getAsJsonObject(), path, out); continue; }
             if (was != null && was.isJsonArray() && primitives(was.getAsJsonArray()) && (now == null || now.isJsonArray() && primitives(now.getAsJsonArray()))) {
                 JsonArray old = was.getAsJsonArray(), next = now == null ? new JsonArray() : now.getAsJsonArray();
                 List<JsonElement> added = new ArrayList<>(next.asList()), removed = new ArrayList<>(old.asList());

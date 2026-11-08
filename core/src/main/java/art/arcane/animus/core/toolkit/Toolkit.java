@@ -125,7 +125,7 @@ public final class Toolkit<P, S> implements AutoCloseable {
     Optional<BodySkin> skin(P player) { return parts.skins().apply(player); }
 
     /** The selected NPCs that still exist, in the order picked. */
-    List<String> selected(UUID player) {
+    public List<String> selected(UUID player) {
         NpcRepository npcs = npcs();
         selection.retain(player, (String id) -> npcs.find(id).isPresent());
         return selection.of(player);
@@ -262,15 +262,22 @@ public final class Toolkit<P, S> implements AutoCloseable {
      * The next wand click on an NPC answers {@code chosen} instead of selecting. The window is hidden while the player
      * looks for the NPC and comes back once they have clicked one; a second call replaces the first.
      */
-    void pick(ScreenManager<P, S>.Viewer viewer, String label, Consumer<String> chosen) {
+    void pick(ScreenManager<P, S>.Viewer viewer, String label, Consumer<String> chosen) { pick(viewer, label, true, chosen); }
+
+    /**
+     * As {@link #pick(ScreenManager.Viewer, String, Consumer)}; when {@code reopen} is false the window stays closed
+     * after the pick so the player sees what it did, unless {@code chosen} starts another pick.
+     */
+    void pick(ScreenManager<P, S>.Viewer viewer, String label, boolean reopen, Consumer<String> chosen) {
         UUID id = viewer.id();
         P player = viewer.player();
         if (!host().holdsWand(player) && !host().giveWand(player)) { say(player, ChatLine.error("This platform has no selection wand")); return; }
         viewer.suspend();
         pickers.put(id, new Picker(label, (String npc) -> {
-            if (!viewer.open()) return;
-            viewer.resume();
+            if (!viewer.open()) { say(player, ChatLine.error(label + " cancelled; the tools window closed. Open it and pick again")); return; }
+            if (reopen) viewer.resume();
             chosen.accept(npc);
+            if (!reopen && !pickers.containsKey(id)) viewer.close();
         }));
         bar(player, label + ": click an NPC with the wand");
     }
@@ -354,12 +361,14 @@ public final class Toolkit<P, S> implements AutoCloseable {
         });
     }
 
-    /** Teleports the player to the NPC. */
+    /** Teleports the player beside the NPC, on the side they come from, facing it. */
     void visit(P player, String id) {
         Optional<VirtualNpcState.Snapshot> state = npcs().find(id).flatMap((NpcDefinition definition) -> living().state(definition.uuid()));
         if (state.isEmpty()) { say(player, ChatLine.error(id + " is not active; it starts when its chunk loads or a player comes near")); return; }
-        Vec3 at = state.get().position().point();
-        if (host().teleport(player, state.get().position().world(), at.x(), at.y(), at.z(), host().pose(player).map(ScreenHost.Pose::yaw).orElse(0f), 0)) say(player, ChatLine.reply("Teleported to " + id));
+        String world = state.get().position().world();
+        Optional<Vec3> from = host().pose(player).filter((ScreenHost.Pose pose) -> pose.in(world)).map((ScreenHost.Pose pose) -> new Vec3(pose.x(), pose.y(), pose.z()));
+        Landing.Spot spot = Landing.beside(state.get().position().point(), from);
+        if (host().teleport(player, world, spot.at().x(), spot.at().y(), spot.at().z(), spot.yaw(), 0)) say(player, ChatLine.reply("Teleported to " + id));
         else say(player, ChatLine.error("Teleport to " + id + " was refused"));
     }
 
@@ -392,32 +401,39 @@ public final class Toolkit<P, S> implements AutoCloseable {
                 else living().resumePatrol(id);
             }, (String refused) -> {})) sent++;
         }
-        say(player, ChatLine.reply((route.isPresent() ? "Walking " + route.get() + ": " : "Route started: ") + ToolkitFiles.count(sent) + (sent == ids.size() ? "" : ", " + (ids.size() - sent) + " not active")));
+        String who = sent == 1 && ids.size() == 1 ? ids.getFirst() : ToolkitFiles.count(sent);
+        say(player, ChatLine.reply((route.isPresent() ? "Walking " + route.get() + ": " : "Route started: ") + who + (sent == ids.size() ? "" : ", " + (ids.size() - sent) + " not active")));
     }
 
     void halt(P player, List<String> ids) {
         int sent = 0;
         for (String id : ids) if (living().onOwner(id, () -> living().stopNavigation(id), (String refused) -> {})) sent++;
-        say(player, ChatLine.reply("Stopped " + ToolkitFiles.count(sent) + (sent == ids.size() ? "" : ", " + (ids.size() - sent) + " not active")));
+        String who = sent == 1 && ids.size() == 1 ? ids.getFirst() : ToolkitFiles.count(sent);
+        say(player, ChatLine.reply("Stopped " + who + (sent == ids.size() ? "" : ", " + (ids.size() - sent) + " not active")));
     }
 
     /**
-     * Saves a new NPC where the player stands, selects it, and when asked spawns it as {@code /animus spawn} would.
-     * The position's world is the one NPC positions name, the first of the pose's names that an existing NPC uses,
-     * else the shortest.
+     * Saves a new NPC two blocks in front of the player, facing them, selects it, and when asked saves it spawned, in
+     * one transaction; a spawn is checked on this owner first, as {@code /animus spawn} checks it. The position's world
+     * is the one NPC positions name, the first of the pose's names that an existing NPC uses, else the shortest.
      */
     void create(ScreenManager<P, S>.Viewer viewer, String id, String type, boolean spawn) {
         P player = viewer.player();
         Optional<ScreenHost.Pose> pose = host().pose(player);
         if (pose.isEmpty()) { say(player, ChatLine.error("Your position cannot be read right now; try again")); return; }
         String world = worldName(pose.get());
-        Vec3 at = new Vec3(pose.get().x(), pose.get().y(), pose.get().z());
-        float yaw = pose.get().yaw();
-        later(viewer, (ToolkitFiles files) -> files.create(id, type, world, at, yaw, viewer.id()), (String line) -> {
-            living().refresh();
-            only(player, id);
-            say(player, ChatLine.parse(Palette.success(line)));
-            if (spawn) spawned(viewer, List.of(id), true);
+        Landing.Spot spot = Landing.ahead(new Vec3(pose.get().x(), pose.get().y(), pose.get().z()), pose.get().yaw());
+        later(viewer, (ToolkitFiles files) -> files.draft(id, type, world, spot.at(), spot.yaw(), viewer.id(), spawn), (ToolkitFiles.Created created) -> {
+            if (spawn) {
+                List<String> errors = living().validateActivation(created.definition());
+                if (!errors.isEmpty()) { say(player, ChatLine.error("Cannot spawn " + id + ": " + errors.getFirst() + "; nothing was saved")); return; }
+            }
+            later(viewer, (ToolkitFiles files) -> files.create(created), (String line) -> {
+                living().refresh();
+                only(player, id);
+                say(player, ChatLine.parse(Palette.success(line)));
+                viewer.refresh();
+            });
         });
     }
 
