@@ -11,6 +11,7 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {assertNothingCut} = require('./support/cut_text.cjs');
 const {openFromSidebar} = require('./support/shell.cjs');
 
 const url = process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })();
@@ -124,6 +125,29 @@ async function run(browser, viewport, theme) {
     await page.getByRole('tab', {name: 'Visual'}).click();
   }
 
+  // Near the window's bottom edge the list still opens whole on screen and
+  // never over the top bar.
+  if (!phone) {
+    await page.setViewportSize({width: viewport.width, height: 600});
+    for (const offset of [560, 380]) {
+      await item.evaluate((element, at) => window.scrollBy(0, element.getBoundingClientRect().top - at), offset);
+      await retype(item, 'dsw');
+      list = await listOf(page, item, `${where} item at ${offset}`, phone);
+      const placed = await list.evaluate(element => ({
+        top: element.getBoundingClientRect().top,
+        bottom: element.getBoundingClientRect().bottom,
+        bar: document.querySelector('.animus-topbar').getBoundingClientRect().bottom,
+        height: window.innerHeight,
+      }));
+      assert.ok(placed.top >= placed.bar && placed.bottom <= placed.height, `${where}: item list at ${offset} is on screen below the top bar, got ${JSON.stringify(placed)}`);
+      await page.keyboard.press('Escape');
+      await closed(page, item);
+    }
+    await retype(item, 'minecraft:diamond_sword');
+    await page.keyboard.press('Escape');
+    await page.setViewportSize(viewport);
+  }
+
   // A MiniMessage colour in say text, with a swatch.
   const say = editor.getByLabel('text', {exact: true});
   await say.focus();
@@ -135,6 +159,15 @@ async function run(browser, viewport, theme) {
   assert.equal(await red.locator('.animus-suggest-swatch').count(), 1);
   await page.keyboard.press('Enter');
   await closed(page, say);
+  assert.equal(await say.inputValue(), 'Welcome back <red>');
+  // A placeholder in the same text: the kind column reads whole.
+  await say.pressSequentially(' {pl');
+  list = await listOf(page, say, `${where} placeholder`, phone);
+  assert.ok((await list.locator('.animus-suggest-kind').allTextContents()).includes('placeholder'), `${where}: placeholder rows`);
+  await assertNothingCut(list, '.animus-suggest-kind', `${where} placeholder kinds`);
+  await page.keyboard.press('Escape');
+  await closed(page, say);
+  for (let typed = 0; typed < 4; typed++) await say.press('Backspace');
   assert.equal(await say.inputValue(), 'Welcome back <red>');
   await noSideways(page, `${where} behavior editor`);
 

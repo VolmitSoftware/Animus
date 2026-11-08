@@ -13,7 +13,6 @@ import '../../logic/inspect/schema_fields.dart';
 import '../../logic/npc/pack_model.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
-import '../info_tip.dart';
 import '../inspect/inspect_fields.dart';
 
 class PackEditor extends StatefulWidget {
@@ -67,17 +66,11 @@ class _PackEditorState extends State<PackEditor> {
         ),
         GuiSection(
           title: 'Modules',
-          tip: "Java modules the pack's behaviors use, each required or optional.",
+          tip: "A missing required module disables the pack's behaviors. A missing optional one only switches off what needs it.",
           docs: Docs.packs,
           count: modules.length,
           children: <Widget>[
-            const dom.p(classes: 'animus-gui-help', <Widget>[
-              InfoTip(
-                tip: "A missing required module disables the pack's behaviors. A missing optional one only switches off what needs it.",
-                docs: Docs.packs,
-                child: Component.text("Java modules the pack's behaviors use."),
-              ),
-            ]),
+            const dom.p(classes: 'animus-gui-help', <Widget>[Component.text("Java modules the pack's behaviors use.")]),
             if (modules.isEmpty)
               const dom.p(classes: 'animus-muted', <Widget>[
                 Component.text('No modules.'),

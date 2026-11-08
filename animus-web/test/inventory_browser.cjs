@@ -89,6 +89,33 @@ async function drag(page, from, to) {
   await settle(page);
 }
 
+/**
+ * In a 600 px high window, with the item field low in the page, its
+ * suggestions open whole between the top bar and the window's bottom.
+ */
+async function suggestionsStayBelowTopBar(page, field, viewport, tag) {
+  await page.setViewportSize({width: viewport.width, height: 600});
+  await field.evaluate((element) => window.scrollBy(0, element.getBoundingClientRect().top - 380));
+  const before = await field.inputValue();
+  await field.click();
+  await field.press('ControlOrMeta+a');
+  await field.pressSequentially('minecraft:');
+  const popup = page.locator('.animus-select-popup');
+  await popup.waitFor();
+  const placed = await popup.evaluate((element) => ({
+    top: element.getBoundingClientRect().top,
+    bottom: element.getBoundingClientRect().bottom,
+    bar: document.querySelector('.animus-topbar').getBoundingClientRect().bottom,
+    height: window.innerHeight,
+  }));
+  assert.ok(placed.top >= placed.bar && placed.bottom <= placed.height, `${tag}: item suggestions stay below the top bar, got ${JSON.stringify(placed)}`);
+  await page.keyboard.press('Escape');
+  await field.fill(before);
+  await field.blur();
+  await page.setViewportSize(viewport);
+  await settle(page);
+}
+
 async function focusedId(page) {
   return page.evaluate(() => document.activeElement && document.activeElement.id);
 }
@@ -126,6 +153,7 @@ async function run(browser, folder, viewport, theme, tag) {
   await settle(page);
   await slot(look, eq, 'head').click();
   assert.equal(await look.getByLabel('equipment.head', {exact: true}).getAttribute('placeholder'), 'minecraft:iron_helmet', `${tag}: head placeholder`);
+  if (viewport.width > 760) await suggestionsStayBelowTopBar(page, look.getByLabel('equipment.head', {exact: true}), viewport, tag);
   await slot(look, eq, 'main_hand').click();
   const editor = look.locator('.animus-item-slot-editor[data-editing="main_hand"]');
   await editor.getByRole('button', {name: 'One more'}).click();

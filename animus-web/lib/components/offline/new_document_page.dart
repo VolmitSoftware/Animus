@@ -13,6 +13,7 @@ import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_text.dart';
 import '../../logic/gui/shop_templates.dart';
 import '../../logic/npc/npc_paths.dart';
+import '../../logic/npc/skin_edits.dart' show skinListing;
 import '../../logic/offline/new_documents.dart';
 import '../../mc/rigs/mc_rigs.dart';
 import '../../model/animus_document.dart';
@@ -626,7 +627,8 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
             value: _existingSkin,
             options: <String>[for (final AnimusDocument skin in skins) skin.id],
             skinFaces: skinFacesOf(<String>[for (final AnimusDocument skin in skins) skin.id]),
-            labels: <String, String>{for (final AnimusDocument skin in skins) skin.id: skin.id.substring(0, 12)},
+            labels: <String, String>{for (final AnimusDocument skin in skins) skin.id: skinListing(skin).label},
+            details: <String, String>{for (final AnimusDocument skin in skins) skin.id: skinListing(skin).detail},
             onChanged: (String? value) => setState(() => _existingSkin = value),
           ),
         ),

@@ -11,6 +11,7 @@ library;
 
 import 'dart:async';
 import 'dart:js_interop';
+import 'dart:math' as math;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
@@ -18,10 +19,12 @@ import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
 import '../../logic/gui/gui_expression.dart';
+import '../../logic/select/popup_fit.dart';
 import '../../logic/suggest/completion_item.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../logic/suggest/text_completion.dart';
 import '../../logic/suggest/text_hints.dart';
+import '../select/select_popup.dart' show fitBelowTopBar, sheetWidth;
 import 'suggest_list.dart';
 import 'suggest_scope.dart';
 
@@ -104,6 +107,9 @@ class _AutocompleteInputState extends State<AutocompleteInput> {
   List<TabStop> _stops = const <TabStop>[];
   String _status = '';
 
+  /// Where the open list sits: above the field, and its height cap.
+  PopupFit? _fit;
+
   /// What the user typed while focused; saves land after later keystrokes,
   /// so the field keeps its own text until blur.
   String? _typed;
@@ -163,6 +169,7 @@ class _AutocompleteInputState extends State<AutocompleteInput> {
     final (String text, int caret, int _) = _read();
     final CompletionResult next = completeText(text, caret, component.profile, _env(context));
     final bool open = next.items.isNotEmpty && (forced || next.auto || _open);
+    if (open && !_open) _fit = _place(next.items.length);
     setState(() {
       _result = next;
       _open = open;
@@ -171,6 +178,16 @@ class _AutocompleteInputState extends State<AutocompleteInput> {
           ? '${next.items.length} ${next.items.length == 1 ? 'suggestion' : 'suggestions'}'
           : (forced ? 'Nothing to complete here' : '');
     });
+  }
+
+  /// A one-line field's list opens whole between the top bar and the
+  /// window's bottom, scrolling the field up first when neither side has
+  /// room. A text area's list stays under it.
+  PopupFit? _place(int rows) {
+    final web.HTMLElement? element = _element;
+    if (component.multiline || element == null) return null;
+    final double rowHeight = web.window.innerWidth <= sheetWidth ? 46 : 36;
+    return fitBelowTopBar(element, math.min(suggestListHeight, rows * rowHeight + 2)).$1;
   }
 
   void _close() {
@@ -384,6 +401,8 @@ class _AutocompleteInputState extends State<AutocompleteInput> {
           items: _result.items,
           active: _active,
           title: _result.title,
+          classes: _fit?.up ?? false ? 'is-up' : null,
+          styles: _fit == null ? null : dom.Styles(raw: <String, String>{'max-height': '${_fit!.maxHeight.floor()}px'}),
           onPick: _accept,
           onHover: (int index) => setState(() => _active = index),
         ),

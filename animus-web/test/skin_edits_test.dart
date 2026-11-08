@@ -56,6 +56,13 @@ void main() {
       expect(skinDocumentLabel(<String, Object?>{'textureRaw': 'e30='}), isNull);
     });
 
+    test('a skin is listed by its label, with the hash and model as detail', () {
+      final AnimusDocument guard = _doc(DocumentKind.skin, classic.id, <String, Object?>{...asMap(jsonDecode(classic.source)), 'label': 'Guard'});
+      expect(skinListing(guard), (label: 'Guard', detail: '${classic.id.substring(0, 12)}, classic'));
+      final AnimusDocument bare = _skin(classic);
+      expect(skinListing(bare), (label: classic.id.substring(0, 12), detail: 'classic'));
+    });
+
     test('a model change keeps the label in the new document', () {
       final JsonMap labelled = <String, Object?>{...asMap(jsonDecode(classic.source)), 'label': 'Town guard'};
       final ({String id, String source})? slim = skinWithModel(labelled, slim: true);

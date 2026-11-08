@@ -8,14 +8,12 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
-import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/npc/npc_appearance.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
-import '../info_tip.dart';
 import '../inspect/inspect_fields.dart';
 
 /// The definition's `hologram`: lines of text above the body.
@@ -98,13 +96,7 @@ class HologramLinesEditor extends StatelessWidget {
           ),
           Button.ghost(label: 'Remove hologram', size: ButtonSize.small, onPressed: () => onChanged(null)),
         ]),
-        dom.p(classes: 'animus-gui-help', <Widget>[
-          withTip(
-            const Component.text('&a green, &c red, &l bold. Up to 256 characters a line.'),
-            'Each line is drawn as written, with & codes for color and format. The preview above shows the result.',
-            docs: Docs.npcText,
-          ),
-        ]),
+        const dom.p(classes: 'animus-gui-help', <Widget>[Component.text('&a green, &c red, &l bold. Up to 256 characters a line.')]),
         if (node.isNotEmpty)
           InspectObject(
             schema: schema,
@@ -158,12 +150,8 @@ class ArmorStandEditor extends StatelessWidget {
             skip: armorStandParts.toSet(),
             onChanged: put,
           ),
-        dom.p(classes: 'animus-gui-help', <Widget>[
-          withTip(
-            const Component.text('Degrees, -360 to 360. 0, 0, 0 is the default pose.'),
-            'x tilts a part forward and back, y turns it, z tilts it sideways.',
-            docs: Docs.npcFlags,
-          ),
+        const dom.p(classes: 'animus-gui-help', <Widget>[
+          Component.text('Degrees, -360 to 360: x tilts forward, y turns, z tilts sideways. 0, 0, 0 is the default pose.'),
         ]),
         dom.div(classes: 'animus-armor-stand-parts', <Widget>[
           for (final String part in armorStandParts)

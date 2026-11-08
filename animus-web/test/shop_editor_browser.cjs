@@ -25,6 +25,38 @@ const shots = process.env.ANIMUS_SCREENSHOTS;
 const greeter = 'examples/greeter';
 const baker = 'examples/shopkeeper';
 
+/**
+ * Records every painted frame of the shop's chest window for the next 40
+ * frames: whether it is shown, its slot count and any slot still waiting
+ * for its icon (a fallback name or an undecoded image).
+ */
+async function sampleChestFrames(page) {
+  await page.evaluate(() => {
+    const frames = [];
+    window.__chestFrames = frames;
+    const sample = () => {
+      const screen = document.querySelector('.animus-shop-preview .animus-chest-screen');
+      if (screen) {
+        const shown = getComputedStyle(screen).visibility !== 'hidden';
+        const waiting = screen.querySelectorAll('.animus-chest-missing').length +
+          [...screen.querySelectorAll('.animus-chest-face img')].filter((img) => !img.complete || img.naturalWidth === 0).length;
+        frames.push({shown, slots: screen.querySelectorAll('.animus-chest-slot').length, waiting});
+      }
+      if (frames.length < 40) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+}
+
+/** Every shown frame recorded by [sampleChestFrames] is the whole window. */
+async function chestFramesWhole(page, label) {
+  await page.waitForFunction(() => window.__chestFrames.length >= 40);
+  const frames = await page.evaluate(() => window.__chestFrames);
+  const partial = frames.filter((frame) => frame.shown && (frame.waiting > 0 || frame.slots === 0));
+  assert.deepEqual(partial, [], `${label}: the chest window shows only whole frames, got ${JSON.stringify(frames)}`);
+  assert.ok(frames.some((frame) => frame.shown), `${label}: the chest window shows`);
+}
+
 async function control(route, body) {
   const response = await fetch(`${fake}/__fake/${route}`, {
     method: body === undefined ? 'GET' : 'POST',
@@ -141,7 +173,10 @@ async function run(browser, viewport, label, theme) {
   const buy = board.locator('.animus-shop-offer.is-open[data-id="buy"]');
   await buy.getByLabel('Price', {exact: true}).fill('25');
   await settle(page);
+  // A new item shows in the chest window with its icon, never part drawn.
+  await sampleChestFrames(page);
   await buy.getByLabel('Gives item', {exact: true}).fill('minecraft:cake');
+  await chestFramesWhole(page, `${label} new item`);
   await settle(page);
   await board.locator('.animus-shop-offer', {hasText: '25 money → 1 cake'}).waitFor();
 
@@ -188,7 +223,10 @@ async function run(browser, viewport, label, theme) {
 
   // The chest window shows the buy grid and picks an offer on the board.
   const preview = page.locator('.animus-shop-preview');
+  await preview.getByRole('tab', {name: /^Trading screen/}).click();
+  await sampleChestFrames(page);
   await preview.getByRole('tab', {name: /^Chest window/}).click();
+  await chestFramesWhole(page, `${label} tab switch`);
   await preview.locator('[data-slot="1"]').click();
   await board.locator('[data-id="command"] .animus-shop-offer-main[aria-expanded="true"]').waitFor();
   // The trading screen picks too, and crosses out offers out of limits.

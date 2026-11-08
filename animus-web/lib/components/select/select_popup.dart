@@ -1,6 +1,6 @@
 /// The popup shared by the editor's dropdowns: placement next to the
-/// control (flipping above when there is no room below, a full-width sheet
-/// on phones), the listbox with its groups and footer rows, and the page
+/// control (flipping above when there is room under the top bar, else
+/// scrolling the control up; a full-width sheet on phones), the listbox with its groups and footer rows, and the page
 /// listeners that close it.
 library;
 
@@ -12,6 +12,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../logic/select/popup_fit.dart';
 import '../../logic/select/select_model.dart';
 
 /// Widths at which a dropdown opens as a sheet.
@@ -45,8 +46,32 @@ class PopupPlacement {
         };
 }
 
-/// The placement for a popup about [wanted] px tall under the element with
-/// [anchorId].
+/// The bottom of the sticky top bar in viewport px: popups stay under it.
+double topBarBottom() {
+  final web.Element? bar = web.document.querySelector('.animus-topbar');
+  return bar == null ? 0 : math.max(0, bar.getBoundingClientRect().bottom.toDouble());
+}
+
+/// Measures the element [anchor] for [fitPopup] and applies the fit's
+/// scroll first, so a field near the bottom moves up and its list opens
+/// whole between the top bar and the window's bottom. Returns the fit and
+/// the anchor's box after any scroll.
+(PopupFit, web.DOMRect) fitBelowTopBar(web.Element anchor, double wanted) {
+  final double viewHeight = web.window.innerHeight.toDouble();
+  PopupBox measure(web.DOMRect rect) =>
+      PopupBox(top: rect.top.toDouble(), bottom: rect.bottom.toDouble(), viewHeight: viewHeight, topInset: topBarBottom());
+  web.DOMRect rect = anchor.getBoundingClientRect();
+  PopupFit fit = fitPopup(measure(rect), wanted);
+  if (fit.scroll > 0) {
+    web.window.scrollBy(web.ScrollToOptions(top: fit.scroll, behavior: 'instant'));
+    rect = anchor.getBoundingClientRect();
+    fit = fitPopup(measure(rect), wanted, allowScroll: false);
+  }
+  return (fit, rect);
+}
+
+/// The placement for a popup about [wanted] px tall next to the element
+/// with [anchorId].
 /// Without [sheet] it stays anchored on phones too (a text field's
 /// suggestions, which sit under the field being typed in).
 PopupPlacement placePopup(String anchorId, double wanted, {bool sheet = true}) {
@@ -55,22 +80,16 @@ PopupPlacement placePopup(String anchorId, double wanted, {bool sheet = true}) {
   if (sheet && viewWidth <= sheetWidth) return const PopupPlacement(sheet: true);
   final web.Element? anchor = web.document.getElementById(anchorId);
   if (anchor == null) return const PopupPlacement(sheet: false, left: 8, width: 240, edge: 8);
-  final web.DOMRect rect = anchor.getBoundingClientRect();
-  const double margin = 8;
-  final double width = math.min(math.max(rect.width, 220), viewWidth - margin * 2);
-  final double left = rect.left.clamp(margin, math.max(margin, viewWidth - width - margin)).toDouble();
-  final double below = viewHeight - rect.bottom - margin;
-  final double above = rect.top - margin;
-  final double want = math.min(wanted, 360);
-  final bool up = below < want && above > below;
-  final double room = up ? above : below;
+  final (PopupFit fit, web.DOMRect rect) = fitBelowTopBar(anchor, wanted);
+  final double width = math.min(math.max(rect.width, 220), viewWidth - popupMargin * 2);
+  final double left = rect.left.clamp(popupMargin, math.max(popupMargin, viewWidth - width - popupMargin)).toDouble();
   return PopupPlacement(
     sheet: false,
-    up: up,
+    up: fit.up,
     left: left,
     width: width,
-    edge: up ? viewHeight - rect.top + 2 : rect.bottom + 2,
-    maxHeight: math.max(120, math.min(want, room)),
+    edge: fit.up ? viewHeight - rect.top + 2 : rect.bottom + 2,
+    maxHeight: fit.maxHeight,
   );
 }
 

@@ -12,6 +12,7 @@ import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/npc/group_merge.dart';
 import '../../logic/npc/group_model.dart';
+import '../../logic/npc/skin_edits.dart' show skinListing;
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../fold.dart';
@@ -191,8 +192,8 @@ class GroupSkinPool extends StatefulWidget {
 
   final List<String> pool;
 
-  /// The workspace's skin ids (their hashes).
-  final List<String> skins;
+  /// The workspace's skin documents.
+  final List<AnimusDocument> skins;
 
   /// The new pool, or null to drop the field.
   final void Function(List<String>? pool) onChanged;
@@ -208,13 +209,14 @@ class _GroupSkinPoolState extends State<GroupSkinPool> {
   @override
   Widget build(BuildContext context) {
     final List<String> pool = component.pool;
+    final Map<String, AnimusDocument> byId = <String, AnimusDocument>{for (final AnimusDocument skin in component.skins) skin.id: skin};
     final List<String> offered = <String>[
-      for (final String id in component.skins)
+      for (final String id in byId.keys)
         if (!pool.contains(id)) id,
     ];
     void put(List<String> next) => component.onChanged(next.isEmpty ? null : next);
     final bool valid = _skinHash.hasMatch(_adding) && !pool.contains(_adding) && pool.length < _poolLimit;
-    String short(String hash) => hash.substring(0, hash.length.clamp(0, 12));
+    String short(String hash) => byId[hash] == null ? hash.substring(0, hash.length.clamp(0, 12)) : skinListing(byId[hash]!).label;
     const String pickId = 'animus-group-add-skin';
     return GuiRow(
       label: 'Skin pool',
@@ -236,6 +238,8 @@ class _GroupSkinPoolState extends State<GroupSkinPool> {
               id: pickId,
               value: null,
               options: offered,
+              labels: <String, String>{for (final String id in offered) id: skinListing(byId[id]!).label},
+              details: <String, String>{for (final String id in offered) id: skinListing(byId[id]!).detail},
               skinFaces: skinFacesOf(offered),
               noneLabel: 'Add skin',
               hiddenLabel: 'Add a workspace skin to the pool',

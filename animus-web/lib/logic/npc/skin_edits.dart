@@ -10,6 +10,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
+import '../../mc/npc/npc_skin.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../../state/editor_store.dart';
@@ -55,6 +56,17 @@ class SkinTarget {
 String? skinDocumentLabel(Object? skin) {
   final Object? label = asMap(skin)['label'];
   return label is String && label.trim().isNotEmpty ? label.trim() : null;
+}
+
+/// How every skin list names [skin]: its label, or its first 12 hex
+/// characters without one; the hash (when labelled) and model are the
+/// secondary detail.
+({String label, String detail}) skinListing(AnimusDocument skin) {
+  final NpcSkinInfo? info = NpcSkinInfo.fromDocument(skin.json);
+  final String model = info == null ? 'unreadable' : '${info.slim ? 'slim' : 'classic'}${info.signed ? ', signed' : ''}';
+  final String short = skin.id.substring(0, skin.id.length.clamp(0, 12));
+  final String? label = skinDocumentLabel(skin.json);
+  return label == null ? (label: short, detail: model) : (label: label, detail: '$short, $model');
 }
 
 /// Why the content of [skin] cannot be edited, or null when it can.

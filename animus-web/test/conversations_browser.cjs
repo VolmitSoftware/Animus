@@ -17,6 +17,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {assertNothingCut} = require('./support/cut_text.cjs');
 const {openFromSidebar, sidebar} = require('./support/shell.cjs');
 
 const site = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })()).replace(/\/$/, '');
@@ -160,6 +161,7 @@ async function run(browser, viewport, label, theme) {
   const stepMenu = page.getByRole('menu');
   await stepMenu.waitFor();
   assert.equal(await stepMenu.getByRole('menuitem', {name: /Move down/}).locator('.animus-menu-hint').textContent(), mac ? 'Option+Down' : 'Alt+Down', `${label}: menu key names`);
+  await assertNothingCut(stepMenu, '.animus-menu-item > span', `${label} step menu`);
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await stepMenu.waitFor({state: 'detached', timeout: 2000});
   await page.evaluate(() => window.scrollTo(0, 0));

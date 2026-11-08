@@ -454,7 +454,7 @@ class _NpcInspectorState extends State<NpcInspector> {
   /// A group's `skins`: hashes each member takes one of by its UUID.
   Widget _skinPool(JsonMap doc) => GroupSkinPool(
         pool: stringList(doc['skins']),
-        skins: _ids(DocumentKind.skin),
+        skins: _documents(DocumentKind.skin),
         diagnostics: _diagnostics,
         onChanged: (List<String>? pool) => _write(<JsonStep>['skins'], pool),
       );

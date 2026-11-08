@@ -58,9 +58,15 @@
   box-shadow: none;
 }
 
+/* Opened above the field when there is room under the top bar. */
+.animus-suggest-list.is-up {
+  top: auto;
+  bottom: calc(100% + 2px);
+}
+
 .animus-suggest-list li {
   display: grid;
-  grid-template-columns: 4rem auto minmax(0, 1fr) auto;
+  grid-template-columns: max-content auto minmax(0, 1fr) auto;
   grid-template-areas:
     'kind label label type'
     'kind detail detail detail';
@@ -91,8 +97,8 @@
   font-size: 0.6875rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* As wide as the longest kind ("placeholder"), so every row lines up. */
+  min-width: calc(11ch + 0.44em);
   white-space: nowrap;
 }
 
@@ -149,7 +155,7 @@
 
   .animus-suggest-list li {
     min-height: 44px;
-    grid-template-columns: 3.5rem minmax(0, 1fr) auto;
+    grid-template-columns: max-content minmax(0, 1fr) auto;
     grid-template-areas:
       'kind label type'
       'kind detail detail';

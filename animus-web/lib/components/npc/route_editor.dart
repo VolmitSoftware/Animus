@@ -22,7 +22,6 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
-import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/select/select_model.dart' show withDefault;
 import '../../logic/npc/route_model.dart';
@@ -31,7 +30,6 @@ import '../../logic/terrain/terrain_volume.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
-import '../info_tip.dart';
 import '../inspect/inspect_fields.dart';
 import '../rig/rig_gizmo.dart' show eventNumber;
 import 'route_terrain.dart';
@@ -419,11 +417,7 @@ class _RouteEditorState extends State<RouteEditor> {
               onPressed: () => setState(() => _show3d = !_show3d),
             ),
           dom.span(classes: 'animus-gui-help', <Widget>[
-            InfoTip(
-              tip: 'Tab to a point: arrows move it, Shift moves a whole block, Delete removes it.',
-              docs: Docs.routes,
-              child: Component.text(_tool == RouteTool.select ? 'Drag to move.' : 'Click to add, drag to move.'),
-            ),
+            Component.text('${_tool == RouteTool.select ? 'Drag to move.' : 'Click to add, drag to move.'} On a point, arrows move it.'),
           ]),
         ]),
       _grid(spec, picked),

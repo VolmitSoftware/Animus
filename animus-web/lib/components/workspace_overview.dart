@@ -94,13 +94,7 @@ class WorkspaceOverview extends StatelessWidget {
             ]),
             dom.li(<Widget>[
               Button.secondary(label: 'Pair a server', size: ButtonSize.small, onPressed: () => onNavigate(SyncRoute(workspace.id))),
-              dom.span(classes: 'animus-muted', <Widget>[
-                withTip(
-                  const Component.text('Edit and send to a live server.'),
-                  'Run /animus editor pair on the server and open its link. Pairing gives this browser a token for that server.',
-                  docs: Docs.pairing,
-                ),
-              ]),
+              const dom.span(classes: 'animus-muted', <Widget>[Component.text('Edit and send to a live server.')]),
             ]),
           ]),
         ]),

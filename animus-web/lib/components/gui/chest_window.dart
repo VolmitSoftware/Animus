@@ -2,9 +2,12 @@
 /// Minecraft font, slots with item icons from the stage's item meshers,
 /// stack counts, and the name and lore tooltip on hover or focus, and on
 /// tap for the selected slot when [ChestWindow.pinSelected] is set. A paint
-/// handler turns a press and drag across slots into brush strokes.
+/// handler turns a press and drag across slots into brush strokes. It never
+/// paints a half-ready window: a new layout waits, behind the previous one
+/// (or hidden on first show), until every icon in it is drawn and decoded.
 library;
 
+import 'dart:async';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
@@ -64,9 +67,19 @@ class ChestWindow extends StatefulWidget {
   State<ChestWindow> createState() => _ChestWindowState();
 }
 
+/// Icon URLs whose images are decoded, so a new `img` paints at once.
+final Set<String> _decodedIcons = <String>{};
+final Set<String> _decoding = <String>{};
+
 class _ChestWindowState extends State<ChestWindow> {
   int? _lastPainted;
   JSFunction? _release;
+
+  /// The last layout whose icons were all ready; drawn while a newer one waits.
+  ChestLayout? _shown;
+
+  /// Runs while a new layout waits; once it fires the layout is drawn as it is.
+  Timer? _patience;
 
   @override
   void initState() {
@@ -79,6 +92,7 @@ class _ChestWindowState extends State<ChestWindow> {
 
   @override
   void dispose() {
+    _patience?.cancel();
     McItemIcons.removeListener(_refresh);
     web.window.removeEventListener('pointerup', _release);
     web.window.removeEventListener('pointercancel', _release);
@@ -115,10 +129,51 @@ class _ChestWindowState extends State<ChestWindow> {
     if (mounted) setState(() {});
   }
 
+  /// True when every icon of [layout] is drawn (or has none) and decoded;
+  /// starts whatever is still missing.
+  bool _iconsReady(ChestLayout layout) {
+    bool ready = true;
+    for (final ChestCell cell in layout.cells) {
+      final String? key = McItemIcons.keyOf(cell.itemId);
+      if (key == null) continue;
+      final String? url = McItemIcons.url(key);
+      if (url == null) {
+        if (!McItemIcons.missing(key)) ready = false;
+      } else if (!_decodedIcons.contains(url)) {
+        ready = false;
+        _decode(url);
+      }
+    }
+    return ready;
+  }
+
+  void _decode(String url) {
+    if (!_decoding.add(url)) return;
+    final web.HTMLImageElement image = web.HTMLImageElement()..src = url;
+    void done() {
+      _decoding.remove(url);
+      _decodedIcons.add(url);
+      _refresh();
+    }
+
+    image.decode().toDart.then((JSAny? _) => done(), onError: (Object _) => done());
+  }
+
   @override
   Widget build(BuildContext context) {
-    final ChestLayout layout = component.layout;
-    return dom.div(classes: 'animus-chest-screen', attributes: <String, String>{'role': 'group', 'aria-label': component.label}, <Widget>[
+    final bool ready = _iconsReady(component.layout);
+    final bool forced = _patience != null && !_patience!.isActive;
+    if (ready || forced) {
+      _patience?.cancel();
+      _patience = null;
+      _shown = component.layout;
+    } else {
+      _patience ??= Timer(const Duration(milliseconds: 800), _refresh);
+    }
+    final ChestLayout? shown = _shown;
+    // First show with icons still coming: laid out but hidden.
+    final ChestLayout layout = shown ?? component.layout;
+    return dom.div(classes: 'animus-chest-screen${shown == null ? ' is-pending' : ''}', attributes: <String, String>{'role': 'group', 'aria-label': component.label}, <Widget>[
       dom.div(classes: 'animus-chest-title', <Widget>[
         withTip(
           GuiStyledText(layout.title, defaultColor: mcInventoryTitleColor),

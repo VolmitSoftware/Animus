@@ -267,6 +267,8 @@
 .animus-pick-list {
   inset-inline-start: 0;
   inset-inline-end: auto;
+  /* Anchored to a small button: size to the longest row, not the button. */
+  width: max-content;
   min-width: 12rem;
   max-height: 20rem;
   overflow-y: auto;

@@ -57,6 +57,11 @@
   overflow-x: auto;
 }
 
+/* Laid out but not painted until its icons are ready. */
+.animus-chest-screen.is-pending {
+  visibility: hidden;
+}
+
 .animus-chest-title {
   font-family: "Minecraft", var(--font-mono);
   font-size: 1rem;

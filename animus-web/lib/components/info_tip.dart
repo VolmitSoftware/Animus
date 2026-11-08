@@ -1,14 +1,15 @@
 /// Help on a label or heading: the text itself carries a short tooltip. It
-/// gets a dotted underline and takes keyboard focus. Hover (after a short
-/// delay) shows the tooltip (the text's aria-describedby), and so does focus
-/// that lands on the text by other means than Tab: Tab only passes through,
-/// so the tooltip never covers the fields being tabbed to. Space or Down on
-/// the focused text shows it, Escape hides it, Enter opens the wiki page,
-/// and a tap toggles it. The tooltip holds a Docs link and stays open while
-/// the pointer is over it. A mouse click focuses a label's control and
-/// keeps the tooltip shut until the pointer leaves.
+/// gets a dotted underline and takes keyboard focus. The tooltip (the
+/// text's aria-describedby) opens only when the pointer rests on the text
+/// for a moment, when Space or Down is pressed on the focused text, or on a
+/// tap. Focus alone never opens it, however it arrives, and a pointer
+/// moving across the text does not either. Escape hides it, Enter opens the
+/// wiki page. The tooltip holds a Docs link and stays open while the
+/// pointer is over it. A mouse click focuses a label's control and keeps
+/// the tooltip shut until the pointer leaves.
 library;
 
+import 'dart:async';
 import 'dart:js_interop';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -21,17 +22,9 @@ import '../logic/help_text.dart';
 
 int _nextTipId = 0;
 
-/// True from a Tab press until the next other key or pointer press: focus
-/// is passing through, not resting on a tip.
-bool _tabbing = false;
-bool _watching = false;
-
-void _watchTabbing() {
-  if (_watching) return;
-  _watching = true;
-  web.document.addEventListener('keydown', ((web.Event event) => _tabbing = (event as web.KeyboardEvent).key == 'Tab').toJS, true.toJS);
-  web.document.addEventListener('pointerdown', ((web.Event _) => _tabbing = false).toJS, true.toJS);
-}
+/// How long the pointer rests on the text before the tooltip opens; any
+/// move restarts it, so a pointer passing through opens nothing.
+const Duration tipRest = Duration(milliseconds: 350);
 
 /// The wiki page an [InfoTip] without its own link points at: the page of
 /// the document kind being edited.
@@ -69,16 +62,35 @@ class _InfoTipState extends State<InfoTip> {
   bool _touch = false;
   JSFunction? _outside;
 
-  @override
-  void initState() {
-    super.initState();
-    _watchTabbing();
-  }
+  /// Runs while the pointer rests on the text.
+  Timer? _resting;
+
+  /// Opened by the resting pointer, so leaving closes it.
+  bool _byPointer = false;
 
   @override
   void dispose() {
+    _resting?.cancel();
     _stopOutside();
     super.dispose();
+  }
+
+  void _pointerMoved(web.Event raw) {
+    final web.PointerEvent event = raw as web.PointerEvent;
+    if (event.pointerType == 'touch' || _open || _dismissed) return;
+    _resting?.cancel();
+    _resting = Timer(tipRest, () {
+      if (!mounted || _open || _dismissed) return;
+      _byPointer = true;
+      _setOpen(true);
+    });
+  }
+
+  void _pointerLeft() {
+    _resting?.cancel();
+    _resting = null;
+    if (_dismissed) setState(() => _dismissed = false);
+    if (_open && _byPointer) _setOpen(false);
   }
 
   void _stopOutside() {
@@ -92,6 +104,7 @@ class _InfoTipState extends State<InfoTip> {
   }
 
   void _setOpen(bool open) {
+    if (!open) _byPointer = false;
     _stopOutside();
     if (open) {
       _outside = ((web.Event event) {
@@ -124,6 +137,7 @@ class _InfoTipState extends State<InfoTip> {
       event.preventDefault();
       event.stopPropagation();
       setState(() => _dismissed = false);
+      _byPointer = false;
       _setOpen(true);
     } else if (event.key == 'Enter') {
       event.preventDefault();
@@ -133,6 +147,8 @@ class _InfoTipState extends State<InfoTip> {
       event.preventDefault();
       event.stopPropagation();
       _stopOutside();
+      _resting?.cancel();
+      _byPointer = false;
       setState(() {
         _open = false;
         _dismissed = true;
@@ -148,20 +164,8 @@ class _InfoTipState extends State<InfoTip> {
       classes: 'animus-tip${_open ? ' is-open' : ''}${_dismissed ? ' is-dismissed' : ''}',
       events: <String, void Function(web.Event)>{
         'pointerenter': (web.Event _) => _place(),
-        'pointerleave': (web.Event _) {
-          if (_dismissed) setState(() => _dismissed = false);
-        },
-        'focusin': (web.Event event) {
-          final web.EventTarget? raw = event.target;
-          final web.Element? target = raw != null && raw.isA<web.Element>() ? raw as web.Element : null;
-          // Focus resting on the text shows the tip; Tab passing through,
-          // or a mouse press on a label, does not.
-          if (target != null && target.classList.contains('animus-tip-text') && !_tabbing && !_dismissed && target.matches(':focus-visible')) {
-            _setOpen(true);
-          } else {
-            _place();
-          }
-        },
+        'pointerleave': (web.Event _) => _pointerLeft(),
+        'focusin': (web.Event _) => _place(),
         'focusout': (web.Event event) {
           if (_inside((event as web.FocusEvent).relatedTarget)) return;
           // Under the pointer it stays shut until the pointer leaves.
@@ -176,7 +180,9 @@ class _InfoTipState extends State<InfoTip> {
           attributes: <String, String>{'tabindex': '0', 'role': 'link', 'aria-describedby': _id},
           events: <String, void Function(web.Event)>{
             'keydown': (web.Event event) => _onKey(event, url),
+            'pointermove': _pointerMoved,
             'pointerdown': (web.Event raw) {
+              _resting?.cancel();
               _touch = (raw as web.PointerEvent).pointerType == 'touch';
               // A mouse press on a label is for its control: keep the tip
               // shut over the next field until the pointer leaves.

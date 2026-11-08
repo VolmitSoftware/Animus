@@ -146,6 +146,41 @@ async function run(browser, {viewport, touch, theme}) {
     await fromKey.waitForLoadState();
     assert.equal(fromKey.url(), folderDocs);
     await fromKey.close();
+
+    // Focus that lands on the text any other way (a field's blur handing
+    // focus back, a script) shows only the ring.
+    await page.keyboard.press('Escape');
+    await fieldTip.evaluate(el => el.closest('label').control.focus());
+    await page.keyboard.press('Shift');
+    await text.evaluate(el => el.focus());
+    await page.waitForTimeout(500);
+    assert.equal(await tip.isVisible(), false, `${label}: focus without Space leaves the tooltip shut`);
+    await text.evaluate(el => el.blur());
+
+    // A pointer moving along the text does not open it; resting on it does.
+    const box = await text.boundingBox();
+    await page.mouse.move(box.x - 30, box.y + box.height / 2);
+    await page.evaluate(id => {
+      window.__tipShown = false;
+      const pop = document.getElementById(id).parentElement;
+      const watch = () => {
+        if (getComputedStyle(pop).display !== 'none') window.__tipShown = true;
+        if (!window.__tipDone) requestAnimationFrame(watch);
+      };
+      window.__tipDone = false;
+      requestAnimationFrame(watch);
+    }, await text.getAttribute('aria-describedby'));
+    for (let step = 0; step <= 12; step++) {
+      await page.mouse.move(box.x + (box.width * step) / 12, box.y + box.height / 2);
+      await page.waitForTimeout(40);
+    }
+    await page.mouse.move(box.x + box.width + 40, box.y + box.height / 2);
+    await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => { window.__tipDone = true; return window.__tipShown; }), false, `${label}: a pointer passing over the text leaves the tooltip shut`);
+    await text.hover();
+    await tip.waitFor({state: 'visible'});
+    await page.mouse.move(0, 0);
+    await tip.waitFor({state: 'hidden'});
   } else {
     // A tap toggles the tooltip and its Docs link without leaving the page
     // or raising the keyboard for the field.

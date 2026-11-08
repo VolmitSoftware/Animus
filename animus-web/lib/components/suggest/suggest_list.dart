@@ -14,6 +14,9 @@ import '../../logic/suggest/completion_item.dart';
 /// `aria-activedescendant`.
 String suggestOptionId(String listId, int index) => '$listId-$index';
 
+/// The list's tallest, in px (its CSS `max-height`, 16rem).
+const double suggestListHeight = 256;
+
 class SuggestList extends StatelessWidget {
   const SuggestList({
     required this.id,

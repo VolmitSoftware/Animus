@@ -56,15 +56,8 @@
   height: 5px;
 }
 
-@media (hover: hover) {
-  .animus-tip:not(.is-dismissed):hover .animus-tip-pop {
-    display: grid;
-    transition-delay: 250ms;
-  }
-}
-
-/* Focus alone does not show it: the component opens it when focus rests on
-   the text, not when Tab passes through. */
+/* Only the component opens it: the pointer resting on the text, Space on
+   the focused text, or a tap. Hover passing through and focus do not. */
 .animus-tip.is-open .animus-tip-pop {
   display: grid;
   transition-delay: 0s;

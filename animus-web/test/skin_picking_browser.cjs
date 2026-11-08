@@ -270,7 +270,7 @@ async function run(browser, folder, viewport, theme, tag) {
   const guardSkin = (await codeOf(page)).skin;
   assert.match(guardSkin, /^[a-f0-9]{64}$/);
   look = await appearance(page);
-  assert.match(await look.locator('#animus-skin-pick .animus-select-value').innerText(), /^Guard \(/, `${tag}: the dropdown names it Guard`);
+  assert.match(await look.locator('#animus-skin-pick .animus-select-value').innerText(), /^Guard$/, `${tag}: the dropdown names it Guard`);
   await shot(page, `${tag}-03-built-in`);
 
   // 5. From address and From PNG file.

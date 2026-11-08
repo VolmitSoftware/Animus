@@ -268,6 +268,7 @@ class GuiSelect extends StatelessWidget {
     this.allowNone = false,
     this.noneLabel = 'default',
     this.labels = const <String, String>{},
+    this.details = const <String, String>{},
     this.groups = const <String, String>{},
     this.skinFaces = const <String, String>{},
     this.disabled = const <String>{},
@@ -286,6 +287,9 @@ class GuiSelect extends StatelessWidget {
   final bool allowNone;
   final String noneLabel;
   final Map<String, String> labels;
+
+  /// A secondary line under an option's label in the list.
+  final Map<String, String> details;
 
   /// The group heading of each option that has one.
   final Map<String, String> groups;
@@ -333,6 +337,7 @@ class GuiSelect extends StatelessWidget {
             SelectOption(
               label: labels[option] ?? option,
               value: option,
+              description: details[option],
               group: groups[option],
               skinFace: skinFaces[option],
               disabled: disabled.contains(option),
