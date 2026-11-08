@@ -8,6 +8,10 @@
 /// it, Enter picks it, and "Add point at" adds one by its x, y and z.
 /// Recording steps have no position: they are listed and numbered with the
 /// points, picked from the list, and edited by recording and tick range.
+/// With a paired server that shares terrain, the grid draws the surface
+/// under the points, a placed or dragged point lands on a standable block,
+/// points and legs that cannot be walked are flagged, and 3D shows the
+/// route over the blocks.
 library;
 
 import 'dart:js_interop';
@@ -21,12 +25,16 @@ import 'package:web/web.dart' as web;
 import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/npc/route_model.dart';
+import '../../logic/terrain/terrain_snap.dart';
+import '../../logic/terrain/terrain_volume.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
 import '../info_tip.dart';
 import '../inspect/inspect_fields.dart';
 import '../rig/rig_gizmo.dart' show eventNumber;
+import 'route_terrain.dart';
+import 'route_view3d.dart';
 
 int _nextGridId = 0;
 
@@ -130,6 +138,7 @@ class RouteEditor extends StatefulWidget {
     required this.value,
     required this.onChanged,
     this.origin,
+    this.world,
     this.path = r'$',
     this.diagnostics = const <Diagnostic>[],
     this.readOnly = false,
@@ -145,6 +154,10 @@ class RouteEditor extends StatefulWidget {
 
   /// The NPC's x, y and z, drawn on the grid and used for new points.
   final (double, double, double)? origin;
+
+  /// The NPC's world, whose terrain the grid draws; null for a route
+  /// document, which belongs to no world.
+  final String? world;
 
   /// Where [value] sits in its document, for diagnostics.
   final String path;
@@ -176,11 +189,18 @@ class _RouteEditorState extends State<RouteEditor> {
   num? _addY;
   num? _addZ;
 
+  late final RouteTerrain _terrain = RouteTerrain(() {
+    if (mounted) setState(() {});
+  });
+  bool _show3d = false;
+
   @override
   void dispose() {
     _release();
+    _terrain.dispose();
     super.dispose();
   }
+
 
   /// The last route reported and not yet echoed back, so quick key repeats
   /// build on each other instead of on the value from before.
@@ -239,7 +259,7 @@ class _RouteEditorState extends State<RouteEditor> {
         _drag = null;
         _dragBounds = null;
       });
-      if (drag != null) _write(moveRouteNode(_route, drag.$1, drag.$2, drag.$3, drag.$4));
+      if (drag != null) _write(_terrain.placed(_route, drag.$1, drag.$2, drag.$3, drag.$4));
     }).toJS;
     web.window.addEventListener('pointermove', _move);
     web.window.addEventListener('pointerup', _up);
@@ -264,7 +284,8 @@ class _RouteEditorState extends State<RouteEditor> {
     final bool guide = _tool == RouteTool.guide;
     final List<RouteEntry> same = guide ? spec.guides : spec.points;
     final RouteNode? sameLast = _lastPlaced(same), pointLast = _lastPlaced(spec.points);
-    final double y = sameLast?.y ?? pointLast?.y ?? (component.origin?.$2 ?? 64).floorToDouble();
+    final double near = sameLast?.y ?? pointLast?.y ?? (component.origin?.$2 ?? 64).floorToDouble();
+    final double y = _terrain.snap(snapBlock(at.$1), snapBlock(at.$2), near)?.toDouble() ?? near;
     _write(addRouteNode(_route, snapBlock(at.$1), y, snapBlock(at.$2), guide: guide));
     setState(() => _picked = (guide ? 'guides' : 'points', same.length));
   }
@@ -363,7 +384,7 @@ class _RouteEditorState extends State<RouteEditor> {
 
   RouteSpec get _shownSpec {
     final (String, int, double, double)? drag = _drag;
-    return RouteSpec(drag == null ? _route : moveRouteNode(_route, drag.$1, drag.$2, drag.$3, drag.$4));
+    return RouteSpec(drag == null ? _route : _terrain.placed(_route, drag.$1, drag.$2, drag.$3, drag.$4));
   }
 
   @override
@@ -384,6 +405,14 @@ class _RouteEditorState extends State<RouteEditor> {
           _toolButton(RouteTool.point, 'Add points'),
           if (spec.order == 'random') _toolButton(RouteTool.guide, 'Add guides'),
           _toolButton(RouteTool.select, 'Pick and drag'),
+          if (component.world != null && _terrain.available)
+            Button(
+              label: '3D',
+              size: ButtonSize.small,
+              variant: ButtonVariant.ghost,
+              attributes: <String, String>{'aria-pressed': '$_show3d', 'data-route-3d-toggle': ''},
+              onPressed: () => setState(() => _show3d = !_show3d),
+            ),
           dom.span(classes: 'animus-gui-help', <Widget>[
             InfoTip(
               tip: 'Tab to a point: arrows move it, Shift moves a whole block, Delete removes it.',
@@ -393,6 +422,8 @@ class _RouteEditorState extends State<RouteEditor> {
           ]),
         ]),
       _grid(spec, picked),
+      if (_show3d && component.world != null && _terrain.available)
+        RouteView3d(spec: spec, world: component.world, focus: routeFocus(spec, picked, component.origin), onVolume: (TerrainVolume? volume) => setState(() => _terrain.volume = volume)),
       if (!component.readOnly) _addForm(spec),
       if (problems.isNotEmpty || _problems.isNotEmpty)
         dom.ul(classes: 'animus-route-problems', <Widget>[
@@ -544,7 +575,11 @@ class _RouteEditorState extends State<RouteEditor> {
         ]);
     final double step = bounds.step;
     final double radius = math.max(0.3, bounds.width / 70);
+    _terrain.cover(component.world, bounds);
+    final Map<(int, int), (int, int, int)> steep = _terrain.steepLinks(spec);
+    final Map<(String, int), TerrainIssue> issues = _terrain.issues(spec);
     final List<Component> grid = <Component>[
+      ..._terrain.images(bounds),
       for (double x = (bounds.minX / step).ceilToDouble() * step; x <= bounds.maxX; x += step)
         dom.line(const <Component>[], x1: _n(x), y1: _n(bounds.minZ), x2: _n(x), y2: _n(bounds.maxZ), classes: 'animus-route-gridline${x == 0 ? ' is-axis' : ''}'),
       for (double z = (bounds.minZ / step).ceilToDouble() * step; z <= bounds.maxZ; z += step)
@@ -558,7 +593,8 @@ class _RouteEditorState extends State<RouteEditor> {
           y1: _n(spec.positionOf(a)!.z),
           x2: _n(spec.positionOf(b)!.x),
           y2: _n(spec.positionOf(b)!.z),
-          classes: 'animus-route-link${spec.order == 'random' ? ' is-mesh' : ''}',
+          classes: 'animus-route-link${spec.order == 'random' ? ' is-mesh' : ''}${steep.containsKey((a, b)) ? ' is-steep' : ''}',
+          attributes: <String, String>{if (steep.containsKey((a, b))) 'data-steep': '$a:$b'},
         ),
       for (final (int a, int b) in spec.junctionLinks)
         dom.line(
@@ -587,9 +623,9 @@ class _RouteEditorState extends State<RouteEditor> {
         _label(origin.$1, origin.$3 - radius * 2, 'NPC', radius, 'is-npc'),
       ],
       for (int index = 0; index < spec.guides.length; index++)
-        if (spec.guides[index] case final RouteNode guide) _node('guides', index, guide, radius * 0.8, picked, bounds, '${spec.points.length + index}'),
+        if (spec.guides[index] case final RouteNode guide) _node('guides', index, guide, radius * 0.8, picked, bounds, '${spec.points.length + index}', issues[('guides', index)]),
       for (int index = 0; index < spec.points.length; index++)
-        if (spec.points[index] case final RouteNode point) _node('points', index, point, radius, picked, bounds, '$index'),
+        if (spec.points[index] case final RouteNode point) _node('points', index, point, radius, picked, bounds, '$index', issues[('points', index)]),
     ];
     // Points on the grid are sized by the map's scale, not the button
     // system; the point list below gives each one a full-size target.
@@ -613,7 +649,9 @@ class _RouteEditorState extends State<RouteEditor> {
       ),
       dom.div(classes: 'animus-route-legend', <Widget>[
         dom.span(<Widget>[Component.text('x ${bounds.minX.toInt()} to ${bounds.maxX.toInt()}, z ${bounds.minZ.toInt()} to ${bounds.maxZ.toInt()}; north is up; grid every ${step.toInt()} block${step == 1 ? '' : 's'}')]),
+        if (_terrain.note() case final String note) dom.span(attributes: const <String, String>{'data-terrain-note': ''}, <Widget>[Component.text(note)]),
       ]),
+      if (issues.isNotEmpty || steep.isNotEmpty) routeTerrainProblems(issues, steep),
     ]);
   }
 
@@ -630,14 +668,14 @@ class _RouteEditorState extends State<RouteEditor> {
         children: <Component>[Component.text(text)],
       );
 
-  Component _node(String key, int index, RouteNode node, double radius, (String, int)? picked, RouteBounds bounds, String number) {
+  Component _node(String key, int index, RouteNode node, double radius, (String, int)? picked, RouteBounds bounds, String number, TerrainIssue? issue) {
     final bool selected = picked != null && picked.$1 == key && picked.$2 == index;
     final bool guide = key == 'guides';
     final String name = guide ? 'Guide $index' : 'Point $index';
     return Component.element(
       tag: 'g',
       key: ValueKey<String>('$key:$index'),
-      classes: 'animus-route-node${guide ? ' is-guide' : ''}${selected ? ' is-selected' : ''}',
+      classes: 'animus-route-node${guide ? ' is-guide' : ''}${selected ? ' is-selected' : ''}${issue == null ? '' : ' is-flagged'}',
       children: <Component>[
         if (guide)
           dom.rect(
@@ -647,7 +685,7 @@ class _RouteEditorState extends State<RouteEditor> {
             width: _n(radius * 2),
             height: _n(radius * 2),
             classes: 'animus-route-dot',
-            attributes: <String, String>{..._nodeAttributes(key, index, name, node), 'transform': 'rotate(45 ${_n(node.x)} ${_n(node.z)})'},
+            attributes: <String, String>{..._nodeAttributes(key, index, name, node, issue), 'transform': 'rotate(45 ${_n(node.x)} ${_n(node.z)})'},
             events: _nodeEvents(key, index, bounds),
           )
         else
@@ -657,7 +695,7 @@ class _RouteEditorState extends State<RouteEditor> {
             cy: _n(node.z),
             r: _n(radius),
             classes: 'animus-route-dot',
-            attributes: _nodeAttributes(key, index, name, node),
+            attributes: _nodeAttributes(key, index, name, node, issue),
             events: _nodeEvents(key, index, bounds),
           ),
         _label(node.x, node.z, number, radius, guide ? 'is-guide' : 'is-point'),
@@ -665,12 +703,14 @@ class _RouteEditorState extends State<RouteEditor> {
     );
   }
 
-  Map<String, String> _nodeAttributes(String key, int index, String name, RouteNode node) => <String, String>{
+  Map<String, String> _nodeAttributes(String key, int index, String name, RouteNode node, TerrainIssue? issue) => <String, String>{
         'id': _nodeId(key, index),
         'data-node': '$key:$index',
+        'data-y': _coord(node.y),
+        if (issue != null) 'data-issue': issue.name,
         'role': 'button',
         'tabindex': '0',
-        'aria-label': '$name at ${_coord(node.x)}, ${_coord(node.y)}, ${_coord(node.z)}',
+        'aria-label': '$name at ${_coord(node.x)}, ${_coord(node.y)}, ${_coord(node.z)}${issue == null ? '' : ', ${issue.text}'}',
         if (!component.readOnly) 'aria-keyshortcuts': 'ArrowLeft ArrowRight ArrowUp ArrowDown Delete',
       };
 

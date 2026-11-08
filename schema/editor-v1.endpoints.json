@@ -35,6 +35,8 @@
     {"method": "POST", "path": "/v1/imports/{importId}/rollback", "scope": "import", "applyScopes": ["apply:npcs", "apply:behaviors", "apply:gui"], "request": null, "responses": {"200": "import-review", "409": "error-response"}},
     {"method": "POST", "path": "/v1/npcs/{id}/spawn", "scope": "spawn", "request": null, "responses": {"200": "spawn-response"}},
     {"method": "POST", "path": "/v1/npcs/{id}/despawn", "scope": "spawn", "request": null, "responses": {"200": "spawn-response"}},
+    {"method": "GET", "path": "/v1/terrain/surface", "scope": "terrain", "query": {"world": "world name", "tx": "tile x, blocks / 64", "tz": "tile z, blocks / 64"}, "headers": ["If-None-Match"], "request": null, "responses": {"200": "terrain-surface-response", "304": null, "400": "error-response", "404": "error-response", "413": "error-response", "504": "error-response"}},
+    {"method": "GET", "path": "/v1/terrain/blocks", "scope": "terrain", "query": {"world": "world name", "cx": "chunk x", "cz": "chunk z", "y": "lowest layer", "height": "1 to 64 layers"}, "headers": ["If-None-Match"], "request": null, "responses": {"200": "terrain-blocks-response", "304": null, "400": "error-response", "404": "error-response", "413": "error-response", "504": "error-response"}},
     {"method": "WS", "path": "/v1/events", "scope": "read", "request": "event-auth", "responses": {"frame": "event"}}
   ],
   "errorStatus": {
@@ -67,7 +69,7 @@
     "linkTemplate": "https://animus-editor.web.app/#/pair/{code}",
     "secretMinutes": 10,
     "defaultTokenDays": 7,
-    "defaultScopes": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs"],
+    "defaultScopes": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs", "terrain"],
     "tokenRecheckSeconds": 60
   },
   "limits": {
@@ -83,6 +85,8 @@
     "npcsPerPreview": 64,
     "previewMinutes": 15,
     "idempotencyHours": 24,
+    "terrainRadius": 160,
+    "terrainBodyBytes": 524288,
     "relayFrameBytes": 1048576,
     "relayMessagesPerSecond": 120,
     "relayPendingRequests": 64,

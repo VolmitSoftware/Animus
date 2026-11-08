@@ -21,19 +21,19 @@ public record EditorSettings(boolean enabled, String editorUrl, boolean listener
                              String tlsCertificate, String tlsPrivateKey, List<String> allowedOrigins,
                              int tokenDays, int auditDays, int requestBodyBytes, int importBodyBytes, int changeSetDocuments,
                              int concurrentRequestsPerToken, int requestsPerSecond, int pairAttemptsPerMinute, int openConnections,
-                             int eventFramesPerSecond, int previewsPerServer, int npcsPerPreview, int previewMinutes, int idempotencyHours,
+                             int eventFramesPerSecond, int previewsPerServer, int npcsPerPreview, int previewMinutes, int idempotencyHours, int terrainRadius,
                              EditorNotifySettings notices) {
     public static final List<String> FIELDS = List.of("enabled", "editorUrl", "listenerEnabled", "listenAddress", "port", "advertisedUrl",
             "tlsCertificate", "tlsPrivateKey", "allowedOrigins", "tokenDays", "auditDays", "requestBodyBytes",
             "importBodyBytes", "changeSetDocuments", "concurrentRequestsPerToken", "requestsPerSecond", "pairAttemptsPerMinute", "openConnections",
-            "eventFramesPerSecond", "previewsPerServer", "npcsPerPreview", "previewMinutes", "idempotencyHours", "notify");
+            "eventFramesPerSecond", "previewsPerServer", "npcsPerPreview", "previewMinutes", "idempotencyHours", "terrainRadius", "notify");
     /** The relay client's keys share the table and are read by {@link EditorRelaySettings}. */
     public static final List<String> RELAY_FIELDS = List.of("relayEnabled", "relayUrl", "relayReconnectMinSeconds", "relayReconnectMaxSeconds", "relayFrameBytes",
             "relayConcurrentRequests");
     private static final Set<String> LOOPBACK = Set.of("127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1");
     public static final EditorSettings DEFAULT = new EditorSettings(true, "https://animus-editor.web.app", true, "127.0.0.1", 9797, "", "", "",
             List.of("https://animus-editor.web.app", "https://animus-editor.firebaseapp.com"),
-            7, 30, 4 * 1024 * 1024, 16 * 1024 * 1024, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24, EditorNotifySettings.DEFAULT);
+            7, 30, 4 * 1024 * 1024, 16 * 1024 * 1024, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24, 160, EditorNotifySettings.DEFAULT);
 
     public EditorSettings {
         url("editorUrl", editorUrl, Set.of("https", "http"));
@@ -61,6 +61,7 @@ public record EditorSettings(boolean enabled, String editorUrl, boolean listener
         require("npcsPerPreview", npcsPerPreview, 1, 64);
         require("previewMinutes", previewMinutes, 1, 120);
         require("idempotencyHours", idempotencyHours, 1, 168);
+        require("terrainRadius", terrainRadius, 0, 1024);
         java.util.Objects.requireNonNull(notices);
     }
 
@@ -79,7 +80,8 @@ public record EditorSettings(boolean enabled, String editorUrl, boolean listener
                 integer(table, "requestsPerSecond", d.requestsPerSecond), integer(table, "pairAttemptsPerMinute", d.pairAttemptsPerMinute),
                 integer(table, "openConnections", d.openConnections), integer(table, "eventFramesPerSecond", d.eventFramesPerSecond),
                 integer(table, "previewsPerServer", d.previewsPerServer), integer(table, "npcsPerPreview", d.npcsPerPreview),
-                integer(table, "previewMinutes", d.previewMinutes), integer(table, "idempotencyHours", d.idempotencyHours), notices(table, d.notices));
+                integer(table, "previewMinutes", d.previewMinutes), integer(table, "idempotencyHours", d.idempotencyHours),
+                integer(table, "terrainRadius", d.terrainRadius), notices(table, d.notices));
     }
 
     /** The table written into a new config.toml. */
@@ -110,6 +112,7 @@ public record EditorSettings(boolean enabled, String editorUrl, boolean listener
         table.addProperty("npcsPerPreview", npcsPerPreview);
         table.addProperty("previewMinutes", previewMinutes);
         table.addProperty("idempotencyHours", idempotencyHours);
+        table.addProperty("terrainRadius", terrainRadius);
         table.add("notify", notices.toJson());
         return table;
     }

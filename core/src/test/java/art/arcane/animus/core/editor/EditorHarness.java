@@ -64,6 +64,7 @@ final class EditorHarness implements AutoCloseable {
         boolean online = true, previews = true, rejectFiles;
         Admin admin = Admin.ADMIN;
         List<String> activation = List.of(), reloadProblems = List.of();
+        volatile EditorTerrain terrain;
 
         @Override public String platform() { return "paper"; }
 
@@ -120,6 +121,8 @@ final class EditorHarness implements AutoCloseable {
         }
 
         @Override public String previewsUnavailable() { return "not built for this platform"; }
+
+        @Override public Optional<EditorTerrain> terrain() { return Optional.ofNullable(terrain); }
     }
 
     final Path root;

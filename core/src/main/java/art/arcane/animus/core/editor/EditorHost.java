@@ -81,6 +81,9 @@ public interface EditorHost {
 
     String previewsUnavailable();
 
+    /** Loaded-chunk reads for {@code GET /v1/terrain/...}, or empty when the platform has none. */
+    default Optional<EditorTerrain> terrain() { return Optional.empty(); }
+
     /** Shows candidate NPCs to one player only. */
     interface PreviewPresenter {
         /**

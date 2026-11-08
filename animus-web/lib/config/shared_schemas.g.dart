@@ -110,6 +110,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {"method": "POST", "path": "/v1/imports/{importId}/rollback", "scope": "import", "applyScopes": ["apply:npcs", "apply:behaviors", "apply:gui"], "request": null, "responses": {"200": "import-review", "409": "error-response"}},
     {"method": "POST", "path": "/v1/npcs/{id}/spawn", "scope": "spawn", "request": null, "responses": {"200": "spawn-response"}},
     {"method": "POST", "path": "/v1/npcs/{id}/despawn", "scope": "spawn", "request": null, "responses": {"200": "spawn-response"}},
+    {"method": "GET", "path": "/v1/terrain/surface", "scope": "terrain", "query": {"world": "world name", "tx": "tile x, blocks / 64", "tz": "tile z, blocks / 64"}, "headers": ["If-None-Match"], "request": null, "responses": {"200": "terrain-surface-response", "304": null, "400": "error-response", "404": "error-response", "413": "error-response", "504": "error-response"}},
+    {"method": "GET", "path": "/v1/terrain/blocks", "scope": "terrain", "query": {"world": "world name", "cx": "chunk x", "cz": "chunk z", "y": "lowest layer", "height": "1 to 64 layers"}, "headers": ["If-None-Match"], "request": null, "responses": {"200": "terrain-blocks-response", "304": null, "400": "error-response", "404": "error-response", "413": "error-response", "504": "error-response"}},
     {"method": "WS", "path": "/v1/events", "scope": "read", "request": "event-auth", "responses": {"frame": "event"}}
   ],
   "errorStatus": {
@@ -142,7 +144,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "linkTemplate": "https://animus-editor.web.app/#/pair/{code}",
     "secretMinutes": 10,
     "defaultTokenDays": 7,
-    "defaultScopes": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs"],
+    "defaultScopes": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs", "terrain"],
     "tokenRecheckSeconds": 60
   },
   "limits": {
@@ -158,6 +160,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "npcsPerPreview": 64,
     "previewMinutes": 15,
     "idempotencyHours": 24,
+    "terrainRadius": 160,
+    "terrainBodyBytes": 524288,
     "relayFrameBytes": 1048576,
     "relayMessagesPerSecond": 120,
     "relayPendingRequests": 64,
@@ -188,7 +192,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   "description": "Request, response, change-set, diagnostic, event and relay envelopes for /animus/v1. Each $defs entry is one message; schema/editor-v1.endpoints.json maps methods and paths to them. All bodies are UTF-8 JSON objects. Unknown fields in responses are ignored by clients; servers refuse unknown fields in requests.",
   "$defs": {
     "protocol": {"const": 1},
-    "scope": {"enum": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs", "import", "spawn", "admin"]},
+    "scope": {"enum": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs", "import", "spawn", "terrain", "admin"]},
     "kind": {
       "enum": ["npc", "route", "recording", "skin", "group", "behavior", "pack", "shop", "inventory", "menu", "hologram", "text-animation", "presets", "rig", "animation", "server-behaviors"],
       "description": "Document kinds. Folders and apply scopes are listed in editor-v1.endpoints.json."
@@ -336,6 +340,44 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           }
         },
         "modules": {"type": "array", "items": {"type": "object", "required": ["id", "status"], "properties": {"id": {"type": "string"}, "status": {"type": "string"}}}}
+      }
+    },
+    "terrain-surface-response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["world", "tx", "tz", "size", "minY", "maxY", "hash", "chunks", "palette", "heights", "blocks", "water"],
+      "description": "GET /v1/terrain/surface: the top block of every column of a 64 by 64 tile, x from tx * 64 and z from tz * 64. Cells index z * 64 + x. Served with ETag set to the hash; If-None-Match with the same hash answers 304 without a body.",
+      "properties": {
+        "world": {"type": "string", "minLength": 1, "maxLength": 256, "description": "The world as asked."},
+        "tx": {"type": "integer"},
+        "tz": {"type": "integer"},
+        "size": {"const": 64},
+        "minY": {"type": "integer", "description": "The world's lowest block y."},
+        "maxY": {"type": "integer", "description": "One above the world's highest block y."},
+        "hash": {"$ref": "#/$defs/hash"},
+        "chunks": {"type": "array", "minItems": 16, "maxItems": 16, "items": {"enum": ["ok", "unloaded", "forbidden"]}, "description": "Per chunk, index (cz - tz * 4) * 4 + (cx - tx * 4). unloaded: the server does not hold it and never loads it for the editor. forbidden: farther than [editor] terrainRadius from every NPC the token may see."},
+        "palette": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"}, "description": "Block ids without state properties; index 0 is minecraft:air."},
+        "heights": {"type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$", "description": "Int16 little-endian per cell: y of the highest non-air block, -32768 when unknown."},
+        "blocks": {"type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$", "description": "Uint16 little-endian per cell: palette index of that block, 0 when unknown."},
+        "water": {"type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$", "description": "Uint8 per cell: how many water or waterlogged blocks run down from the top, 0 when dry."}
+      }
+    },
+    "terrain-blocks-response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["world", "cx", "cz", "y", "height", "status", "hash", "palette", "bits", "data"],
+      "description": "GET /v1/terrain/blocks: block states of one chunk from y up height layers, clipped to the world. Index ((y' - y) * 16 + z) * 16 + x. Served with ETag set to the hash; If-None-Match with the same hash answers 304 without a body.",
+      "properties": {
+        "world": {"type": "string", "minLength": 1, "maxLength": 256},
+        "cx": {"type": "integer"},
+        "cz": {"type": "integer"},
+        "y": {"type": "integer"},
+        "height": {"type": "integer", "minimum": 1, "maximum": 64},
+        "status": {"enum": ["ok", "unloaded", "forbidden"]},
+        "hash": {"$ref": "#/$defs/hash"},
+        "palette": {"type": "array", "minItems": 1, "maxItems": 4096, "items": {"type": "string", "minLength": 1}, "description": "Block states, namespace:id with [key=value,...] sorted by key. A slice that is not ok is [minecraft:air]."},
+        "bits": {"type": "integer", "minimum": 0, "maximum": 12, "description": "Bits per index; 0 when the palette has one entry."},
+        "data": {"type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$", "description": "Palette indices as an LSB-first bitstream, bits per index, entries running across bytes."}
       }
     },
     "lookups-response": {

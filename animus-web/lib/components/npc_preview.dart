@@ -1,7 +1,8 @@
 /// The NPC document's Preview: the 3D stage showing the definition's body,
 /// pose, skin, equipment, text and the rig it names (with its animations
 /// playable), with the skin controls and a readout of what the stage cannot
-/// show. It is drawn in the browser; no server takes part.
+/// show. It is drawn in the browser; with a paired server that shares
+/// terrain, the blocks around the NPC replace the grass patch.
 library;
 
 import 'dart:convert';
@@ -30,6 +31,7 @@ import '../services/skin_textures.dart';
 import 'gui/gui_fields.dart';
 import 'mc/mc_asset_loader.dart';
 import 'mc/mc_stage.dart';
+import 'terrain/stage_terrain.dart';
 
 class NpcPreview extends StatefulWidget {
   const NpcPreview({
@@ -77,6 +79,11 @@ class _NpcPreviewState extends State<NpcPreview> {
   bool _playing = false;
   double? _lastFrame;
   bool _backToIdle = false;
+  late final StageTerrain _terrain = StageTerrain(() {
+    if (!mounted) return;
+    setState(() {});
+    _sync();
+  });
 
   NpcLook get _look {
     final Object? json = component.document.json;
@@ -152,6 +159,7 @@ class _NpcPreviewState extends State<NpcPreview> {
   @override
   void dispose() {
     _playing = false;
+    _terrain.dispose();
     super.dispose();
   }
 
@@ -163,8 +171,10 @@ class _NpcPreviewState extends State<NpcPreview> {
     final NpcSkinChoice skin = _skinFor(look);
     final JsonMap? route = _showRoute ? component.route : null;
     final AnimusDocument? rig = component.rig;
+    final JsonMap position = asMap(asMap(component.document.json)['position']);
+    _terrain.show(asString(position['world']), asDouble(position['x']) ?? 0, asDouble(position['y']) ?? 0, asDouble(position['z']) ?? 0);
     final String signature = '${component.document.source}|${skin.textureId}|${skin.slim}|${route == null ? '' : jsonEncode(route)}'
-        '|${rig?.source.hashCode}|$_animation|$_tick';
+        '|${rig?.source.hashCode}|$_animation|$_tick|${identityHashCode(_terrain.result)}|${_terrain.on}';
     if (signature == _shown && !frame) return;
     _shown = signature;
     final Object? rigJson = rig?.json;
@@ -177,11 +187,10 @@ class _NpcPreviewState extends State<NpcPreview> {
       resources: component.resources,
       textureId: _texture,
     );
-    final JsonMap position = asMap(asMap(component.document.json)['position']);
     final NpcScene scene = _scene = route == null
         ? body
         : withRoute(body, RouteSpec(route), (asDouble(position['x']) ?? 0, asDouble(position['y']) ?? 0, asDouble(position['z']) ?? 0));
-    _stage.show(scene.scene, scene.texts, yawDeg: look.yawDeg, frame: frame);
+    _stage.show(_terrain.apply(scene.scene), scene.texts, yawDeg: look.yawDeg, frame: frame);
   }
 
   /// Fetches a signed skin's texture once its document is here, and redraws
@@ -253,12 +262,13 @@ class _NpcPreviewState extends State<NpcPreview> {
     final NpcSkinInfo? info = _skinInfo;
     final LoadedSkin? loaded = _loaded(look);
     final bool slim = _slim;
-    return dom.section(classes: 'animus-panel animus-npc-preview', <Widget>[
+    return dom.section(classes: 'animus-panel animus-npc-preview', attributes: <String, String>{'data-terrain-meshes': '${_terrain.on ? _terrain.result?.nodes.length ?? 0 : 0}'}, <Widget>[
       const dom.p(classes: 'animus-preview-label', <Widget>[
         Component.text('Browser preview'),
       ]),
       dom.div(classes: 'animus-npc-preview-bar', <Widget>[
         Button.ghost(label: 'Reset view', size: ButtonSize.small, onPressed: _stage.resetCamera),
+        _terrain.controls('npc-preview-terrain-${component.document.id}'),
         if (component.route != null)
           Button(
             label: 'Route',
@@ -324,8 +334,9 @@ class _NpcPreviewState extends State<NpcPreview> {
         ),
         ..._fact('Text', look.textLines.isEmpty ? (look.nativeName ? 'nameplate only' : 'none') : '${look.textLines.length} line${look.textLines.length == 1 ? '' : 's'}'),
       ]),
-      if (scene.notes.isNotEmpty)
+      if (scene.notes.isNotEmpty || _terrain.note != null)
         dom.ul(classes: 'animus-npc-notes', <Widget>[
+          if (_terrain.note != null) dom.li(attributes: const <String, String>{'data-terrain-note': ''}, <Widget>[Component.text(_terrain.note!)]),
           for (final String note in scene.notes) dom.li(<Widget>[Component.text(note)]),
         ]),
     ]);

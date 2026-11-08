@@ -7,6 +7,7 @@ import 'model/server_binding.dart';
 import 'services/browser.dart';
 import 'services/server/server_connection.dart';
 import 'services/server/server_profiles.dart';
+import 'services/terrain/terrain_link.dart';
 import 'state/editor_store.dart';
 import 'state/live_session.dart';
 import 'state/session_owner.dart';
@@ -73,8 +74,12 @@ class _AnimusAppState extends State<AnimusApp> {
     final LiveSession? previous = _session;
     _session = null;
     previous?.dispose();
-    if (serverId == null) return;
+    if (serverId == null) {
+      TerrainLink.detach();
+      return;
+    }
     final ServerConnection connection = component.hub.connection(serverId);
+    TerrainLink.attach(serverId, connection);
     // The tab that owns the server's workspace runs live editing; see StoreOwner.
     final LiveSession session = LiveSession(store: component.store, connection: connection, serverId: serverId, owner: StoreOwner(component.store));
     session.addListener(() {

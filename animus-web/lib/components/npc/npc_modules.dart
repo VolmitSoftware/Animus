@@ -155,6 +155,7 @@ class NavigationEditor extends StatelessWidget {
     required this.onChanged,
     this.recordings = const <String, int?>{},
     this.origin,
+    this.world,
     this.imported = false,
     this.diagnostics = const <Diagnostic>[],
     this.onOpen,
@@ -182,6 +183,9 @@ class NavigationEditor extends StatelessWidget {
 
   /// The NPC's x, y and z.
   final (double, double, double)? origin;
+
+  /// The NPC's world, whose terrain the route grid draws.
+  final String? world;
   final bool imported;
   final List<Diagnostic> diagnostics;
   final void Function(DocumentKind kind, String id)? onOpen;
@@ -327,7 +331,7 @@ class NavigationEditor extends StatelessWidget {
               RouteEditor(value: asMap(routeDocument.json), onChanged: (JsonMap _, JsonMap _) {}, origin: origin, recordings: recordings, readOnly: true),
           ],
         NavigationSource.points => <Widget>[
-            RouteEditor(value: module, origin: origin, path: path, diagnostics: diagnostics, recordings: recordings, onChanged: (JsonMap next, JsonMap from) => onChanged(next, from: from)),
+            RouteEditor(value: module, origin: origin, world: world, path: path, diagnostics: diagnostics, recordings: recordings, onChanged: (JsonMap next, JsonMap from) => onChanged(next, from: from)),
           ],
       },
     ]);

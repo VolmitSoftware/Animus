@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "4d3c2b1a-0f9e-4d8c-8b7a-6a5b4c3d2e1f",
+  "id": "walker",
+  "group": "town",
+  "name": "Walker",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 65,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "animus:navigation": {
+      "enabled": true,
+      "order": "sequence",
+      "points": [
+        {"x": 2, "y": 65, "z": 2},
+        {"x": 12, "y": 65, "z": 0},
+        {"x": 10, "y": 70, "z": -8}
+      ]
+    }
+  }
+}

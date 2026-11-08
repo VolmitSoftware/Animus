@@ -143,19 +143,27 @@ final class McGlRenderer {
     gl.uniform1i(p.uniforms['uTexture'], 0);
     gl.activeTexture(web.WebGL2RenderingContext.TEXTURE0);
 
-    _setDraw(McMat4.identity(), _noOverlay);
-    gl.bindTexture(web.WebGL2RenderingContext.TEXTURE_2D, _blocks.texture);
-    _gl.draw(_ground);
+    if (scene.ground) {
+      _setDraw(McMat4.identity(), _noOverlay);
+      gl.bindTexture(web.WebGL2RenderingContext.TEXTURE_2D, _blocks.texture);
+      _gl.draw(_ground);
+    }
     final McGlow? glow = scene.glow;
     if (glow != null) _outline(glow, projection, widthPx: widthPx, heightPx: heightPx);
 
-    for (final McSceneNode node in scene.nodes) {
-      final _Drawable? d = _nodes[node.key];
-      if (d == null) continue;
-      _setDraw(d.model, d.glint ? _glint : _noOverlay);
-      gl.bindTexture(web.WebGL2RenderingContext.TEXTURE_2D, d.texture.texture);
-      _gl.draw(d.buffer);
+    // Blended terrain (water, stained glass) last, over everything opaque.
+    for (final bool blended in <bool>[false, true]) {
+      if (blended) gl.depthMask(false);
+      for (final McSceneNode node in scene.nodes) {
+        if ((node is McMeshNode && node.translucent) != blended) continue;
+        final _Drawable? d = _nodes[node.key];
+        if (d == null) continue;
+        _setDraw(d.model, d.glint ? _glint : _noOverlay);
+        gl.bindTexture(web.WebGL2RenderingContext.TEXTURE_2D, d.texture.texture);
+        _gl.draw(d.buffer);
+      }
     }
+    gl.depthMask(true);
     return waiting;
   }
 
@@ -318,6 +326,9 @@ final class McGlRenderer {
               .multiply(McMat4.rotationX(-variant.x.toDouble()))
               .multiply(McMat4.translation(-0.5, -0.5, -0.5)));
         });
+        return _Drawable(_gl.upload(mesh), _blocks, node.signature, null);
+      case McMeshNode(:final McMesh mesh):
+        // Terrain meshes are many and short-lived; they skip the mesh cache.
         return _Drawable(_gl.upload(mesh), _blocks, node.signature, null);
       case McModelNode(:final String textureId, :final McResolvedModel model):
         final McGlTexture? texture = _texture(textureId);

@@ -14,10 +14,11 @@ public enum EditorScope {
     APPLY_RIGS("apply:rigs"),
     IMPORT("import"),
     SPAWN("spawn"),
+    TERRAIN("terrain"),
     ADMIN("admin");
 
     /** What /animus web pair grants unless scopes= says otherwise. */
-    public static final List<EditorScope> DEFAULT_PAIRING = List.of(READ, VALIDATE, PREVIEW, APPLY_NPCS, APPLY_BEHAVIORS, APPLY_GUI, APPLY_RIGS);
+    public static final List<EditorScope> DEFAULT_PAIRING = List.of(READ, VALIDATE, PREVIEW, APPLY_NPCS, APPLY_BEHAVIORS, APPLY_GUI, APPLY_RIGS, TERRAIN);
 
     private final String wireName;
 

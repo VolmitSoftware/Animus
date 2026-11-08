@@ -12,6 +12,7 @@ import 'imports.dart';
 import 'messages.dart';
 import 'previews.dart';
 import 'protocol.dart';
+import 'terrain.dart';
 import 'tokens.dart';
 import 'validation.dart';
 
@@ -72,7 +73,8 @@ class FakeApi {
 
   static const Map<String, String> _cors = <String, String>{
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Animus-Counter',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Animus-Counter, If-None-Match',
+    'Access-Control-Expose-Headers': 'ETag',
     'Access-Control-Max-Age': '600',
     'Access-Control-Allow-Private-Network': 'true',
     'Vary': 'Origin',
@@ -233,6 +235,8 @@ class FakeApi {
           'skins' when n == 3 && s[2] == 'texture.png' => _Route('read', false, _skin),
           'changes' when n == 2 => _Route('read', false, _changeStatus),
           'imports' when n == 1 => _Route('import', false, _importStatus),
+          'terrain' when n == 2 && s[1] == 'surface' => _Route('terrain', false, (FakeRequest request, FakeToken token, List<String> _) => fakeTerrainSurface(request, _anchors())),
+          'terrain' when n == 2 && s[1] == 'blocks' => _Route('terrain', false, (FakeRequest request, FakeToken token, List<String> _) => fakeTerrainBlocks(request, _anchors())),
           _ => null,
         };
       case 'POST':
@@ -251,6 +255,24 @@ class FakeApi {
         return s.first == 'previews' && n == 2 ? _Route('preview', false, _endPreview) : null;
       default:
         return null;
+    }
+  }
+
+  /// Where the NPCs stand: terrain is readable within the radius of these.
+  List<FakeAnchor> _anchors() => <FakeAnchor>[
+        for (final StoredDocument document in documents.list(DocumentKind.npc))
+          if (_position(document) case final Map<String, Object?> position
+              when position['world'] is String && position['x'] is num && position['z'] is num)
+            (world: position['world']! as String, x: (position['x']! as num).toDouble(), z: (position['z']! as num).toDouble()),
+      ];
+
+  static Map<String, Object?>? _position(StoredDocument document) {
+    try {
+      final Object? json = jsonDecode(document.content);
+      final Object? position = json is Map<String, Object?> ? json['position'] : null;
+      return position is Map<String, Object?> ? position : null;
+    } on FormatException {
+      return null;
     }
   }
 
@@ -320,6 +342,7 @@ class FakeApi {
         'previews': yes,
         'imports': yes,
         'spawn': yes,
+        'terrain': yes,
         'skins.texture': no('the server does not cache decoded skin textures; the editor loads them from the skin\'s texture URL'),
       },
       'modules': <Object?>[],

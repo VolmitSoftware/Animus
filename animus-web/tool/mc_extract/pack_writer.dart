@@ -8,7 +8,9 @@
 /// animation, of which only frame 0 is packed. Models: every `models/block`,
 /// `models/item` and `items/` definition verbatim, plus every blockstate
 /// reduced to its default variant, in one `models.json`. The manifest records
-/// which item definitions resolve to a sprite fallback.
+/// which item definitions resolve to a sprite fallback. Every blockstate in
+/// full, for drawing terrain (stairs, slabs, fences by their properties),
+/// goes in `blockstates.json`, which only the terrain views fetch.
 ///
 /// Entity textures (rig bodies, armour and saddle layers, the default skins)
 /// are copied under their jar path below `textures/`, keyed by that path
@@ -61,6 +63,7 @@ final class PackWriter {
     _writePng(output, 'blocks.png', blocks.image);
     _writePng(output, 'items.png', items.image);
     File('${output.path}/models.json').writeAsStringSync(jsonEncode(models));
+    File('${output.path}/blockstates.json').writeAsStringSync(jsonEncode(_fullBlockstates()));
 
     final Map<String, String> entityOut = <String, String>{
       for (final String id in entityTextures) id: _copy(output, '$id.png', '$id.png'),
@@ -186,6 +189,14 @@ final class PackWriter {
       },
       'items': folder('items', (String p) => p),
       'blockstates': blockstates,
+    };
+  }
+
+  /// Every blockstate file by key (`oak_stairs`), as the jar has it.
+  Map<String, Object?> _fullBlockstates() {
+    const String statesBase = '$_base/blockstates/';
+    return <String, Object?>{
+      for (final String path in jar.paths(statesBase, '.json')) path.substring(statesBase.length, path.length - 5): jsonDecode(jar.text(path)!),
     };
   }
 

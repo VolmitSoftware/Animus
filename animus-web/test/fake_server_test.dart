@@ -208,7 +208,7 @@ void main() {
     final Reply first = await call('POST', '/animus/v1/pair', body: request);
     expect(first.status, 200);
     expectMessage('pair-response', first.body);
-    expect(first.json['scopes'], <String>['read', 'validate', 'preview', 'apply:npcs', 'apply:behaviors', 'apply:gui', 'apply:rigs']);
+    expect(first.json['scopes'], <String>['read', 'validate', 'preview', 'apply:npcs', 'apply:behaviors', 'apply:gui', 'apply:rigs', 'terrain']);
     final Reply second = await call('POST', '/animus/v1/pair', body: request);
     expect(second.status, 401);
     expectMessage('error-response', second.body);

@@ -5,6 +5,7 @@ library;
 
 import '../assets/mc_display_pose.dart';
 import '../assets/mc_model_resolver.dart';
+import '../mesh/mc_mesh.dart';
 import '../rigs/mc_rig.dart';
 import 'mc_math.dart';
 
@@ -118,8 +119,24 @@ final class McGlow {
   final Set<String> keys;
 }
 
+/// Geometry built outside the renderer (terrain around the NPC), drawn
+/// with the block atlas. [translucent] meshes draw last, blended, without
+/// writing depth.
+final class McMeshNode extends McSceneNode {
+  McMeshNode({required super.key, required this.mesh, required this.meshSignature, this.translucent = false}) : super(transform: McMat4.identity());
+
+  final McMesh mesh;
+
+  /// Decides the mesh: equal signatures are the same geometry.
+  final String meshSignature;
+  final bool translucent;
+
+  @override
+  String get signature => 'mesh:$meshSignature';
+}
+
 final class McScene {
-  McScene(this.nodes, {this.frame = const <McVec3>[], this.glow}) : byKey = <String, McSceneNode>{} {
+  McScene(this.nodes, {this.frame = const <McVec3>[], this.glow, this.ground = true}) : byKey = <String, McSceneNode>{} {
     for (final McSceneNode node in nodes) {
       if (byKey.containsKey(node.key)) {
         throw ArgumentError.value(node.key, 'key', 'duplicate scene node key');
@@ -139,4 +156,6 @@ final class McScene {
 
   /// The glowing outline, or null when nothing glows.
   final McGlow? glow;
+  /// The grass patch under the body; terrain replaces it.
+  final bool ground;
 }

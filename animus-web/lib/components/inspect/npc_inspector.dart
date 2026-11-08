@@ -767,6 +767,7 @@ class _NpcInspectorState extends State<NpcInspector> {
     routes: _documents(DocumentKind.route),
     recordings: routeRecordings(component.workspaceDocuments),
     origin: _origin,
+    world: asString(asMap(_doc['position'])['world']),
     imported: _doc.containsKey('migration'),
     diagnostics: _diagnostics,
     onOpen: component.onOpen,

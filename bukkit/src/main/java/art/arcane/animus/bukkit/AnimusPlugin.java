@@ -259,7 +259,7 @@ public final class AnimusPlugin extends JavaPlugin {
             bindReact();
             director = new AnimusCommandTree(commandServices).director();
             extensions.start();
-            startEditor(modulePlatform);
+            startEditor(modulePlatform, regions);
             getLogger().info("Enabled " + BuildIdentity.VERSION + " on " + getServer().getName() + " " + environment.minecraftVersion() + (replies.isFolia() ? " (Folia regions)" : "")
                     + " in " + (System.nanoTime() - started) / 1_000_000 + "ms | " + runtime.npcs().all().size() + " NPCs | editor " + editorState());
             BukkitOnboarding.start(this, replies, runtime, commands, () -> stopping);
@@ -361,7 +361,7 @@ public final class AnimusPlugin extends JavaPlugin {
     }
 
     /** The web editor API: the embedded listener and the relay client, both off until config.toml enables them. */
-    private void startEditor(Platform modulePlatform) {
+    private void startEditor(Platform modulePlatform, FoliaRegions regions) {
         NpcRuntime<Player, ItemStack> owners = living;
         java.util.function.Supplier<Map<String, EditorHost.Feature>> features = () -> {
             Map<String, EditorHost.Feature> available = new HashMap<>();
@@ -374,7 +374,8 @@ public final class AnimusPlugin extends JavaPlugin {
         };
         EditorService service = new EditorService(runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(runtime, commands, owners, extensions,
                 modulePlatform.name().toLowerCase(Locale.ROOT), "", features, new BukkitLookups(getServer())::read,
-                (Player player) -> player.hasPermission("animus.admin"), new BukkitEditorNotices(this, replies), (String message) -> getLogger().info(message))), (String message) -> getLogger().info(message),
+                (Player player) -> player.hasPermission("animus.admin"), new BukkitEditorNotices(this, replies), (String message) -> getLogger().info(message),
+                new BukkitEditorTerrain(this, regions))), (String message) -> getLogger().info(message),
                 (String message) -> getLogger().warning(message));
         try {
             service.start();

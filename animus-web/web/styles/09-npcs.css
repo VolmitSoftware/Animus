@@ -656,6 +656,18 @@
   stroke-dasharray: 4 3;
 }
 
+/* Surface tiles under the grid: one image pixel per block, kept sharp. */
+.animus-route-terrain {
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+/* A leg the straight walk cannot climb or drops too far on. */
+.animus-route-link.is-steep {
+  stroke: var(--animus-warning);
+  stroke-dasharray: 2 2;
+}
+
 .animus-route-wander {
   fill: color-mix(in srgb, var(--animus-muted) 10%, transparent);
   stroke: var(--animus-muted);
@@ -693,6 +705,12 @@ html.light .animus-route-dot {
   stroke-width: 2px;
 }
 
+/* A point inside a block, below the surface, floating or in water. */
+.animus-route-node.is-flagged .animus-route-dot {
+  stroke: var(--animus-error);
+  stroke-width: 3px;
+}
+
 .animus-route-dot:focus {
   outline: none;
 }
@@ -722,8 +740,16 @@ html.light .animus-route-dot {
 }
 
 .animus-route-legend {
+  display: grid;
+  gap: 0.125rem;
   font-size: 0.75rem;
   color: var(--animus-muted);
+}
+
+.animus-route-3d {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
 }
 
 .animus-route-problems {

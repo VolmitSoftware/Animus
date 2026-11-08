@@ -254,7 +254,7 @@ class EditorApiTest {
     @Test
     void request_overRate_isLimited() throws Exception {
         EditorSettings slow = new EditorSettings(true, EditorSettings.DEFAULT.editorUrl(), false, "127.0.0.1", 9797, "", "", "", EditorSettings.DEFAULT.allowedOrigins(),
-                7, 30, 4096, 16384, 512, 8, 1, 10, 64, 20, 4, 64, 15, 24, art.arcane.animus.core.config.EditorNotifySettings.DEFAULT);
+                7, 30, 4096, 16384, 512, 8, 1, 10, 64, 20, 4, 64, 15, 24, 160, art.arcane.animus.core.config.EditorNotifySettings.DEFAULT);
         try (EditorHarness limited = new EditorHarness(directory.resolve("slow"), slow)) {
             String token = limited.token();
             assertEquals(200, limited.send("GET", "/v1/capabilities", token, null).status());

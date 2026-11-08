@@ -37,6 +37,13 @@ html.light {
   align-items: center;
 }
 
+.animus-terrain-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .animus-npc-skin-url {
   display: flex;
   gap: 0.25rem;

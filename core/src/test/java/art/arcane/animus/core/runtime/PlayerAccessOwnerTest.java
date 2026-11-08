@@ -74,7 +74,7 @@ class PlayerAccessOwnerTest {
                 "test", "", Map::of, () -> EditorHost.Lookups.NONE, (ViewerWatchRaceTest.Player player) -> false, new EditorNoticeChannel() {
                     @Override public Optional<String> name(UUID player) { return Optional.empty(); }
                     @Override public void deliver(EditorNotice notice) {}
-                }, (String line) -> {}));
+                }, (String line) -> {}, null));
         harness.ownerThread = false;
         List<EditorHost.Admin> answers = new ArrayList<>();
 

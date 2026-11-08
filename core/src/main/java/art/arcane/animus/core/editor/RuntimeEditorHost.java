@@ -29,9 +29,9 @@ import java.util.function.Supplier;
  * @param <P> the platform's online player
  */
 public final class RuntimeEditorHost<P> implements EditorHost {
-    /** What the platform passes in. Applied changes reload through the runtime's {@link AnimusRuntime#catalogs()}. */
+    /** What the platform passes in. Applied changes reload through the runtime's {@link AnimusRuntime#catalogs()}; {@code terrain} may be null. */
     public record Parts<P>(AnimusRuntime runtime, Executor files, NpcRuntime<P, ?> living, ExtensionRuntime extensions, String platform, String serverName, Supplier<Map<String, Feature>> features,
-                           Supplier<Lookups> lookups, Predicate<P> admin, EditorNoticeChannel notices, Consumer<String> log) {
+                           Supplier<Lookups> lookups, Predicate<P> admin, EditorNoticeChannel notices, Consumer<String> log, EditorTerrain terrain) {
         public Parts {
             Objects.requireNonNull(runtime); Objects.requireNonNull(files); Objects.requireNonNull(living); Objects.requireNonNull(lookups); Objects.requireNonNull(notices); Objects.requireNonNull(log);
         }
@@ -96,4 +96,6 @@ public final class RuntimeEditorHost<P> implements EditorHost {
     }
 
     @Override public String previewsUnavailable() { return parts.living().status(); }
+
+    @Override public Optional<EditorTerrain> terrain() { return Optional.ofNullable(parts.terrain()); }
 }

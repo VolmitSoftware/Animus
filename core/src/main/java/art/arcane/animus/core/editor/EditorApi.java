@@ -55,7 +55,7 @@ import java.util.function.Supplier;
 public final class EditorApi implements EditorRequestHandler {
     public static final int PROTOCOL = 1;
     private static final Map<String, String> CORS = Map.of("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers", "Authorization, Content-Type, X-Animus-Counter", "Access-Control-Max-Age", "600",
+            "Access-Control-Allow-Headers", "Authorization, Content-Type, X-Animus-Counter, If-None-Match", "Access-Control-Expose-Headers", "ETag", "Access-Control-Max-Age", "600",
             "Access-Control-Allow-Private-Network", "true", "Vary", "Origin");
 
     /** What the API holds. {@code npcs} reaches the live NPC registry for spawn, despawn and imports; {@code importHost} says whether Citizens or Shopkeepers still run. */
@@ -73,6 +73,7 @@ public final class EditorApi implements EditorRequestHandler {
     private final Map<String, AtomicInteger> inFlight = new ConcurrentHashMap<>();
     private final Map<String, double[]> buckets = new ConcurrentHashMap<>();
     private final Map<String, long[]> pairWindows = new ConcurrentHashMap<>();
+    private final EditorTerrainReads terrain = new EditorTerrainReads(this::parts);
 
     public EditorApi(Parts parts) { this.parts = Objects.requireNonNull(parts); }
 
@@ -188,6 +189,8 @@ public final class EditorApi implements EditorRequestHandler {
                 case "skins" -> n == 3 && s[2].equals("texture.png") ? new Route(EditorScope.READ, false, this::skin) : null;
                 case "changes" -> n == 2 ? new Route(EditorScope.READ, false, this::changeStatus) : null;
                 case "imports" -> n == 1 ? new Route(EditorScope.IMPORT, false, this::importStatus) : null;
+                case "terrain" -> n == 2 && s[1].equals("surface") ? new Route(EditorScope.TERRAIN, false, (EditorRequest request, EditorTokens.Token token, String[] path) -> terrain.surface(request, token))
+                        : n == 2 && s[1].equals("blocks") ? new Route(EditorScope.TERRAIN, false, (EditorRequest request, EditorTokens.Token token, String[] path) -> terrain.blocks(request, token)) : null;
                 default -> null;
             };
             case "POST" -> switch (first) {
@@ -329,6 +332,7 @@ public final class EditorApi implements EditorRequestHandler {
         features.put("previews", parts.host().previews().isPresent() ? EditorHost.Feature.yes() : EditorHost.Feature.no(parts.host().previewsUnavailable()));
         features.put("imports", EditorHost.Feature.yes());
         features.put("spawn", EditorHost.Feature.yes());
+        features.put("terrain", terrain.feature());
         features.put("skins.texture", EditorHost.Feature.no("the server does not cache decoded skin textures; the editor loads them from the skin's texture URL"));
         features.putAll(parts.host().features());
         JsonObject body = new JsonObject(), list = new JsonObject();
