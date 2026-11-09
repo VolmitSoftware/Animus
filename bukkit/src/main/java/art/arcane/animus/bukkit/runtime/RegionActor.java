@@ -7,6 +7,7 @@ import art.arcane.animus.core.navigation.MovementSettings;
 import art.arcane.animus.core.runtime.NpcPresentation;
 import art.arcane.animus.core.runtime.DefinitionSpec;
 import art.arcane.animus.core.runtime.PersistedNpcService;
+import art.arcane.animus.core.runtime.RouteRules;
 import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.runtime.DefinitionAuthority;
 import art.arcane.animus.core.runtime.NavigationRefusals;
@@ -212,7 +213,7 @@ final class RegionActor implements RegionOwner.Body {
         doors = new DoorPassage(uuid);
         recordingDoors = new RecordingDoors(uuid);
         RegionNpcRuntime.Geometry geometry = host.geometry(spec.type());
-        state = new VirtualNpcState(uuid, spec.position(), geometry.width() * PersistedNpcService.scale(spec), geometry.height() * PersistedNpcService.scale(spec), PersistedNpcService.maximumHealth(spec));
+        state = new VirtualNpcState(uuid, spec.position(), geometry.width() * RouteRules.scale(spec), geometry.height() * RouteRules.scale(spec), RouteRules.maximumHealth(spec));
         state.spawn();
         configure(desired);
         owner = new RegionOwner(uuid, host.regions, host.budget, 32, 8, this);
@@ -261,7 +262,7 @@ final class RegionActor implements RegionOwner.Body {
                 else if (!host.packets.bonesAvailable()) rigProblem = "display bones are unavailable on this server build";
                 else {
                     List<String> problems = new ArrayList<>();
-                    rig = NpcRig.bind(rigId, catalog, host.geometry(spec.type()).seat(), PersistedNpcService.scale(spec), DefinitionItems::stack, Optional.of(new ItemStack(org.bukkit.Material.AIR)), problems).orElse(null);
+                    rig = NpcRig.bind(rigId, catalog, host.geometry(spec.type()).seat(), RouteRules.scale(spec), DefinitionItems::stack, Optional.of(new ItemStack(org.bukkit.Material.AIR)), problems).orElse(null);
                     if (rig == null) rigProblem = String.join("; ", problems.subList(0, Math.min(3, problems.size())));
                 }
                 if (had || rig != null) appearance++;
@@ -411,7 +412,7 @@ final class RegionActor implements RegionOwner.Body {
         cancelReads();
         host.index.remove(uuid);
         RegionNpcRuntime.Geometry geometry = host.geometry(next.spec().type());
-        state = state.reconfigured(position, geometry.width() * PersistedNpcService.scale(next.spec()), geometry.height() * PersistedNpcService.scale(next.spec()), PersistedNpcService.maximumHealth(next.spec()));
+        state = state.reconfigured(position, geometry.width() * RouteRules.scale(next.spec()), geometry.height() * RouteRules.scale(next.spec()), RouteRules.maximumHealth(next.spec()));
         configure(next);
         error = null;
         if (state.snapshot().active()) host.index.upsert(state.snapshot());
@@ -702,7 +703,7 @@ final class RegionActor implements RegionOwner.Body {
 
     UUID navigate(WorldPosition destination, MovementProfile.Mode requested, double speed) {
         MovementProfile.Mode mode = movement.legMode(requested, null);
-        PersistedNpcService.validateLeg(state.snapshot().position(), destination, mode, speed, hullWidth(), hullHeight());
+        RouteRules.validateLeg(state.snapshot().position(), destination, mode, speed, hullWidth(), hullHeight());
         failWatch("cancelled: replaced by a new route");
         stopRoute("cancelled: replaced by manual route");
         cancelRouteRead();
@@ -966,14 +967,14 @@ final class RegionActor implements RegionOwner.Body {
                         LongLeg.Next next = current.longLeg.planned(planned);
                         if (next == LongLeg.Next.BLOCKED) blockLeg(current, "failed: " + planned.status());
                         else if (next == LongLeg.Next.RETRY) {
-                            current.nextAttempt = turns + PersistedNpcService.REPLAN_BACKOFF_TICKS;
+                            current.nextAttempt = turns + RouteRules.REPLAN_BACKOFF_TICKS;
                             routeStatus(current, "replanning", "attempt " + current.longLeg.attempts() + " after " + planned.status());
                         }
                         else {
                             current.segment = next == LongLeg.Next.SEGMENT;
                             Vec3 end = next == LongLeg.Next.FINAL ? current.goal.point() : planned.path().getLast().point();
                             current.execution = new PathExecution(state.snapshot().position().point(), planned.path(), end, profile(current));
-                            routeStatus(current, "moving", PersistedNpcService.moving(current.segment) + "; region owner");
+                            routeStatus(current, "moving", RouteRules.moving(current.segment) + "; region owner");
                         }
                     }
                 }
@@ -988,8 +989,8 @@ final class RegionActor implements RegionOwner.Body {
         if (current.execution.finished()) { executed(current); return true; }
         PathExecution.Proposal step = current.execution.next(current.styled == null ? current.speed / 20 : current.styled.stepDistance(current.speed)).orElseThrow();
         double height = current.styled == null ? hullHeight() : current.styled.height();
-        int sweep = PersistedNpcService.motionCells(hullWidth(), hullHeight(), step.from().distance(step.to()));
-        int settle = PersistedNpcService.motionCells(hullWidth(), hullHeight(), 0);
+        int sweep = RouteRules.motionCells(hullWidth(), hullHeight(), step.from().distance(step.to()));
+        int settle = RouteRules.motionCells(hullWidth(), hullHeight(), 0);
         int wanted = Math.min(host.navigationSettings().motionCellsPerTick(), sweep + (step.landing() ? settle : 0));
         int granted = host.budget.take(RegionBudget.Kind.MOTION_CELLS, wanted);
         if (granted < wanted) { host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted); return false; }
@@ -1021,7 +1022,7 @@ final class RegionActor implements RegionOwner.Body {
             pose++; setPose(facing, 0, step.onGround());
             if (current.styled != null) styleLook(current.styled.moved(step, spec.appearance().pose(), (Vec3 at, double standing) -> {
                 // Charged to the region's motion cells; with none left the body keeps the look it had.
-                int room = PersistedNpcService.motionCells(hullWidth(), standing, 0), cells = host.budget.take(RegionBudget.Kind.MOTION_CELLS, room);
+                int room = RouteRules.motionCells(hullWidth(), standing, 0), cells = host.budget.take(RegionBudget.Kind.MOTION_CELLS, room);
                 if (cells < room) { host.budget.refund(RegionBudget.Kind.MOTION_CELLS, cells); return lookPose == NpcPose.SWIMMING; }
                 MotionValidator.Result clear = LiveMovementProbe.check(world, owned, at, at, hullWidth(), standing, MotionValidator.Medium.AMPHIBIOUS_AIR, false, room);
                 host.budget.refund(RegionBudget.Kind.MOTION_CELLS, cells - clear.sampledCells());
@@ -1029,7 +1030,7 @@ final class RegionActor implements RegionOwner.Body {
             }));
             doors.passed(step.to(), hullWidth(), host.doors);
             current.progressTurn = turns;
-            routeStatus(current, "moving", PersistedNpcService.moving(current.segment) + "; region owner");
+            routeStatus(current, "moving", RouteRules.moving(current.segment) + "; region owner");
             if (movement.arrived(step.to(), current.goal.point())) arrive(current);
             else if (current.execution.finished()) executed(current);
         }
@@ -1043,7 +1044,7 @@ final class RegionActor implements RegionOwner.Body {
     }
     private void blockedStep(Route current, String reason) {
         if (current.longLeg.blocked() == LongLeg.Next.BLOCKED) { blockLeg(current, reason); return; }
-        current.execution = null; current.segment = false; current.nextAttempt = turns + PersistedNpcService.REPLAN_BACKOFF_TICKS;
+        current.execution = null; current.segment = false; current.nextAttempt = turns + RouteRules.REPLAN_BACKOFF_TICKS;
         routeStatus(current, "replanning", reason);
     }
     /** Terrain blocks the leg for good, or no plan found a way: logged once per NPC with the leg, then the route fails as any failed leg does. */
@@ -1054,8 +1055,8 @@ final class RegionActor implements RegionOwner.Body {
         if (!once || !blockedWarned) {
             if (once) blockedWarned = true;
             boolean terrain = current.longLeg.terrainBlocks();
-            AnimusLog.shared().routine(PersistedNpcService.blockedLegs(terrain), id, PersistedNpcService.blockedLeg(id, current.waypoint, current.origin, current.goal, reason,
-                    current.leg != null && movement.teleportsWhenStuck(), terrain), Optional.of(PersistedNpcService.blockedLegCase(id, current.waypoint, reason)),
+            AnimusLog.shared().routine(RouteRules.blockedLegs(terrain), id, RouteRules.blockedLeg(id, current.waypoint, current.origin, current.goal, reason,
+                    current.leg != null && movement.teleportsWhenStuck(), terrain), Optional.of(RouteRules.blockedLegCase(id, current.waypoint, reason)),
                     host.plugin.getLogger()::warning);
         }
         failLeg(current, reason);
@@ -1152,7 +1153,7 @@ final class RegionActor implements RegionOwner.Body {
         MovementStyle style = settings.styleTo(leg.arrival());
         MovementProfile.Mode mode = movement.legMode(settings.mode(), style);
         if (leg.goal() != null) {
-            try { PersistedNpcService.validateLeg(at, goal, mode, speed, hullWidth(), hullHeight()); }
+            try { RouteRules.validateLeg(at, goal, mode, speed, hullWidth(), hullHeight()); }
             catch (IllegalArgumentException invalid) {
                 if (leg.jittered()) { beginLeg(progress.exact(leg)); return; }
                 navigationStatus = "invalid waypoint " + leg.arrival() + ": " + invalid.getMessage(); failWatch(navigationStatus);
@@ -1272,7 +1273,7 @@ final class RegionActor implements RegionOwner.Body {
         current.plan = null; current.result = null; current.execution = null;
         World world = host.world(current.goal.world());
         // Only terrain this region owns is read; a waypoint elsewhere is used as it is.
-        state.move(world == null ? current.goal : PersistedNpcService.stuckTarget(current.goal, current.mode, hullWidth(), hullHeight(),
+        state.move(world == null ? current.goal : RouteRules.stuckTarget(current.goal, current.mode, hullWidth(), hullHeight(),
                 LiveMovementProbe.owned(world, (int x, int z) -> host.regions.owns(world, x, z, x, z))));
         host.index.upsert(state.snapshot());
         pose++; setPose(yaw, 0, true);
@@ -1329,8 +1330,8 @@ final class RegionActor implements RegionOwner.Body {
     private MovementProfile routeProfile(MovementProfile.Mode mode) { return BodyMobility.forRoute(spec.type(), hullWidth(), hullHeight(), mode); }
     private double bodyWidth() { Hitbox box = state.snapshot().bounds(); return box.max().x() - box.min().x(); }
     private double bodyHeight() { Hitbox box = state.snapshot().bounds(); return box.max().y() - box.min().y(); }
-    double hullWidth() { return PersistedNpcService.hullWidth(bodyWidth()); }
-    double hullHeight() { return PersistedNpcService.hullHeight(bodyHeight()); }
+    double hullWidth() { return RouteRules.hullWidth(bodyWidth()); }
+    double hullHeight() { return RouteRules.hullHeight(bodyHeight()); }
 
     // ---- Recording playback, on the owner, inside the route slot ----
 
@@ -1353,7 +1354,7 @@ final class RegionActor implements RegionOwner.Body {
             return loaded == null ? (int x, int y, int z) -> null : LiveMovementProbe.owned(loaded, (int x, int z) -> host.regions.owns(loaded, x, z, x, z));
         }
         @Override public void walk(RecordingRun run, WorldPosition goal, double speed, long deadline) {
-            PersistedNpcService.validateLeg(state.snapshot().position(), goal, MovementProfile.Mode.WALK, speed, hullWidth(), hullHeight());
+            RouteRules.validateLeg(state.snapshot().position(), goal, MovementProfile.Mode.WALK, speed, hullWidth(), hullHeight());
             cancelPlan();
             route = route(goal, MovementProfile.Mode.WALK, speed, null);
             route.recording = run; route.walk = true; route.progressTurn = turns; route.startTurn = turns; route.deadline = deadline;
@@ -1378,7 +1379,7 @@ final class RegionActor implements RegionOwner.Body {
             WorldPosition goal = new WorldPosition(state.snapshot().position().world(), new Vec3(pose.x(), pose.y(), pose.z()));
             World world = host.world(goal.world());
             // Only terrain this region owns is read; a goal elsewhere is used as it is.
-            state.move(world == null ? goal : PersistedNpcService.stuckTarget(goal, MovementProfile.Mode.WALK, hullWidth(), hullHeight(),
+            state.move(world == null ? goal : RouteRules.stuckTarget(goal, MovementProfile.Mode.WALK, hullWidth(), hullHeight(),
                     LiveMovementProbe.owned(world, (int x, int z) -> host.regions.owns(world, x, z, x, z))));
             host.index.upsert(state.snapshot());
             RegionActor.this.pose++; setPose((float) pose.yaw(), (float) pose.pitch(), true);

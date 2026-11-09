@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.gui;
 
+import art.arcane.animus.bukkit.folia.FoliaRegions;
 import art.arcane.animus.bukkit.BukkitWorldLookup;
 
 import art.arcane.animus.core.platform.MinecraftIds;
@@ -111,11 +112,12 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         Method async = null, scheduler = null, execute = null;
         try { async = org.bukkit.entity.Entity.class.getMethod("teleportAsync", Location.class); }
         catch (NoSuchMethodException spigot) { /* Spigot teleports on the calling thread. */ }
-        try {
-            Class.forName("io.papermc.paper.threadedregions.RegionizedServer");
-            scheduler = org.bukkit.entity.Entity.class.getMethod("getScheduler");
-            execute = Class.forName("io.papermc.paper.threadedregions.scheduler.EntityScheduler").getMethod("execute", org.bukkit.plugin.Plugin.class, Runnable.class, Runnable.class, long.class);
-        } catch (ReflectiveOperationException notFolia) { scheduler = null; execute = null; }
+        if (FoliaRegions.present()) {
+            try {
+                scheduler = org.bukkit.entity.Entity.class.getMethod("getScheduler");
+                execute = Class.forName("io.papermc.paper.threadedregions.scheduler.EntityScheduler").getMethod("execute", org.bukkit.plugin.Plugin.class, Runnable.class, Runnable.class, long.class);
+            } catch (ReflectiveOperationException unbound) { scheduler = null; execute = null; }
+        }
         teleportAsync = async; entityScheduler = scheduler; entityExecute = execute;
         RegionFlags.Binding regions = RegionFlags.bind(server);
         if (regions != null && regions.failure().isPresent()) logger.warning(regions.describe("container shops stay closed"));

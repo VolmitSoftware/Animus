@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.combat;
 
+import art.arcane.animus.bukkit.folia.FoliaRegions;
 import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.bukkit.event.VirtualNpcDamageEvent;
 import art.arcane.animus.bukkit.event.VirtualNpcDamagedByMobEvent;
@@ -68,7 +69,7 @@ public final class BukkitCombatBridge implements Listener, AutoCloseable {
     public BukkitCombatBridge(Plugin plugin, String exactVersion, boolean folia, CombatLimits limits, Protection protection, Defense defense) {
         this.plugin = Objects.requireNonNull(plugin); this.limits = Objects.requireNonNull(limits); this.protection = Objects.requireNonNull(protection);
         this.defense = Objects.requireNonNull(defense);
-        String unavailable = folia || foliaPresent() ? "Combat " + FOLIA_UNAVAILABLE :
+        String unavailable = folia || FoliaRegions.present() ? "Combat " + FOLIA_UNAVAILABLE :
                 !Set.of("26.1.2", "26.2", "26.3").contains(exactVersion) ? "Combat is not validated for " + exactVersion : null;
         NativeMobController adapter = null;
         String mobUnavailable = unavailable;
@@ -324,10 +325,6 @@ public final class BukkitCombatBridge implements Listener, AutoCloseable {
     private static AttackResult rejected(Status status) { return new AttackResult(status, 0, null, null, status.name()); }
     private void requireOwner() { if (!plugin.getServer().isPrimaryThread()) throw new IllegalStateException("Combat requires the owning main thread"); }
     private void requireAvailable() { if (!available()) throw new IllegalStateException(closed ? "Combat bridge closed" : capabilities.unavailableReason()); requireOwner(); }
-    private static boolean foliaPresent() {
-        try { Class.forName("io.papermc.paper.threadedregions.RegionizedServer"); return true; }
-        catch (ClassNotFoundException ignored) { return false; }
-    }
     private void reportFailure(String message, Throwable error) {
         AnimusLog.shared().failure(message, error, plugin.getLogger()::warning, (String line, Throwable trace) -> plugin.getLogger().log(java.util.logging.Level.WARNING, line, trace));
     }

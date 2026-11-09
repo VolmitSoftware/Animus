@@ -25,7 +25,7 @@ public final class RecordingSteps {
     /** The collision cells checking a step of {@code distance} may read. */
     public static int cells(double hullWidth, double hullHeight, double distance) {
         int segments = segments(Math.min(distance, MAXIMUM_STEP));
-        return segments * PersistedNpcService.motionCells(hullWidth, hullHeight, Math.min(distance / segments, MotionValidator.MAX_SEGMENT));
+        return segments * RouteRules.motionCells(hullWidth, hullHeight, Math.min(distance / segments, MotionValidator.MAX_SEGMENT));
     }
 
     /**
@@ -42,7 +42,7 @@ public final class RecordingSteps {
         Vec3 start = from;
         for (int i = 1; i <= segments; i++) {
             Vec3 end = i == segments ? to : from.add(to.subtract(from).multiply((double) i / segments));
-            int budget = PersistedNpcService.motionCells(hullWidth, hullHeight, start.distance(end));
+            int budget = RouteRules.motionCells(hullWidth, hullHeight, start.distance(end));
             MotionValidator.Result result = MotionValidator.check(start, end, hullWidth, hullHeight, medium, support && i == segments, budget, terrain);
             sampled += result.sampledCells();
             if (!result.clear()) return new MotionValidator.Result(result.status(), sampled, result.detail());

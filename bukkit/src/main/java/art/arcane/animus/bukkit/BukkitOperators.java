@@ -18,12 +18,7 @@ final class BukkitOperators implements OperatorChannel {
 
     @Override public void notifyOperators(List<String> lines, boolean sound) {
         List<String> sent = List.copyOf(lines);
-        replies.reply(plugin.getServer().getConsoleSender(), () -> {
-            int refused = 0;
-            for (Player player : List.copyOf(plugin.getServer().getOnlinePlayers()))
-                if (!replies.reply(player, () -> deliver(player, sent, sound))) refused++;
-            if (refused > 0) plugin.getLogger().warning("Hotload could not schedule operator messages for " + refused + " online players");
-        });
+        replies.eachPlayer((Player player) -> deliver(player, sent, sound), "Hotload could not schedule operator messages");
     }
 
     private static void deliver(Player player, List<String> lines, boolean sound) {

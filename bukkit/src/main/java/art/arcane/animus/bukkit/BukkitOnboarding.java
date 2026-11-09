@@ -6,7 +6,6 @@ import art.arcane.animus.core.onboarding.Onboarding;
 import art.arcane.animus.core.text.ChatLine;
 import java.io.IOException;
 import java.lang.reflect.Method;
-import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
@@ -73,10 +72,7 @@ final class BukkitOnboarding implements Listener {
             if (notice.isEmpty()) return;
             plugin.getLogger().info(notice.get());
             ChatLine line = Onboarding.adminNotice(notice.get());
-            replies.reply(plugin.getServer().getConsoleSender(), () -> {
-                for (Player player : List.copyOf(plugin.getServer().getOnlinePlayers()))
-                    replies.reply(player, () -> { if (hears(player) && !stopping.getAsBoolean()) send(player, line); });
-            });
+            replies.eachPlayer((Player player) -> { if (hears(player) && !stopping.getAsBoolean()) send(player, line); }, null);
         }));
     }
 

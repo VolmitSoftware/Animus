@@ -546,15 +546,11 @@ public final class AnimusPlugin extends JavaPlugin {
 
     /** Paper, Folia or Spigot, as {@code /animus status} names the server. */
     private String serverName() {
-        try { Class.forName("io.papermc.paper.threadedregions.RegionizedServer"); return "Folia"; }
-        catch (ClassNotFoundException notFolia) {
-            try { Class.forName("io.papermc.paper.ServerBuildInfo", false, getServer().getClass().getClassLoader()); return "Paper"; }
-            catch (ClassNotFoundException notPaper) { return "Spigot"; }
-        }
+        return switch (modulePlatform()) { case FOLIA -> "Folia"; case PAPER -> "Paper"; default -> "Spigot"; };
     }
 
     private Platform modulePlatform() {
-        if (replies.isFolia()) return Platform.FOLIA;
+        if (FoliaRegions.present()) return Platform.FOLIA;
         try {
             // Public API presence also recognizes servers retaining Paper APIs under another brand.
             Class.forName("io.papermc.paper.ServerBuildInfo", false, getServer().getClass().getClassLoader());

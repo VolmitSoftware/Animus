@@ -178,7 +178,7 @@ final class ModCombat implements AutoCloseable {
         double charge = player.getAttackStrengthScale(.5f);
         net.minecraft.world.phys.Vec3 at = player.position();
         module.engine().playerAttack(npc, new TargetRef(TargetKind.PLAYER, player.getUUID()),
-                new WorldPosition(ModWorldKeys.key(player.level()), new Vec3(at.x(), at.y(), at.z())), base * (.2 + charge * charge * .8));
+                new WorldPosition(ModWorldKeys.key(player.level()), new Vec3(at.x(), at.y(), at.z())), AttackProfile.charged(base, charge));
     }
     /** A real player or mob was hurt by another; guards and allies may respond. */
     void realDamaged(LivingEntity victim, DamageSource source) {

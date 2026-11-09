@@ -111,7 +111,7 @@ final class MountRuntime<P, I> implements AutoCloseable {
         }
         for (String id : next.vehicleOf().keySet()) {
             PersistedNpcService<P, I>.Value value = host.entries.get(id).value;
-            host.cancelRouteRead(value); value.waypoints = null; host.stopRoute(value, "unavailable: this NPC rides " + next.vehicleOf().get(id));
+            host.reads.cancelRoute(value); value.waypoints = null; host.routes.stopRoute(value, "unavailable: this NPC rides " + next.vehicleOf().get(id));
         }
         List<MountRelations.Diagnostic> reported = new ArrayList<>(next.diagnostics());
         reported.removeAll(mounts.diagnostics());
@@ -147,18 +147,18 @@ final class MountRuntime<P, I> implements AutoCloseable {
     }
 
     /** Cosmetic work: dragon wing phases, after every viewer's authoritative work, within what it left. */
-    int updateDragonPhases(PersistedNpcService<P, I>.Viewer viewer, int budget) {
+    int updateDragonPhases(ViewerPresenter<P, I>.Viewer viewer, int budget) {
         if (dragons.isEmpty() || budget <= 0) return 0;
         int sent = 0;
         for (PersistedNpcService<P, I>.Value dragon : dragons) {
             if (sent >= budget) break;
-            PersistedNpcService<P, I>.Presented body = viewer.visible.get(dragon.spec.definition().uuid());
+            ViewerPresenter<P, I>.Presented body = viewer.visible.get(dragon.spec.definition().uuid());
             if (body == null || body.value != dragon || !body.spawnFinished || body.retired || body.sentDragonPhase == dragon.dragonPhase) continue;
-            if (!host.admit(viewer, PresentationPressure.Tier.COSMETIC)) break;
+            if (!host.views.admit(viewer, PresentationPressure.Tier.COSMETIC)) break;
             int phase = dragon.dragonPhase;
             body.sentDragonPhase = phase; sent++;
-            host.handOver(viewer, () -> host.packets.dragonPhase(viewer.player, body.body, phase)).whenComplete((Void nothing, Throwable failure) -> {
-                if (failure != null) host.enqueue(viewer, () -> { if (host.current(viewer) && !body.retired) body.sentDragonPhase = -1; });
+            host.views.handOver(viewer, () -> host.packets.dragonPhase(viewer.player, body.body, phase)).whenComplete((Void nothing, Throwable failure) -> {
+                if (failure != null) host.views.enqueue(viewer, () -> { if (host.views.current(viewer) && !body.retired) body.sentDragonPhase = -1; });
             });
         }
         return sent;
@@ -167,7 +167,7 @@ final class MountRuntime<P, I> implements AutoCloseable {
      * Client passenger lists replace the whole roster and need both IDs known, so they are re-derived from what this viewer
      * has. Authoritative: they share the viewer's packet budget with moves and spawns.
      */
-    int updatePassengers(PersistedNpcService<P, I>.Viewer viewer, int budget) {
+    int updatePassengers(ViewerPresenter<P, I>.Viewer viewer, int budget) {
         // Other clients only know a real rider while vanilla tracks it, and nothing announces that here, so its roster repeats.
         boolean resend = riders.count() > 0 && host.tickNumber % ROSTER_RESEND_TICKS == 0;
         if (budget <= 0 || (!resend && !viewer.rosterDirty && viewer.rosterRevision == revision)) return 0;
@@ -175,7 +175,7 @@ final class MountRuntime<P, I> implements AutoCloseable {
         boolean complete = true;
         // Detach first: the viewer's passenger graph refuses a body that still belongs to another vehicle.
         for (int pass = 0; pass < 2; pass++) {
-            for (PersistedNpcService<P, I>.Presented vehicle : viewer.presentationOrder) {
+            for (ViewerPresenter<P, I>.Presented vehicle : viewer.presentationOrder) {
                 if (!vehicle.spawnFinished || vehicle.retired) continue;
                 List<Integer> roster = roster(viewer, vehicle);
                 boolean changed = !roster.equals(vehicle.sentRoster);
@@ -183,41 +183,41 @@ final class MountRuntime<P, I> implements AutoCloseable {
                 P rider = riders.riderOf(vehicle.body.uuid());
                 boolean reveal = resend && rider != null && rider != viewer.player;
                 if (pass == 0 ? !(changed && detaching) : !(changed || reveal)) continue;
-                if (sent >= budget || !host.admit(viewer, PresentationPressure.Tier.AUTHORITATIVE)) { complete = false; continue; }
-                host.handOver(viewer, () -> sendRoster(viewer, vehicle, rider, false)); sent++;
+                if (sent >= budget || !host.views.admit(viewer, PresentationPressure.Tier.AUTHORITATIVE)) { complete = false; continue; }
+                host.views.handOver(viewer, () -> sendRoster(viewer, vehicle, rider, false)); sent++;
             }
         }
         if (complete) { viewer.rosterDirty = false; viewer.rosterRevision = revision; }
         return sent;
     }
-    private List<PersistedNpcService<P, I>.Presented> virtualPassengers(PersistedNpcService<P, I>.Viewer viewer, PersistedNpcService<P, I>.Presented vehicle) {
+    private List<ViewerPresenter<P, I>.Presented> virtualPassengers(ViewerPresenter<P, I>.Viewer viewer, ViewerPresenter<P, I>.Presented vehicle) {
         List<String> ids = mounts.passengersOf().get(vehicle.value.spec.definition().id());
         if (ids == null) return List.of();
-        List<PersistedNpcService<P, I>.Presented> visible = new ArrayList<>(ids.size());
+        List<ViewerPresenter<P, I>.Presented> visible = new ArrayList<>(ids.size());
         for (String id : ids) {
             PersistedNpcService<P, I>.Entry entry = host.entries.get(id);
-            PersistedNpcService<P, I>.Presented passenger = entry == null || entry.value == null ? null : viewer.visible.get(entry.value.spec.definition().uuid());
+            ViewerPresenter<P, I>.Presented passenger = entry == null || entry.value == null ? null : viewer.visible.get(entry.value.spec.definition().uuid());
             if (passenger != null && passenger.value == entry.value && passenger.spawnFinished && !passenger.retired) visible.add(passenger);
         }
         return visible;
     }
-    private List<Integer> roster(PersistedNpcService<P, I>.Viewer viewer, PersistedNpcService<P, I>.Presented vehicle) {
+    private List<Integer> roster(ViewerPresenter<P, I>.Viewer viewer, ViewerPresenter<P, I>.Presented vehicle) {
         List<Integer> roster = new ArrayList<>();
-        for (PersistedNpcService<P, I>.Presented passenger : virtualPassengers(viewer, vehicle)) roster.add(passenger.body.entityId());
+        for (ViewerPresenter<P, I>.Presented passenger : virtualPassengers(viewer, vehicle)) roster.add(passenger.body.entityId());
         P rider = riders.riderOf(vehicle.body.uuid());
         if (rider != null) roster.add(host.host.entityId(rider));
         return roster;
     }
-    private CompletionStage<Void> sendRoster(PersistedNpcService<P, I>.Viewer viewer, PersistedNpcService<P, I>.Presented vehicle, P rider, boolean authoritative) {
-        List<BodyTransport.Body> bodies = virtualPassengers(viewer, vehicle).stream().map((PersistedNpcService<P, I>.Presented passenger) -> passenger.body).toList();
+    private CompletionStage<Void> sendRoster(ViewerPresenter<P, I>.Viewer viewer, ViewerPresenter<P, I>.Presented vehicle, P rider, boolean authoritative) {
+        List<BodyTransport.Body> bodies = virtualPassengers(viewer, vehicle).stream().map((ViewerPresenter<P, I>.Presented passenger) -> passenger.body).toList();
         List<Integer> roster = new ArrayList<>(bodies.size() + 1);
         for (BodyTransport.Body body : bodies) roster.add(body.entityId());
         if (rider != null) roster.add(host.host.entityId(rider));
         vehicle.sentRoster = List.copyOf(roster);
         return host.packets.passengers(viewer.player, vehicle.body, bodies, rider, authoritative).whenComplete((Void nothing, Throwable failure) -> {
-            if (failure != null) host.enqueue(viewer, () -> {
-                if (!host.current(viewer) || vehicle.retired) return;
-                vehicle.sentRoster = List.of(art.arcane.animus.core.presentation.BodyRules.NO_REAL_RIDER); viewer.rosterDirty = true; host.cosmeticFailed(viewer, "passengers", vehicle.value, failure);
+            if (failure != null) host.views.enqueue(viewer, () -> {
+                if (!host.views.current(viewer) || vehicle.retired) return;
+                vehicle.sentRoster = List.of(art.arcane.animus.core.presentation.BodyRules.NO_REAL_RIDER); viewer.rosterDirty = true; host.views.cosmeticFailed(viewer, "passengers", vehicle.value, failure);
             });
         });
     }
@@ -235,8 +235,8 @@ final class MountRuntime<P, I> implements AutoCloseable {
         @Override public boolean current() { return host.valueCurrent(value); }
         @Override public boolean mounted() { return mounts.vehicleOf().containsKey(id()); }
         @Override public boolean presentedTo(P rider) {
-            PersistedNpcService<P, I>.Viewer viewer = host.viewers.get(host.host.id(rider));
-            PersistedNpcService<P, I>.Presented presented = viewer == null ? null : viewer.visible.get(uuid());
+            ViewerPresenter<P, I>.Viewer viewer = host.views.viewers.get(host.host.id(rider));
+            ViewerPresenter<P, I>.Presented presented = viewer == null ? null : viewer.visible.get(uuid());
             return presented != null && presented.value == value && presented.spawnFinished && !presented.retired;
         }
         @Override public double hullWidth() { return Math.max(PersistedNpcService.moveWidth(value), host.playerWidth()); }
@@ -244,7 +244,7 @@ final class MountRuntime<P, I> implements AutoCloseable {
             return value.seat.riderClearance(PersistedNpcService.moveHeight(value), host.playerSeat().vehicleAttachmentY(), host.playerHeight());
         }
         @Override public MovementProfile body() { return BodyMobility.forBody(value.spec.type(), hullWidth(), hullHeight()); }
-        @Override public void claim() { host.cancelRouteRead(value); value.waypoints = null; host.stopRoute(value, "cancelled: a player is riding"); }
+        @Override public void claim() { host.reads.cancelRoute(value); value.waypoints = null; host.routes.stopRoute(value, "cancelled: a player is riding"); }
         @Override public void released() { value.poseRevision++; }
         @Override public void commit(Vec3 position, float nextYaw) {
             WorldPosition before = value.state.snapshot().position();
@@ -258,18 +258,18 @@ final class MountRuntime<P, I> implements AutoCloseable {
     private final class RiderPresentation implements RiderService.Presentation<P> {
         @Override public BodyTransport.ControlSubscription subscribe(P rider) { return host.packets.subscribeControl(rider); }
         @Override public void attach(P rider, RiderService.Vehicle<P> vehicle, Runnable attached, Consumer<String> failed) {
-            PersistedNpcService<P, I>.Viewer viewer = host.viewers.get(host.host.id(rider));
-            PersistedNpcService<P, I>.Presented presented = viewer == null ? null : viewer.visible.get(vehicle.uuid());
+            ViewerPresenter<P, I>.Viewer viewer = host.views.viewers.get(host.host.id(rider));
+            ViewerPresenter<P, I>.Presented presented = viewer == null ? null : viewer.visible.get(vehicle.uuid());
             if (presented == null) { failed.accept("not presented"); return; }
             revision++;
-            sendRoster(viewer, presented, rider, true).whenComplete((Void nothing, Throwable failure) -> host.enqueue(viewer, () -> {
+            sendRoster(viewer, presented, rider, true).whenComplete((Void nothing, Throwable failure) -> host.views.enqueue(viewer, () -> {
                 if (failure == null) attached.run(); else failed.accept(PersistedNpcService.concise(failure));
             }));
         }
         @Override public void detach(P rider, RiderService.Vehicle<P> vehicle) {
             revision++;
-            for (PersistedNpcService<P, I>.Viewer viewer : host.viewers.values()) {
-                PersistedNpcService<P, I>.Presented presented = viewer.visible.get(vehicle.uuid());
+            for (ViewerPresenter<P, I>.Viewer viewer : host.views.viewers.values()) {
+                ViewerPresenter<P, I>.Presented presented = viewer.visible.get(vehicle.uuid());
                 if (presented != null && presented.spawnFinished && !presented.retired && !presented.sentRoster.isEmpty()) sendRoster(viewer, presented, null, true);
             }
         }

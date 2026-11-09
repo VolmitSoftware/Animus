@@ -24,6 +24,12 @@ public final class FoliaRegions implements RegionScheduler {
     private final Method currentRegion, regionData, regionTick, teleportAsync;
     private final java.util.Map<String, World> worlds = new java.util.concurrent.ConcurrentHashMap<>();
 
+    /** Whether this server runs Folia's regions; the one probe every Folia branch of the plugin asks. */
+    public static boolean present() {
+        try { Class.forName("io.papermc.paper.threadedregions.RegionizedServer"); return true; }
+        catch (ClassNotFoundException notFolia) { return false; }
+    }
+
     public FoliaRegions(Plugin plugin) throws ReflectiveOperationException {
         this.plugin = plugin; server = plugin.getServer();
         Class.forName("io.papermc.paper.threadedregions.RegionizedServer");

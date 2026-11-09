@@ -9,6 +9,7 @@ import org.bukkit.inventory.ItemStack;
 import art.arcane.animus.core.runtime.CombatModule;
 import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.bukkit.combat.BukkitCombatBridge;
+import art.arcane.animus.bukkit.combat.CombatHits;
 import art.arcane.animus.bukkit.combat.BukkitCombatWorld;
 import art.arcane.animus.bukkit.combat.BukkitShots;
 import art.arcane.animus.bukkit.combat.CombatLimits;
@@ -63,7 +64,6 @@ import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.world.EntitiesUnloadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.projectiles.ProjectileSource;
 import org.bukkit.scheduler.BukkitTask;
 
 /**
@@ -201,10 +201,6 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     /** Hiring a bodyguard through this module. Owner thread only. */
     HireDesk.Guarding hireGuarding() { return regions != null && regionUnavailable == null ? regions.combatGuarding() : new CombatGuarding(module); }
 
-    private TargetRef reference(Entity entity) {
-        if (entity instanceof Player) return new TargetRef(TargetKind.PLAYER, entity.getUniqueId());
-        return entity instanceof Mob ? new TargetRef(TargetKind.MOB, entity.getUniqueId()) : null;
-    }
     private void tick() {
         module.tick();
         flights();
@@ -289,10 +285,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     public void playerHit(VirtualNpcInteractionEvent event) {
         if (event.isPreview() || event.getAction() != VirtualNpcInteractionEvent.Action.ATTACK || !module.running() || !module.engine().registered(event.getNpcId())) return;
         Player player = event.getViewer();
-        AttributeInstance attack = player.getAttribute(Attribute.ATTACK_DAMAGE);
-        double base = attack == null ? 1 : attack.getValue();
-        double charge = player.getAttackCooldown();
-        module.engine().playerAttack(event.getNpcId(), new TargetRef(TargetKind.PLAYER, player.getUniqueId()), position(player.getLocation()), base * (.2 + charge * charge * .8));
+        module.engine().playerAttack(event.getNpcId(), new TargetRef(TargetKind.PLAYER, player.getUniqueId()), position(player.getLocation()), CombatHits.attackDamage(player));
     }
     /** A player or mob fired a projectile that can hurt an NPC; it is followed from where it left. */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -331,7 +324,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
         Projectile projectile = event.getEntity();
         if (!world.helper(projectile)) return;
         event.setCancelled(true);
-        TargetRef struck = event.getHitEntity() == null ? null : reference(event.getHitEntity());
+        TargetRef struck = event.getHitEntity() == null ? null : CombatHits.reference(event.getHitEntity());
         if (module.running() && (struck == null || !module.engine().helperHitReal(projectile.getUniqueId(), struck))) module.engine().helperHitBlock(projectile.getUniqueId());
         projectile.remove();
     }
@@ -341,13 +334,8 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     }
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void realDamage(EntityDamageByEntityEvent event) {
-        TargetRef victim = reference(event.getEntity());
-        Entity damager = event.getDamager();
-        if (damager instanceof Projectile projectile) {
-            ProjectileSource shooter = projectile.getShooter();
-            damager = shooter instanceof Entity source ? source : null;
-        }
-        TargetRef attacker = damager == null ? null : reference(damager);
+        TargetRef victim = CombatHits.reference(event.getEntity());
+        TargetRef attacker = CombatHits.attacker(event.getDamager());
         if (victim != null && attacker != null && module.running()) module.engine().realDamaged(victim, attacker);
     }
     /** Chat arrives off the main thread; the engine takes it on its own thread and bounds its queue. */

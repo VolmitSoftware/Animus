@@ -15,7 +15,7 @@ class StuckTargetTest {
     private static MotionValidator.Sampler ground(int top) { return (int x, int y, int z) -> y <= top ? Cell.SOLID : Cell.AIR; }
     private static double feet(double waypointY, int top) {
         WorldPosition goal = new WorldPosition("world", new Vec3(.5, waypointY, .5));
-        return PersistedNpcService.stuckTarget(goal, MovementProfile.Mode.WALK, .6, 1.8, ground(top)).point().y();
+        return RouteRules.stuckTarget(goal, MovementProfile.Mode.WALK, .6, 1.8, ground(top)).point().y();
     }
 
     @Test void aWaypointOnTheGroundOrNamingItKeepsItsFooting() {

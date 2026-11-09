@@ -2,7 +2,7 @@ package art.arcane.animus.core.combat;
 
 import art.arcane.animus.core.config.CombatBudgets;
 import art.arcane.animus.core.navigation.MovementProfile;
-import art.arcane.animus.core.runtime.PersistedNpcService;
+import art.arcane.animus.core.runtime.RouteRules;
 import art.arcane.animus.core.virtual.Hitbox;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.VirtualNpcState;
@@ -66,7 +66,7 @@ class GuardSessionTest {
         }
         @Override public MoveStatus move(UUID npc, WorldPosition goal, double speed) {
             if (random.nextDouble() < busyChance) return MoveStatus.BUSY;
-            try { PersistedNpcService.validateLeg(npcs.get(npc).snapshot().position(), goal, MovementProfile.Mode.WALK, speed, .6, 1.8); }
+            try { RouteRules.validateLeg(npcs.get(npc).snapshot().position(), goal, MovementProfile.Mode.WALK, speed, .6, 1.8); }
             catch (IllegalArgumentException refused) {
                 refusals.put(npc, refused.getMessage());
                 return MoveStatus.REJECTED;

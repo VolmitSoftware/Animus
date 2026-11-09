@@ -3,7 +3,6 @@ package art.arcane.animus.bukkit;
 import art.arcane.animus.core.config.EditorNotifySettings;
 import art.arcane.animus.core.editor.EditorNotice;
 import art.arcane.animus.core.editor.EditorNoticeChannel;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import net.md_5.bungee.api.ChatMessageType;
@@ -34,12 +33,7 @@ final class BukkitEditorNotices implements EditorNoticeChannel {
     }
 
     @Override public void deliver(EditorNotice notice) {
-        replies.reply(plugin.getServer().getConsoleSender(), () -> {
-            int refused = 0;
-            for (Player player : List.copyOf(plugin.getServer().getOnlinePlayers()))
-                if (!replies.reply(player, () -> deliver(player, notice))) refused++;
-            if (refused > 0) plugin.getLogger().warning("Editor notice could not be scheduled for " + refused + " online players");
-        });
+        replies.eachPlayer((Player player) -> deliver(player, notice), "Editor notice could not be scheduled");
     }
 
     private static void deliver(Player player, EditorNotice notice) {

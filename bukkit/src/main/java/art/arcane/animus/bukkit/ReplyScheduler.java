@@ -1,6 +1,9 @@
 package art.arcane.animus.bukkit;
 
+import art.arcane.animus.bukkit.folia.FoliaRegions;
 import java.lang.reflect.*;
+import java.util.List;
+import java.util.function.Consumer;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -13,10 +16,7 @@ final class ReplyScheduler {
     private final Method entityScheduler, entityExecute, globalScheduler, globalExecute;
     ReplyScheduler(JavaPlugin plugin) throws ReflectiveOperationException {
         this.plugin = plugin;
-        boolean regionized;
-        try { Class.forName("io.papermc.paper.threadedregions.RegionizedServer"); regionized = true; }
-        catch (ClassNotFoundException e) { regionized = false; }
-        folia = regionized;
+        folia = FoliaRegions.present();
         if (folia) {
             entityScheduler = Class.forName("org.bukkit.entity.Entity").getMethod("getScheduler");
             entityExecute = Class.forName("io.papermc.paper.threadedregions.scheduler.EntityScheduler")
@@ -27,6 +27,19 @@ final class ReplyScheduler {
         } else { entityScheduler = null; entityExecute = null; globalScheduler = null; globalExecute = null; }
     }
     boolean isFolia() { return folia; }
+
+    /**
+     * From the global owner, runs {@code action} on each online player's owner. A non-null {@code refusal} is logged with
+     * the count of players whose work could not be scheduled.
+     */
+    void eachPlayer(Consumer<Player> action, String refusal) {
+        reply(plugin.getServer().getConsoleSender(), () -> {
+            int refused = 0;
+            for (Player player : List.copyOf(plugin.getServer().getOnlinePlayers()))
+                if (!reply(player, () -> action.accept(player))) refused++;
+            if (refused > 0 && refusal != null) plugin.getLogger().warning(refusal + " for " + refused + " online players");
+        });
+    }
 
     boolean reply(CommandSender sender, Runnable action) {
         if (!plugin.isEnabled()) return false;

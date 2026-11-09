@@ -92,7 +92,7 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
         if (active.isEmpty()) return false;
         Vec3 point = destination.point();
         Hitbox bounds = active.get().state().bounds();
-        double width = PersistedNpcService.hullWidth(bounds.max().x() - bounds.min().x()), height = PersistedNpcService.hullHeight(bounds.max().y() - bounds.min().y());
+        double width = RouteRules.hullWidth(bounds.max().x() - bounds.min().x()), height = RouteRules.hullHeight(bounds.max().y() - bounds.min().y());
         boolean readable = host.worldLoaded(destination.world());
         for (int lift : TELEPORT_LIFTS) {
             WorldPosition spot = new WorldPosition(destination.world(), new Vec3(point.x(), Math.floor(point.y()) + lift, point.z()));
@@ -109,7 +109,7 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
         Optional<NpcRuntime.ActiveNpc> active = living.combatant(npc);
         if (active.isEmpty() || !host.worldLoaded(to.world())) return false;
         Hitbox bounds = active.get().state().bounds();
-        double width = PersistedNpcService.hullWidth(bounds.max().x() - bounds.min().x()), height = PersistedNpcService.hullHeight(bounds.max().y() - bounds.min().y());
+        double width = RouteRules.hullWidth(bounds.max().x() - bounds.min().x()), height = RouteRules.hullHeight(bounds.max().y() - bounds.min().y());
         WorldPosition settled = settle(host.collision(to.world()), width, height, to).orElse(to);
         return relocate(npc, settled);
     }

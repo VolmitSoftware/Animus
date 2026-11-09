@@ -42,7 +42,7 @@ class ReplanBackoffTest {
         int wall = (int) Math.floor(x) + 1;
         harness.terrain = (int cx, int y, int z) -> y < 64 || (cx == wall && y < 67) ? Cell.SOLID : Cell.AIR;
         until(harness, ": replanning;");
-        for (int i = 1; i < PersistedNpcService.REPLAN_BACKOFF_TICKS; i++) {
+        for (int i = 1; i < RouteRules.REPLAN_BACKOFF_TICKS; i++) {
             harness.tick(1);
             String status = harness.service.navigationStatus(NPC);
             assertTrue(status.contains(": replanning;"), "tick " + i + " after the block: " + status);

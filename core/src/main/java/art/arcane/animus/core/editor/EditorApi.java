@@ -24,7 +24,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -82,6 +81,7 @@ public final class EditorApi implements EditorRequestHandler {
     private static final String SHARED_PAIR_WINDOW = "";
     private final Map<String, long[]> pairWindows = new ConcurrentHashMap<>();
     private final EditorTerrainReads terrain = new EditorTerrainReads(this::parts);
+    private final EditorImportRoutes imports = new EditorImportRoutes(this);
 
     public EditorApi(Parts parts) { this.parts = Objects.requireNonNull(parts); }
 
@@ -218,7 +218,7 @@ public final class EditorApi implements EditorRequestHandler {
                 case "documents" -> n >= 3 ? new Route(EditorScope.READ, false, this::document) : null;
                 case "skins" -> n == 3 && s[2].equals("texture.png") ? new Route(EditorScope.READ, false, this::skin) : null;
                 case "changes" -> n == 2 ? new Route(EditorScope.READ, false, this::changeStatus) : null;
-                case "imports" -> n == 1 ? new Route(EditorScope.IMPORT, false, this::importStatus) : null;
+                case "imports" -> n == 1 ? new Route(EditorScope.IMPORT, false, imports::status) : null;
                 case "terrain" -> n == 2 && s[1].equals("surface") ? new Route(EditorScope.TERRAIN, false, (EditorRequest request, EditorTokens.Token token, String[] path) -> terrain.surface(request, token))
                         : n == 2 && s[1].equals("blocks") ? new Route(EditorScope.TERRAIN, false, (EditorRequest request, EditorTokens.Token token, String[] path) -> terrain.blocks(request, token)) : null;
                 default -> null;
@@ -227,9 +227,9 @@ public final class EditorApi implements EditorRequestHandler {
                 case "validate" -> n == 1 ? new Route(EditorScope.VALIDATE, false, this::validate) : null;
                 case "previews" -> n == 1 ? new Route(EditorScope.PREVIEW, false, this::preview) : null;
                 case "changes" -> n == 1 ? new Route(null, true, this::apply) : n == 3 && s[2].equals("undo") ? new Route(null, true, this::undo) : null;
-                case "imports" -> n == 1 ? new Route(EditorScope.IMPORT, false, this::upload)
-                        : n == 2 && s[1].equals("stage") ? new Route(EditorScope.IMPORT, false, this::importStage)
-                        : n == 3 && Set.of("apply", "accept", "rollback").contains(s[2]) ? new Route(EditorScope.IMPORT, false, this::importStep) : null;
+                case "imports" -> n == 1 ? new Route(EditorScope.IMPORT, false, imports::upload)
+                        : n == 2 && s[1].equals("stage") ? new Route(EditorScope.IMPORT, false, imports::stage)
+                        : n == 3 && Set.of("apply", "accept", "rollback").contains(s[2]) ? new Route(EditorScope.IMPORT, false, imports::step) : null;
                 case "npcs" -> n == 3 && (s[2].equals("spawn") || s[2].equals("despawn")) ? new Route(EditorScope.SPAWN, false, this::spawn) : null;
                 default -> null;
             };
@@ -288,13 +288,13 @@ public final class EditorApi implements EditorRequestHandler {
 
     private static CompletionStage<EditorResponse> done(EditorResponse response) { return CompletableFuture.completedFuture(response); }
 
-    @FunctionalInterface private interface FileWork { EditorResponse run() throws EditorError, IOException; }
+    @FunctionalInterface interface FileWork { EditorResponse run() throws EditorError, IOException; }
 
     /**
      * Runs on the shared file lane; a full lane answers busy at once. The token is checked again as the work starts, so a
      * session revoked or expired while its request waited neither reads nor writes.
      */
-    private CompletionStage<EditorResponse> files(EditorTokens.Token token, FileWork work) throws EditorError {
+    CompletionStage<EditorResponse> files(EditorTokens.Token token, FileWork work) throws EditorError {
         CompletableFuture<EditorResponse> result = new CompletableFuture<>();
         try {
             parts.host().files().execute(() -> {
@@ -600,7 +600,7 @@ public final class EditorApi implements EditorRequestHandler {
         return done(EditorReplies.empty(204));
     }
 
-    private void scopes(EditorTokens.Token token, Set<DocumentKind> kinds, List<String> npcIds) throws EditorError {
+    void scopes(EditorTokens.Token token, Set<DocumentKind> kinds, List<String> npcIds) throws EditorError {
         for (DocumentKind kind : kinds)
             if (!token.has(kind.applyScope())) throw new EditorError(EditorError.Code.SCOPE_MISSING, "This token lacks " + kind.applyScope().wireName() + ".");
         for (String id : npcIds) if (id.contains("/")) group(token, DocumentKind.NPC, id);
@@ -648,7 +648,7 @@ public final class EditorApi implements EditorRequestHandler {
     }
 
     /** Records the notice once the reload completes, with the problems it reported. */
-    private void announce(CompletionStage<List<String>> reload, EditorTokens.Token token, EditorNotifySettings.Kind kind, String verb, List<String> documents,
+    void announce(CompletionStage<List<String>> reload, EditorTokens.Token token, EditorNotifySettings.Kind kind, String verb, List<String> documents,
                           Optional<String> transaction) {
         EditorNotices.Who who = EditorNotices.Who.of(token);
         reload.whenComplete((List<String> problems, Throwable failure) -> parts.notices().record(new EditorNotices.Event(kind, who, verb, "", documents, transaction,
@@ -687,182 +687,14 @@ public final class EditorApi implements EditorRequestHandler {
         } catch (EditorError busy) { parts.changes().finished(key); throw busy; }
     }
 
-    /** Kinds an import writes: NPCs and skins, generated behaviors, and the shops and layouts of dtlTraders and Shopkeepers. */
-    private static final Set<DocumentKind> IMPORTED = EnumSet.of(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.BEHAVIOR, DocumentKind.SHOP, DocumentKind.INVENTORY, DocumentKind.SERVER_BEHAVIORS);
-
-    private EditorImports imports() { return new EditorImports(parts.documents().store(), parts.npcs(), parts.importHost()); }
-
-    /** Imports reach every NPC group, so a group-limited token cannot stage or change one. */
-    private static void ungrouped(EditorTokens.Token token) throws EditorError {
-        if (!token.groups().isEmpty()) throw new EditorError(EditorError.Code.GROUP_DENIED, "Imports can reach every NPC group; use a token without groups.");
-    }
-
-    /** {@code GET /v1/imports}: where the import stands. */
-    private CompletionStage<EditorResponse> importStatus(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
-        return files(token, () -> EditorResponse.json(200, imports().status()));
-    }
-
-    /** {@code POST /v1/imports?file=...&name=...}: the file's bytes, or over the relay a base64 JSON string. */
-    private CompletionStage<EditorResponse> upload(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
-        ungrouped(token);
-        Map<String, String> query = EditorReplies.query(request);
-        for (String key : query.keySet()) if (!key.equals("file") && !key.equals("name")) throw EditorMessages.invalid("Unknown query parameter " + key + ".");
-        EditorImports.Upload kind = EditorImports.Upload.parse(query.getOrDefault("file", "citizens"))
-                .orElseThrow(() -> EditorMessages.invalid("file= is citizens, shopkeepers, shopkeepers-config or dtltraders."));
-        Optional<String> name = Optional.ofNullable(query.get("name"));
-        String target = EditorImports.target(kind, name);
-        byte[] upload;
-        try {
-            JsonElement raw = request.body().orElseThrow(() -> EditorMessages.invalid("Upload the file as the request body."));
-            if (!raw.isJsonPrimitive() || !raw.getAsJsonPrimitive().isString()) throw EditorMessages.invalid("The upload is the file's bytes, or over the relay a base64 JSON string.");
-            upload = Base64.getDecoder().decode(raw.getAsString());
-        } catch (IllegalArgumentException invalid) { throw EditorMessages.invalid("The upload is not base64."); }
-        if (upload.length == 0) throw EditorMessages.invalid("The uploaded file is empty.");
-        if (upload.length > parts.settings().importBodyBytes()) throw new EditorError(EditorError.Code.TOO_LARGE, "Imports are limited to " + parts.settings().importBodyBytes() + " bytes.");
-        byte[] bytes = upload;
-        return files(token, () -> {
-            try {
-                JsonObject review = imports().upload(kind, name, bytes);
-                audit("import-upload", Optional.of(token.id()), token.admin(), request, List.of(target), "uploaded");
-                return EditorResponse.json(200, review);
-            } catch (EditorError refused) {
-                audit("import-upload", Optional.of(token.id()), token.admin(), request, List.of(target), refused.code().wireName());
-                throw refused;
-            }
-        });
-    }
-
-    /** {@code POST /v1/imports/stage}: converts the uploaded saves and stages one reviewed plan. Nothing is installed. */
-    private CompletionStage<EditorResponse> importStage(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
-        ungrouped(token);
-        JsonObject body = request.body().isPresent() ? EditorMessages.body(request) : new JsonObject();
-        EditorMessages.fields(body, "$", Set.of("mode", "label", "worlds"));
-        String mode = body.has("mode") ? EditorMessages.string(body, "mode", "reject|replace|duplicate", "$.mode") : "reject";
-        Optional<String> label = body.has("label") ? Optional.of(EditorMessages.string(body, "label", "[a-z0-9_-]{1,32}", "$.label")) : Optional.empty();
-        if (mode.equals("duplicate") != label.isPresent()) throw EditorMessages.invalid("$.label: a duplicate import needs a copy label, and only a duplicate takes one.");
-        Map<String, String> worlds = new LinkedHashMap<>();
-        if (body.has("worlds")) {
-            if (!body.get("worlds").isJsonObject()) throw EditorMessages.invalid("$.worlds: expected an object of old world names to new ones.");
-            JsonObject map = body.getAsJsonObject("worlds");
-            if (map.size() > 64) throw EditorMessages.invalid("$.worlds: at most 64 world mappings.");
-            for (String from : map.keySet()) {
-                if (!from.matches("[A-Za-z0-9_.-]{1,64}")) throw EditorMessages.invalid("$.worlds: world names use letters, digits, _, . and -.");
-                worlds.put(from, EditorMessages.string(map, from, "[A-Za-z0-9_.-]{1,64}", "$.worlds." + from));
-            }
-        }
-        return files(token, () -> {
-            try {
-                JsonObject review = imports().stage(mode, label, worlds);
-                audit("import-stage", Optional.of(token.id()), token.admin(), request, staged(review), "staged");
-                return EditorResponse.json(200, review);
-            } catch (EditorError refused) {
-                audit("import-stage", Optional.of(token.id()), token.admin(), request, List.of(), refused.code().wireName());
-                throw refused;
-            }
-        });
-    }
-
-    /** {@code POST /v1/imports/{importId}/apply|accept|rollback}: the drop-in steps, with a catalog event for what changed. */
-    private CompletionStage<EditorResponse> importStep(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
-        String id = segments[1], step = segments[2];
-        if (!id.matches("[a-f0-9]{64}")) throw new EditorError(EditorError.Code.NOT_FOUND, "No staged import " + id + ".");
-        ungrouped(token);
-        scopes(token, IMPORTED, List.of());
-        List<String> categories = new ArrayList<>();
-        if (step.equals("accept")) {
-            JsonObject body = EditorMessages.body(request);
-            EditorMessages.fields(body, "$", Set.of("categories"));
-            if (!body.has("categories") || !body.get("categories").isJsonArray() || body.getAsJsonArray("categories").isEmpty())
-                throw EditorMessages.invalid("$.categories: expected a non-empty array of review categories.");
-            JsonArray list = body.getAsJsonArray("categories");
-            for (int index = 0; index < list.size(); index++) {
-                JsonElement category = list.get(index);
-                if (!category.isJsonPrimitive() || !category.getAsJsonPrimitive().isString()) throw EditorMessages.invalid("$.categories[" + index + "]: expected a string.");
-                categories.add(category.getAsString());
-            }
-        }
-        EditorCommandGuard.requireForImport(token, step, categories, parts.host().commandGrants());
-        return files(token, () -> {
-            Map<String, String> before = hashes();
-            JsonObject review;
-            try {
-                review = switch (step) {
-                    case "apply" -> imports().apply(id);
-                    case "accept" -> imports().accept(id, categories);
-                    default -> imports().rollback(id);
-                };
-            } catch (EditorError refused) {
-                audit("import-" + step, Optional.of(token.id()), token.admin(), request, List.of("import:" + id), refused.code().wireName());
-                throw refused;
-            }
-            List<String> documents = new ArrayList<>(List.of("import:" + id));
-            EditorNotifySettings.Kind kind = step.equals("rollback") ? EditorNotifySettings.Kind.ROLLBACK : EditorNotifySettings.Kind.IMPORT;
-            String verb = step.equals("rollback") ? "rolled back an import of" : step.equals("apply") ? "applied an import of" : "accepted an import of";
-            importPublished(before, hashes(), step.equals("rollback"), token, kind, verb).stream().limit(64).forEach(documents::add);
-            audit("import-" + step, Optional.of(token.id()), token.admin(), request, documents, step.equals("rollback") ? "rolled-back" : step.equals("apply") ? "applied" : "accepted");
-            return EditorResponse.json(200, review);
-        });
-    }
-
-    private static List<String> staged(JsonObject review) {
-        List<String> ids = new ArrayList<>();
-        for (String part : List.of("citizens", "shopkeepers", "dtltraders"))
-            if (review.has(part)) ids.add("import:" + review.getAsJsonObject(part).get("importId").getAsString());
-        return ids;
-    }
-
-    /** Reloads what an import step changed and sends one catalog event; returns the changed documents as {@code kind:id}. */
-    private List<String> importPublished(Map<String, String> before, Map<String, String> after, boolean rollback, EditorTokens.Token token,
-                                         EditorNotifySettings.Kind notice, String verb) throws IOException {
-        JsonArray catalog = new JsonArray(), deleted = new JsonArray();
-        List<String> touched = new ArrayList<>();
-        Set<DocumentKind> kinds = EnumSet.noneOf(DocumentKind.class);
-        for (Map.Entry<String, String> entry : after.entrySet()) {
-            if (entry.getValue().equals(before.get(entry.getKey()))) continue;
-            String[] name = entry.getKey().split("\n", 3);
-            DocumentKind kind = DocumentKind.parse(name[0]).orElseThrow();
-            kinds.add(kind);
-            touched.add(kind.wireName() + ":" + name[1]);
-            catalog.add(EditorChanges.catalogEntry(kind, name[1], name[2], EditorDocuments.revision(parts.documents().store().read(name[2])), entry.getValue()));
-        }
-        for (String key : before.keySet()) {
-            if (after.containsKey(key)) continue;
-            String[] name = key.split("\n", 3);
-            DocumentKind kind = DocumentKind.parse(name[0]).orElseThrow();
-            kinds.add(kind);
-            touched.add(kind.wireName() + ":" + name[1]);
-            JsonObject reference = new JsonObject();
-            reference.addProperty("kind", kind.wireName());
-            reference.addProperty("id", name[1]);
-            deleted.add(reference);
-        }
-        if (kinds.isEmpty()) return touched;
-        announce(parts.host().applied(kinds, removedBehaviors(deleted), rollback), token, notice, verb, touched, Optional.empty());
-        JsonObject event = new JsonObject();
-        event.addProperty("type", "catalog");
-        event.add("documents", catalog);
-        if (!deleted.isEmpty()) event.add("deleted", deleted);
-        parts.events().publish(event);
-        return touched;
-    }
-
     /** Behavior ids among deleted {@code {kind, id}} references; their sources are gone on purpose. */
-    private static Set<String> removedBehaviors(JsonArray deleted) {
+    static Set<String> removedBehaviors(JsonArray deleted) {
         Set<String> removed = new java.util.TreeSet<>();
         for (JsonElement value : deleted) {
             JsonObject reference = value.getAsJsonObject();
             if (reference.get("kind").getAsString().equals(DocumentKind.BEHAVIOR.wireName())) removed.add(reference.get("id").getAsString());
         }
         return removed;
-    }
-
-    private Map<String, String> hashes() throws IOException {
-        Map<String, String> hashes = new HashMap<>();
-        for (EditorDocuments.Location location : parts.documents().list(IMPORTED)) {
-            String content = parts.documents().store().read(location.path());
-            if (content != null) hashes.put(location.kind().wireName() + "\n" + location.id() + "\n" + location.path(), "sha256:" + JsonDocuments.hash(content));
-        }
-        return hashes;
     }
 
     private CompletionStage<EditorResponse> spawn(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
@@ -913,7 +745,7 @@ public final class EditorApi implements EditorRequestHandler {
 
     private static List<String> names(List<EditorMessages.Change> changes) { return changes.stream().map(EditorMessages.Change::name).toList(); }
 
-    private void audit(String event, Optional<String> tokenId, Optional<UUID> admin, EditorRequest request, List<String> documents, String result) {
+    void audit(String event, Optional<String> tokenId, Optional<UUID> admin, EditorRequest request, List<String> documents, String result) {
         try { parts.audit().record(new EditorAudit.Entry(event, tokenId, admin, EditorReplies.address(request), request.method() + " " + request.route(), documents, result)); }
         catch (IOException failure) {
             System.getLogger("Animus").log(System.Logger.Level.WARNING, "Editor audit write failed: " + failure.getMessage());

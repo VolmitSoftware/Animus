@@ -36,6 +36,10 @@ class CommandVocabularyTest {
     private static final Pattern LITERAL = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"");
     private static final List<String> SOURCES = List.of("core/src/main/java/art/arcane/animus/core/admin/Administration.java",
             "core/src/main/java/art/arcane/animus/core/runtime/PersistedNpcService.java", "core/src/main/java/art/arcane/animus/core/runtime/ActivationWarnings.java",
+            "core/src/main/java/art/arcane/animus/core/runtime/RouteNavigator.java", "core/src/main/java/art/arcane/animus/core/runtime/RecordingPlayer.java",
+            "core/src/main/java/art/arcane/animus/core/runtime/DocumentReads.java", "core/src/main/java/art/arcane/animus/core/runtime/ViewerPresenter.java",
+            "core/src/main/java/art/arcane/animus/core/runtime/RigTurns.java", "core/src/main/java/art/arcane/animus/core/runtime/RuntimeReport.java",
+            "core/src/main/java/art/arcane/animus/core/editor/EditorImportRoutes.java",
             "core/src/main/java/art/arcane/animus/core/editor/EditorApi.java", "core/src/main/java/art/arcane/animus/core/editor/RuntimeEditorHost.java",
             "bukkit/src/main/java/art/arcane/animus/bukkit/runtime/RegionNpcRuntime.java");
 

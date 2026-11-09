@@ -2,6 +2,7 @@ package art.arcane.animus.bukkit.runtime;
 
 import art.arcane.animus.core.command.CombatControl;
 import art.arcane.animus.api.Outcome;
+import art.arcane.animus.bukkit.combat.CombatHits;
 import art.arcane.animus.bukkit.combat.BukkitCombatWorld;
 import art.arcane.animus.bukkit.combat.BukkitShots;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
@@ -37,11 +38,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
-import org.bukkit.attribute.Attribute;
-import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
-import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
@@ -57,7 +55,6 @@ import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.world.EntitiesUnloadEvent;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
-import org.bukkit.projectiles.ProjectileSource;
 
 /**
  * The combat module on Folia. Each combat NPC runs its own engine on its owner ({@link ActorCombat}); this class only
@@ -379,9 +376,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
         ActorCombat combat = actor == null || !actor.owner.owned() ? null : actor.combat();
         if (combat == null) return;
         Player player = event.getViewer();
-        AttributeInstance attack = player.getAttribute(Attribute.ATTACK_DAMAGE);
-        double base = attack == null ? 1 : attack.getValue(), charge = player.getAttackCooldown();
-        combat.playerAttack(player, base * (.2 + charge * charge * .8));
+        combat.playerAttack(player, CombatHits.attackDamage(player));
     }
     /** On the projectile's region: the hit is observed here and handed to the NPC that launched it. */
     @EventHandler(priority = EventPriority.LOWEST)
@@ -391,7 +386,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
         event.setCancelled(true);
         RegionActor owner = helperOwner(projectile);
         Entity struck = event.getHitEntity();
-        TargetRef reference = struck == null ? null : reference(struck);
+        TargetRef reference = struck == null ? null : CombatHits.reference(struck);
         CombatTarget observed = reference == null ? null : BukkitCombatWorld.observe(struck, this::helper).orElse(null);
         UUID helper = projectile.getUniqueId();
         projectile.remove();
@@ -461,13 +456,8 @@ public final class RegionCombat implements Listener, AutoCloseable {
     /** On the victim's region. Guards and witnesses hear of it on their own owners. */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void realDamage(EntityDamageByEntityEvent event) {
-        TargetRef victim = reference(event.getEntity());
-        Entity damager = event.getDamager();
-        if (damager instanceof Projectile projectile) {
-            ProjectileSource shooter = projectile.getShooter();
-            damager = shooter instanceof Entity source ? source : null;
-        }
-        TargetRef attacker = damager == null ? null : reference(damager);
+        TargetRef victim = CombatHits.reference(event.getEntity());
+        TargetRef attacker = CombatHits.attacker(event.getDamager());
         if (victim != null && attacker != null) fought(null, attacker, victim, RegionViewer.position(event.getEntity().getLocation()));
     }
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -502,10 +492,6 @@ public final class RegionCombat implements Listener, AutoCloseable {
             UUID helper = entity.getUniqueId();
             if (owner != null) send(owner, "helper", (ActorCombat combat) -> combat.helperGone(helper));
         }
-    }
-    private static TargetRef reference(Entity entity) {
-        if (entity instanceof Player) return new TargetRef(TargetKind.PLAYER, entity.getUniqueId());
-        return entity instanceof Mob ? new TargetRef(TargetKind.MOB, entity.getUniqueId()) : null;
     }
 
     /** Engines and their helpers belong to the NPCs' owners and stop with them; this stops the routing. */
