@@ -203,7 +203,26 @@ public final class DocumentStore implements AutoCloseable {
         return result;
     }
 
-    public synchronized String rollback(String transaction) throws IOException { return commit(inverse(transaction)); }
+    /** Undoes a committed transaction, named by its id or a unique prefix of at least four characters. */
+    public synchronized String rollback(String transaction) throws IOException { return commit(inverse(transaction(transaction))); }
+
+    /** The full id of the committed transaction whose id is or starts with {@code prefix}. */
+    public synchronized String transaction(String prefix) throws IOException {
+        ensureOpen();
+        if (!prefix.matches("[a-f0-9-]{4,36}")) throw new IOException("Invalid transaction ID");
+        List<String> matches = new ArrayList<>();
+        Path backups = root.resolve("backups");
+        if (Files.isDirectory(backups)) try (DirectoryStream<Path> found = Files.newDirectoryStream(backups, prefix + "*.json")) {
+            for (Path receipt : found) {
+                String name = receipt.getFileName().toString();
+                String id = name.substring(0, name.length() - ".json".length());
+                if (id.matches("[a-f0-9-]{36}")) matches.add(id);
+            }
+        }
+        if (matches.isEmpty()) throw new IOException("Unknown transaction: " + prefix);
+        if (matches.size() > 1) throw new IOException("Transaction " + prefix + " matches " + matches.size() + " changes; give more of its id");
+        return matches.getFirst();
+    }
 
     /** The changes that undo a committed transaction, from its rollback receipt. Each expects the transaction's own result, so later edits conflict. */
     public synchronized List<Change> inverse(String transaction) throws IOException {

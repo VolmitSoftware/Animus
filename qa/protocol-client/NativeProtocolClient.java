@@ -366,7 +366,8 @@ public final class NativeProtocolClient {
             if (p.getContainerId() == windowId) windowState = p.getStateId();
             event("container_slot", "container", p.getContainerId(), "state", p.getStateId(), "slot", p.getSlot(),
                     "item", p.getItem().isEmpty() ? "empty" : BuiltInRegistries.ITEM.getKey(p.getItem().getItem()).toString(), "count", p.getItem().getCount(),
-                    "name", p.getItem().isEmpty() ? "" : p.getItem().getHoverName().getString());
+                    "name", p.getItem().isEmpty() ? "" : p.getItem().getHoverName().getString(),
+                    "enchantable", p.getItem().has(net.minecraft.core.component.DataComponents.ENCHANTMENTS));
         } else if (packet instanceof ClientboundContainerClosePacket p) {
             if (p.getContainerId() == windowId) { windowId = 0; windowState = 0; }
             event("container_closed", "container", p.getContainerId());
@@ -380,6 +381,10 @@ public final class NativeProtocolClient {
         item.put("count", stack.getCount());
         // The display name, so a QA scenario finds a GUI button by what the player reads rather than by its slot.
         item.put("name", stack.getHoverName().getString());
+        // Whether an anvil can price the item, and the components its tooltip hides, for checks on toolkit icons and prompts.
+        item.put("enchantable", stack.has(net.minecraft.core.component.DataComponents.ENCHANTMENTS));
+        net.minecraft.world.item.component.TooltipDisplay display = stack.get(net.minecraft.core.component.DataComponents.TOOLTIP_DISPLAY);
+        item.put("hidden", display == null ? List.of() : display.hiddenComponents().stream().map((net.minecraft.core.component.DataComponentType<?> type) -> String.valueOf(BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(type))).sorted().toList());
         return item;
     }
 

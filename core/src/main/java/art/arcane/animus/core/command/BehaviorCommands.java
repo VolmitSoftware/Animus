@@ -31,6 +31,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.function.*;
+import java.util.stream.Collectors;
 
 /**
  * Administrative behavior commands and the owned execution runtime. File work shares the engine lane; no private owner touches a command actor.
@@ -186,7 +187,7 @@ public final class BehaviorCommands implements AutoCloseable {
      */
     private void listed(CommandActor sender,String title,String verb,List<String> rows,int page,String empty,Function<String,String> click){
         if(sender==null||closed.get())return;
-        List<String> bounded=rows.stream().map(BehaviorCommands::boundedLine).toList();
+        List<String> bounded=rows.stream().map(row->Arrays.stream(row.split("\n")).map(BehaviorCommands::boundedLine).collect(Collectors.joining("\n"))).toList();
         if(!sender.reply(()->{if(!closed.get()&&sender.permitted("animus.admin"))CommandGroup.listing(sender,title,"/animus behaviors "+verb,bounded,page,empty,click);}))
             unavailableReplies.incrementAndGet();
     }
@@ -448,21 +449,45 @@ public final class BehaviorCommands implements AutoCloseable {
         long dropped=view.dropped().values().stream().mapToLong(Long::longValue).sum();
         return "Server triggers: "+(view.available()?"AVAILABLE":"UNAVAILABLE | reason="+view.reason())+" | behaviors="+view.behaviors()+" | bindings="+view.bindings()+" | timers="+view.timers()+" | commands="+view.commands()+" | active="+view.active()+" | queued="+view.queued()+" | events="+view.events()+" | started="+view.started()+" | suppressed="+view.suppressed()+" | dropped="+dropped;
     }
-    /** The dispatcher summaries and problems, then one row per NPC binding and per server binding. */
+    /**
+     * The dispatcher summaries and problems, then one row per NPC binding and per server binding, each short enough for
+     * one chat row with its counters on the hover.
+     */
     private List<String> triggerRows(){
-        TriggerDispatcher.Snapshot view=triggers.snapshot();List<String> lines=new ArrayList<>();lines.add("NPC triggers | "+triggerSummary(view).substring("Behavior triggers: ".length()));
-        if(!view.dropped().isEmpty())lines.add("NPC trigger drops | "+new TreeMap<>(view.dropped()));
-        view.diagnostics().forEach(diagnostic->lines.add("NPC trigger problem | "+diagnosticLine("triggers",diagnostic)));
-        List<TriggerDispatcher.Row> npcRows=triggers.rows(0,LISTED);
-        for(TriggerDispatcher.Row row:npcRows)
-            lines.add(row.npcId()+" | behavior="+row.behavior()+" | trigger="+row.trigger()+" | event="+row.event()+" | routine="+row.routine()+" | last-fired="+(row.lastFiredTicksAgo().isPresent()?row.lastFiredTicksAgo().getAsLong()+"t-ago":"never")+" | fired="+row.fired()+" | active="+row.active()+" | queued="+row.queued()+" | suppressed="+row.suppressed()+" | dropped="+row.dropped());
+        TriggerDispatcher.Snapshot view=triggers.snapshot();List<String> lines=new ArrayList<>();
+        long npcDropped=view.dropped().values().stream().mapToLong(Long::longValue).sum();
+        lines.add("NPC triggers | "+(view.available()?counted(view.bindings(),"binding")+also(view.timers(),"timer")+also(view.active(),"running")+also(view.queued(),"queued")+also(npcDropped,"dropped")
+                +"\n"+view.events()+" events, "+view.started()+" started, "+view.suppressed()+" suppressed\n"+counted(view.proximityNpcs(),"NPC")+" watching for players near":"off\n"+view.reason()));
+        if(!view.dropped().isEmpty())lines.add("NPC trigger drops | "+drops(view.dropped()));
+        view.diagnostics().forEach(diagnostic->lines.add("NPC trigger problem | "+diagnostic.message()+"\n"+diagnostic.code()+" at "+diagnostic.field()));
+        for(TriggerDispatcher.Row row:triggers.rows(0,LISTED))
+            lines.add(row.npcId()+" | "+binding(row.behavior(),row.trigger(),row.event())+"\n"+fired(row.fired(),row.lastFiredTicksAgo())+"\nRoutine "+row.routine()+"\n"+row.active()+" running, "+row.queued()+" queued, "+row.suppressed()+" suppressed, "+row.dropped()+" dropped");
         ServerTriggerDispatcher.Snapshot server=servers.snapshot();
-        lines.add("Server triggers | "+serverSummary(server).substring("Server triggers: ".length()));
-        if(!server.dropped().isEmpty())lines.add("Server trigger drops | "+new TreeMap<>(server.dropped()));
-        server.diagnostics().forEach(diagnostic->lines.add("Server trigger problem | "+diagnosticLine("server-triggers",diagnostic)));
+        long serverDropped=server.dropped().values().stream().mapToLong(Long::longValue).sum();
+        lines.add("Server triggers | "+(server.available()?(server.behaviors()==0?"no server behaviors":counted(server.behaviors(),"behavior")+", "+counted(server.bindings(),"binding"))
+                +also(server.timers(),"timer")+also(server.commands(),"command")+also(server.active(),"running")+also(server.queued(),"queued")+also(serverDropped,"dropped")
+                +"\n"+server.events()+" events, "+server.started()+" started, "+server.suppressed()+" suppressed":"off\n"+server.reason()));
+        if(!server.dropped().isEmpty())lines.add("Server trigger drops | "+drops(server.dropped()));
+        server.diagnostics().forEach(diagnostic->lines.add("Server trigger problem | "+diagnostic.message()+"\n"+diagnostic.code()+" at "+diagnostic.field()));
         for(ServerTriggerDispatcher.Row row:servers.rows(0,LISTED))
-            lines.add("server | behavior="+row.behavior()+" | trigger="+row.trigger()+" | event="+row.event()+" | routine="+row.routine()+" | last-fired="+(row.lastFiredTicksAgo().isPresent()?row.lastFiredTicksAgo().getAsLong()+"t-ago":"never")+" | fired="+row.fired()+" | active="+row.active()+" | queued="+row.queued()+" | suppressed="+row.suppressed()+" | dropped="+row.dropped());
+            lines.add("server | "+binding(row.behavior(),row.trigger(),row.event())+"\n"+fired(row.fired(),row.lastFiredTicksAgo())+"\nRoutine "+row.routine()+"\n"+row.active()+" running, "+row.queued()+" queued, "+row.suppressed()+" suppressed, "+row.dropped()+" dropped");
         return lines;
+    }
+    /** {@code town:wave #ask on interaction}; the trigger id is left out when it only repeats the event. */
+    static String binding(String behavior,String trigger,String event){
+        return behavior+(trigger.equals(event)?"":" #"+trigger)+" on "+event;
+    }
+    private static String fired(long fired,OptionalLong ticksAgo){
+        if(fired==0||ticksAgo.isEmpty())return "Never fired";
+        return "Fired "+(fired==1?"once":fired+" times")+", last "+ticksAgo.getAsLong()+(ticksAgo.getAsLong()==1?" tick":" ticks")+" ago";
+    }
+    private static String counted(long count,String noun){return count+" "+noun+(count==1?"":"s");}
+    private static String also(long count,String what){return count==0?"":", "+(what.endsWith("ing")||what.endsWith("ed")?count+" "+what:counted(count,what));}
+    private static String drops(Map<?,Long> dropped){
+        StringBuilder out=new StringBuilder();
+        new TreeMap<>(dropped.entrySet().stream().collect(Collectors.toMap(entry->entry.getKey().toString().toLowerCase(Locale.ROOT).replace('_',' '),Map.Entry::getValue,Long::sum)))
+                .forEach((reason,count)->out.append(out.isEmpty()?"":", ").append(count).append(' ').append(reason));
+        return out.toString();
     }
     /** The dispatcher the platform bridge connects to. While behaviors are disabled it refuses every event. */
     public TriggerDispatcher triggers(){return triggers;}
@@ -481,7 +506,8 @@ public final class BehaviorCommands implements AutoCloseable {
         });return lines;
     }
     static List<String> reloadLines(BehaviorCatalog.Reload result){
-        var snapshot=result.snapshot();List<String> rows=new ArrayList<>();rows.add("Behaviors reload: "+(result.published()?"APPLIED":"REJECTED")+" | generation="+snapshot.generation()+" | documents="+snapshot.entries().size()+" | available="+available(snapshot)+" | invalid="+invalid(snapshot)+" | scanned="+result.scannedDocuments()+" | bytes="+result.scannedBytes());
+        var snapshot=result.snapshot();List<String> rows=new ArrayList<>();long problems=invalid(snapshot);
+        rows.add((result.published()?"Reloaded behaviors: ":"Behaviors not reloaded: ")+available(snapshot)+" of "+snapshot.entries().size()+" available"+(problems==0?"":", "+problems+" invalid")+" (generation "+snapshot.generation()+")");
         appendDiagnostics(rows,result.diagnostics(),snapshot);return rows;
     }
     static List<String> validationLines(BehaviorCatalog.Validation result,Optional<String> only){

@@ -48,9 +48,9 @@ public final class EditorCommands {
             EditorService.PairingLink link = editor.pair(grant);
             String token = link.pairing().tokenId();
             return List.of(ChatLine.success("Pairing link ready; single use, open within " + EditorTokens.PAIRING_LIFETIME.toMinutes() + " minutes").link("Open editor", link.link()),
-                    ChatLine.reply("Token " + token + " | " + String.join(" ", grant.scopes().stream().map(EditorScope::wireName).toList())
-                            + (grant.groups().isEmpty() ? "" : " | groups " + String.join(",", grant.groups()))
-                            + " | expires in " + describe(grant.lifetime())).suggest("Revoke", "/animus editor revoke " + token, "Revoke this token"));
+                    ChatLine.reply("Once paired it may " + String.join(" ", grant.scopes().stream().map(EditorScope::wireName).toList())
+                            + (grant.groups().isEmpty() ? "" : " for groups " + String.join(",", grant.groups()))
+                            + " for " + describe(grant.lifetime())).copy("[Token id]", token, "Click to copy the token id").suggest("Revoke", "/animus editor revoke " + token, "Revoke this token"));
         });
     }
 

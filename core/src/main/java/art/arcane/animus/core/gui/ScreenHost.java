@@ -90,7 +90,7 @@ public interface ScreenHost<P, S> {
 
     /** Whether the player holds the Animus selection wand in the main hand, found by its item marker, not its name. */
     default boolean holdsWand(P player) { return false; }
-    /** Puts a selection wand in the player's inventory, or drops it at their feet when full. False when the platform has none. */
+    /** Gives the player a selection wand, in the inventory or at their feet; Bukkit moves one they already carry to the hand instead. False when the platform has none. */
     default boolean giveWand(P player) { return false; }
     /** One chat line with its click chips; a platform without click text sends the console text. */
     default void chat(P player, art.arcane.animus.core.text.ChatLine line) { message(player, line.console()); }

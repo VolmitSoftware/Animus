@@ -145,6 +145,16 @@ class ShopScreenTest {
         assertEquals(List.of("This shop has nothing you can use."), alex.messages);
     }
 
+    @Test void aShopWithNoEntriesOpensAnEmptyWindowThatSaysSo() {
+        assertTrue(open(parse("{\"schemaVersion\": 1, \"revision\": 1, \"id\": \"town:baker\", \"title\": \"&6Stall\", \"pages\": [{\"name\": \"Main\", \"rows\": 3}]}")));
+        assertEquals(List.of(), alex.messages, "no refusal");
+        assertEquals("Stall", RichText.plain(alex.frame.title()));
+        assertEquals("Nothing here yet", RichText.plain(alex.frame.items().get(13).name().orElseThrow()));
+        assertEquals("No offers have been added to this shop", RichText.plain(alex.frame.items().get(13).lore().getFirst()));
+        click(22, Click.LEFT);
+        assertNull(alex.window);
+    }
+
     @Test void limitLinesShowWhatThePlayerHasUsed() {
         economy.give(alex.id, "100");
         String limited = BAKERY.replace("\"price\": 12,", "\"price\": 12, \"limit\": {\"perPlayer\": 8, \"resetSeconds\": 86400},");

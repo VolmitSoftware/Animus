@@ -18,7 +18,7 @@ import java.util.Optional;
 final class FindScreen<P, S> extends ToolScreen<P, S> {
     static final int MAXIMUM = LIST * 6;
     private final List<Found> found;
-    private Map<String, String> skins = Map.of();
+    private Map<String, NpcItem> skins = Map.of();
 
     record Found(NpcDefinition definition, double distance) {}
 
@@ -27,7 +27,7 @@ final class FindScreen<P, S> extends ToolScreen<P, S> {
         found = nearest(toolkit, viewer.host().pose(viewer.player()));
         List<NpcDefinition> shown = found.stream().map(Found::definition).toList();
         toolkit.later(viewer, (ToolkitFiles ignored) -> new SkinFiles(toolkit.npcs(), toolkit.documents()).worn(shown),
-                (Map<String, String> worn) -> { skins = worn; viewer.refresh(); });
+                (Map<String, NpcItem> worn) -> { skins = worn; viewer.refresh(); });
     }
 
     static List<Found> nearest(Toolkit<?, ?> toolkit, Optional<ScreenHost.Pose> pose) {
@@ -52,7 +52,7 @@ final class FindScreen<P, S> extends ToolScreen<P, S> {
             boolean player = ToolkitFiles.PLAYER.equals(npc.definition().json().get("type").getAsString());
             List<String> lines = List.of("&f" + String.format(Locale.ROOT, "%.1f", npc.distance()) + "&7 blocks away",
                     "&7Folder &f" + (npc.definition().group().isEmpty() ? "npcs/" : npc.definition().group()));
-            NpcItem icon = player ? Optional.ofNullable(skins.get(id)).map(ToolScreen::skinHead).orElse(new NpcItem(HEAD, 1, Optional.empty(), Optional.empty()))
+            NpcItem icon = player ? Optional.ofNullable(skins.get(id)).orElse(new NpcItem(HEAD, 1, Optional.empty(), Optional.empty()))
                     : new NpcItem("minecraft:name_tag", 1, Optional.empty(), Optional.empty());
             button(slot, icon, title(id), lore(lines, hints("teleport to it", "select it", "bring it here")), (GuiModel.Click click) -> {
                 if (sneak(click)) toolkit.bring(viewer, id);

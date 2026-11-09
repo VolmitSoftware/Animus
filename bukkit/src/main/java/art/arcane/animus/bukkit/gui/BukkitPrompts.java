@@ -11,6 +11,7 @@ import java.util.UUID;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
@@ -43,6 +44,7 @@ import org.bukkit.plugin.Plugin;
 final class BukkitPrompts implements Listener {
     static final int INPUT = 0, RESULT = 2;
     private static final String PAPER_CHAT = "io.papermc.paper.event.player.AsyncChatEvent";
+    private static final String UNPRICED = "minecraft:paper[!minecraft:enchantments]";
     private final BiPredicate<Player, Runnable> later;
     private final TextPrompts prompts = new TextPrompts();
 
@@ -99,7 +101,6 @@ final class BukkitPrompts implements Listener {
         prompts.start(player.getUniqueId(), new TextPrompts.Waiting(prompt, TextPrompts.Input.ANVIL, top, owner(player, top)));
         top.setItem(INPUT, paper(prompt.initial()));
         view.setRepairCost(0);
-        player.sendMessage(RichText.colorize(Palette.GREY + prompt.label() + ": edit the name and take the paper; close the anvil to cancel"));
         return true;
     }
 
@@ -174,13 +175,6 @@ final class BukkitPrompts implements Listener {
         String name = event.getView().getRenameText();
         event.setResult(paper(name == null ? waiting.map((TextPrompts.Waiting found) -> found.prompt().initial()).orElse("") : name));
         event.getView().setRepairCost(0);
-        Inventory anvil = event.getInventory();
-        // The client works out a rename cost of its own as the player types; a resend a tick later clears it.
-        later.test(player, () -> {
-            if (!prompts.owns(player.getUniqueId(), anvil) || !(player.getOpenInventory() instanceof AnvilView open)) return;
-            open.setRepairCost(0);
-            player.updateInventory();
-        });
     }
 
     /** The edited name: the anvil's rename text, else the result paper's name. */
@@ -190,9 +184,15 @@ final class BukkitPrompts implements Listener {
         return result != null && result.getItemMeta() != null && result.getItemMeta().hasDisplayName() ? result.getItemMeta().getDisplayName() : "";
     }
 
-    /** A paper named {@code name}; a blank name becomes one space so the anvil's text field starts empty. */
+    /**
+     * A paper named {@code name}; a blank name becomes one space so the anvil's text field starts empty. It carries no
+     * enchantments component, so the client, which prices each rename itself as the player types, finds nothing an anvil
+     * can work on and never shows a cost.
+     */
     static ItemStack paper(String name) {
-        ItemStack paper = new ItemStack(Material.PAPER);
+        ItemStack paper;
+        try { paper = Bukkit.getItemFactory().createItemStack(UNPRICED); }
+        catch (RuntimeException | LinkageError unsupported) { paper = new ItemStack(Material.PAPER); }
         ItemMeta meta = paper.getItemMeta();
         if (meta != null) {
             meta.setDisplayName(name.isBlank() ? " " : name);

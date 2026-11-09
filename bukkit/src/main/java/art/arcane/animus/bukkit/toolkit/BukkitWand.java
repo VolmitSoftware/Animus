@@ -5,6 +5,7 @@ import java.util.Objects;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
@@ -15,6 +16,8 @@ import org.bukkit.persistence.PersistentDataType;
  */
 public final class BukkitWand {
     public static final NamespacedKey KEY = Objects.requireNonNull(NamespacedKey.fromString(Toolkit.MARKER));
+
+    private static final int HOTBAR = 9;
 
     private BukkitWand() {}
 
@@ -37,8 +40,23 @@ public final class BukkitWand {
 
     public static boolean held(Player player) { return is(player.getInventory().getItemInMainHand()); }
 
-    /** Into the inventory, or at the player's feet when it is full. */
+    /**
+     * A wand the player already carries goes to the main hand: on the hotbar by selecting its slot, elsewhere by
+     * swapping it with the held item. Otherwise a new one goes into the inventory, or at the player's feet when full.
+     */
     public static void give(Player player, ItemStack wand) {
-        for (ItemStack left : player.getInventory().addItem(mark(wand)).values()) player.getWorld().dropItemNaturally(player.getLocation(), left);
+        PlayerInventory inventory = player.getInventory();
+        ItemStack[] contents = inventory.getStorageContents();
+        for (int slot = 0; slot < contents.length; slot++) {
+            if (!is(contents[slot])) continue;
+            if (slot < HOTBAR) inventory.setHeldItemSlot(slot);
+            else {
+                ItemStack held = inventory.getItemInMainHand();
+                inventory.setItemInMainHand(contents[slot]);
+                inventory.setItem(slot, held);
+            }
+            return;
+        }
+        for (ItemStack left : inventory.addItem(mark(wand)).values()) player.getWorld().dropItemNaturally(player.getLocation(), left);
     }
 }

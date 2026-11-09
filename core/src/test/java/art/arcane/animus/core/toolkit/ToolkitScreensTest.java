@@ -132,9 +132,9 @@ class ToolkitScreensTest {
         for (ScreenFrame.Item item : alex.frame.items().values()) {
             if (item.item().id().equals(ToolScreen.FILLER)) continue;
             String text = String.join("\n", item.lore().stream().map(RichText::plain).toList());
-            assertTrue(text.contains("Any click ") || text.contains("Left ") && text.contains("Right") && text.contains("neak"), item.name() + " lacks click hints: " + text);
-            List<String> actions = item.lore().stream().map(RichText::plain).filter((String line) -> line.matches("^(Any click|Left|Right|Sneak).*"))
-                    .map((String line) -> line.replaceFirst("^(Any click|Left or right|Left or sneak|Right or sneak|Left|Right|Sneak) ", "")).toList();
+            assertTrue(text.contains("Click: ") || text.contains("Left ") && text.contains("Right") && text.contains("neak"), item.name() + " lacks click hints: " + text);
+            List<String> actions = item.lore().stream().map(RichText::plain).filter((String line) -> line.matches("^(Click:|Left|Right|Sneak).*"))
+                    .map((String line) -> line.replaceFirst("^(Click:|Left or right|Left or sneak|Right or sneak|Left|Right|Sneak) ", "")).toList();
             assertEquals(actions.size(), Set.copyOf(actions).size(), item.name() + " repeats a click hint: " + text);
             buttons++;
         }
@@ -161,7 +161,7 @@ class ToolkitScreensTest {
         click("g149", Click.LEFT);
         drain();
         String line = alex.messages.getLast();
-        assertTrue(line.contains("Assigned g149 to 2 NPCs, 0 unchanged; tx "), line);
+        assertTrue(line.contains("Assigned g149 to 2 NPCs; tx "), line);
         String tx = line.substring(line.indexOf("tx ") + 3, line.indexOf("tx ") + 39);
         assertEquals(List.of("npcs/town/baker.json", "npcs/town/guard.json"), store.paths(tx).stream().filter((String path) -> path.startsWith("npcs/")).sorted().toList());
         assertTrue(lore("g149").contains("In the selection 2 of 2"), lore("g149"));

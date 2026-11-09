@@ -3,10 +3,12 @@ package art.arcane.animus.core.toolkit;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.text.ChatLine;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -14,10 +16,14 @@ import java.util.Set;
 final class GroupMembersScreen<P, S> extends ToolScreen<P, S> {
     static final int SELECT_ALL = 53;
     private final String group;
+    private Map<String, NpcItem> skins = Map.of();
 
     GroupMembersScreen(Toolkit<P, S> toolkit, ScreenManager<P, S>.Viewer viewer, Toolkit.Commands commands, String group) {
         super(toolkit, viewer, commands);
         this.group = group;
+        List<NpcDefinition> members = GroupFiles.members(toolkit.npcs(), group).stream().flatMap((String id) -> toolkit.npcs().find(id).stream()).toList();
+        toolkit.later(viewer, (ToolkitFiles ignored) -> new SkinFiles(toolkit.npcs(), toolkit.documents()).worn(members),
+                (Map<String, NpcItem> worn) -> { skins = worn; viewer.refresh(); });
     }
 
     @Override String title() { return "Members of " + group; }
@@ -32,7 +38,9 @@ final class GroupMembersScreen<P, S> extends ToolScreen<P, S> {
             List<String> lines = new ArrayList<>();
             lines.add("&7Folder &f" + definition.map((NpcDefinition npc) -> npc.group().isEmpty() ? "npcs/" : npc.group()).orElse("?"));
             lines.add(selected.contains(id) ? "&aSelected" : "&7Not selected");
-            button(slot, player ? HEAD : "minecraft:name_tag", title(id), lore(lines, hints("select only it", "remove it from " + group, "add to or remove from the selection")),
+            NpcItem icon = player ? Optional.ofNullable(skins.get(id)).orElse(new NpcItem(HEAD, 1, Optional.empty(), Optional.empty()))
+                    : new NpcItem("minecraft:name_tag", 1, Optional.empty(), Optional.empty());
+            button(slot, icon, title(id), lore(lines, hints("select only it", "remove it from " + group, "add to or remove from the selection")),
                     (GuiModel.Click click) -> {
                         if (sneak(click)) toggle(id);
                         else if (right(click)) toolkit.write(viewer, (ToolkitFiles files) -> files.groups(group, List.of(id), false));

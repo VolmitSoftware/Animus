@@ -58,6 +58,8 @@ public record ShopSettings(boolean enabled, String economy, String style, String
         texts.put("shopMissing", "&cThe shop {shop} is not available.");
         texts.put("shopPermission", "&cYou cannot use this shop.");
         texts.put("noPages", "&cThis shop has nothing you can use.");
+        texts.put("empty", "&7Nothing here yet");
+        texts.put("emptyHint", "&7No offers have been added to this shop");
         texts.put("priceLine", "&7Price: &f{price}");
         texts.put("payLine", "&7Pays: &f{price}");
         texts.put("freeLine", "&7Free");

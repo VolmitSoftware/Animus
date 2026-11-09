@@ -47,14 +47,16 @@ class AnimusHelpTest {
         assertEquals("/animus create ", ((ClickEvent.Payload.Text) click.payload()).value());
         String hover = PLAIN.serialize(hovers(create).getFirst());
         assertTrue(hover.startsWith("create\n✎ Save a new despawned NPC where you stand"), hover);
-        assertTrue(hover.contains("✦ /animus create id=<String>"), hover);
+        assertTrue(hover.contains("✦ " + AnimusDirector.usage(child(root, "create"))), hover);
+        assertFalse(hover.contains("<String>"), "the example names arguments as the list line does: " + hover);
         assertEquals(ClickEvent.Action.RUN_COMMAND, first(MINI.deserialize(AnimusHelp.entry(child(root, "validate")))).action(), "a command without parameters runs on click");
         Component behaviors = MINI.deserialize(AnimusHelp.entry(child(root, "behaviors")));
         assertEquals("/animus behaviors help=1", ((ClickEvent.Payload.Text) first(behaviors).payload()).value());
         assertEquals("⇀ behaviors - Load, run, trace and cancel behaviors", PLAIN.serialize(behaviors), "a group shows its own description");
         DirectorRuntimeNode navigation = child(root, "navigation");
-        assertEquals(DirectorMiniMenu.render(new DirectorMiniMenu.DirectorHelpPage(navigation, List.of(child(navigation, "go")), 0, 1), AnimusDirector.THEME, AnimusDirector.TEXT).get(2),
-                AnimusHelp.entry(child(navigation, "go")), "the line is VolmLib's own");
+        String volmLib = DirectorMiniMenu.render(new DirectorMiniMenu.DirectorHelpPage(navigation, List.of(child(navigation, "go")), 0, 1), AnimusDirector.THEME, AnimusDirector.TEXT).get(2);
+        String ours = AnimusHelp.entry(child(navigation, "go"));
+        assertEquals(volmLib.substring(0, volmLib.indexOf("✦")), ours.substring(0, ours.indexOf("✦")), "the line is VolmLib's own up to its example");
     }
 
     @Test void pagesFitTheChatAndListEveryEntryOnce() {

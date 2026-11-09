@@ -44,9 +44,11 @@ public final class AnimusDirector {
     public static final DirectorMiniMenu.Theme THEME = new DirectorMiniMenu.Theme("#FF5FA8", "#E0408C", "#E0408C", "#555555", "#AAAAAA", "#FF5FA8", "#FFB3D6", "#777777");
     private static final TextKey UNEXPECTED = TextKey.of(DirectorRuntimeMessages.UNEXPECTED_ARGUMENT.id(),
             "Unexpected \"{argument}\"; optional values are key=value, such as page=2");
-    /** Director's English, with Animus's own example for an unkeyed optional value. */
-    public static final DirectorTextResolver TEXT = (TextKey key, MessageArgs arguments) ->
-            DirectorTextResolver.ENGLISH.resolve(key.id().equals(UNEXPECTED.id()) ? UNEXPECTED : key, arguments);
+    /** Director's English, with Animus's own example for an unkeyed optional value and no Java type on a missing argument. */
+    public static final DirectorTextResolver TEXT = (TextKey key, MessageArgs arguments) -> {
+        String text = DirectorTextResolver.ENGLISH.resolve(key.id().equals(UNEXPECTED.id()) ? UNEXPECTED : key, arguments);
+        return key.id().equals(DirectorRuntimeMessages.MISSING_ARGUMENT.id()) ? text.replaceFirst(" \\([^()]*\\)$", "") : text;
+    };
     private static final int SUGGESTIONS = 100;
     private static final Set<String> HELP = Set.of("help", "?");
     private static final ThreadLocal<CommandActor> CURRENT = new ThreadLocal<>();

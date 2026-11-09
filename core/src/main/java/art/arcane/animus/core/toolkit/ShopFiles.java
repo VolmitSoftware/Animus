@@ -31,7 +31,7 @@ import java.util.Set;
  */
 final class ShopFiles {
     /** The kinds the GUI screen lists, in tab order. */
-    static final List<DocumentKind> GUIS = List.of(DocumentKind.INVENTORY, DocumentKind.MENU, DocumentKind.HOLOGRAM, DocumentKind.TEXT_ANIMATION);
+    static final List<DocumentKind> GUIS = List.of(DocumentKind.HOLOGRAM, DocumentKind.INVENTORY, DocumentKind.MENU, DocumentKind.TEXT_ANIMATION);
     static final String VILLAGER = "minecraft:villager";
     private final NpcRepository npcs;
     private final DocumentStore store;
@@ -99,7 +99,7 @@ final class ShopFiles {
             return true;
         });
         if (drafts.isEmpty()) return "Shop " + shop + " already bound";
-        return "Shop " + shop + " on " + ToolkitFiles.count(drafts.size()) + "; tx " + npcs.applyAll(drafts);
+        return "Shop " + shop + " on " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
     }
 
     /**
@@ -121,7 +121,7 @@ final class ShopFiles {
         String shown = value.map((JsonElement next) -> next.isJsonPrimitive() ? next.getAsString() : villager(next)).orElse("the default");
         if (drafts.isEmpty() && skipped[0] == ids.size())
             return field.equals("villager") ? "No selected villager binds " + shop : "No selected NPC binds " + shop;
-        String head = "Shop " + field + " " + shown + " on " + ToolkitFiles.count(drafts.size()) + (skipped[0] == 0 ? "" : ", " + skipped[0] + " skipped");
+        String head = "Shop " + field + " " + shown + " on " + ToolkitFiles.named(drafts) + (skipped[0] == 0 ? "" : ", " + skipped[0] + " skipped");
         return drafts.isEmpty() ? head : head + "; tx " + npcs.applyAll(drafts);
     }
 
@@ -133,7 +133,7 @@ final class ShopFiles {
             return true;
         });
         if (drafts.isEmpty()) return "No selected NPC binds " + shop;
-        return "Unbound " + shop + " from " + ToolkitFiles.count(drafts.size()) + "; tx " + npcs.applyAll(drafts);
+        return "Unbound " + shop + " from " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
     }
 
     /** Writes {@code shops/<namespace>/<path>.json} with one empty page, ready to fill in the web editor. */
@@ -180,7 +180,7 @@ final class ShopFiles {
             return true;
         });
         if (drafts.isEmpty()) return word + " " + id + " already bound";
-        return "Opens " + word + " " + id + " on " + ToolkitFiles.count(drafts.size()) + "; tx " + npcs.applyAll(drafts);
+        return "Opens " + word + " " + id + " on " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
     }
 
     /** Sets which click opens the GUI on every listed NPC whose click opens {@code id}. */
@@ -195,7 +195,7 @@ final class ShopFiles {
             return true;
         });
         if (drafts.isEmpty()) return "Opens on " + openOn + " already, or no selected NPC opens " + id;
-        return "Opens " + id + " on " + openOn + " click for " + ToolkitFiles.count(drafts.size()) + "; tx " + npcs.applyAll(drafts);
+        return "Opens " + id + " on " + openOn + " click for " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
     }
 
     /** Puts the hologram above every listed NPC, replacing the one it had; an NPC already showing it keeps its offset. */
@@ -211,7 +211,16 @@ final class ShopFiles {
             return true;
         });
         if (drafts.isEmpty()) return "Hologram " + id + " already bound";
-        return "Hologram " + id + " on " + ToolkitFiles.count(drafts.size()) + "; tx " + npcs.applyAll(drafts);
+        return "Hologram " + id + " on " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
+    }
+
+    /** {@code offset y 2.5}, or {@code offset x -1, y 2.5}: the axes that move, in blocks. */
+    static String offset(double[] values) {
+        List<String> axes = new ArrayList<>();
+        String[] names = {"x", "y", "z"};
+        for (int axis = 0; axis < 3; axis++)
+            if (values[axis] != 0) axes.add(names[axis] + " " + (values[axis] == Math.rint(values[axis]) ? String.valueOf((long) values[axis]) : String.valueOf(values[axis])));
+        return axes.isEmpty() ? "offset 0" : "offset " + String.join(", ", axes);
     }
 
     /** Sets or, when empty, removes the hologram's offset from the feet on every listed NPC that shows {@code id}. */
@@ -227,9 +236,9 @@ final class ShopFiles {
             put(document, GuiBinding.MODULE, Optional.of(module));
             return true;
         });
-        String shown = offset.map((double[] values) -> values[0] + ", " + values[1] + ", " + values[2]).orElse("above the head");
+        String shown = offset.map(ShopFiles::offset).orElse("above the head");
         if (drafts.isEmpty()) return "Hologram " + id + " already " + shown + ", or no selected NPC shows it";
-        return "Hologram " + id + " at " + shown + " on " + ToolkitFiles.count(drafts.size()) + "; tx " + npcs.applyAll(drafts);
+        return "Hologram " + id + " " + shown + " on " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
     }
 
     /** Removes the GUI from the click or the hologram of every listed NPC that uses {@code id}. */
@@ -244,7 +253,7 @@ final class ShopFiles {
             return true;
         });
         if (drafts.isEmpty()) return "No selected NPC uses " + id;
-        return "Unbound " + id + " from " + ToolkitFiles.count(drafts.size()) + "; tx " + npcs.applyAll(drafts);
+        return "Unbound " + id + " from " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
     }
 
     /** Deletes the GUI file; refused while an NPC, trait group, shop or other GUI uses it. */

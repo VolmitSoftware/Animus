@@ -43,9 +43,9 @@ class TraitGroupCommandsTest {
 
             assertTrue(TraitGroupCommands.change(repository, "watch", TraitGroupCommands.selector(repository, "", "watch", Set.of()), true).equals("Assigned watch to 0 NPCs, 2 unchanged"),
                     "tags are read from the effective definition");
-            assertTrue(TraitGroupCommands.change(repository, "watch", TraitGroupCommands.selector(repository, "", "", Set.of("sailor")), true).startsWith("Assigned watch to 1 NPC, 0 unchanged; tx "));
+            assertTrue(TraitGroupCommands.change(repository, "watch", TraitGroupCommands.selector(repository, "", "", Set.of("sailor")), true).startsWith("Assigned watch to 1 NPC; tx "));
             String unassigned = TraitGroupCommands.change(repository, "watch", TraitGroupCommands.selector(repository, "", "", Set.of("baker", "sailor", "guard")), false);
-            assertTrue(unassigned.startsWith("Unassigned watch from 3 NPCs, 0 unchanged; tx "), unassigned);
+            assertTrue(unassigned.startsWith("Unassigned watch from 3 NPCs; tx "), unassigned);
             assertTrue(repository.find("baker").orElseThrow().groups().isEmpty());
             assertFalse(repository.draft("baker").document().has("groups"));
 

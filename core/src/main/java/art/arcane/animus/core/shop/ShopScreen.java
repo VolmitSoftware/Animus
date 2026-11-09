@@ -51,7 +51,7 @@ public final class ShopScreen<P, S> implements Screen {
     /** One tradable entry and the index of the page it is on. */
     record Offer(ShopDocument.Entry entry, int page) {}
     private record Pending(Offer offer, boolean fullStack) {}
-    private static final int CONFIRM = 11, ITEM = 13, CANCEL = 15;
+    private static final int CONFIRM = 11, ITEM = 13, CANCEL = 15, EMPTY_CLOSE = 22;
 
     private final ShopDocument shop;
     private final ScreenManager<P, S>.Viewer viewer;
@@ -77,13 +77,16 @@ public final class ShopScreen<P, S> implements Screen {
         this.pages = List.copyOf(pages);
         this.modes = List.copyOf(modes);
         this.offers = List.copyOf(offers);
-        this.mode = modes.contains(shop.defaultMode()) ? shop.defaultMode() : modes.getFirst();
+        this.mode = modes.contains(shop.defaultMode()) || modes.isEmpty() ? shop.defaultMode() : modes.getFirst();
         Optional<GuiDocument> frame = view.style() == ShopDocument.Style.CHEST ? view.layout().filter((GuiDocument document) -> document.list().isPresent()) : Optional.empty();
         this.layout = frame.isPresent() && view.screens().isPresent()
                 ? new GuiScreen<>(frame.get(), viewer, view.screens().get(), Map.of("shop", shop.id(), "title", shop.title()), Optional.of(new Cells())) : null;
     }
 
-    /** The shop in its own chest pages for this viewer, or empty after telling them why it cannot open. */
+    /**
+     * The shop in its own chest pages for this viewer, or empty after telling them why it cannot open. A shop with no
+     * entries at all opens a window that says so.
+     */
     public static <P, S> Optional<Screen> open(ShopDocument shop, ScreenManager<P, S>.Viewer viewer, Context<S> context) {
         return open(shop, viewer, context, View.chest());
     }
@@ -98,6 +101,8 @@ public final class ShopScreen<P, S> implements Screen {
         List<ShopDocument.Page> pages = shop.pages().stream().filter((ShopDocument.Page candidate) -> candidate.permission().map((String node) -> host.permitted(viewer.player(), node)).orElse(true)).toList();
         List<ShopDocument.Mode> modes = shop.modes().stream().filter((ShopDocument.Mode candidate) -> pages.stream().anyMatch((ShopDocument.Page visible) -> !visible.grid(candidate).isEmpty())).toList();
         List<Offer> offers = offers(pages, modes);
+        boolean empty = shop.pages().stream().allMatch((ShopDocument.Page page) -> shop.modes().stream().allMatch((ShopDocument.Mode listed) -> page.grid(listed).isEmpty()));
+        if (empty) return Optional.of(new ShopScreen<>(shop, viewer, context, view, List.of(), List.of(), List.of()));
         if (pages.isEmpty() || modes.isEmpty() || (view.style() == ShopDocument.Style.NATIVE && offers.isEmpty())) {
             host.message(viewer.player(), RichText.colorize(context.settings().message("noPages")));
             return Optional.empty();
@@ -125,6 +130,7 @@ public final class ShopScreen<P, S> implements Screen {
         shown.clear();
         controls.clear();
         if (pending != null) return confirmFrame();
+        if (pages.isEmpty()) return emptyFrame();
         if (view.style() == ShopDocument.Style.NATIVE) return new ShopMerchant(shop, context.settings(), context.transactions().ledger(), viewer.id(),
                 (String node) -> viewer.host().permitted(viewer.player(), node), context.clock().get(), this::display).frame(offers, view.villager());
         if (layout != null) return layout.render();
@@ -148,7 +154,17 @@ public final class ShopScreen<P, S> implements Screen {
         return new ScreenFrame(RichText.colorize(title), "9x" + rows, 9, rows, items);
     }
 
+    /** A shop with no entries yet: a hint where the offers would be, and Close. */
+    private ScreenFrame emptyFrame() {
+        Map<Integer, ScreenFrame.Item> items = new LinkedHashMap<>();
+        items.put(ITEM, new ScreenFrame.Item(item("minecraft:paper"), Optional.of(RichText.colorize(text("empty"))),
+                List.of(RichText.colorize(text("emptyHint"))), Optional.empty()));
+        control(EMPTY_CLOSE, "minecraft:barrier", "close", List.of(), items, viewer::close);
+        return new ScreenFrame(RichText.colorize(shop.title()), "9x3", 9, 3, items);
+    }
+
     @Override public void click(int slot, GuiModel.Click click) {
+        if (pages.isEmpty()) { Runnable control = controls.get(slot); if (control != null) control.run(); return; }
         if (pending != null) {
             Pending confirmed = pending;
             if (slot == CONFIRM) { pending = null; purchase(confirmed.offer(), confirmed.fullStack()); }

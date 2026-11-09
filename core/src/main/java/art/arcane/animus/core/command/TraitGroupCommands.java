@@ -147,7 +147,7 @@ final class TraitGroupCommands extends CommandGroup {
             else document.add("groups", groups);
             drafts.add(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
         }
-        String head = (assign ? "Assigned " + id + " to " : "Unassigned " + id + " from ") + drafts.size() + (drafts.size() == 1 ? " NPC, " : " NPCs, ") + unchanged + " unchanged";
+        String head = (assign ? "Assigned " + id + " to " : "Unassigned " + id + " from ") + drafts.size() + (drafts.size() == 1 ? " NPC" : " NPCs") + (unchanged == 0 ? "" : ", " + unchanged + " unchanged");
         if (drafts.isEmpty()) return head;
         return head + "; tx " + repository.applyAll(drafts);
     }

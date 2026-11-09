@@ -51,7 +51,6 @@ final class ModPrompts {
         menu.getSlot(AnvilMenu.INPUT_SLOT).set(paper(prompt.initial()));
         menu.showResult();
         menu.broadcastChanges();
-        player.sendSystemMessage(ModText.component(Palette.GREY + prompt.label() + ": edit the name and take the paper; close the anvil to cancel"));
         return true;
     }
 

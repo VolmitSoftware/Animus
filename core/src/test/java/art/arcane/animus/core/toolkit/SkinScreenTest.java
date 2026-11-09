@@ -96,7 +96,7 @@ class SkinScreenTest {
         assertTrue(worn.contains("Left put on the selection") && worn.contains("Right rename") && worn.contains("Sneak delete (only when unused)"), worn);
         String spare = lore("Spare");
         assertTrue(spare.contains("Worn by none") && spare.contains("Sneak delete the file, asks once more"), spare);
-        assertTrue(lore("From a player name").contains("Any click type a name"));
+        assertTrue(lore("From a player name").contains("Click: type a name"));
     }
 
     @Test void entriesDrawTheirOwnSkinAndKeepTheirPlaceWhenWorn() {
@@ -172,7 +172,7 @@ class SkinScreenTest {
         assertEquals(List.of("notch"), looked);
         assertTrue(alex.messages.contains("[Animus]: Looking up notch on Mojang"), alex.messages.toString());
         String hash = npcs.find("guard").orElseThrow().json().get("skin").getAsString();
-        assertTrue(last().startsWith("Saved Notch's skin as skins/" + hash.substring(0, 12) + "; Skin " + hash + " on 1 NPC, 1 skipped (not a player body); tx "), last());
+        assertTrue(last().startsWith("Saved Notch's skin as skins/" + hash.substring(0, 12) + "; Skin Notch " + hash + " on guard, 1 skipped (not a player body); tx "), last());
         JsonObject saved = JsonDocuments.object(store.read("skins/" + hash + ".json"));
         assertEquals("Notch", saved.get("label").getAsString(), "the label is the account's own spelling");
         assertEquals(texture, SkinDocuments.read(store, hash).textureValue());

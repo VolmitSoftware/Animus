@@ -63,7 +63,7 @@ final class ToolkitFiles {
             if (next.isEmpty()) document.remove("groups"); else document.add("groups", next);
             return true;
         });
-        String head = (assign ? "Assigned " + group + " to " : "Unassigned " + group + " from ") + count(drafts.size()) + ", " + unchanged[0] + " unchanged";
+        String head = (assign ? "Assigned " + group + " to " : "Unassigned " + group + " from ") + named(drafts) + (unchanged[0] == 0 ? "" : ", " + unchanged[0] + " unchanged");
         return drafts.isEmpty() ? head : head + "; tx " + npcs.applyAll(drafts);
     }
 
@@ -125,7 +125,8 @@ final class ToolkitFiles {
             return true;
         });
         if (drafts.isEmpty() && skipped[0] == ids.size()) return "No player bodies in the selection; skins only show on " + PLAYER;
-        String head = "Skin " + hash.orElse("removed") + " on " + count(drafts.size()) + (skipped[0] == 0 ? "" : ", " + skipped[0] + " skipped (not a player body)");
+        Optional<String> label = hash.isPresent() ? SkinFiles.label(store.read("skins/" + hash.get() + ".json")) : Optional.empty();
+        String head = "Skin " + label.map((String name) -> name + " ").orElse("") + hash.orElse("removed") + " on " + named(drafts) + (skipped[0] == 0 ? "" : ", " + skipped[0] + " skipped (not a player body)");
         return drafts.isEmpty() ? head : head + "; tx " + npcs.applyAll(drafts);
     }
 

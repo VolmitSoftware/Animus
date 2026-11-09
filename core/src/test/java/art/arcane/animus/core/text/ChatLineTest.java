@@ -27,7 +27,7 @@ class ChatLineTest {
     @Test void aTransactionCopiesItsFullIdAndSuggestsTheRollback() {
         ChatLine line = ChatLine.parse(Palette.success("Deleted guard; tx " + TX));
         assertEquals("[Animus]: Deleted guard; tx 0f1e2d3c [Undo]", plain(line.component()));
-        assertEquals(List.of("copy_to_clipboard " + TX, "suggest_command /animus rollback " + TX), clicks(line.component()));
+        assertEquals(List.of("copy_to_clipboard " + TX, "suggest_command /animus rollback " + TX.substring(0, 8)), clicks(line.component()));
         assertEquals("[Animus]: Deleted guard; tx " + TX, RichText.plain(line.console()));
     }
 

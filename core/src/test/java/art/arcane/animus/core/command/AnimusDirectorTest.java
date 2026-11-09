@@ -89,6 +89,7 @@ class AnimusDirectorTest {
         admin.lines.clear();
         run(admin, "spawn");
         assertTrue(admin.text().contains("Missing argument \"npc\""), admin.text());
+        assertFalse(admin.text().contains("(String)"), "no Java type in the refusal: " + admin.text());
         admin.lines.clear();
         run(admin, "group", "run", "1", "two");
         assertTrue(admin.text().contains("Cannot convert \"two\""), admin.text());

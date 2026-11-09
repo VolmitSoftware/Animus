@@ -8,6 +8,7 @@ import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.volmlib.util.director.help.DirectorMiniMenu;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.RejectedExecutionException;
@@ -148,13 +149,17 @@ abstract class CommandGroup {
     /**
      * A paged list whose rows click: {@code click} turns a row's head, such as an NPC id, into the command a click puts in
      * the chat box. A player gets VolmLib's shared menu page with its page bar; a page past the end shows the last one.
-     * The console gets the title and every whole row.
+     * The console gets the title and every whole row. A row may carry detail lines after {@code \n}: the hover shows
+     * them, and the console prints them after the row.
      */
     static void listing(CommandActor actor, String title, String command, List<String> rows, int page, String empty, Function<String, String> click) {
         if (actor.player().isEmpty()) {
             actor.plain("--- " + title + " ---");
             if (rows.isEmpty()) actor.plain(empty);
-            rows.forEach((String row) -> actor.plain("⇀ " + row));
+            for (String row : rows) {
+                int detail = row.indexOf('\n');
+                actor.plain("⇀ " + (detail < 0 ? row : row.substring(0, detail) + " (" + row.substring(detail + 1).replace("\n", "; ") + ")"));
+            }
             return;
         }
         List<String> entries = rows.stream().map((String row) -> entry(row, click)).toList();
@@ -163,21 +168,27 @@ abstract class CommandGroup {
 
     /**
      * {@code id | rest}: the id in pink, the rest in grey, on one chat row. A longer rest ends in an ellipsis and the hover
-     * shows all of it; with {@code click}, the row suggests a command and its hover says which.
+     * shows all of it, then any detail lines; with {@code click}, the row suggests a command and its hover says which.
      */
-    static String entry(String row, Function<String, String> click) {
+    static String entry(String text, Function<String, String> click) {
+        int lines = text.indexOf('\n');
+        String row = lines < 0 ? text : text.substring(0, lines), detail = lines < 0 ? "" : text.substring(lines + 1);
         int split = row.indexOf(" | ");
         String head = clip(split < 0 ? row : row.substring(0, split)), rest = clip(split < 0 ? "" : row.substring(split + 3));
         int room = Math.max(8, ROW - head.length() - 5);
         boolean cut = rest.length() > room;
         String shown = cut ? rest.substring(0, room - 1) + "…" : rest;
-        String text = "<#777777>⇀</#777777> <#FF5FA8>" + DirectorMiniMenu.escapeText(head) + "</#FF5FA8>"
+        String line = "<#777777>⇀</#777777> <#FF5FA8>" + DirectorMiniMenu.escapeText(head) + "</#FF5FA8>"
                 + (shown.isEmpty() ? "" : " <#555555>|</#555555> <#AAAAAA>" + DirectorMiniMenu.escapeText(shown) + "</#AAAAAA>");
         String target = click == null ? null : click.apply(head);
-        if (target == null && !cut) return text;
-        String hover = (cut ? rest.replace(" | ", "\n") : "") + (target == null ? "" : (cut ? "\n" : "") + "Click to fill in " + target);
-        String hovered = "<hover:show_text:'" + attribute(DirectorMiniMenu.escapeText(hover)) + "'>";
-        return target == null ? hovered + text + "</hover>" : hovered + "<click:suggest_command:'" + attribute(target) + "'>" + text + "</click></hover>";
+        if (target == null && !cut && detail.isEmpty()) return line;
+        List<String> hovered = new ArrayList<>();
+        if (cut) hovered.add(rest.replace(" | ", "\n"));
+        if (!detail.isEmpty()) hovered.add(detail);
+        if (target != null) hovered.add("Click to fill in " + target);
+        String hover = String.join("\n", hovered);
+        String open = "<hover:show_text:'" + attribute(DirectorMiniMenu.escapeText(hover)) + "'>";
+        return target == null ? open + line + "</hover>" : open + "<click:suggest_command:'" + attribute(target) + "'>" + line + "</click></hover>";
     }
 
     /** Characters of a listing row that fit one chat row. */

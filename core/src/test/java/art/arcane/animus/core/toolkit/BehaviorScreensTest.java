@@ -125,12 +125,12 @@ class BehaviorScreensTest {
         select("guard", "baker");
         openList();
         click("town:talk", Click.LEFT);
-        assertTrue(last().contains("Attached town:talk to 2 NPCs, 0 unchanged; tx "), last());
+        assertTrue(last().contains("Attached town:talk to 2 NPCs; tx "), last());
         assertEquals(List.of("town:talk"), behaviorsOf("npcs/town/guard.json"));
         assertEquals(List.of("town:patrol", "town:talk"), behaviorsOf("npcs/town/baker.json"));
         assertTrue(lore("town:talk").contains("2 of 2 selected list it"), "the list reads the files again after a write");
         click("town:patrol", Click.RIGHT);
-        assertTrue(last().contains("Detached town:patrol from 1 NPC, 1 unchanged; tx "), last());
+        assertTrue(last().contains("Detached town:patrol from baker, 1 unchanged; tx "), last());
         assertEquals(List.of("town:talk"), behaviorsOf("npcs/town/baker.json"));
     }
 
@@ -216,6 +216,7 @@ class BehaviorScreensTest {
         assertTrue(name("Choice: Only browsing").contains("Only browsing"));
         click("Choice: Only browsing", Click.RIGHT);
         assertEquals("Block just-looking", name("Block just-looking"), "right opens the block the choice leads to");
+        assertEquals("town:talk > just-looking", RichText.plain(alex.frame.title()), "the window names the block it shows");
         assertTrue(lore("Line 1").contains("Take your time."));
         click("Add choice", Click.LEFT);
         type("Show me");
@@ -227,6 +228,7 @@ class BehaviorScreensTest {
         click("Back to just-looking", Click.LEFT);
         click("Back to main", Click.LEFT);
         assertEquals("Block main", name("Block main"));
+        assertEquals("town:talk", RichText.plain(alex.frame.title()));
     }
 
     @Test void deletingAChoiceRemovesTheBlocksOnlyItReachedAfterAsking() {

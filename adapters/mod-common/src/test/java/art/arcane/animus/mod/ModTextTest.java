@@ -40,6 +40,6 @@ class ModTextTest {
         Style style = list.visit((Style piece, String text) -> piece.getClickEvent() == null ? java.util.Optional.<Style>empty() : java.util.Optional.of(piece), Style.EMPTY).orElseThrow();
         assertInstanceOf(ClickEvent.SuggestCommand.class, style.getClickEvent());
         assertEquals("/animus list ", ((ClickEvent.SuggestCommand) style.getClickEvent()).command());
-        assertTrue(((HoverEvent.ShowText) style.getHoverEvent()).value().getString().contains("✦ /animus list page=1"));
+        assertTrue(((HoverEvent.ShowText) style.getHoverEvent()).value().getString().contains("✦ /animus list [page=1]"));
     }
 }

@@ -68,7 +68,7 @@ class ToolkitFilesTest {
         assertEquals(List.of("npcs/cow.json", "npcs/town/guard.json"), store.paths(tx(assigned)).stream().filter((String path) -> path.startsWith("npcs/")).sorted().toList());
         assertTrue(npcs.find("cow").orElseThrow().groups().contains("watch"));
         String removed = files.groups("watch", List.of("guard", "baker"), false);
-        assertTrue(removed.startsWith("Unassigned watch from 2 NPCs, 0 unchanged; tx "), removed);
+        assertTrue(removed.startsWith("Unassigned watch from 2 NPCs; tx "), removed);
         assertTrue(npcs.find("baker").orElseThrow().groups().isEmpty());
         assertThrows(IOException.class, () -> files.groups("missing", List.of("guard"), true));
         assertEquals("Assigned watch to 0 NPCs, 1 unchanged", files.groups("watch", List.of("cow"), true));
@@ -107,9 +107,9 @@ class ToolkitFilesTest {
         assertTrue(hash.matches("[a-f0-9]{64}"));
         assertEquals(hash, new SkinFiles(npcs, store).save(new BodySkin(texture, Base64.getEncoder().encodeToString(new byte[]{1, 2, 3})), "Alex"), "saving the same skin again is a no-op");
         String applied = files.skin(Optional.of(hash), List.of("guard", "cow"));
-        assertTrue(applied.startsWith("Skin " + hash + " on 1 NPC, 1 skipped (not a player body); tx "), applied);
+        assertTrue(applied.startsWith("Skin Alex " + hash + " on guard, 1 skipped (not a player body); tx "), applied);
         assertEquals(hash, npcs.find("guard").orElseThrow().json().get("skin").getAsString());
-        assertTrue(files.skin(Optional.empty(), List.of("guard")).startsWith("Skin removed on 1 NPC; tx "));
+        assertTrue(files.skin(Optional.empty(), List.of("guard")).startsWith("Skin removed on guard; tx "));
         assertFalse(npcs.find("guard").orElseThrow().json().has("skin"));
         assertEquals("No player bodies in the selection; skins only show on minecraft:player", files.skin(Optional.of(hash), List.of("cow")));
     }

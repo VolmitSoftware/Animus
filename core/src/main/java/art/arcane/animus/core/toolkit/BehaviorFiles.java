@@ -91,7 +91,7 @@ final class BehaviorFiles {
             if (next.isEmpty()) document.remove("behaviors"); else document.add("behaviors", next);
             drafts.add(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
         }
-        String head = (attach ? "Attached " + behavior + " to " : "Detached " + behavior + " from ") + ToolkitFiles.count(drafts.size()) + ", " + unchanged + " unchanged";
+        String head = (attach ? "Attached " + behavior + " to " : "Detached " + behavior + " from ") + ToolkitFiles.named(drafts) + (unchanged == 0 ? "" : ", " + unchanged + " unchanged");
         return drafts.isEmpty() ? head : head + "; tx " + npcs.applyAll(drafts);
     }
 

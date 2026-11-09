@@ -32,7 +32,7 @@ final class NavigationReport {
             else state.append(", ").append(parts[index]);
         }
         StringBuilder out = new StringBuilder(head.group(1)).append(": ").append(state);
-        point(values.get("goal")).ifPresent((Vec3 goal) -> out.append(" to ").append(goal.brief()));
+        point(values.get("goal")).ifPresent((Vec3 goal) -> out.append(parts[0].equals("arrived") ? " at " : " to ").append(goal.brief()));
         point(values.get("position")).ifPresent((Vec3 at) -> out.append(", now at ").append(at.brief()));
         String arrivals = values.getOrDefault("arrivals", "0");
         if (!arrivals.equals("0")) out.append(", ").append(arrivals).append(arrivals.equals("1") ? " arrival" : " arrivals");

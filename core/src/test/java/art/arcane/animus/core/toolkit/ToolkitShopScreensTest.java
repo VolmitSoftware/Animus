@@ -219,6 +219,8 @@ class ToolkitShopScreensTest {
     @Test void guisBindByKindAndPreviewThroughTheGuiCommands() {
         selectBoth();
         toolkit.open(alex.id, commands, GuiBindScreen::new);
+        assertEquals("GUIs: Holograms", RichText.plain(alex.frame.title()), "holograms come first");
+        click("Chest GUIs", Click.LEFT);
         assertEquals("GUIs: Chest GUIs", RichText.plain(alex.frame.title()));
         assertTrue(lore("town:board").contains("Notice board"), lore("town:board"));
         click("town:board", Click.LEFT);
@@ -249,6 +251,7 @@ class ToolkitShopScreensTest {
     @Test void guiDetailsCycleTheClickStepTheOffsetAndGuardDeletes() throws IOException {
         selectBoth();
         toolkit.open(alex.id, commands, GuiBindScreen::new);
+        click("Chest GUIs", Click.LEFT);
         click("town:board", Click.LEFT);
         click("town:board", Click.SHIFT_LEFT);
         assertEquals("Chest GUI town:board", RichText.plain(alex.frame.title()));
@@ -265,6 +268,7 @@ class ToolkitShopScreensTest {
         assertEquals("Hologram town:sign", RichText.plain(alex.frame.title()));
         assertEquals("Offset Y: auto", name("Offset Y"));
         click("Offset Y", Click.LEFT);
+        assertTrue(last().contains("Hologram town:sign offset y 2.5 on 2 NPCs; tx "), last());
         double[] offset = GuiBinding.parse(definition("guard")).orElseThrow().hologram().orElseThrow().offset().orElseThrow();
         assertEquals(List.of(0.0, 2.5, 0.0), List.of(offset[0], offset[1], offset[2]));
         click("Offset X", Click.SHIFT_RIGHT);

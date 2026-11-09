@@ -28,6 +28,19 @@ class DocumentStoreTest {
             assertNull(store.read("skins/a.json"));
         }
     }
+    @Test void rollbackTakesAUniquePrefixOfTheTransactionId() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            String first = store.commit(List.of(new DocumentStore.Change("npcs/test/a.json", "missing", "{\"n\":1}")));
+            String second = store.commit(List.of(new DocumentStore.Change("npcs/test/b.json", "missing", "{\"n\":2}")));
+            assertEquals(first, store.transaction(first.substring(0, 8)));
+            store.rollback(second.substring(0, 8));
+            assertNull(store.read("npcs/test/b.json"));
+            assertEquals("Unknown transaction: 00000000", assertThrows(IOException.class, () -> store.transaction("00000000")).getMessage());
+            assertEquals("Invalid transaction ID", assertThrows(IOException.class, () -> store.transaction("ab")).getMessage());
+            Files.writeString(root.resolve("backups/" + first.substring(0, 8) + "-0000-0000-0000-000000000000.json"), "{}");
+            assertTrue(assertThrows(IOException.class, () -> store.transaction(first.substring(0, 8))).getMessage().contains("matches 2 changes"));
+        }
+    }
     @Test void crashDuringTransactionRollsForwardAndCreatesBackup() throws Exception {
         String id = "12345678-1234-1234-1234-123456789abc";
         JsonObject journal = new JsonObject(); journal.addProperty("id", id);

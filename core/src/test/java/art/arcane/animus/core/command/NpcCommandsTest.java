@@ -49,6 +49,25 @@ class NpcCommandsTest {
         }
     }
 
+    @Test void lookCloseTurnsOffAndOnKeepingItsSettings() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            store.commit(List.of(new DocumentStore.Change("npcs/town/guard.json", "missing",
+                    GUARD.replace(",\"groups\":[\"giants\"]", ",\"modules\":{\"animus:look-close\":{\"range\":6}}"))));
+            NpcRepository repository = new NpcRepository(store);
+            assertTrue(repository.reload().isEmpty());
+            String off = NpcCommands.look(repository, "guard", "off");
+            assertTrue(off.startsWith("guard: look-close off; tx "), off);
+            JsonObject look = repository.find("guard").orElseThrow().json().getAsJsonObject("modules").getAsJsonObject("animus:look-close");
+            assertFalse(look.get("enabled").getAsBoolean());
+            assertEquals(6, look.get("range").getAsInt(), "turning it off keeps the range");
+            assertTrue(art.arcane.animus.core.control.LookClose.parse(repository.find("guard").orElseThrow().json()).isEmpty());
+            assertTrue(NpcCommands.look(repository, "guard", "on").startsWith("guard: look-close on; tx "));
+            assertTrue(art.arcane.animus.core.control.LookClose.parse(repository.find("guard").orElseThrow().json()).isPresent());
+            assertTrue(NpcCommands.look(repository, "guard", "toggle").startsWith("guard: look-close off; tx "));
+            assertEquals("enabled must be on, off or toggle", assertThrows(IllegalArgumentException.class, () -> NpcCommands.look(repository, "guard", "maybe")).getMessage());
+        }
+    }
+
     @Test void unknownAttributesAndValuesOutOfRangeAreRefused() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             store.commit(List.of(new DocumentStore.Change("npcs/town/guard.json", "missing", GUARD.replace(",\"groups\":[\"giants\"]", ""))));

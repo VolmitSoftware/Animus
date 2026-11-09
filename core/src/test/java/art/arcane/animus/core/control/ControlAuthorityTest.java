@@ -34,6 +34,19 @@ class ControlAuthorityTest {
         assertEquals(ControlLoop.State.PROPOSED,loop.propose(10_000_000_000L,position,0,0,inbox.snapshot()).state());
         assertEquals(ControlLoop.State.THROTTLED,loop.propose(10_000_000_001L,position,0,0,inbox.snapshot()).state());
     }
+    @Test void serverTicksThatArriveAHairEarlyStillStepEveryTick() {
+        ControlInbox inbox=new ControlInbox(0); inbox.offer(FORWARD,0);
+        RideSettings settings=new RideSettings(RideSettings.DEFAULT_PERMISSION,4.5,RideSettings.DEFAULT_LEASH,RideSettings.DEFAULT_LIFETIME_SECONDS);
+        ControlLoop loop=new ControlLoop(Vec3.ZERO,0,ControlLoop.Limits.ride(settings,false)); Vec3 position=Vec3.ZERO;
+        long now=0;
+        for (int tick=1;tick<=20;tick++) {
+            now+=tick%2==0?51_000_000L:49_000_000L;
+            inbox.heartbeat(now);
+            var next=loop.propose(now,position,0,0,inbox.snapshot());
+            if(next.state()==ControlLoop.State.PROPOSED)position=next.position();
+        }
+        assertEquals(4.5,position.z(),0.0000001,"one second of ticks covers the saved speed");
+    }
     @Test void keyChangesCannotReplaceHeartbeatsAndHeartbeatsCannotAcquireInput() {
         ControlInbox inbox=new ControlInbox(0); ControlLoop loop=new ControlLoop(Vec3.ZERO,0,ControlLoop.Limits.PREVIEW);
         inbox.heartbeat(1_000_000_000L);

@@ -187,10 +187,24 @@ public final class AnimusHelp {
         DirectorRuntimeNode group = node.getParent() == null ? node : node.getParent();
         List<String> rendered = DirectorMiniMenu.render(new DirectorMiniMenu.DirectorHelpPage(group, List.of(node), 0, 1), AnimusDirector.THEME, AnimusDirector.TEXT);
         String line = rendered.get(rendered.size() - 2);
-        if (node.isInvocable()) return line;
+        if (node.isInvocable()) return line.replace(hoverText(volmLibExample(node)), hoverText(AnimusDirector.usage(node)));
         String category = DirectorMiniMenu.escapeText(AnimusDirector.TEXT.resolve(DirectorHelpMessages.CATEGORY, MessageArgs.empty()));
         return line.replace(category, DirectorMiniMenu.escapeText(description(node)));
     }
+
+    /** The example VolmLib's hover prints, {@code create id=<String> x=<String>}, which Animus swaps for its usage line. */
+    private static String volmLibExample(DirectorRuntimeNode node) {
+        StringBuilder example = new StringBuilder(node.path());
+        for (DirectorParameterDescriptor parameter : node.getDescriptor().getParameters()) {
+            if (parameter.isContextual() && !parameter.isContextualOverride()) continue;
+            String fallback = parameter.getDefaultValue();
+            example.append(' ').append(parameter.getName()).append('=').append(fallback != null && !fallback.isBlank() ? fallback : "<" + parameter.getType().getSimpleName() + ">");
+        }
+        return example.toString();
+    }
+
+    /** Text as it sits inside a rendered hover: MiniMessage-escaped, then quoted for the attribute. */
+    private static String hoverText(String text) { return DirectorMiniMenu.escapeText(text).replace("\\", "\\\\").replace("'", "\\'"); }
 
     private static List<DirectorParameterDescriptor> shown(DirectorRuntimeNode node) {
         if (!node.isInvocable()) return List.of();

@@ -65,7 +65,7 @@ final class CombatScreen<P, S> extends ToolScreen<P, S> {
         rules(AVOIDS, "minecraft:feather", "avoids", "Who it keeps away from", first);
 
         live(STATUS, "minecraft:spyglass", "Status", hints("status of " + selected.getFirst(), "status of the server", "status of " + selected.getFirst()), (GuiModel.Click click) -> {
-            if (right(click)) command("animus combat status"); else command("animus combat status " + selected.getFirst());
+            if (right(click)) command("animus combat status"); else command("animus combat status npc=" + selected.getFirst());
         });
         live(ENGAGE, "minecraft:iron_sword", "Engage", any("let each selected NPC fight now"), (GuiModel.Click click) -> each("animus combat engage "));
         live(DISENGAGE, "minecraft:white_banner", "Disengage", any("stop each selected NPC fighting"), (GuiModel.Click click) -> each("animus combat disengage "));

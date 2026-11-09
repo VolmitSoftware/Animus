@@ -128,7 +128,7 @@ class CombatScreensTest {
         click("Status", Click.RIGHT);
         click("Guard me", Click.LEFT);
         click("Guard me", Click.RIGHT);
-        assertEquals(List.of("animus combat engage guard", "animus combat engage baker", "animus combat status guard", "animus combat status",
+        assertEquals(List.of("animus combat engage guard", "animus combat engage baker", "animus combat status npc=guard", "animus combat status",
                 "animus combat guard guard " + alex.id, "animus combat guard baker " + alex.id, "animus combat guard guard stop", "animus combat guard baker stop"), alex.commands);
     }
 

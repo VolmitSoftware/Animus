@@ -23,6 +23,11 @@ class NavigationReportTest {
         assertEquals("Navigation guard: not active", NavigationReport.readable("Navigation guard: not active"));
     }
 
+    @Test void anArrivalSaysWhereItArrived() {
+        assertEquals("Navigation keeper: arrived at -5.5 64 8.5, now at -5.5 64 8.5, 1 arrival",
+                NavigationReport.readable("Navigation keeper: arrived; goal=Vec3[x=-5.5, y=64.0, z=8.5]; position=Vec3[x=-5.5, y=64.0, z=8.5]; arrivals=1"));
+    }
+
     @Test void walkingGoalsRoundTheFeetHeightAndCentreWholeBlocks() {
         assertEquals(new Vec3(10.5, 64, 2.25), WorldCommands.Navigation.goal(new Vec3(10, 63.87, 2.25), MovementProfile.Mode.WALK));
         assertEquals(new Vec3(10.5, 63.87, 2.5), WorldCommands.Navigation.goal(new Vec3(10, 63.87, 2), MovementProfile.Mode.FLY));

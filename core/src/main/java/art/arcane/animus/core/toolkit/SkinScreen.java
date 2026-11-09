@@ -54,7 +54,7 @@ final class SkinScreen<P, S> extends ToolScreen<P, S> {
         if (!skin.groups().isEmpty()) lines.add("&7Groups &f" + names(skin.groups(), 4));
         lines.add("&8" + skin.shortHash());
         String sneak = skin.used() ? "delete (only when unused)" : armed ? "delete the file now" : "delete the file, asks once more";
-        button(slot, skin.texture().map(ToolScreen::skinHead).orElse(new NpcItem(HEAD, 1, Optional.empty(), Optional.empty())), armed ? "&cDelete " + skin.title() + "?" : title(skin.title()), lore(lines, hints("put on the selection", "rename", sneak)), (GuiModel.Click click) -> {
+        button(slot, skin.head().orElse(new NpcItem(HEAD, 1, Optional.empty(), Optional.empty())), armed ? "&cDelete " + skin.title() + "?" : title(skin.title()), lore(lines, hints("put on the selection", "rename", sneak)), (GuiModel.Click click) -> {
             boolean wasArmed = skin.hash().equals(deleting);
             deleting = null;
             if (sneak(click)) delete(skin, wasArmed);

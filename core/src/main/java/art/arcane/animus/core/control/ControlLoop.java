@@ -9,6 +9,8 @@ public final class ControlLoop {
     public enum State { THROTTLED, WAITING_INPUT, IDLE, PROPOSED, LEASH, STOPPED }
     public record Proposal(State state, Vec3 position, String reason) {}
     public static final long STEP_NANOS = 50_000_000L, LIFETIME_NANOS = 30_000_000_000L, LIVENESS_NANOS = 2_000_000_000L;
+    /** How early a server tick may arrive and still take its step; steps keep a fixed cadence, so they never catch up. */
+    static final long EARLY_NANOS = 10_000_000L;
     public static final double STEP_BLOCKS = 0.1, LEASH_BLOCKS = 8;
     public static final String CONNECTION_STALE = "connection-stale";
     /**
@@ -25,12 +27,12 @@ public final class ControlLoop {
     private final Vec3 anchor;
     private final Limits limits;
     private final long started;
-    private long lastStep, ticks;
+    private long nextStep, ticks;
     private boolean closed;
     private String reason = "stopped";
 
     public ControlLoop(Vec3 anchor, long now, Limits limits) {
-        this.anchor = Objects.requireNonNull(anchor); this.limits = Objects.requireNonNull(limits); started = lastStep = now;
+        this.anchor = Objects.requireNonNull(anchor); this.limits = Objects.requireNonNull(limits); started = now; nextStep = now + STEP_NANOS;
     }
     public UUID generation() { return generation; }
     public long ticks() { return ticks; }
@@ -43,8 +45,8 @@ public final class ControlLoop {
         if (now - started >= limits.lifetimeNanos()) return stop(authoritativePosition, "expired");
         if (now - input.lastActivityNanos() >= LIVENESS_NANOS) return stop(authoritativePosition, CONNECTION_STALE);
         if (input.latest() != null && input.latest().input().shift()) return stop(authoritativePosition, "shift");
-        if (now - lastStep < STEP_NANOS) return new Proposal(State.THROTTLED, authoritativePosition, "fixed-step");
-        lastStep = now; ticks++;
+        if (now < nextStep - EARLY_NANOS) return new Proposal(State.THROTTLED, authoritativePosition, "fixed-step");
+        nextStep = Math.max(nextStep + STEP_NANOS, now + STEP_NANOS - EARLY_NANOS); ticks++;
         if (input.latest() == null) return new Proposal(State.WAITING_INPUT, authoritativePosition, "fresh-input-required");
         ControlInput keys = input.latest().input();
         Vec3 direction = limits.flying() ? keys.flight(authoritativeYaw, authoritativePitch) : keys.horizontal(authoritativeYaw);

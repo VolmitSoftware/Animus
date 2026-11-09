@@ -52,7 +52,7 @@ final class CombatFiles {
         });
         if (drafts.isEmpty()) return "Combat already " + (on ? "on" : "off") + " for " + ToolkitFiles.count(ids.size());
         String review = reviewed[0] == 0 ? "" : " (review accepted on " + reviewed[0] + " imported)";
-        return "Combat " + (on ? "on" : "off") + " for " + ToolkitFiles.count(drafts.size()) + review + "; tx " + npcs.applyAll(drafts);
+        return "Combat " + (on ? "on" : "off") + " for " + ToolkitFiles.named(drafts) + review + "; tx " + npcs.applyAll(drafts);
     }
 
     /** Sets fields of the combat or riding module on every listed NPC. */
@@ -78,7 +78,7 @@ final class CombatFiles {
             return true;
         });
         if (drafts.isEmpty()) return what + " already set on " + ToolkitFiles.count(ids.size());
-        return what + " on " + ToolkitFiles.count(drafts.size()) + "; tx " + npcs.applyAll(drafts);
+        return what + " on " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
     }
 
     /** Puts {@code rider} on {@code vehicle}, refused when the vehicle is unknown or the pair would loop or overload. */
@@ -138,10 +138,10 @@ final class CombatFiles {
             if (equipment.isEmpty()) document.remove("equipment"); else document.add("equipment", equipment);
             return true;
         });
-        String slots = items.size() == 1 ? items.keySet().iterator().next().key() : "equipment";
+        String slots = items.size() == 1 ? items.keySet().iterator().next().key().replace('_', ' ') : "equipment";
         String skip = skipped[0] == 0 ? "" : ", " + skipped[0] + " skipped (body cannot show it)";
         if (drafts.isEmpty()) return "No change to " + slots + skip;
-        return "Set " + slots + " on " + ToolkitFiles.count(drafts.size()) + skip + "; tx " + npcs.applyAll(drafts);
+        return "Set " + slots + " on " + ToolkitFiles.named(drafts) + skip + "; tx " + npcs.applyAll(drafts);
     }
 
     private static MountReference declared(JsonObject document) {

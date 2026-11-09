@@ -3,6 +3,7 @@ package art.arcane.animus.core.toolkit;
 import art.arcane.animus.core.npc.DefinitionBatch;
 import art.arcane.animus.core.npc.GroupDocument;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.storage.DocumentStore;
@@ -30,7 +31,7 @@ final class SkinFiles {
     SkinFiles(NpcRepository npcs, DocumentStore store) { this.npcs = npcs; this.store = store; }
 
     /** A skin file, its optional label and who wears it. */
-    record Entry(String hash, Optional<String> label, Optional<String> texture, List<String> npcs, List<String> groups) {
+    record Entry(String hash, Optional<String> label, Optional<NpcItem> head, List<String> npcs, List<String> groups) {
         Entry { npcs = List.copyOf(npcs); groups = List.copyOf(groups); }
         boolean used() { return !npcs.isEmpty() || !groups.isEmpty(); }
         String shortHash() { return hash.substring(0, 12); }
@@ -47,7 +48,7 @@ final class SkinFiles {
         List<Entry> entries = new ArrayList<>();
         for (ToolkitFiles.Skin skin : new ToolkitFiles(npcs, store).skins()) {
             String text = store.read(path(skin.hash()));
-            entries.add(new Entry(skin.hash(), label(text), texture(text), skin.npcs(), skin.groups()));
+            entries.add(new Entry(skin.hash(), label(text), head(text), skin.npcs(), skin.groups()));
         }
         return entries;
     }
@@ -142,13 +143,28 @@ final class SkinFiles {
         } catch (IOException | RuntimeException unreadable) { return Optional.empty(); }
     }
 
-    /** The skin texture each listed NPC wears, by id; NPCs without a readable skin are left out. Reads files, so run it on the file lane. */
-    Map<String, String> worn(List<NpcDefinition> definitions) throws IOException {
-        Map<String, String> textures = new HashMap<>();
+    /**
+     * A player head wearing a skin file's texture with its signature: the client refuses a texture that asks for a
+     * signature and has none, and draws a default head instead.
+     */
+    static Optional<NpcItem> head(String text) {
+        Optional<String> texture = texture(text);
+        if (texture.isEmpty()) return Optional.empty();
+        Optional<String> signature;
+        try {
+            JsonElement signed = JsonDocuments.object(text).get("signature");
+            signature = signed != null && signed.isJsonPrimitive() && signed.getAsJsonPrimitive().isString() ? Optional.of(signed.getAsString()) : Optional.empty();
+        } catch (IOException | RuntimeException unreadable) { signature = Optional.empty(); }
+        return Optional.of(ToolScreen.skinHead(texture.get(), signature));
+    }
+
+    /** The head each listed NPC's skin draws, by id; NPCs without a readable skin are left out. Reads files, so run it on the file lane. */
+    Map<String, NpcItem> worn(List<NpcDefinition> definitions) throws IOException {
+        Map<String, NpcItem> textures = new HashMap<>();
         for (NpcDefinition definition : definitions) {
             JsonElement skin = definition.json().get("skin");
             if (skin == null || !skin.isJsonPrimitive() || !skin.getAsString().matches("[a-f0-9]{64}")) continue;
-            texture(store.read(path(skin.getAsString()))).ifPresent((String texture) -> textures.put(definition.id(), texture));
+            head(store.read(path(skin.getAsString()))).ifPresent((NpcItem head) -> textures.put(definition.id(), head));
         }
         return textures;
     }

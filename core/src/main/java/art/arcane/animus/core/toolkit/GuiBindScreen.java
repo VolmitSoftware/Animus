@@ -19,7 +19,7 @@ final class GuiBindScreen<P, S> extends ToolScreen<P, S> {
     static final int RELOAD = 53;
     static final int[] TABS = {46, 47, 51, 52};
     static final String RELOAD_COMMAND = "animus gui reload";
-    private DocumentKind kind = DocumentKind.INVENTORY;
+    private DocumentKind kind = DocumentKind.HOLOGRAM;
     private List<ShopFiles.Gui> guis;
 
     GuiBindScreen(Toolkit<P, S> toolkit, ScreenManager<P, S>.Viewer viewer, Toolkit.Commands commands) {
@@ -63,7 +63,7 @@ final class GuiBindScreen<P, S> extends ToolScreen<P, S> {
         for (int index = 0; index < ShopFiles.GUIS.size(); index++) {
             DocumentKind tab = ShopFiles.GUIS.get(index);
             boolean shown = tab == kind;
-            button(TABS[index], icon(tab), title(tab(tab) + (shown ? " (shown)" : "")), lore(List.of("&7" + tab.folder() + "/"), any(shown ? "read again" : "show")), (GuiModel.Click click) -> {
+            button(TABS[index], icon(tab), title(tab(tab) + (shown ? " (shown)" : "")), lore(List.of("&7" + tab.folder() + "/"), any(shown ? "read the folder again" : "list them")), (GuiModel.Click click) -> {
                 kind = tab;
                 page = 0;
                 guis = null;
@@ -93,7 +93,7 @@ final class GuiBindScreen<P, S> extends ToolScreen<P, S> {
     private static List<String> clicks(DocumentKind kind) {
         return switch (kind) {
             case INVENTORY, MENU -> hints("open it on the selection's click", "show it to you now", "settings");
-            case HOLOGRAM -> hints("show it above the selection", "settings", "settings");
+            case HOLOGRAM -> hints("bind it above the selection", "settings", "settings");
             default -> any("settings");
         };
     }

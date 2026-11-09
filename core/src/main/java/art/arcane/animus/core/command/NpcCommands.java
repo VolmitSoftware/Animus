@@ -1,5 +1,6 @@
 package art.arcane.animus.core.command;
 
+import art.arcane.animus.core.control.LookClose;
 import art.arcane.animus.core.npc.GroupMerge;
 import art.arcane.animus.core.runtime.HealthRecords;
 import art.arcane.animus.core.npc.NpcAttributes;
@@ -14,6 +15,7 @@ import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.OptionalDouble;
 
 /** {@code /animus npc}: focused edits of one NPC's definition file. */
@@ -105,6 +107,37 @@ final class NpcCommands extends CommandGroup {
             living().refresh();
             return List.of(Palette.success(line));
         }));
+    }
+
+    @Director(description = "Turn an NPC's look-close on or off; off keeps its range and other settings")
+    void look(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
+              @Param(name = "enabled", description = "on, off or toggle") String enabled) {
+        CommandActor actor = actor();
+        NpcRepository repository = runtime().npcs();
+        npc(actor, npc).ifPresent((String id) -> files(actor, () -> {
+            String line = look(repository, id, enabled);
+            living().refresh();
+            return List.of(Palette.success(line));
+        }));
+    }
+
+    /** Sets {@code enabled} of the NPC's own look-close module, adding the module when it has none. */
+    static String look(NpcRepository repository, String id, String enabled) throws IOException {
+        boolean on = switch (enabled.toLowerCase(Locale.ROOT)) {
+            case "on", "true" -> true;
+            case "off", "false" -> false;
+            case DiagnosticCommands.TOGGLE -> LookClose.parse(repository.find(id).orElseThrow(() -> new IOException("Unknown NPC: " + id)).json()).isEmpty();
+            default -> throw new IllegalArgumentException("enabled must be on, off or toggle");
+        };
+        NpcRepository.Draft draft = repository.draft(id);
+        JsonObject document = draft.document();
+        JsonObject modules = document.has("modules") && document.get("modules").isJsonObject() ? document.getAsJsonObject("modules") : new JsonObject();
+        JsonObject look = modules.has(LookClose.MODULE) && modules.get(LookClose.MODULE).isJsonObject() ? modules.getAsJsonObject(LookClose.MODULE) : new JsonObject();
+        look.addProperty("enabled", on);
+        modules.add(LookClose.MODULE, look);
+        document.add("modules", modules);
+        String transaction = repository.apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
+        return id + ": look-close " + (on ? "on" : "off") + "; tx " + transaction;
     }
 
     /** Attribute ids for completion, bare. */

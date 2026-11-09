@@ -23,8 +23,8 @@ import java.util.function.BiConsumer;
 abstract class ToolScreen<P, S> implements Screen {
     static final int WIDTH = 9, LIST = 45, BACK = 45, PREVIOUS = 48, INFO = 49, NEXT = 50;
     static final String FILLER = "minecraft:gray_stained_glass_pane", HEAD = "minecraft:player_head";
-    /** Buttons never show an item's vanilla attribute lines; filler shows no tooltip at all. */
-    static final String TOOLTIP = "tooltip_display", PLAIN = TOOLTIP + "={hidden_components:[\"minecraft:attribute_modifiers\"]}",
+    /** Buttons never show an item's vanilla attribute, bundle or music disc lines; filler shows no tooltip at all. */
+    static final String TOOLTIP = "tooltip_display", PLAIN = TOOLTIP + "={hidden_components:[\"minecraft:attribute_modifiers\",\"minecraft:bundle_contents\",\"minecraft:jukebox_playable\"]}",
             HIDDEN = TOOLTIP + "={hide_tooltip:true}";
     /** Lore lines longer than this many visible characters wrap. */
     static final int LORE_WIDTH = 48;
@@ -171,9 +171,10 @@ abstract class ToolScreen<P, S> implements Screen {
         handlers.put(slot, handler);
     }
 
-    /** A player head wearing a skin texture, the base64 {@code textures} value of a skin file. */
-    static NpcItem skinHead(String texture) {
-        return new NpcItem(HEAD, 1, Optional.of("[profile={properties:[{name:\"textures\",value:\"" + texture.replace("\"", "") + "\"}]}]"), Optional.empty());
+    /** A player head wearing a skin texture, the base64 {@code textures} value of a skin file, and its signature. */
+    static NpcItem skinHead(String texture, Optional<String> signature) {
+        String signed = signature.map((String value) -> ",signature:\"" + value.replace("\"", "") + "\"").orElse("");
+        return new NpcItem(HEAD, 1, Optional.of("[profile={properties:[{name:\"textures\",value:\"" + texture.replace("\"", "") + "\"" + signed + "}]}]"), Optional.empty());
     }
 
     /** What each click does, the last lines of every button; clicks that do the same share one line. */
@@ -186,7 +187,7 @@ abstract class ToolScreen<P, S> implements Screen {
     }
 
     /** The hint for a button every click treats the same. */
-    static List<String> any(String what) { return List.of("&fAny click &7" + what); }
+    static List<String> any(String what) { return List.of("&fClick: &7" + what); }
 
     static List<String> lore(List<String> lines, List<String> hints) {
         List<String> all = new ArrayList<>(lines);

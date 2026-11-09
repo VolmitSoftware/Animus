@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -157,7 +158,9 @@ class EditorPartsTest {
                 assertTrue(link.contains("#/pair/ANM1."), link);
                 assertEquals("[Animus]: Pairing link ready; single use, open within 10 minutes [Open editor] [Click to copy]",
                         PlainTextComponentSerializer.plainText().serialize(player.getFirst().component()));
-                assertTrue(player.get(1).toString().startsWith("[Animus]: Token "), player.get(1).toString());
+                String access = PlainTextComponentSerializer.plainText().serialize(player.get(1).component());
+                assertTrue(access.startsWith("[Animus]: Once paired it may ") && access.endsWith("[Token id] [Revoke]"), access);
+                assertFalse(access.contains("tok_"), "no bare token in chat: " + access);
                 List<String> console = new ArrayList<>();
                 commands.pair(recorder(null, console), "", "", "", "");
                 assertEquals(2, console.size());

@@ -154,10 +154,10 @@ public final class ChatLine {
 
     private ChatLine docs(String url) { return open("Docs", url, "Open the Animus wiki"); }
 
-    /** The first characters of a transaction id, copying the full id, then {@code [Undo]} suggesting its rollback. */
+    /** The first characters of a transaction id, copying the full id, then {@code [Undo]} suggesting its rollback by those characters. */
     public ChatLine transaction(String id) {
         chip(new Chip(id.substring(0, Math.min(SHORT_ID, id.length())), Palette.PINK, Click.COPY, id, "Click to copy the transaction id", id));
-        return suggest("Undo", "/animus rollback " + id, "Undo this change with /animus rollback");
+        return suggest("Undo", "/animus rollback " + shortId(id), "Undo this change with /animus rollback");
     }
 
     /** True when the line has a chip; a line without one sends as plain text. */

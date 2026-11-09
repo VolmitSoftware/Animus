@@ -137,20 +137,20 @@ class ToolkitFoundationTest {
     }
 
     @Test void clickHintsSayEachActionOnce() {
-        assertEquals(List.of("&fAny click &7open it"), ToolScreen.hints("open it", "open it", "open it"));
+        assertEquals(List.of("&fClick: &7open it"), ToolScreen.hints("open it", "open it", "open it"));
         assertEquals(List.of("&fLeft or sneak &7next", "&fRight &7previous"), ToolScreen.hints("next", "previous", "next"));
         assertEquals(List.of("&fLeft or right &7page 2", "&fSneak &7last page"), ToolScreen.hints("page 2", "page 2", "last page"));
         assertEquals(List.of("&fLeft &7save", "&fRight or sneak &7clear"), ToolScreen.hints("save", "clear", "clear"));
         assertEquals(3, ToolScreen.hints("a", "b", "c").size());
     }
 
-    @Test void buttonsHideVanillaAttributesAndFillerHasNoTooltip() {
+    @Test void buttonsHideVanillaAttributesAndDiscLinesAndFillerHasNoTooltip() {
         ScreenFrame.Item button = alex.frame.items().get(0);
-        assertEquals(Optional.of("[tooltip_display={hidden_components:[\"minecraft:attribute_modifiers\"]}]"), button.item().components());
+        assertEquals(Optional.of("[tooltip_display={hidden_components:[\"minecraft:attribute_modifiers\",\"minecraft:bundle_contents\",\"minecraft:jukebox_playable\"]}]"), button.item().components());
         ScreenFrame.Item filler = alex.frame.items().get(8);
         assertEquals(ToolScreen.FILLER, filler.item().id());
         assertEquals(Optional.of("[tooltip_display={hide_tooltip:true}]"), filler.item().components());
-        assertEquals("[custom_name=\"x\",tooltip_display={hidden_components:[\"minecraft:attribute_modifiers\"]}]",
+        assertEquals("[custom_name=\"x\",tooltip_display={hidden_components:[\"minecraft:attribute_modifiers\",\"minecraft:bundle_contents\",\"minecraft:jukebox_playable\"]}]",
                 ToolScreen.shown(new NpcItem("minecraft:leather_boots", 1, Optional.of("[custom_name=\"x\"]"), Optional.empty())).components().orElseThrow());
         assertEquals("[tooltip_display={hide_tooltip:true}]",
                 ToolScreen.shown(new NpcItem("minecraft:stone", 1, Optional.of("[tooltip_display={hide_tooltip:true}]"), Optional.empty())).components().orElseThrow());

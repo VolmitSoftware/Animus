@@ -116,7 +116,7 @@ class TriggerScopedStateTest {
         start("{\"r\":{\"type\":\"integer\",\"initial\":0,\"scope\":\"relationship\",\"lifetime\":\"transient\"}}",
                 "{\"main\":{\"type\":\"set\",\"variable\":\"r\",\"value\":3}}",
                 "[{\"id\":\"beat\",\"event\":\"timer\",\"intervalTicks\":1}]");
-        eventually(() -> dispatcher.snapshot().dropped().getOrDefault(TriggerDispatcher.DropReason.START_FAILED, 0L) > 0);
+        eventually(() -> dispatcher.snapshot().dropped().getOrDefault(TriggerDispatcher.DropReason.START_FAILED, 0L) > 0 && !dispatcher.snapshot().diagnostics().isEmpty());
         TriggerDispatcher.Snapshot snapshot = dispatcher.snapshot();
         assertEquals(0, snapshot.started());
         assertEquals("behavior-state-player-required", snapshot.diagnostics().getFirst().code());

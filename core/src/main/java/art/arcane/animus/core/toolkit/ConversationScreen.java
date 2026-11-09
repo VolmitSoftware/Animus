@@ -25,7 +25,7 @@ import java.util.Optional;
  */
 final class ConversationScreen<P, S> extends ToolScreen<P, S> {
     static final int START = 0, RADIUS = 1, BLOCK = 4, ATTACH = 7, SAVE = 8, STEPS = 9, STEP_SLOTS = 27, OPTIONS = 36, ADD_CHOICE = 44, ADD_LINE = 46;
-    private static final int WRAP = 36;
+    private static final int WRAP = 36, TITLE = 30;
     private BehaviorFiles.Loaded loaded;
     private ConversationDocument working;
     private String block;
@@ -40,7 +40,12 @@ final class ConversationScreen<P, S> extends ToolScreen<P, S> {
         block = working.entry;
     }
 
-    @Override String title() { return loaded.id(); }
+    /** The behavior id on its entry block; any other block adds its name, or shows only the block when both do not fit. */
+    @Override String title() {
+        if (block.equals(working.entry)) return loaded.id();
+        String both = loaded.id() + " > " + block;
+        return both.length() <= TITLE ? both : ValueScreen.clip("Block " + block, TITLE);
+    }
     @Override int rows() { return 6; }
 
     private boolean unsaved() { return !written().equals(loaded.behavior()); }

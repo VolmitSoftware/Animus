@@ -261,7 +261,7 @@ public final class AnimusCommandTree extends CommandGroup {
     }
 
     @Director(description = "Undo a change by its transaction id")
-    void rollback(@Param(name = "transaction", description = "The transaction id a change reported") String transaction) {
+    void rollback(@Param(name = "transaction", description = "The transaction id a change reported, or its first characters") String transaction) {
         CommandActor actor = actor();
         files(actor, () -> {
             AnimusMetrics metrics = AnimusMetrics.current();

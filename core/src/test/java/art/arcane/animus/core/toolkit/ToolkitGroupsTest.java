@@ -227,9 +227,20 @@ class ToolkitGroupsTest {
         click("Select all members", Click.LEFT);
         assertEquals(List.of("guard"), toolkit.selected(alex.id));
         click("guard", Click.RIGHT);
-        assertTrue(last().contains("Unassigned guards from 1 NPC"), last());
+        assertTrue(last().contains("Unassigned guards from guard"), last());
         assertTrue(groups("guard").isEmpty());
         MockScreenHost.slot(alex, "No NPCs list guards");
+    }
+
+    @Test void membersWearTheirOwnSignedSkinOnTheirHeads() throws IOException {
+        String skin = "{\"textureRaw\":\"e30=\",\"signature\":\"c2ln\"}\n", hash = JsonDocuments.hash(skin), guard = store.read("npcs/town/guard.json");
+        store.commit(List.of(new DocumentStore.Change("skins/" + hash + ".json", "missing", skin),
+                new DocumentStore.Change("npcs/town/guard.json", JsonDocuments.hash(guard), guard.replace(",\"groups\":", ",\"skin\":\"" + hash + "\",\"groups\":"))));
+        assertTrue(npcs.reload().isEmpty());
+        openGroup();
+        click("Members", Click.LEFT);
+        String head = alex.frame.items().get(MockScreenHost.slot(alex, "guard")).item().components().orElse("");
+        assertTrue(head.contains("profile={properties:[{name:\"textures\",value:\"e30=\",signature:\"c2ln\"}]}"), "signed, so the client draws it: " + head);
     }
 
     @Test void bulkAssignAsksTwice() {
