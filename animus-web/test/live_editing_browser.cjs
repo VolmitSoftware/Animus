@@ -261,8 +261,13 @@ async function run(browser, width, height, label, theme) {
   await page.waitForFunction(() => document.activeElement?.id === 'animus-live-undo');
   assert.equal((await fetchSource(npc)).name, 'After Recovery', 'cancel wrote nothing');
   await click(page, 'Undo last apply');
+  const refreshedLines = () => page.locator('.animus-live-log li', {hasText: 'changed on the server'}).count();
+  const refreshedBefore = await refreshedLines();
   await expectNotice(page, 'Undid 1 document', () => click(page, 'Undo on the server'));
   assert.equal((await fetchSource(npc)).name, 'Direct Again');
+  // The undo's own catalog event follows within moments; it is not news.
+  await page.waitForTimeout(1000);
+  assert.equal(await refreshedLines(), refreshedBefore, `${label}: the editor's own undo is not reported as a server change`);
   await shot(page, `${label}-07-undo`);
 
   // An edit made on the server while this editor is cut off: the reconnect

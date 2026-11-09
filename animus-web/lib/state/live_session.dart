@@ -751,7 +751,16 @@ class LiveSession {
         undoable: false,
       );
 
+  /// The hash each document had after this editor's last apply or undo
+  /// (null after a delete). A catalog event reporting that same write is not
+  /// a change from elsewhere; the first event for a key uses up its entry.
+  final Map<String, String?> _written = <String, String?>{};
+
   Future<void> _applied(ChangeApplied applied, PendingChange pending, Map<String, ({String path, Object? source})>? sent) async {
+    for (final AppliedDocument document in applied.documents) {
+      _written[document.key] = document.hash;
+      if (document.from != null) _written[documentKey(document.kind, document.from!)] = null;
+    }
     if (sent == null || pending.undoOf != null) {
       // No local copy of what was written (a recovered or undone change
       // set): take the server's versions. What it removed (a delete, or the
@@ -771,7 +780,7 @@ class LiveSession {
       await _absorb(<String>[
         for (final AppliedDocument document in applied.documents)
           if (document.hash != null) document.key,
-      ], replace: true);
+      ], replace: true, announce: false);
     } else {
       final Map<String, ({String path, Object? source})> stored = <String, ({String path, Object? source})>{};
       final List<DocumentChange> documents = <DocumentChange>[];
@@ -1045,12 +1054,14 @@ class LiveSession {
           if (entry == null) continue;
           _catalogUpsert(entry);
           final ServerBase? base = server.bases[entry.key];
+          if (_ownWrite(entry.key, entry.hash)) continue;
           if (base != null && base.hash != entry.hash && !inFlight.contains(entry.key)) moved.add(entry.key);
         }
         for (final Object? raw in (event['deleted'] as List<Object?>?) ?? const <Object?>[]) {
           if (raw is! Map<String, Object?>) continue;
           final String key = '${raw['kind']}:${raw['id']}';
           catalog = <CatalogEntry>[for (final CatalogEntry entry in catalog) if (entry.key != key) entry];
+          if (_ownWrite(key, null)) continue;
           if (server.bases.containsKey(key) && !inFlight.contains(key)) moved.add(key);
         }
         if (moved.isNotEmpty) await _absorb(moved);
@@ -1072,6 +1083,13 @@ class LiveSession {
       // 'closing' ends the stream, and the connection status that follows
       // says why; a second notice here would repeat it.
     }
+  }
+
+  /// Whether a catalog event's [hash] for [key] is this editor's own last
+  /// write, using up the record of it either way.
+  bool _ownWrite(String key, String? hash) {
+    if (!_written.containsKey(key)) return false;
+    return _written.remove(key) == hash;
   }
 
   void _catalogUpsert(CatalogEntry entry) {

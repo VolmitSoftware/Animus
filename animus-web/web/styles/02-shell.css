@@ -40,7 +40,7 @@
   border-bottom: 1px solid var(--animus-border);
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: 35;
   background: var(--background, inherit);
   box-sizing: border-box;
 }
@@ -872,6 +872,15 @@
 
 .arcane-toast :is(button, a) {
   pointer-events: auto !important;
+}
+
+/* Layers, low to high: the page, toasts (30), the top bar (35), then menus,
+   suggestion lists and tips (40), the drawer (44, 45), the command palette
+   (50) and dropdowns (69, 70). An open menu or dropdown always covers a
+   toast. The toaster sets its z-index inline, which only !important
+   overrides. */
+.arcane-toaster {
+  z-index: 30 !important;
 }
 
 /* Toasts: on phones they dock full width at the bottom edge. The toaster

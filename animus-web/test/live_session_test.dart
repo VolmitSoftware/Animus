@@ -29,6 +29,9 @@ class MiniServer {
   int applied = 0;
   String? previewId;
 
+  /// Runs before each request is answered.
+  void Function(ApiRequest request)? before;
+
   void put(DocumentKind kind, String id, Map<String, Object?> source, {int? revision}) {
     final String key = documentKey(kind, id);
     final int next = revision ?? (((documents[key]?['revision'] as int?) ?? 0) + 1);
@@ -47,6 +50,7 @@ class MiniServer {
       <String, Object?>{for (final String field in <String>['kind', 'id', 'path', 'revision', 'hash']) field: document[field]};
 
   ApiResponse handle(ApiRequest request) {
+    before?.call(request);
     final Uri uri = Uri.parse(request.path);
     final List<String> segments = uri.pathSegments;
     if (request.method == 'GET' && uri.path == '/v1/catalog') {
@@ -505,6 +509,46 @@ void main() {
     expect((store.document(DocumentKind.npc, 'town/guard')!.json! as Map<String, Object?>)['name'], 'Guard');
     expect(store.workspace!.server!.history.first.undone, isTrue);
     expect(session.drafts, isEmpty);
+  });
+
+  test('should not call its own apply or undo a change on the server', () async {
+    await session.openDocuments(session.catalog);
+    await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Captain');
+    await session.apply();
+    void catalogEvent() => network.lastStream.emit(<String, Object?>{
+          'type': 'catalog',
+          'documents': <Object?>[server.version(server.documents['npc:town/guard']!)],
+        });
+    catalogEvent();
+    await settle();
+    // The undo's catalog event lands while the editor fetches what it wrote.
+    server.before = (ApiRequest request) {
+      if (request.method != 'GET' || !request.path.startsWith('/v1/documents/')) return;
+      server.before = null;
+      catalogEvent();
+    };
+    await session.undo(store.workspace!.server!.history.single.changeId);
+    await settle();
+    catalogEvent();
+    await settle();
+    final List<String> messages = <String>[for (final LiveNotice notice in session.log) notice.message];
+    expect(messages, contains(startsWith('Undid')));
+    expect(messages.where((String message) => message.startsWith('Refreshed')), isEmpty);
+  });
+
+  test('should still report a change made elsewhere after its own undo', () async {
+    await session.openDocuments(session.catalog);
+    await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Captain');
+    await session.apply();
+    await session.undo(store.workspace!.server!.history.single.changeId);
+    server.put(DocumentKind.npc, 'town/guard', <String, Object?>{'schemaVersion': 1, 'id': 'guard', 'group': 'town', 'name': 'Sentry'});
+    network.lastStream.emit(<String, Object?>{
+      'type': 'catalog',
+      'documents': <Object?>[server.version(server.documents['npc:town/guard']!)],
+    });
+    await settle();
+    expect(session.log.last.message, 'Refreshed 1 document changed on the server.');
+    expect((store.document(DocumentKind.npc, 'town/guard')!.json! as Map<String, Object?>)['name'], 'Sentry');
   });
 
   test('should send deletions and creations in one change set', () async {

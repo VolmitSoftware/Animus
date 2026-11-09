@@ -7,8 +7,8 @@
 // leaves the step; a conversation line added with Enter is pending until it
 // is left empty. Tab passing a help tip does not open it, Space does, and a
 // label click keeps it shut while the pointer stays. A toast lets clicks through to what is under
-// it except on its own button. 1440 px and 390 px, both themes, no console
-// errors. Needs no fake server.
+// it except on its own button, and an open menu draws above a toast. 1440 px
+// and 390 px, both themes, no console errors. Needs no fake server.
 //
 //   python3 tool/serve_site.py --port <port>
 //   ANIMUS_WEB_URL=http://127.0.0.1:<port> PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node test/field_feedback_browser.cjs
@@ -194,6 +194,32 @@ async function run(browser, {viewport, theme}) {
   assert.match(await problem.textContent(), /namespace:path/);
   await page.waitForTimeout(1200);
   assert.equal(await problem.count(), 1, `${label}: the problem stays after blur`);
+
+  // An open menu draws above a toast: the "Created shop" toast is moved over
+  // the open + Add offer menu, and every item still takes the pointer.
+  await id.fill('harbor:goods');
+  await page.getByRole('button', {name: 'Create shop'}).click();
+  await page.locator('.arcane-toast').first().waitFor();
+  await page.locator('#animus-shop-add').click();
+  const menu = page.locator('#animus-shop-add-menu');
+  await menu.waitFor();
+  const covered = await menu.evaluate(el => {
+    const box = el.getBoundingClientRect();
+    const toaster = document.querySelector('.arcane-toaster');
+    for (const [name, value] of [['left', box.left], ['top', box.top], ['right', 'auto'], ['bottom', 'auto'], ['width', box.width], ['height', box.height]]) {
+      toaster.style.setProperty(name, typeof value === 'number' ? `${value}px` : value, 'important');
+    }
+    // Toasts pass clicks through; let them take the hit test here.
+    for (const part of [toaster, ...toaster.querySelectorAll('*')]) part.style.setProperty('pointer-events', 'auto', 'important');
+    const items = [...el.querySelectorAll('[role="menuitem"]')];
+    return {items: items.length, hidden: items.filter(item => {
+      const r = item.getBoundingClientRect();
+      return !item.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+    }).map(item => item.textContent)};
+  });
+  assert.ok(covered.items > 1, `${label}: the Add offer menu lists its offer types`);
+  assert.deepEqual(covered.hidden, [], `${label}: a toast hides no item of an open menu`);
+  await page.keyboard.press('Escape');
 
   // Popups open opaque.
   await page.goto(`${url}/#/workspace/${workspace}/new/npc`);

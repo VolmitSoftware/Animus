@@ -184,7 +184,7 @@ button.animus-chest-slot:focus-visible {
   position: absolute;
   left: calc(100% + 4px);
   top: -0.25rem;
-  z-index: 20;
+  z-index: 40;
   display: none;
   min-width: max-content;
   max-width: 22rem;
