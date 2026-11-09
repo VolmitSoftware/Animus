@@ -147,6 +147,7 @@ async function run(browser, width, height, label, theme) {
   await page.goto(`${site}/#/pair/${code}`);
   await page.getByRole('heading', {level: 1, name: 'Animus fake server'}).waitFor();
   await page.locator('[data-testid="pair-fingerprint"]', {hasText: 'sha256:'}).waitFor();
+  assert.equal(await page.evaluate(() => location.hash), '#/pair', 'the link code leaves the address once read');
   assert.equal(await page.getByRole('switch', {name: 'Remember this browser'}).count(), 1, 'remember is a labelled switch');
   await shot(page, `${label}-01-pair`);
   await page.getByRole('button', {name: 'Pair', exact: true}).click();
@@ -314,12 +315,28 @@ async function failures(browser, width, height, label, theme) {
   await page.getByRole('heading', {level: 1, name: 'Invalid pairing link'}).waitFor();
   await page.getByRole('alert').getByText('Run /animus editor pair again').waitFor();
   await shot(page, `${label}-f01-bad-code`);
+  assert.equal(await page.evaluate(() => location.hash), '#/pair', 'a bad code leaves the address too');
+
+  // A pasted code stays out of the address and history: back goes home, and
+  // forward finds the code-free pair page.
+  const {code: pasted} = await control('pair?paths=both', {});
+  await page.goto(`${site}/#/`);
+  await page.getByRole('textbox', {name: 'Pairing link or code'}).fill(pasted);
+  await click(page, 'Use this code');
+  await page.locator('[data-testid="pair-fingerprint"]').waitFor();
+  assert.equal(await page.evaluate(() => location.hash), '#/pair', 'the pasted code leaves the address');
+  await page.goBack();
+  await page.waitForFunction(() => !location.hash.startsWith('#/pair'));
+  await page.goForward();
+  await page.getByRole('heading', {level: 1, name: 'Invalid pairing link'}).waitFor();
+  assert.ok(!(await page.evaluate(() => location.href)).includes('ANM1.'), 'history keeps no pairing code');
 
   // An expired code: no Pair, the next step and the paste field.
   const {code: fresh} = await control('pair?paths=both', {});
   await page.getByRole('textbox', {name: 'Pairing link or code'}).fill(expiredCode(fresh));
   await click(page, 'Use this code');
   await page.locator('[data-testid="pair-expired"]').waitFor();
+  assert.equal(await page.evaluate(() => location.hash), '#/pair', 'Use this code keeps the code out of the address');
   assert.equal(await page.getByRole('button', {name: 'Pair', exact: true}).count(), 0, 'an expired code offers no Pair');
   await shot(page, `${label}-f02-expired-code`);
 

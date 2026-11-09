@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'error_copy.dart';
 import 'pairing.dart';
 import 'server_profiles.dart';
+import 'server_proof.dart';
 import 'transport.dart';
 
 enum ConnectionPhase {
@@ -278,13 +279,13 @@ class ServerConnection {
     ServerTransport? transport;
     try {
       transport = await open(path, url);
-      final ApiResponse hello = await transport.send(const ApiRequest('GET', '/v1/hello'));
+      final (ApiResponse hello, bool proven) = await _greet(transport, _profile.fingerprint);
       final Object? body = hello.body;
       if (!hello.ok || body is! Map<String, Object?>) {
         await transport.close();
         return hello.problem;
       }
-      if (body['fingerprint'] != _profile.fingerprint) {
+      if (body['fingerprint'] != _profile.fingerprint || !proven) {
         await transport.close();
         _running = false;
         final ErrorCopy wrong = transportCopy('wrong-server');
@@ -542,13 +543,13 @@ class ServerConnection {
       ServerTransport? transport;
       try {
         transport = await open(path, url);
-        final ApiResponse hello = await transport.send(const ApiRequest('GET', '/v1/hello'));
+        final (ApiResponse hello, bool proven) = await _greet(transport, payload.fingerprint);
         final Object? body = hello.body;
         if (!hello.ok || body is! Map<String, Object?>) {
           problem ??= hello.problem;
           continue;
         }
-        if (body['fingerprint'] != payload.fingerprint) {
+        if (body['fingerprint'] != payload.fingerprint || !proven) {
           problem = transportCopy('wrong-server');
           continue;
         }
@@ -577,6 +578,16 @@ class ServerConnection {
       }
     }
     throw refusal ?? PairingRefused('unreachable', problem ?? transportCopy('no-path'));
+  }
+
+  /// Sends `GET /v1/hello` and says whether the answer proves the server
+  /// pinned by [fingerprint]. A relay can echo any fingerprint, so there the
+  /// server must sign a fresh challenge; the direct path needs no proof.
+  static Future<(ApiResponse, bool)> _greet(ServerTransport transport, String fingerprint) async {
+    if (transport.path == ConnectionPath.direct) return (await transport.send(const ApiRequest('GET', '/v1/hello')), true);
+    final String challenge = newChallenge();
+    final ApiResponse hello = await transport.send(ApiRequest('GET', '/v1/hello', headers: <String, String>{challengeHeader: challenge}));
+    return (hello, hello.ok && await verifyServerProof(hello.headers, challenge: challenge, fingerprint: fingerprint));
   }
 
   Future<void> dispose() async {

@@ -48,7 +48,7 @@ class NavigationDefinitionRecoveryTest {
         IOException parse=assertThrows(IOException.class,()->NpcDefinition.parse(raw));
         assertTrue(parse.getMessage().contains("$.modules.animus:navigation"));assertTrue(parse.getMessage().contains("points[0].x"));
         try(var store=new DocumentStore(root)) {
-            var repository=new NpcRepository(store);assertThrows(IOException.class,repository::loadForStartup);
+            var repository=new NpcRepository(store);assertTrue(repository.loadForStartup().getFirst().startsWith(PATH+": "));
             assertTrue(repository.snapshot().isEmpty());assertNull(store.read(POINTER));assertEquals(raw,store.read(PATH));
         }
     }

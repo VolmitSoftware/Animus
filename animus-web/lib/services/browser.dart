@@ -61,6 +61,12 @@ void replaceHash(String hash) {
   if (web.window.location.hash != hash) web.window.location.replace(hash);
 }
 
+/// Swaps the current history entry's address for [hash]. No hashchange
+/// fires, so the open page stays as it is.
+void replaceHistoryHash(String hash) {
+  if (web.window.location.hash != hash) web.window.history.replaceState(null, '', hash);
+}
+
 /// Calls [listener] on every hash change; returns a function that stops it.
 void Function() onHashChange(void Function(String hash) listener) {
   final JSFunction callback = ((web.Event _) => listener(web.window.location.hash)).toJS;

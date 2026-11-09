@@ -57,12 +57,12 @@ final class ModuleArchiveLoader extends ClassLoader implements AutoCloseable {
     private static boolean resourcePath(String name){return name!=null&&!name.startsWith("/")&&!name.contains("\\")&&!name.contains(":")&&Arrays.stream(name.split("/",-1)).noneMatch(p->p.equals(".")||p.equals(".."));}
     private synchronized URL localResource(String name){
         if(closed||!content.containsKey(name))return null;
-        try{return new URL(null,"animus-module://"+digest+"/"+name,new URLStreamHandler(){
+        try{return URL.of(new URI("animus-module",digest,"/"+name,null),new URLStreamHandler(){
             protected URLConnection openConnection(URL url){return new URLConnection(url){
                 public void connect()throws IOException {if(closed)throw new IOException("Module archive closed");connected=true;}
                 public InputStream getInputStream()throws IOException {synchronized(ModuleArchiveLoader.this){connect();byte[] bytes=content.get(name);if(bytes==null)throw new FileNotFoundException(name);return new ByteArrayInputStream(bytes);}}
             };}
-        });}catch(MalformedURLException invalid){throw new IllegalStateException(invalid);}
+        });}catch(URISyntaxException|MalformedURLException invalid){throw new IllegalStateException(invalid);}
     }
     boolean closed(){return closed;}
     @Override public synchronized void close(){closed=true;content.clear();}

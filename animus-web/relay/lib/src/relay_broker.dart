@@ -79,7 +79,9 @@ final class RelayBroker {
     if (_apps.containsKey(sink)) return RelayErrorCode.invalidFrame;
     final Set<_App> subscribers = _appsByServer[fingerprint] ?? <_App>{};
     if (_apps.length >= limits.maxApps ||
-        subscribers.length >= limits.maxAppsPerServer) {
+        subscribers.length >= limits.maxAppsPerServer ||
+        subscribers.where((_App app) => app.address == address).length >=
+            limits.maxAppsPerAddressPerServer) {
       return RelayErrorCode.capacity;
     }
     final _App app = _App(sink, fingerprint, origin, address);
@@ -94,6 +96,11 @@ final class RelayBroker {
   }
 
   bool isSubscribed(RelaySink sink) => _apps.containsKey(sink);
+
+  /// True once the server accepted an event stream from the browser [sink].
+  /// The server opens a stream only for a valid token, so this is the relay's
+  /// sign that the browser holds one; the relay never sees token checks.
+  bool isSignedIn(RelaySink sink) => _apps[sink]?.signedIn ?? false;
 
   /// Drops the browser [sink] and tells its server to stop each of its
   /// requests and streams.
@@ -202,6 +209,7 @@ final class RelayBroker {
         _pending--;
         final bool opened =
             route.stream && frame.status >= 200 && frame.status < 300;
+        if (opened) route.app.signedIn = true;
         if (!opened) _remove(route);
         route.app.sink.send(jsonEncode(frame.withId(route.clientId).toJson()));
       case EventFrame():
@@ -298,6 +306,7 @@ final class _App {
   final Map<int, _Route> routes = <int, _Route>{};
   int pending = 0;
   int streams = 0;
+  bool signedIn = false;
 
   _App(this.sink, this.fingerprint, this.origin, this.address);
 }

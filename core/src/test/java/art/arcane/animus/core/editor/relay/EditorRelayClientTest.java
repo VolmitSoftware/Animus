@@ -15,7 +15,14 @@ import art.arcane.animus.core.editor.transport.EditorRequestHandler;
 import art.arcane.animus.core.editor.transport.EditorResponse;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import java.nio.charset.StandardCharsets;
+import java.security.KeyFactory;
+import java.security.PublicKey;
+import java.security.Signature;
+import java.security.spec.X509EncodedKeySpec;
 import java.time.Duration;
+import java.util.Base64;
+import java.util.HexFormat;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
@@ -124,6 +131,44 @@ class EditorRelayClientTest {
         assertEquals(1, answer.get("id").getAsLong());
         assertEquals(404, answer.get("status").getAsInt());
         assertEquals("not-found", answer.getAsJsonObject("body").getAsJsonObject("error").get("code").getAsString());
+    }
+
+    @Test
+    void shouldProveItsKeyBySigningTheBrowserChallenge() throws Exception {
+        FakeRelay.Session session = connect();
+        String challenge = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
+        JsonObject hello = request(5, "GET", "/v1/hello");
+        hello.getAsJsonObject("headers").addProperty("X-Animus-Challenge", challenge);
+        session.send(hello);
+        handler.calls.poll(5, TimeUnit.SECONDS).response().complete(EditorResponse.json(200, new JsonObject()));
+        JsonObject headers = session.next(WAIT).getAsJsonObject("headers");
+        assertEquals(identity.serverKey(), headers.get("X-Animus-Server-Key").getAsString());
+        byte[] signature = Base64.getUrlDecoder().decode(headers.get("X-Animus-Proof").getAsString());
+        assertTrue(verifies(identity.serverKey(), "animus-editor-proof/1 " + challenge, signature));
+        assertFalse(verifies(identity.serverKey(), EditorRelayClient.CHALLENGE_PREFIX + challenge, signature));
+    }
+
+    @Test
+    void shouldNotSignAMalformedChallenge() throws Exception {
+        FakeRelay.Session session = connect();
+        JsonObject hello = request(6, "GET", "/v1/hello");
+        hello.getAsJsonObject("headers").addProperty("X-Animus-Challenge", "animus-relay/1 x");
+        session.send(hello);
+        handler.calls.poll(5, TimeUnit.SECONDS).response().complete(EditorResponse.json(200, new JsonObject()));
+        assertFalse(session.next(WAIT).has("headers"));
+    }
+
+    /** Ed25519 check of {@code signature} over {@code text} with a raw base64url public key. */
+    private static boolean verifies(String serverKey, String text, byte[] signature) throws Exception {
+        byte[] raw = Base64.getUrlDecoder().decode(serverKey);
+        byte[] encoded = new byte[44];
+        System.arraycopy(HexFormat.of().parseHex("302a300506032b6570032100"), 0, encoded, 0, 12);
+        System.arraycopy(raw, 0, encoded, 12, 32);
+        PublicKey key = KeyFactory.getInstance("Ed25519").generatePublic(new X509EncodedKeySpec(encoded));
+        Signature verifier = Signature.getInstance("Ed25519");
+        verifier.initVerify(key);
+        verifier.update(text.getBytes(StandardCharsets.UTF_8));
+        return verifier.verify(signature);
     }
 
     @Test

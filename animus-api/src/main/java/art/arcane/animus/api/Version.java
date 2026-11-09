@@ -1,6 +1,12 @@
 package art.arcane.animus.api;
 
-/** Numeric release version. Pre-release selection belongs to the module loader, not this comparison. */
+/**
+ * Numeric release version. Pre-release selection belongs to the module loader, not this comparison.
+ *
+ * @param major major version
+ * @param minor minor version
+ * @param patch patch version
+ */
 public record Version(int major, int minor, int patch) implements Comparable<Version> {
     public Version { if(major<0 || minor<0 || patch<0)throw new IllegalArgumentException("Negative version component"); }
     @Override public int compareTo(Version other) {

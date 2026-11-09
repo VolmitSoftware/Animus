@@ -197,6 +197,7 @@ class EditorHotloadTest {
     void originAndLimitChanges_applyWithoutRestartingListener() throws Exception {
         int port = startListening();
         EditorListener before = service.listener().orElseThrow();
+        String token = token();
         String base = "http://127.0.0.1:" + port + "/animus/v1/changes";
         HttpRequest preflight = HttpRequest.newBuilder(URI.create(base)).method("OPTIONS", HttpRequest.BodyPublishers.noBody())
                 .header("Origin", OTHER_ORIGIN).header("Access-Control-Request-Method", "POST").build();
@@ -207,7 +208,7 @@ class EditorHotloadTest {
         assertEquals(port, listenerPort());
         assertEquals(OTHER_ORIGIN, http.send(preflight, HttpResponse.BodyHandlers.ofString()).headers().firstValue("Access-Control-Allow-Origin").orElseThrow());
         assertEquals(List.of(OTHER_ORIGIN), service.api().orElseThrow().parts().settings().allowedOrigins());
-        HttpResponse<String> large = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/animus/v1/validate"))
+        HttpResponse<String> large = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/animus/v1/validate")).header("Authorization", "Bearer " + token)
                 .POST(HttpRequest.BodyPublishers.ofString("x".repeat(3000))).build(), HttpResponse.BodyHandlers.ofString());
         assertEquals(413, large.statusCode(), "the listener reads the new body limit");
     }

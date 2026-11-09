@@ -4,12 +4,15 @@ import art.arcane.animus.core.behavior.catalog.BehaviorPath;
 import java.util.List;
 
 /**
- * Built-in action budgets and the privileged command allow-list. Empty lists deny every command. Hotloads: lowered queue, wait
- * and choice caps keep what is already waiting and refuse new work as busy until it drains.
+ * Built-in action budgets and the privileged command allow-list. Empty lists deny every command. {@code rawTextBehaviors}
+ * names the behaviors whose privileged arguments may take interpolated text outside the safe set; every other behavior's
+ * interpolated text must be letters, digits and {@code _ . : + -}. Hotloads: lowered queue, wait and choice caps keep what
+ * is already waiting and refuse new work as busy until it drains.
  */
 public record BuiltinActionSettings(int actionsPerTick, int actionsPerNpcPerTick, int queuedActions, int pendingChoices,
-                                    int choiceLifetimeSeconds, List<String> commandBehaviors, List<String> commandNamespaces, int navigationWaits) {
-    public static final BuiltinActionSettings DEFAULT = new BuiltinActionSettings(32, 4, 256, 256, 60, List.of(), List.of(), 8);
+                                    int choiceLifetimeSeconds, List<String> commandBehaviors, List<String> commandNamespaces, int navigationWaits,
+                                    List<String> rawTextBehaviors) {
+    public static final BuiltinActionSettings DEFAULT = new BuiltinActionSettings(32, 4, 256, 256, 60, List.of(), List.of(), 8, List.of());
     private static final int MAXIMUM_ALLOW_LIST = 256;
 
     public BuiltinActionSettings {
@@ -22,9 +25,11 @@ public record BuiltinActionSettings(int actionsPerTick, int actionsPerNpcPerTick
         if (navigationWaits < 1 || navigationWaits > 64) throw new IllegalArgumentException("navigationWaits must be within 1..64");
         commandBehaviors = List.copyOf(commandBehaviors);
         commandNamespaces = List.copyOf(commandNamespaces);
-        if (commandBehaviors.size() > MAXIMUM_ALLOW_LIST || commandNamespaces.size() > MAXIMUM_ALLOW_LIST)
+        rawTextBehaviors = List.copyOf(rawTextBehaviors);
+        if (commandBehaviors.size() > MAXIMUM_ALLOW_LIST || commandNamespaces.size() > MAXIMUM_ALLOW_LIST || rawTextBehaviors.size() > MAXIMUM_ALLOW_LIST)
             throw new IllegalArgumentException("Command allow-lists accept at most " + MAXIMUM_ALLOW_LIST + " entries");
         for (String behavior : commandBehaviors) BehaviorPath.forId(behavior);
+        for (String behavior : rawTextBehaviors) BehaviorPath.forId(behavior);
         for (String namespace : commandNamespaces)
             if (!namespace.matches("[a-z0-9_-]{1,64}")) throw new IllegalArgumentException("commandNamespaces expects namespace names");
     }
@@ -35,4 +40,7 @@ public record BuiltinActionSettings(int actionsPerTick, int actionsPerNpcPerTick
         int separator = behavior.indexOf(':');
         return separator > 0 && commandNamespaces.contains(behavior.substring(0, separator));
     }
+
+    /** Whether this behavior may put text outside the safe set into a privileged argument. Exact ids only. */
+    public boolean rawTextAllowed(String behavior) { return behavior != null && rawTextBehaviors.contains(behavior); }
 }

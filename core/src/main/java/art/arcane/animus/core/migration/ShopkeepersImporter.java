@@ -622,10 +622,25 @@ public final class ShopkeepersImporter {
      */
     public Applied apply(DocumentStore store, String id, NpcRepository.Installed installed) throws IOException {
         if (!id.matches("[a-f0-9]{64}")) throw new IOException("Invalid import ID");
+        if (store.read(IMPORTS + "/" + id + "/receipt.json") != null) throw new IOException("This Shopkeepers import is already applied");
+        return apply(store, id, installed, UUID.randomUUID().toString());
+    }
+
+    /**
+     * {@link #apply} under {@code transaction}. When the import is already installed, returns what its receipt recorded:
+     * the transaction that installed it and the bindings it left waiting, so a retried apply records the real id.
+     */
+    public Applied apply(DocumentStore store, String id, NpcRepository.Installed installed, String transaction) throws IOException {
+        if (!id.matches("[a-f0-9]{64}")) throw new IOException("Invalid import ID");
         Path staged = store.resolve(IMPORTS + "/" + id);
         Preview preview = read(staged, id);
         String receiptPath = IMPORTS + "/" + id + "/receipt.json";
-        if (store.read(receiptPath) != null) throw new IOException("This Shopkeepers import is already applied");
+        String existing = store.read(receiptPath);
+        if (existing != null) {
+            JsonObject recorded = JsonDocuments.object(existing);
+            if (!recorded.has("transaction") || !recorded.has("pending")) throw new IOException("This Shopkeepers import was installed by an older Animus that did not record its transaction; run preview again");
+            return new Applied(recorded.get("transaction").getAsString(), recorded.get("bound").getAsInt(), recorded.getAsJsonArray("pending"), List.of());
+        }
         List<DocumentStore.Change> changes = new ArrayList<>();
         Set<UUID> uuids = new HashSet<>();
         Set<String> ids = new HashSet<>();
@@ -659,19 +674,26 @@ public final class ShopkeepersImporter {
         receipt.addProperty("shops", preview.shops());
         receipt.addProperty("npcs", preview.npcs());
         receipt.addProperty("bound", bound);
+        receipt.add("pending", pending);
+        receipt.addProperty("transaction", transaction);
         changes.add(new DocumentStore.Change(receiptPath, "missing", JsonDocuments.write(receipt)));
-        return new Applied(DefinitionBatch.commit(store, edited, expected, changes), bound, pending, problems);
+        return new Applied(DefinitionBatch.commit(store, transaction, edited, expected, changes), bound, pending, problems);
     }
 
     /** Binds pending Citizens shopkeepers to NPCs installed since; empty when none of them is installed yet. */
     public static Optional<Applied> bind(DocumentStore store, JsonArray pending, NpcRepository.Installed installed) throws IOException {
+        return bind(store, pending, installed, UUID.randomUUID().toString());
+    }
+
+    /** {@link #bind} under {@code transaction}. */
+    public static Optional<Applied> bind(DocumentStore store, JsonArray pending, NpcRepository.Installed installed, String transaction) throws IOException {
         List<NpcDefinition> edited = new ArrayList<>();
         Map<String, String> expected = new HashMap<>();
         JsonArray still = new JsonArray();
         List<String> problems = new ArrayList<>();
         int bound = bindings(pending, installed, edited, expected, still, problems);
         if (edited.isEmpty()) return Optional.empty();
-        return Optional.of(new Applied(DefinitionBatch.commit(store, edited, expected, List.of()), bound, still, problems));
+        return Optional.of(new Applied(DefinitionBatch.commit(store, transaction, edited, expected, List.of()), bound, still, problems));
     }
 
     private static int bindings(JsonArray requested, NpcRepository.Installed installed, List<NpcDefinition> changes, Map<String, String> expected,

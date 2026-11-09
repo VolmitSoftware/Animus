@@ -21,6 +21,8 @@ import java.util.function.Supplier;
  * runs on the shared file lane; replies go back on the actor's owner.
  */
 public final class EditorCommands {
+    /** Lets a player pair {@code apply:commands}; the console always may. */
+    public static final String COMMANDS_PERMISSION = "animus.editor.commands";
     private final Supplier<EditorService> service;
     private final Executor files;
 
@@ -118,6 +120,8 @@ public final class EditorCommands {
                     + "; scopes are " + String.join(", ", Arrays.stream(EditorScope.values()).map(EditorScope::wireName).toList()))));
             granted = List.copyOf(parsed);
         }
+        if (granted.contains(EditorScope.APPLY_COMMANDS) && actor.player().isPresent() && !actor.permitted(COMMANDS_PERMISSION))
+            throw new IllegalArgumentException("apply:commands lets the editor run console commands; it needs " + COMMANDS_PERMISSION + " or the console");
         List<String> grouped = Arrays.stream(groups.split(",")).map(String::strip).filter((String group) -> !group.isEmpty()).toList();
         Duration lifetime = expires.isBlank() ? Duration.ofDays(tokenDays) : duration(expires);
         Optional<UUID> admin = actor.player();

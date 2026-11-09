@@ -382,6 +382,7 @@ final class RegionActor implements RegionOwner.Body {
         tickCombat();
         if (sampled) mark = metrics.sampledLap(Subsystem.COMBAT, mark);
         if (reread) { reread = false; routeReadWanted |= routeSource != null || recordingToRead() != null || inlineSteps() != null; }
+        if (routeRead != null && routeRead.refused) retryRouteRead();
         if (routeReadWanted) requestRouteRead();
         if (route != null && !seated) { navigate(); supportWanted = false; fallSpeed = 0; }
         else if (!seated && (supportWanted || fallSpeed > 0)) support();
@@ -965,7 +966,10 @@ final class RegionActor implements RegionOwner.Body {
                     else {
                         LongLeg.Next next = current.longLeg.planned(planned);
                         if (next == LongLeg.Next.BLOCKED) blockLeg(current, "failed: " + planned.status());
-                        else if (next == LongLeg.Next.RETRY) routeStatus(current, "replanning", "attempt " + current.longLeg.attempts() + " after " + planned.status());
+                        else if (next == LongLeg.Next.RETRY) {
+                            current.nextAttempt = turns + PersistedNpcService.REPLAN_BACKOFF_TICKS;
+                            routeStatus(current, "replanning", "attempt " + current.longLeg.attempts() + " after " + planned.status());
+                        }
                         else {
                             current.segment = next == LongLeg.Next.SEGMENT;
                             Vec3 end = next == LongLeg.Next.FINAL ? current.goal.point() : planned.path().getLast().point();
@@ -1040,7 +1044,7 @@ final class RegionActor implements RegionOwner.Body {
     }
     private void blockedStep(Route current, String reason) {
         if (current.longLeg.blocked() == LongLeg.Next.BLOCKED) { blockLeg(current, reason); return; }
-        current.execution = null; current.segment = false;
+        current.execution = null; current.segment = false; current.nextAttempt = turns + PersistedNpcService.REPLAN_BACKOFF_TICKS;
         routeStatus(current, "replanning", reason);
     }
     /** Terrain blocks the leg for good, or no plan found a way: logged once per NPC with the leg, then the route fails as any failed leg does. */
@@ -1508,6 +1512,12 @@ final class RegionActor implements RegionOwner.Body {
         try { host.io.execute(read); return true; }
         catch (RejectedExecutionException full) { routeRead = null; host.releaseRead(); routeError = "I/O queue full; retry reload"; return false; }
     }
+    /** The owner refused the read's result: the same read starts again, or waits for a read slot on a later turn. */
+    private void retryRouteRead() {
+        RouteRead refused = routeRead;
+        routeRead = null;
+        if (!startRead(refused.reference, refused.inline, refused.recording, refused.start) && routeRead == null) routeRead = refused;
+    }
     private void cancelRouteRead() { routeReadWanted = false; if (routeRead != null) { routeRead.cancelled = true; routeRead = null; } }
     private void finishRouteRead(RouteRead read, WaypointSettings settings, RouteRecordings recordings, RecordingDocument document, String failure) {
         if (routeRead != read || read.cancelled) return;
@@ -1551,18 +1561,24 @@ final class RegionActor implements RegionOwner.Body {
         displaySkin = loaded; appearance++;
     }
     /** Read results return through the mailbox, so whichever region owns the NPC by then applies them. */
-    private void complete(Runnable apply) {
-        owner.submit(new OwnerMailbox.Work() {
-            @Override public void run() { apply.run(); publish(true); }
-            @Override public void refuse(String reason) { /* A dormant or retired NPC no longer wants this read. */ }
+    private void complete(Runnable apply, Runnable refused) { handBack(owner, () -> { apply.run(); publish(true); }, refused); }
+    /**
+     * Hands a result to the NPC's owner. A dormant NPC, an abandoned handoff or a full mailbox refuses it, at once or when
+     * queued work is dropped; {@code refused} then runs exactly once, on any thread.
+     */
+    static void handBack(RegionOwner owner, Runnable apply, Runnable refused) {
+        boolean queued = owner.submit(new OwnerMailbox.Work() {
+            @Override public void run() { apply.run(); }
+            @Override public void refuse(String reason) { refused.run(); }
         });
+        if (!queued) refused.run();
     }
     /**
      * One reusable route and the recordings its steps play, the step recordings of an inline route, or one recording;
      * every recording within the live {@code [recordings] maximumFileBytes}.
      */
     private final class RouteRead implements Runnable {
-        final String reference; final WaypointSettings inline; final RecordingSource recording; final boolean start; final int maximumBytes; volatile boolean cancelled;
+        final String reference; final WaypointSettings inline; final RecordingSource recording; final boolean start; final int maximumBytes; volatile boolean cancelled, refused;
         RouteRead(String reference, WaypointSettings inline, RecordingSource recording, boolean start, int maximumBytes) {
             this.reference = reference; this.inline = inline; this.recording = recording; this.start = start; this.maximumBytes = maximumBytes;
         }
@@ -1580,7 +1596,8 @@ final class RegionActor implements RegionOwner.Body {
             catch (Exception problem) { failure = PersistedNpcService.concise(problem); }
             finally { host.releaseRead(); }
             WaypointSettings result = settings; RouteRecordings loaded = steps; RecordingDocument played = document; String reason = failure;
-            if (!cancelled) complete(() -> finishRouteRead(this, result, loaded, played, reason));
+            // A refused result is read again on the NPC's next turn, so a route read can never be left waiting.
+            if (!cancelled) complete(() -> finishRouteRead(this, result, loaded, played, reason), () -> refused = true);
         }
     }
     private final class AppearanceRead implements Runnable {
@@ -1592,7 +1609,8 @@ final class RegionActor implements RegionOwner.Body {
             catch (Exception problem) { failure = PersistedNpcService.concise(problem); }
             finally { host.releaseRead(); }
             BodySkin result = loaded; String reason = failure;
-            if (!cancelled) complete(() -> finishAppearance(this, result, reason));
+            // A refused skin is simply not applied: a later appearance change replaces this read.
+            if (!cancelled) complete(() -> finishAppearance(this, result, reason), () -> {});
         }
     }
 

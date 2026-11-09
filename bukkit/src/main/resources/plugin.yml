@@ -33,6 +33,9 @@ permissions:
   animus.hotload.notify:
     description: Hear the ding and see each change when a data file is hotloaded or refused.
     default: op
+  animus.editor.commands:
+    description: Pair the web editor with apply:commands, which lets it change behaviors, shops and GUIs that run console commands.
+    default: op
   animus.editor.notify:
     description: Hear the sound and see who changed what when the web editor applies, undoes, imports, spawns, pairs or is refused.
     default: op

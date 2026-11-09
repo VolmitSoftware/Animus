@@ -18,6 +18,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -29,11 +30,16 @@ import java.util.function.Supplier;
  * @param <P> the platform's online player
  */
 public final class RuntimeEditorHost<P> implements EditorHost {
-    /** What the platform passes in. Applied changes reload through the runtime's {@link AnimusRuntime#catalogs()}; {@code terrain} may be null. */
+    /**
+     * What the platform passes in. Applied changes reload through the runtime's {@link AnimusRuntime#catalogs()}; {@code terrain}
+     * may be null. {@code offlineAdmin} answers for a player who is not online, from the server's operator list and permission
+     * plugin where it can; it runs on the asking thread, never the server thread, and answers {@code UNKNOWN} when it cannot tell.
+     */
     public record Parts<P>(AnimusRuntime runtime, Executor files, NpcRuntime<P, ?> living, ExtensionRuntime extensions, String platform, String serverName, Supplier<Map<String, Feature>> features,
-                           Supplier<Lookups> lookups, Predicate<P> admin, EditorNoticeChannel notices, Consumer<String> log, EditorTerrain terrain) {
+                           Supplier<Lookups> lookups, Predicate<P> admin, EditorNoticeChannel notices, Consumer<String> log, EditorTerrain terrain, Function<UUID, Admin> offlineAdmin) {
         public Parts {
             Objects.requireNonNull(runtime); Objects.requireNonNull(files); Objects.requireNonNull(living); Objects.requireNonNull(lookups); Objects.requireNonNull(notices); Objects.requireNonNull(log);
+            Objects.requireNonNull(offlineAdmin);
         }
     }
 
@@ -61,9 +67,20 @@ public final class RuntimeEditorHost<P> implements EditorHost {
 
     @Override public boolean online(UUID player) { return parts.living().players().online(player); }
 
+    @Override public boolean commandGrants() {
+        try {
+            art.arcane.animus.core.config.BuiltinActionSettings actions = parts.runtime().behaviorSettings().actions();
+            return !actions.commandBehaviors().isEmpty() || !actions.commandNamespaces().isEmpty();
+        } catch (IllegalStateException stopped) { return true; }
+    }
+
     @Override public void admin(UUID player, Consumer<Admin> result) {
         boolean delivered = parts.living().players().deliver(player, (P online) -> result.accept(parts.admin().test(online) ? Admin.ADMIN : Admin.NOT_ADMIN));
-        if (!delivered) result.accept(Admin.UNKNOWN);
+        if (delivered) return;
+        Admin offline;
+        try { offline = parts.offlineAdmin().apply(player); }
+        catch (RuntimeException failure) { offline = Admin.UNKNOWN; }
+        result.accept(offline == null ? Admin.UNKNOWN : offline);
     }
 
     @Override public CompletionStage<List<String>> activationProblems(NpcDefinition definition) {

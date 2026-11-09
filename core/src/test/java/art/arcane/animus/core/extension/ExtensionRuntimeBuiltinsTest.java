@@ -74,7 +74,7 @@ class ExtensionRuntimeBuiltinsTest {
 
     private ExtensionRuntime start(boolean modulesEnabled, List<String> commandBehaviors) throws Exception {
         BuiltinActionSettings defaults = BuiltinActionSettings.DEFAULT;
-        BuiltinActionSettings settings = new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), commandBehaviors, List.of(), defaults.navigationWaits());
+        BuiltinActionSettings settings = new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), commandBehaviors, List.of(), defaults.navigationWaits(), List.of());
         BuiltinCapabilities builtins = new BuiltinCapabilities(UNAVAILABLE, new MemoryBehaviorState(), choice -> {}, settings, line -> {});
         runtime = new ExtensionRuntime(root.toRealPath().resolve("modules"), Platform.FOLIA, DEFINITIONS, new ModuleSettings(modulesEnabled, 8, 2000, 250), line -> {}, state -> {}, builtins);
         runtime.start();

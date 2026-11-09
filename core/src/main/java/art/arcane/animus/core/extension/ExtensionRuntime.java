@@ -72,7 +72,7 @@ public final class ExtensionRuntime implements AutoCloseable {
         this.initializationObserver = Objects.requireNonNull(initializationObserver);
         host = new ModuleHost(platform, definitions, settings.maximumInvocations(),
                 Duration.ofMillis(settings.invocationTimeoutMillis()), Duration.ofMillis(settings.deliveryBudgetMillis()));
-        HostBehaviorInvoker hostInvoker = new HostBehaviorInvoker(host, this::privilegedGranted);
+        HostBehaviorInvoker hostInvoker = new HostBehaviorInvoker(host, this::privilegedGranted, this::rawTextGranted);
         behaviorInvoker = new BehaviorInvoker() {
             @Override public boolean available(Capabilities.Key key, Capabilities.Kind kind) {
                 return capabilityAvailable(key, kind);
@@ -126,6 +126,7 @@ public final class ExtensionRuntime implements AutoCloseable {
 
     private boolean admitting() { return state == State.READY || state == State.DISABLED && builtins != null; }
     private boolean privilegedGranted(String behavior) { return builtins != null && builtins.commandAllowed(behavior); }
+    private boolean rawTextGranted(String behavior) { return builtins != null && builtins.rawTextAllowed(behavior); }
 
     private void load() {
         try {

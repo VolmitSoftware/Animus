@@ -25,7 +25,7 @@ String scopeLabel(String scope) => switch (scope) {
       'apply:rigs' => 'Apply rigs',
       'import' => 'Import saves',
       'spawn' => 'Spawn NPCs',
-      'admin' => 'Admin',
+      'apply:commands' => 'Apply commands',
       _ => scope,
     };
 

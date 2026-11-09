@@ -45,7 +45,7 @@ class ServerCapabilitiesTest {
         host = new ModuleHost(Platform.PAPER, DEFINITIONS, 64, Duration.ofMillis(5000));
         BuiltinActionSettings defaults = BuiltinActionSettings.DEFAULT;
         BuiltinActionSettings settings = new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(),
-                defaults.choiceLifetimeSeconds(), List.of(), List.of("denizen"), defaults.navigationWaits());
+                defaults.choiceLifetimeSeconds(), List.of(), List.of("denizen"), defaults.navigationWaits(), List.of());
         builtins = new BuiltinCapabilities(platform, state, choice -> {}, settings, line -> {}, (int bound) -> 0, () -> state.now);
         assertEquals(Outcome.Status.OK, host.installBuiltin(builtins, builtins).status());
     }

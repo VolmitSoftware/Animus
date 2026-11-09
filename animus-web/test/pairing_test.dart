@@ -6,6 +6,7 @@ import 'package:animus_editor/services/server/transport.dart';
 import 'package:test/test.dart';
 
 import 'fixtures.dart';
+import '../tool/fake_server/identity.dart';
 import 'support/fake_transport.dart';
 
 void main() {
@@ -49,12 +50,11 @@ void main() {
         'tokenId': 'tok_0001AbCd',
         'scopes': <Object?>['read', 'validate'],
         'expiresAt': '2026-11-11T12:00:00Z',
-        'fingerprint': fixtureFingerprint,
+        'fingerprint': fakeFingerprint,
         'admin': '0000000a-0000-4000-8000-0000000000b2',
       });
     }));
-    network.down.add(ConnectionPath.direct);
-    final PairingPayload payload = decodePairingCode(((pairing['valid']! as List<Object?>)[1]! as Map<String, Object?>)['code']! as String, schemas);
+    final PairingPayload payload = fakePayload(relayUrl: 'ws://127.0.0.1:9797');
     final (ServerToken token, ConnectionPath path) = await ServerConnection.pair(payload, network.open, client: 'test');
     expect(path, ConnectionPath.relay);
     expect(token.tokenId, 'tok_0001AbCd');
@@ -72,7 +72,7 @@ void main() {
   });
 
   group('ServerProfileStore', () {
-    const ServerProfile remembered = ServerProfile(fingerprint: fixtureFingerprint, serverKey: fixtureServerKey, name: 'Town', relayUrl: 'wss://relay', remember: true);
+    const ServerProfile remembered = ServerProfile(fingerprint: fakeFingerprint, serverKey: fakeServerKey, name: 'Town', relayUrl: 'wss://relay', remember: true);
     final ServerToken token = ServerToken(token: 'anm_x.y', tokenId: 'x', scopes: const <String>['read'], expiresAt: DateTime.utc(2030));
 
     test('should keep a remembered token in local storage and a session token only in the session', () {
@@ -92,12 +92,12 @@ void main() {
 
     test('should drop a stored profile whose key does not hash to its fingerprint', () {
       final MemoryKeyValueStore local = MemoryKeyValueStore()
-        ..write(ServerProfileStore.profilesKey, '[{"fingerprint":"sha256:${'0' * 64}","serverKey":"$fixtureServerKey","name":"Evil"}]');
+        ..write(ServerProfileStore.profilesKey, '[{"fingerprint":"sha256:${'0' * 64}","serverKey":"$fakeServerKey","name":"Evil"}]');
       expect(ServerProfileStore(local: local, session: MemoryKeyValueStore()).load(), isEmpty);
     });
 
     test('should try the last good path first', () {
-      const ServerProfile both = ServerProfile(fingerprint: fixtureFingerprint, serverKey: fixtureServerKey, name: 'T', directUrl: 'https://a', relayUrl: 'wss://b');
+      const ServerProfile both = ServerProfile(fingerprint: fakeFingerprint, serverKey: fakeServerKey, name: 'T', directUrl: 'https://a', relayUrl: 'wss://b');
       expect(both.paths.first.$1, ConnectionPath.direct);
       expect(both.copyWith(lastPath: ConnectionPath.relay).paths.first.$1, ConnectionPath.relay);
     });
@@ -107,8 +107,8 @@ void main() {
 Map<String, Object?> _payload(String relayUrl) => <String, Object?>{
       'v': 1,
       'relayUrl': relayUrl,
-      'fingerprint': fixtureFingerprint,
-      'serverKey': fixtureServerKey,
+      'fingerprint': fakeFingerprint,
+      'serverKey': fakeServerKey,
       'tokenId': 'tok_0001AbCd',
       'secret': 'ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM',
       'expiresAt': '2026-11-04T12:10:00Z',

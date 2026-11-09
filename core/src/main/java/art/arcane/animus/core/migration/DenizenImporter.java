@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 /**
@@ -143,10 +144,25 @@ public final class DenizenImporter {
      */
     public Applied apply(DocumentStore store, String id, NpcRepository.Installed installed) throws IOException {
         if (!id.matches("[a-f0-9]{64}")) throw new IOException("Invalid import ID");
+        if (store.read(IMPORTS + "/" + id + "/receipt.json") != null) throw new IOException("This Denizen import is already applied");
+        return apply(store, id, installed, UUID.randomUUID().toString());
+    }
+
+    /**
+     * {@link #apply} under {@code transaction}. When the import is already installed, returns what its receipt recorded,
+     * with the transaction that installed it, so a retried apply records the real id.
+     */
+    public Applied apply(DocumentStore store, String id, NpcRepository.Installed installed, String transaction) throws IOException {
+        if (!id.matches("[a-f0-9]{64}")) throw new IOException("Invalid import ID");
         Path staged = store.resolve(IMPORTS + "/" + id);
         Preview preview = read(staged, id);
         String receiptPath = IMPORTS + "/" + id + "/receipt.json";
-        if (store.read(receiptPath) != null) throw new IOException("This Denizen import is already applied");
+        String existing = store.read(receiptPath);
+        if (existing != null) {
+            JsonObject recorded = JsonDocuments.object(existing);
+            if (!recorded.has("transaction")) throw new IOException("This Denizen import was installed by an older Animus that did not record its transaction; run preview again");
+            return new Applied(recorded.get("transaction").getAsString(), recorded.get("behaviors").getAsInt(), recorded.get("states").getAsInt(), recorded.get("bound").getAsInt(), List.of());
+        }
         List<DocumentStore.Change> changes = new ArrayList<>();
         int behaviors = 0, states = 0;
         for (Map.Entry<String, JsonElement> document : preview.report().getAsJsonObject("documents").entrySet()) {
@@ -196,8 +212,9 @@ public final class DenizenImporter {
         receipt.addProperty("states", states);
         receipt.addProperty("bound", edited.size());
         receipt.add("serverBehaviors", serverBehaviors(preview.report()));
+        receipt.addProperty("transaction", transaction);
         changes.add(new DocumentStore.Change(receiptPath, "missing", JsonDocuments.write(receipt)));
-        return new Applied(DefinitionBatch.commit(store, edited, expected, changes), behaviors, states, edited.size(), problems);
+        return new Applied(DefinitionBatch.commit(store, transaction, edited, expected, changes), behaviors, states, edited.size(), problems);
     }
 
     /** The report's server behaviors, which accepting the denizen review enables; empty for reports without the field. */

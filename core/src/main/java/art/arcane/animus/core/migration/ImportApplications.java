@@ -73,7 +73,25 @@ public final class ImportApplications {
         return new Preview(importId,id,store.resolve(path),projection.definitions().size(),projection.replacedPaths().size(),mode.name().toLowerCase(Locale.ROOT));
     }
 
+    /** Installs the application; {@code already-applied} when its receipt says it is installed. */
     public static String apply(DocumentStore store,String importId,String applicationId) throws IOException {
+        Installed installed=install(store,importId,applicationId,UUID.randomUUID().toString());
+        return installed.repeated()?"already-applied":installed.transaction();
+    }
+
+    /**
+     * Installs the application under {@code transaction}. When its receipt says it is installed, returns the transaction
+     * that installed it, so a retried apply records the real id.
+     */
+    public static String apply(DocumentStore store,String importId,String applicationId,String transaction) throws IOException {
+        Installed installed=install(store,importId,applicationId,transaction);
+        if(installed.transaction()==null)throw new IOException("Application "+applicationId.substring(0,12)+" was installed by an older Animus that did not record its transaction; stage a new preview");
+        return installed.transaction();
+    }
+
+    private record Installed(String transaction,boolean repeated) {}
+
+    private static Installed install(DocumentStore store,String importId,String applicationId,String transaction) throws IOException {
         LoadBudget budget=new LoadBudget();
         JsonObject plan=plan(store,importId,applicationId,budget);
         String receiptPath=receiptPath(importId,applicationId), receipt=store.read(receiptPath);
@@ -84,7 +102,8 @@ public final class ImportApplications {
                     || !string(data,"state").equals("installed-dormant"))throw new IOException("Invalid application receipt");
             for(var candidate:candidates.entrySet())if(!Objects.equals(store.read(candidate.getKey()),candidate.getValue()))
                 throw new IOException("Already-applied application has changed or missing output: "+candidate.getKey());
-            return "already-applied";
+            JsonElement recorded=data.get("transaction");
+            return new Installed(recorded!=null && recorded.isJsonPrimitive()?recorded.getAsString():null,true);
         }
         Bundle source=bundle(store,importId,budget);
         if(!source.reportHash().equals(string(plan,"sourceReportSha256")))throw new IOException("Source import report changed; stage a new application preview");
@@ -114,8 +133,9 @@ public final class ImportApplications {
         JsonObject installed=new JsonObject();installed.addProperty("schemaVersion",1);installed.addProperty("importId",importId);
         installed.addProperty("applicationId",applicationId);installed.addProperty("state","installed-dormant");
         installed.addProperty("records",projected.definitions().size());installed.addProperty("mode",mode.name());
+        installed.addProperty("transaction",transaction);
         changes.add(new DocumentStore.Change(receiptPath,"missing",JsonDocuments.write(installed)));
-        return DefinitionBatch.commit(store,projected.definitions(),expectedHashes,changes);
+        return new Installed(DefinitionBatch.commit(store,transaction,projected.definitions(),expectedHashes,changes),false);
     }
 
     private static JsonObject plan(DocumentStore store,String importId,String applicationId,LoadBudget budget) throws IOException {

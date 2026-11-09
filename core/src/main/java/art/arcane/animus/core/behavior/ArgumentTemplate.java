@@ -13,6 +13,11 @@ import java.util.*;
  */
 public final class ArgumentTemplate {
     public static final int MAX_BYTES=65536,MAX_BINDINGS=32,MAX_SEGMENTS=16,MAX_POINTER_BYTES=4096,MAX_LITERAL_NODES=16384;
+    /**
+     * Interpolated text a privileged capability accepts without a raw text grant: letters, digits, {@code _ . : + -}. No
+     * spaces, so a value is one command word; no slash, quote, bracket, selector or control character.
+     */
+    public static final java.util.regex.Pattern SAFE_TEXT=java.util.regex.Pattern.compile("[\\p{L}\\p{N}_.:+-]*");
     public static final class Invalid extends IllegalArgumentException {
         private final String field;
         Invalid(String field,String message){super(message);this.field=field;}
@@ -106,7 +111,9 @@ public final class ArgumentTemplate {
      * Bounded valid UTF-8 object JSON suitable for schema validation before module admission. Expression failures throw
      * {@link BehaviorExpression.Failed}; a result outside the value bounds fails with code behavior-expression-type.
      */
-    public String resolve(Map<String,Value> variables,BehaviorExpression.Environment environment){
+    public String resolve(Map<String,Value> variables,BehaviorExpression.Environment environment){return resolve(variables,environment,false);}
+    /** With {@code strict}, every interpolated string must match {@link #SAFE_TEXT}, or this fails with {@link Invalid}. */
+    public String resolve(Map<String,Value> variables,BehaviorExpression.Environment environment,boolean strict){
         Output output=new Output(field);
         for(Part part:parts){
             switch(part){
@@ -114,23 +121,28 @@ public final class ArgumentTemplate {
                 case Bound slot->{
                     Value value=variables.get(slot.variable());
                     if(value==null||slot.type()!=Type.ANY&&value.type()!=slot.type())throw new Invalid(slot.field(),"missing or mismatched runtime variable type");
+                    if(strict&&value.type()==Type.STRING)requireSafe((String)value.value(),slot.field());
                     write(output,value);
                 }
                 case Computed slot->{
                     if(environment==null)throw new Invalid(slot.field(),"expressions need an execution");
                     Object result=slot.expression().evaluate(environment);Value value;
                     try{value=BehaviorValues.natural(result);}catch(IllegalArgumentException invalid){throw new BehaviorExpression.Failed("behavior-expression-type",slot.field(),"the result exceeds the value bounds");}
+                    if(strict&&value.type()==Type.STRING)requireSafe((String)value.value(),slot.field());
                     write(output,value);
                 }
                 case Text slot->{
                     if(environment==null)throw new Invalid(slot.field(),"templates need an execution");
-                    String text=slot.template().evaluate(environment);
+                    String text=slot.template().evaluate(environment,strict);
                     try{new Value(Type.STRING,text);}catch(IllegalArgumentException invalid){throw new BehaviorExpression.Failed("behavior-expression-type",slot.field(),"the text exceeds "+BehaviorValues.MAX_STRING_BYTES+" UTF-8 bytes");}
                     output.string(text);
                 }
             }
         }
         return output.text.toString();
+    }
+    static void requireSafe(String text,String field){
+        if(!SAFE_TEXT.matcher(text).matches())throw new Invalid(field,"interpolated text for a privileged capability may hold only letters, digits and _ . : + -; list the behavior in [behaviors.actions] rawTextBehaviors to allow more");
     }
     private static void write(Output output,Value value){
         switch(value.type()){

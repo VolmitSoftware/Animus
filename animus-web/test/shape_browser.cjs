@@ -194,9 +194,9 @@ async function run(browser, viewport, width, theme, failures) {
       await page.screenshot({path: path.join(shots, `${width}-${theme}-${String(++count).padStart(2, '0')}-${name.replace(/[^a-z0-9]+/gi, '-')}.png`)});
     }
   };
-  const hash = async value => {
+  const hash = async (value, settled = value) => {
     await page.evaluate(next => { location.hash = next; }, value);
-    await page.waitForFunction(next => location.hash === next, value);
+    await page.waitForFunction(next => location.hash === next, settled);
   };
 
   await page.goto(url);
@@ -238,7 +238,8 @@ async function run(browser, viewport, width, theme, failures) {
   await visit('sync');
   await hash('#/citizens');
   await visit('converter');
-  await hash('#/pair/ANM1notacode');
+  // The pair page swaps the code out of the address.
+  await hash('#/pair/ANM1notacode', '#/pair');
   await visit('pair');
 
   // Menus, the palette and a confirmation.

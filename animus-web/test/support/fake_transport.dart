@@ -1,11 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:animus_editor/services/server/pairing.dart';
+import 'package:animus_editor/services/server/server_proof.dart';
 import 'package:animus_editor/services/server/transport.dart';
 
-const String fixtureFingerprint = 'sha256:630dcd2966c4336691125448bbb25b4ff412a49c732db2c8abc1b8581bd710dd';
-const String fixtureServerKey = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8';
+import '../../tool/fake_server/identity.dart';
 
-typedef FakeHandler = ApiResponse Function(ApiRequest request);
+/// Seed of a key that is not the paired server's.
+final List<int> otherSeed = List<int>.generate(32, (int index) => index);
+
+typedef FakeHandler = FutureOr<ApiResponse> Function(ApiRequest request);
 
 /// An in-memory path: answers with [handler], or fails while [down].
 class FakeTransport implements ServerTransport {
@@ -24,7 +29,7 @@ class FakeTransport implements ServerTransport {
     final Future<void> Function(ConnectionPath path, ApiRequest request)? gate = network.gate;
     if (gate != null) await gate(path, request);
     if (closed || network.down.contains(path)) throw TransportFailure(path, 'unreachable');
-    final ApiResponse response = (network.pathHandlers[path] ?? network.handler)(request);
+    final ApiResponse response = await (network.pathHandlers[path] ?? network.handler)(request);
     if (network.dropAfter != null && network.dropAfter!(request)) {
       // The server handled it, then the path died before the answer arrived.
       network.dropAfter = null;
@@ -118,16 +123,29 @@ class FakeNetwork {
 }
 
 /// Answers hello and capabilities like the fixtures; [rest] answers the rest.
-FakeHandler serverHandler({String fingerprint = fixtureFingerprint, ApiResponse Function(ApiRequest request)? rest}) {
-  return (ApiRequest request) {
+/// A challenged hello is signed by the key of [seed] over [prefix], unless
+/// [prove] is false.
+FakeHandler serverHandler({
+  String fingerprint = fakeFingerprint,
+  List<int>? seed,
+  String prefix = editorProofPrefix,
+  bool prove = true,
+  ApiResponse Function(ApiRequest request)? rest,
+}) {
+  return (ApiRequest request) async {
     if (request.path == '/v1/hello') {
-      return ApiResponse(200, <String, Object?>{
-        'protocol': 1,
-        'fingerprint': fingerprint,
-        'animus': '1.0.0',
-        'platform': 'paper',
-        'minecraft': '26.3',
-      });
+      final String? challenge = headerValue(request.headers, challengeHeader);
+      return ApiResponse(
+        200,
+        <String, Object?>{
+          'protocol': 1,
+          'fingerprint': fingerprint,
+          'animus': '1.0.0',
+          'platform': 'paper',
+          'minecraft': '26.3',
+        },
+        headers: prove && challenge != null ? await proofHeaders(seed ?? fakeSeed, challenge, prefix: prefix) : const <String, String>{},
+      );
     }
     if (request.path == '/v1/capabilities') {
       if (request.headers['Authorization'] != 'Bearer anm_tok.secret') {
@@ -139,3 +157,23 @@ FakeHandler serverHandler({String fingerprint = fixtureFingerprint, ApiResponse 
     return const ApiResponse(404, <String, Object?>{'error': <String, Object?>{'code': 'not-found', 'message': 'no'}});
   };
 }
+
+/// [inner] with one bit of the hello proof flipped, so the signature fails.
+FakeHandler tamperedProof(FakeHandler inner) => (ApiRequest request) async {
+      final ApiResponse response = await inner(request);
+      final String? proof = response.headers[proofHeader];
+      if (proof == null) return response;
+      final List<int> bytes = base64Url.decode(base64Url.normalize(proof))..[0] ^= 1;
+      return ApiResponse(response.status, response.body, headers: <String, String>{...response.headers, proofHeader: base64UrlNoPadding(bytes)});
+    };
+
+/// A pairing code's payload for the fake server's key.
+PairingPayload fakePayload({String? directUrl, String? relayUrl}) => PairingPayload(
+      fingerprint: fakeFingerprint,
+      serverKey: fakeServerKey,
+      tokenId: 'tok_0001AbCd',
+      secret: 'ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM',
+      expiresAt: DateTime.utc(2030),
+      directUrl: directUrl,
+      relayUrl: relayUrl,
+    );

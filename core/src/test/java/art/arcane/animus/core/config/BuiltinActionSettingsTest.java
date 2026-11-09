@@ -26,6 +26,7 @@ class BuiltinActionSettingsTest {
             assertTrue(first.behaviors().actions().commandBehaviors().isEmpty());
             assertTrue(first.behaviors().actions().commandNamespaces().isEmpty());
             assertFalse(first.behaviors().actions().commandAllowed("anything:at-all"));
+            assertTrue(first.behaviors().actions().rawTextBehaviors().isEmpty());
             assertTrue(Files.readString(root.resolve("config.toml")).contains("[behaviors.actions]"));
             assertEquals(first, PluginSettings.load(store));
         }
@@ -46,8 +47,11 @@ class BuiltinActionSettingsTest {
                 commandBehaviors = ["town:gate/open"]
                 commandNamespaces = ["quests"]
                 navigationWaits = 6
+                rawTextBehaviors = ["town:shout"]
                 """);
-        assertEquals(new BuiltinActionSettings(8, 2, 16, 32, 120, List.of("town:gate/open"), List.of("quests"), 6), settings);
+        assertEquals(new BuiltinActionSettings(8, 2, 16, 32, 120, List.of("town:gate/open"), List.of("quests"), 6, List.of("town:shout")), settings);
+        assertTrue(settings.rawTextAllowed("town:shout"));
+        assertFalse(settings.rawTextAllowed("town:gate/open"), "raw text is granted per behavior, never by the command grant");
         assertTrue(settings.commandAllowed("town:gate/open"));
         assertFalse(settings.commandAllowed("town:gate/close"));
         assertTrue(settings.commandAllowed("quests:anything/nested"));
@@ -60,7 +64,8 @@ class BuiltinActionSettingsTest {
             "queuedActions = 0", "queuedActions = 1025", "pendingChoices = 0", "pendingChoices = 4097",
             "choiceLifetimeSeconds = 0", "choiceLifetimeSeconds = 601", "navigationWaits = 0", "navigationWaits = 65",
             "commandBehaviors = [\"*\"]", "commandBehaviors = [\"NotAnId\"]", "commandBehaviors = [1]", "commandBehaviors = \"town:gate\"",
-            "commandNamespaces = [\"*\"]", "commandNamespaces = [\"Town\"]", "commandNamespaces = [\"town:gate\"]"})
+            "commandNamespaces = [\"*\"]", "commandNamespaces = [\"Town\"]", "commandNamespaces = [\"town:gate\"]",
+            "rawTextBehaviors = [\"town\"]", "rawTextBehaviors = [\"*\"]"})
     void invalidSettingsFailLoadWithoutChangingTheFile(String line) throws Exception {
         String source = "[behaviors.actions]\n" + line + "\n";
         Files.writeString(root.resolve("config.toml"), source);
@@ -69,11 +74,11 @@ class BuiltinActionSettingsTest {
     }
 
     @Test void perNpcBudgetCannotExceedTheGlobalBudget() {
-        assertThrows(IllegalArgumentException.class, () -> new BuiltinActionSettings(2, 3, 8, 8, 60, List.of(), List.of(), 8));
+        assertThrows(IllegalArgumentException.class, () -> new BuiltinActionSettings(2, 3, 8, 8, 60, List.of(), List.of(), 8, List.of()));
     }
 
     @Test void allowListSizeIsBounded() {
         List<String> tooMany = java.util.stream.IntStream.range(0, 257).mapToObj(index -> "town:gate" + index).toList();
-        assertThrows(IllegalArgumentException.class, () -> new BuiltinActionSettings(32, 4, 256, 256, 60, tooMany, List.of(), 8));
+        assertThrows(IllegalArgumentException.class, () -> new BuiltinActionSettings(32, 4, 256, 256, 60, tooMany, List.of(), 8, List.of()));
     }
 }

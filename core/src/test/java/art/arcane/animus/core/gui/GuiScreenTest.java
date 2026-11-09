@@ -187,6 +187,20 @@ class GuiScreenTest {
         assertEquals(java.util.List.of("spawn"), alex.commands);
     }
 
+    @Test void consoleCommandsRefuseInterpolatedTextOutsideTheSafeSet() {
+        add("town:menu", """
+                {"schemaVersion": 1, "revision": 1, "resolution": "9x1", "slots": {"0": {"type": "button", "icon": {"type": "item", "item": "minecraft:command_block"},
+                  "actions": [{"type": "command", "command": "say {{ 'hi' }} {{ 'a @a' }}"}, {"type": "message", "message": "after"}]},
+                  "1": {"type": "button", "icon": {"type": "item", "item": "minecraft:stone"}, "actions": [{"type": "command", "command": "msg {{ 'a b' }}", "source": "player"}]}}}
+                """);
+        open("town:menu");
+        click(0, Click.LEFT);
+        assertTrue(host.console.isEmpty(), "a space or selector in interpolated text could change the console command");
+        assertTrue(alex.messages.isEmpty(), "the refused command stops its action list");
+        click(1, Click.LEFT);
+        assertEquals(java.util.List.of("msg a b"), alex.commands, "a player command runs with the player's own permissions");
+    }
+
     @Test void stopEndsTheListAndCallRunsNamedActions() {
         add("town:menu", """
                 {"schemaVersion": 1, "revision": 1, "resolution": "9x1", "actions": {"greet": [{"type": "message", "message": "hello"}, {"type": "stop"}, {"type": "message", "message": "never"}]},

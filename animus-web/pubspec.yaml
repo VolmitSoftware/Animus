@@ -16,6 +16,8 @@ dependencies:
     path: .deps/arcane_jaspr/packages/arcane_jaspr_ascii
   archive: ^4.0.2
   crypto: ^3.0.7
+  # Ed25519 checks of the server proof on the relay path.
+  cryptography: 2.9.0
   # Citizens saves.yml parsing for the in-browser converter (lib/logic/citizens).
   yaml: ^3.1.3
 

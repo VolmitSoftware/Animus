@@ -193,10 +193,25 @@ public final class ShopImporter {
      */
     public String apply(DocumentStore store, String id) throws IOException {
         if (!id.matches("[a-f0-9]{64}")) throw new IOException("Invalid import ID");
+        if (store.read("imports/shops/" + id + "/receipt.json") != null) return "already-applied";
+        return apply(store, id, UUID.randomUUID().toString());
+    }
+
+    /**
+     * Installs the staged shops under {@code transaction}. When the import is already installed, returns the transaction
+     * its receipt names, so a retried apply records the real id.
+     */
+    public String apply(DocumentStore store, String id, String transaction) throws IOException {
+        if (!id.matches("[a-f0-9]{64}")) throw new IOException("Invalid import ID");
         Path staged = store.resolve("imports/shops/" + id);
         Preview preview = read(staged, id);
         String receiptPath = "imports/shops/" + id + "/receipt.json";
-        if (store.read(receiptPath) != null) return "already-applied";
+        String existing = store.read(receiptPath);
+        if (existing != null) {
+            JsonElement recorded = JsonDocuments.object(existing).get("transaction");
+            if (recorded == null || !recorded.isJsonPrimitive()) throw new IOException("This shop import was installed by an older Animus that did not record its transaction; run preview again");
+            return recorded.getAsString();
+        }
         if (!preview.summary().getAsJsonArray("issues").isEmpty() && preview.shops() == 0) throw new IOException("Import has no shops; inspect report.json");
         List<DocumentStore.Change> changes = new ArrayList<>();
         for (Map.Entry<String, JsonElement> document : preview.summary().getAsJsonObject("documents").entrySet()) {
@@ -213,8 +228,9 @@ public final class ShopImporter {
         JsonObject receipt = new JsonObject();
         receipt.addProperty("importId", id);
         receipt.addProperty("shops", preview.shops());
+        receipt.addProperty("transaction", transaction);
         changes.add(new DocumentStore.Change(receiptPath, "missing", JsonDocuments.write(receipt)));
-        return store.commit(changes);
+        return store.commit(transaction, changes);
     }
 
     private static int stage(Path temporary, String shopId, JsonObject document, String file, String key, ImportReport report, JsonObject shops,

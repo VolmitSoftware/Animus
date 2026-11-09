@@ -22,6 +22,8 @@ public final class BlockCells {
     /** Reads one loaded block on its owning thread. */
     public static Cell of(Block block) {
         Objects.requireNonNull(block, "block");
+        // Air has no shape, fluid or opening: the common case reads nothing more.
+        if (block.isEmpty()) return Cell.AIR;
         BlockData data = block.getBlockData();
         List<Cell.Box> boxes = new ArrayList<>();
         try {

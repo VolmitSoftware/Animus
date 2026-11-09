@@ -64,7 +64,6 @@ public final class StartupModules implements AutoCloseable {
             }catch(Exception|LinkageError|AssertionError failure){
                 Throwable cause=failure instanceof InvocationTargetException reflected?reflected.getCause():failure;
                 if(cause instanceof VirtualMachineError fatal)throw fatal;
-                if(cause instanceof ThreadDeath fatal)throw fatal;
                 if(module!=null&&!delegated)try{callback(id,"disable-rejected");module.disable();}catch(Exception|LinkageError|AssertionError ignored){}
                 record(status(candidate,"FAILED","startup-failed: "+cause.getClass().getSimpleName()));
             }finally{callback("","idle");}

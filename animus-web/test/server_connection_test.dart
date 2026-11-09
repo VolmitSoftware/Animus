@@ -2,16 +2,18 @@ import 'dart:async';
 
 import 'package:animus_editor/services/server/server_connection.dart';
 import 'package:animus_editor/services/server/server_profiles.dart';
+import 'package:animus_editor/services/server/server_proof.dart';
 import 'package:animus_editor/services/server/transport.dart';
 import 'package:test/test.dart';
 
+import '../tool/fake_server/identity.dart';
 import 'support/fake_transport.dart';
 
 final ServerToken token = ServerToken(token: 'anm_tok.secret', tokenId: 'tok', scopes: const <String>['read'], expiresAt: DateTime.utc(2030));
 
 const ServerProfile profile = ServerProfile(
-  fingerprint: fixtureFingerprint,
-  serverKey: fixtureServerKey,
+  fingerprint: fakeFingerprint,
+  serverKey: fakeServerKey,
   name: 'Town',
   directUrl: 'http://127.0.0.1:9797',
   relayUrl: 'ws://127.0.0.1:9797',
@@ -157,6 +159,51 @@ void main() {
     expect(connection.status.message, contains('A different server answered'));
     expect(network.sent.where((( ConnectionPath, ApiRequest) sent) => sent.$2.path != '/v1/hello'), isEmpty);
     expect(waits.pending, isEmpty);
+  });
+
+  group('relay server proof', () {
+    setUp(() => network.down.add(ConnectionPath.direct));
+
+    Future<void> expectRefused(FakeHandler relay) async {
+      network.handler = relay;
+      await connection.connect();
+      expect(connection.status.phase, ConnectionPhase.refused);
+      expect(connection.status.message, contains('A different server answered'));
+      expect(network.sent.where(((ConnectionPath, ApiRequest) sent) => sent.$2.path != '/v1/hello'), isEmpty);
+      expect(network.streams, isEmpty);
+    }
+
+    test('should refuse a relay hello without a proof and send no token', () => expectRefused(serverHandler(prove: false)));
+
+    test('should refuse a relay proof from a key that is not the pinned one', () => expectRefused(serverHandler(seed: otherSeed)));
+
+    test('should refuse a relay proof whose signature does not verify', () => expectRefused(tamperedProof(serverHandler())));
+
+    test('should refuse a relay proof signed over the relay registration prefix',
+        () => expectRefused(serverHandler(prefix: 'animus-relay/1 ')));
+
+    test('should go online over the relay with a valid proof of a fresh challenge', () async {
+      await connection.connect();
+      expect(connection.status.phase, ConnectionPhase.online);
+      expect(connection.status.path, ConnectionPath.relay);
+      await network.lastStream.end();
+      await settle();
+      final List<String?> challenges = <String?>[
+        for (final (ConnectionPath path, ApiRequest request) in network.sent)
+          if (path == ConnectionPath.relay && request.path == '/v1/hello') request.headers[challengeHeader],
+      ];
+      expect(challenges, hasLength(2));
+      expect(challenges.every((String? challenge) => challenge != null && challenge.length == 43), isTrue);
+      expect(challenges.first, isNot(challenges.last));
+    });
+  });
+
+  test('should send no challenge and need no proof on the direct path', () async {
+    network.handler = serverHandler(prove: false);
+    await connection.connect();
+    expect(connection.status.phase, ConnectionPhase.online);
+    expect(connection.status.path, ConnectionPath.direct);
+    expect(network.sent.every(((ConnectionPath, ApiRequest) sent) => !sent.$2.headers.containsKey(challengeHeader)), isTrue);
   });
 
   test('should ask to pair again when the server refuses the token', () async {

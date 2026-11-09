@@ -17,6 +17,9 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -47,34 +50,34 @@ public final class CitizensDropIn {
     public static final String STATE = "imports/citizens/state.json";
     /** The accept word that lets the imported command behaviors run; never part of {@code all}. */
     public static final String COMMANDS = "commands";
-    private static final String ALLOWED_NAMESPACES = "commandNamespacesAdded";
+    private static final String ALLOWED_NAMESPACES = "commandNamespacesAdded", APPLYING = "applying", COPIED = "copiedSchematics";
     static final String CITIZENS_RUNNING = "Citizens is still enabled, so imported NPCs stay off to avoid running twice; remove it from plugins/, restart and run this again";
+    static final String INTERRUPTED = "an apply was interrupted; /animus import citizens apply finishes it, /animus import citizens rollback undoes it";
     private static final Set<String> DENIZEN = Set.of("assignment", "triggers", "constants", "denizen_flags", "denizenflags");
 
     private final DocumentStore store;
     private final NpcRepository npcs;
     private final Host host;
+    private final ImportJournal journal;
     private final List<String> committed = new ArrayList<>();
     private boolean rolledBack, settingsChanged;
 
     /** {@code [combat] maximumNpcs}, so review and accept can say when more guards are accepted than may fight at once; 0 when unknown. */
     private int combatLimit;
 
-    public CitizensDropIn(DocumentStore store, NpcRepository npcs, Host host) { this.store = store; this.npcs = npcs; this.host = host; }
+    public CitizensDropIn(DocumentStore store, NpcRepository npcs, Host host) { this.store = store; this.npcs = npcs; this.host = host; journal = new ImportJournal(store, STATE); }
 
     /** Names the server's combat limit for review and accept. */
     public CitizensDropIn combatLimit(int limit) { combatLimit = limit; return this; }
 
     /** The Citizens save first found among imports/saves.yml, imports/inbox/saves.yml and a left-over plugins/Citizens/saves.yml. */
     public Sources find() throws IOException {
-        List<Found> saves = new ArrayList<>(List.of(new Found(store.resolve("imports/saves.yml"), "imports/saves.yml"),
-                new Found(store.resolve("imports/inbox/saves.yml"), "imports/inbox/saves.yml")));
+        List<Found> saves = saveCandidates();
         List<Found> traders = new ArrayList<>(List.of(new Found(store.resolve("imports/dtltraders"), "imports/dtltraders"),
                 new Found(store.resolve("imports/inbox/dtltraders"), "imports/inbox/dtltraders")));
         List<Found> schematics = new ArrayList<>(List.of(new Found(store.resolve("imports/schematics"), "imports/schematics")));
         if (host.pluginsDirectory().isPresent()) {
             Path plugins = host.pluginsDirectory().get();
-            saves.add(new Found(plugins.resolve("Citizens/saves.yml"), "plugins/Citizens/saves.yml"));
             traders.add(new Found(plugins.resolve("dtlTraders"), "plugins/dtlTraders"));
             schematics.add(new Found(plugins.resolve("Builder/schematics"), "plugins/Builder/schematics"));
             schematics.add(new Found(plugins.resolve("Constructor/schematics"), "plugins/Constructor/schematics"));
@@ -85,12 +88,31 @@ public final class CitizensDropIn {
         return new Sources(save, trader, folders);
     }
 
+    /** Where a Citizens save may be, in the order {@link #find} looks. */
+    private List<Found> saveCandidates() throws IOException {
+        List<Found> saves = new ArrayList<>(List.of(new Found(store.resolve("imports/saves.yml"), "imports/saves.yml"),
+                new Found(store.resolve("imports/inbox/saves.yml"), "imports/inbox/saves.yml")));
+        host.pluginsDirectory().ifPresent((Path plugins) -> saves.add(new Found(plugins.resolve("Citizens/saves.yml"), "plugins/Citizens/saves.yml")));
+        return saves;
+    }
+
+    /** Refuses to apply a staged preview whose save was saved again since; NPCs saved in between would be lost. A save removed since is fine. */
+    private void unchangedSource(JsonObject state) throws IOException {
+        String label = state.get("source").getAsString();
+        for (Found candidate : saveCandidates()) {
+            if (!candidate.label().equals(label) || !Files.isRegularFile(candidate.path(), LinkOption.NOFOLLOW_LINKS)) continue;
+            if (!JsonDocuments.hash(Files.readString(candidate.path())).equals(state.get("sourceSha256").getAsString()))
+                throw new IOException(label + " changed since the preview; run /animus import citizens preview again, then apply");
+        }
+    }
+
     /** One startup line, or nothing when there is no Citizens save or its import is applied and reviewed. */
     public Optional<String> startupNotice() throws IOException {
         Sources sources = find();
         JsonObject state = state();
         boolean citizens = host.citizensEnabled().getAsBoolean();
         if (citizens && (sources.saves().isPresent() || applied(state))) return Optional.of("Citizens migration: " + CITIZENS_RUNNING);
+        if (interrupted(state)) return Optional.of("Citizens migration: " + INTERRUPTED);
         if (DenizenDropIn.staged(state) && host.denizenEnabled().getAsBoolean()) return Optional.of("Denizen migration: " + DenizenDropIn.RUNNING);
         Optional<ShopkeepersDropIn.Found> shopkeepers = ShopkeepersDropIn.find(store, host.pluginsDirectory());
         if (shopkeepers.isPresent() && !ShopkeepersDropIn.applied(state)) {
@@ -186,17 +208,20 @@ public final class CitizensDropIn {
     }
 
     private Set<String> transactionIds() {
+        try { return ids(state()); }
+        catch (IOException | RuntimeException unreadable) { return new java.util.LinkedHashSet<>(); }
+    }
+
+    private static Set<String> ids(JsonObject state) {
         Set<String> ids = new java.util.LinkedHashSet<>();
-        try {
-            JsonObject state = state();
-            if (state.has("transactions")) for (JsonElement value : state.getAsJsonArray("transactions")) ids.add(value.getAsString());
-        } catch (IOException | RuntimeException unreadable) { return ids; }
+        if (state.has("transactions")) for (JsonElement value : state.getAsJsonArray("transactions")) ids.add(value.getAsString());
         return ids;
     }
 
     /** Preview the save, the dtlTraders folder and the schematics, and stage one application plan. Nothing is installed. */
     List<String> stage(String mode, String label, Map<String, String> worlds, boolean factorGroups) throws IOException {
         JsonObject previous = state();
+        if (interrupted(previous)) throw new IOException("Not staged: " + INTERRUPTED + ", then preview again");
         Sources sources = find();
         Optional<ShopkeepersDropIn.Found> shopkeepers = ShopkeepersDropIn.find(store, host.pluginsDirectory());
         boolean shopkeepersApplied = ShopkeepersDropIn.applied(previous);
@@ -214,7 +239,10 @@ public final class CitizensDropIn {
             return lines;
         }
         Found save = sources.saves().get();
+        StableSource.Read source = StableSource.read(save.path(), save.label());
         CitizensImporter.Preview preview = new CitizensImporter().preview(save.path(), store, worlds, factorGroups);
+        if (!preview.summary().get("sourceSha256").getAsString().equals(source.sha256()))
+            throw new IOException(save.label() + " changed while the preview read it; if Citizens is saving it, wait and run preview again");
         if (preview.valid() != preview.records())
             throw new IOException(preview.records() - preview.valid() + " of " + preview.records() + " records do not convert; see imports/" + preview.id() + "/report.json");
         ImportApplications.Preview application = ImportApplications.stage(store, preview.id(), mode, label);
@@ -279,42 +307,58 @@ public final class CitizensDropIn {
 
     List<String> apply() throws IOException {
         JsonObject state = state();
+        boolean resuming = interrupted(state);
         boolean citizensPending = state.has("applicationId") && !applied(state);
         boolean shopkeepersPending = ShopkeepersDropIn.staged(state);
         boolean denizenPending = DenizenDropIn.staged(state) && (citizensPending || applied(state));
         if (!citizensPending && !shopkeepersPending && !denizenPending) {
+            if (resuming) { finished(state); return List.of("Nothing left to apply", "Next: /animus import citizens review"); }
             if (applied(state) || ShopkeepersDropIn.applied(state)) throw new IOException("Already applied; use /animus import citizens review, accept or rollback");
             throw new IOException("Nothing staged; run /animus import citizens preview first");
         }
         if (citizensPending) refuseWhileCitizensRuns();
         if (shopkeepersPending && host.shopkeepersEnabled().getAsBoolean()) throw new IOException(ShopkeepersDropIn.RUNNING);
         if (denizenPending && host.denizenEnabled().getAsBoolean()) throw new IOException(DenizenDropIn.RUNNING);
+        if (!resuming && citizensPending) unchangedSource(state);
+        if (!resuming && shopkeepersPending) ShopkeepersDropIn.unchanged(store, host.pluginsDirectory(), state);
+        Set<String> before = ids(state);
+        // Marked before the first commit, so a flow cut off part way is finished or rolled back, never staged over.
+        state.addProperty(APPLYING, true);
+        writeState(state);
+        try { return applySteps(state, citizensPending, shopkeepersPending, denizenPending); }
+        catch (IOException | RuntimeException failure) {
+            if (resuming || !ids(state).equals(before))
+                throw new IOException("Apply stopped part way: " + failure.getMessage() + "; fix the cause and run /animus import citizens apply again to finish, or /animus import citizens rollback to undo it", failure);
+            finished(state);
+            throw failure;
+        }
+    }
+
+    private List<String> applySteps(JsonObject state, boolean citizensPending, boolean shopkeepersPending, boolean denizenPending) throws IOException {
         List<String> lines = citizensPending ? applyCitizens(state) : new ArrayList<>();
-        JsonArray transactions = state.has("transactions") ? state.getAsJsonArray("transactions") : new JsonArray();
         try {
-            if (shopkeepersPending) lines.addAll(ShopkeepersDropIn.apply(store, state, npcs.installed(), transactions));
-            else lines.addAll(ShopkeepersDropIn.bindPending(store, state, npcs.installed(), transactions));
+            if (shopkeepersPending) lines.addAll(ShopkeepersDropIn.apply(store, state, npcs.installed(), journal));
+            else lines.addAll(ShopkeepersDropIn.bindPending(store, state, npcs.installed(), journal));
         } catch (IOException | RuntimeException failure) {
             if (!citizensPending) throw failure;
             lines.add(Palette.error("Shopkeepers import failed, none of it installed: " + failure.getMessage() + "; the Citizens import stays, fix the cause and apply again"));
+            finished(state);
             return lines;
         }
         if (denizenPending) {
             // The Denizen part edits the definitions the Shopkeepers part may just have bound, so it reads them again.
             try {
                 npcs.reload();
-                lines.addAll(DenizenDropIn.apply(store, state, npcs.installed(), transactions));
+                lines.addAll(DenizenDropIn.apply(store, state, npcs.installed(), journal));
             }
             catch (IOException | RuntimeException failure) {
-                state.add("transactions", transactions);
-                writeState(state);
                 if (!citizensPending && !shopkeepersPending) throw failure;
                 lines.add(Palette.error("Denizen import failed, none of it installed: " + failure.getMessage() + "; the other imports stay, fix the cause and apply again"));
+                finished(state);
                 return lines;
             }
         }
-        state.add("transactions", transactions);
-        writeState(state);
+        finished(state);
         List<String> errors = npcs.reload();
         if (!errors.isEmpty()) lines.add(problems(errors));
         if (citizensPending) lines.add("Next: /animus import citizens review");
@@ -326,81 +370,117 @@ public final class CitizensDropIn {
     }
 
     private List<String> applyCitizens(JsonObject state) throws IOException {
-        String importId = state.get("importId").getAsString();
-        JsonArray transactions = state.has("transactions") ? state.getAsJsonArray("transactions") : new JsonArray();
-        String definitions = ImportApplications.apply(store, importId, state.get("applicationId").getAsString());
-        transactions.add(definitions);
+        String importId = state.get("importId").getAsString(), applicationId = state.get("applicationId").getAsString();
+        String definitions = journal.commit(state, (String transaction) -> ImportApplications.apply(store, importId, applicationId, transaction));
         List<String> lines = new ArrayList<>();
-        try {
-            if (state.has("shopImportId")) {
-                String shops = new ShopImporter().apply(store, state.get("shopImportId").getAsString());
-                transactions.add(shops);
+        if (state.has("shopImportId")) {
+            String shopImportId = state.get("shopImportId").getAsString();
+            try {
+                String shops = journal.commit(state, (String transaction) -> new ShopImporter().apply(store, shopImportId, transaction));
                 lines.add("Shops installed; tx " + shops);
+            } catch (IOException | RuntimeException failure) {
+                try { journal.undo(state, definitions); }
+                catch (IOException | RuntimeException undo) {
+                    failure.addSuppressed(undo);
+                    throw new IOException("Shop import failed and the NPC import could not be rolled back (" + undo.getMessage() + "): " + failure.getMessage(), failure);
+                }
+                npcs.reloadAfterRollback();
+                throw new IOException("Shop import failed and the NPC import was rolled back: " + failure.getMessage(), failure);
             }
-        } catch (IOException | RuntimeException failure) {
-            store.rollback(definitions);
-            npcs.reloadAfterRollback();
-            throw new IOException("Shop import failed and the NPC import was rolled back: " + failure.getMessage(), failure);
         }
-        JsonArray copied = new JsonArray();
-        for (JsonElement value : state.getAsJsonArray("schematics")) {
-            JsonObject schematic = value.getAsJsonObject();
-            Path target = store.resolve("schematics/" + schematic.get("name").getAsString());
-            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) continue;
-            Files.createDirectories(target.getParent());
-            Files.copy(Path.of(schematic.get("source").getAsString()), target);
-            WriteNotices.touched(target);
-            JsonObject entry = new JsonObject();
-            entry.addProperty("path", "schematics/" + schematic.get("name").getAsString());
-            entry.addProperty("sha256", sha256(target));
-            copied.add(entry);
-        }
-        state.add("transactions", transactions);
-        state.add("copiedSchematics", copied);
+        int copied = copySchematics(state);
         state.addProperty("state", "applied");
         writeState(state);
         List<String> errors = npcs.reload();
         lines.addFirst(Palette.success("Installed import " + state.get("importId").getAsString().substring(0, 12) + "; NPCs stay despawned with patrols, combat, riding, shops and builds off; tx " + definitions));
-        if (!copied.isEmpty()) lines.add("Copied " + copied.size() + " schematics into schematics/");
+        if (copied > 0) lines.add("Copied " + copied + " schematics into schematics/");
         if (!errors.isEmpty()) lines.add(problems(errors));
         int behaviors = imported(state).stream().mapToInt((NpcDefinition definition) -> definition.json().has("behaviors") ? definition.json().getAsJsonArray("behaviors").size() : 0).sum();
         if (behaviors > 0) lines.add("Text and command behaviors in behaviors/citizens/ load now");
         return lines;
     }
 
+    /**
+     * Copies the staged schematics that are not in schematics/ yet. Each is written to a temporary file, recorded in the
+     * state with its hash, then moved into place in one step, so a cut-off copy leaves no partial file and rollback
+     * deletes exactly what this import wrote. Returns how many of the import's schematics are in place.
+     */
+    private int copySchematics(JsonObject state) throws IOException {
+        JsonArray copied = state.has(COPIED) ? state.getAsJsonArray(COPIED) : new JsonArray();
+        state.add(COPIED, copied);
+        Path folder = store.resolve("schematics");
+        if (Files.isDirectory(folder, LinkOption.NOFOLLOW_LINKS))
+            try (DirectoryStream<Path> left = Files.newDirectoryStream(folder, ".animus-schematic-*.tmp")) { for (Path stale : left) Files.deleteIfExists(stale); }
+        int count = 0;
+        for (JsonElement value : state.getAsJsonArray("schematics")) {
+            JsonObject schematic = value.getAsJsonObject();
+            String relative = "schematics/" + schematic.get("name").getAsString();
+            Path target = store.resolve(relative);
+            Optional<JsonObject> recorded = copied.asList().stream().map(JsonElement::getAsJsonObject)
+                    .filter((JsonObject entry) -> entry.get("path").getAsString().equals(relative)).findFirst();
+            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) { if (recorded.isPresent()) count++; continue; }
+            Files.createDirectories(target.getParent());
+            Path temporary = Files.createTempFile(target.getParent(), ".animus-schematic-", ".tmp");
+            try {
+                Files.copy(Path.of(schematic.get("source").getAsString()), temporary, StandardCopyOption.REPLACE_EXISTING);
+                try (FileChannel written = FileChannel.open(temporary, StandardOpenOption.WRITE)) { written.force(true); }
+                JsonObject entry = recorded.orElseGet(() -> { JsonObject created = new JsonObject(); created.addProperty("path", relative); copied.add(created); return created; });
+                entry.addProperty("sha256", sha256(temporary));
+                writeState(state);
+                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE);
+                WriteNotices.touched(target);
+                count++;
+            } finally { Files.deleteIfExists(temporary); }
+        }
+        return count;
+    }
+
     List<String> rollback() throws IOException {
         JsonObject state = state();
         boolean citizens = applied(state);
-        if (!citizens && !ShopkeepersDropIn.applied(state)) throw new IOException("No applied Citizens import to roll back");
+        if (!citizens && !ShopkeepersDropIn.applied(state) && !interrupted(state)) throw new IOException("No applied Citizens import to roll back");
         List<String> lines = new ArrayList<>();
-        JsonArray transactions = state.getAsJsonArray("transactions");
+        JsonArray transactions = ImportJournal.transactions(state);
+        String stopped = null;
+        // Newest first; each undo leaves the list as soon as it commits, so a retry after a conflict skips what is undone.
         for (int index = transactions.size() - 1; index >= 0; index--) {
             String transaction = transactions.get(index).getAsString();
-            String inverse = store.rollback(transaction);
-            committed.add(inverse);
-            rolledBack = true;
-            lines.add("Rolled back " + shortId(transaction) + "; tx " + inverse);
+            if (!journal.committed(transaction)) { transactions.remove(index); writeState(state); continue; }
+            try {
+                String inverse = journal.undo(state, transaction);
+                committed.add(inverse);
+                rolledBack = true;
+                lines.add("Rolled back " + shortId(transaction) + "; tx " + inverse);
+            } catch (IOException | RuntimeException conflict) {
+                stopped = "Rollback stopped at tx " + shortId(transaction) + ": " + conflict.getMessage() + "; " + transactions.size()
+                        + " transactions are still installed, fix that and run /animus import citizens rollback again";
+                break;
+            }
         }
         disallowCommands(state).ifPresent(lines::add);
-        ShopkeepersDropIn.rolledBack(state);
-        DenizenDropIn.rolledBack(state);
         int kept = 0;
-        for (JsonElement value : state.has("copiedSchematics") ? state.getAsJsonArray("copiedSchematics") : new JsonArray()) {
+        for (JsonElement value : state.has(COPIED) ? state.getAsJsonArray(COPIED) : new JsonArray()) {
             Path file = store.resolve(value.getAsJsonObject().get("path").getAsString());
-            if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && sha256(file).equals(value.getAsJsonObject().get("sha256").getAsString())) {
+            if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) continue;
+            if (sha256(file).equals(value.getAsJsonObject().get("sha256").getAsString())) {
                 Files.delete(file);
                 WriteNotices.written(file, null);
             }
             else kept++;
         }
         if (kept > 0) lines.add(kept + " copied schematics changed since the import and were kept");
-        state.remove("transactions");
-        state.remove("copiedSchematics");
-        if (citizens) state.addProperty("state", "rolled-back");
+        state.remove(COPIED);
+        if (stopped == null) {
+            ShopkeepersDropIn.rolledBack(state);
+            DenizenDropIn.rolledBack(state);
+            state.remove("transactions");
+            state.remove(APPLYING);
+            if (citizens) state.addProperty("state", "rolled-back");
+        }
         writeState(state);
         List<String> errors = npcs.reloadAfterRollback();
         if (!errors.isEmpty()) lines.add(problems(errors));
-        lines.add(Palette.success("Citizens import undone; the preview stays staged and /animus import citizens apply reinstalls it"));
+        lines.add(stopped != null ? Palette.error(stopped) : Palette.success("Citizens import undone; the preview stays staged and /animus import citizens apply reinstalls it"));
         return lines;
     }
 
@@ -474,9 +554,7 @@ public final class CitizensDropIn {
         if (commands) lines.add(allowCommands(state));
         if (changed.isEmpty() && others.isEmpty()) { if (!categories.isEmpty()) lines.add("Nothing waiting in " + String.join(", ", categories)); }
         else {
-            String transaction = DefinitionBatch.commit(store, changed, expected, others);
-            state.getAsJsonArray("transactions").add(transaction);
-            writeState(state);
+            String transaction = journal.commit(state, (String id) -> DefinitionBatch.commit(store, id, changed, expected, others));
             List<String> errors = npcs.reload();
             lines.add(Palette.success("Accepted " + counts(accepted) + " on " + changed.size() + " NPCs; tx " + transaction));
             if (!errors.isEmpty()) lines.add(problems(errors));
@@ -770,11 +848,14 @@ public final class CitizensDropIn {
 
     private void refuseWhileCitizensRuns() throws IOException { if (host.citizensEnabled().getAsBoolean()) throw new IOException(CITIZENS_RUNNING); }
     private static boolean applied(JsonObject state) { return state.has("state") && state.get("state").getAsString().equals("applied"); }
+    /** An apply that committed something and stopped before it finished. */
+    private static boolean interrupted(JsonObject state) { return state.has(APPLYING); }
+    private void finished(JsonObject state) throws IOException { state.remove(APPLYING); writeState(state); }
     JsonObject state() throws IOException {
         String text = store.read(STATE);
         return text == null ? new JsonObject() : JsonDocuments.object(text);
     }
-    private void writeState(JsonObject state) throws IOException { DocumentStore.atomic(store.resolve(STATE), JsonDocuments.write(state)); }
+    private void writeState(JsonObject state) throws IOException { journal.write(state); }
     private static String sha256(Path file) throws IOException {
         try { return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file))); }
         catch (java.security.NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }

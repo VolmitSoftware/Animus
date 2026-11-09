@@ -37,10 +37,15 @@ public final class EditorTokens {
     public static final String PATH = "state/editor/tokens.json";
     public static final int MAXIMUM_TOKENS = 256, MAXIMUM_PAIRINGS = 64;
     public static final Duration PAIRING_LIFETIME = Duration.ofMinutes(10);
+    /** Older stores may list the removed {@code admin} scope, which never granted anything; loading drops it. */
+    private static final String RETIRED_SCOPE = "admin";
 
-    /** A stored token. {@code admin} is empty for tokens paired from the console. */
+    /**
+     * A stored token. {@code admin} is empty for tokens paired from the console. {@code adminChecked} is when the server last
+     * confirmed that the admin still holds {@code animus.admin}; pairing counts as a confirmation.
+     */
     public record Token(String id, String hash, String label, Optional<UUID> admin, List<EditorScope> scopes, List<String> groups, Instant created,
-                        Instant expires, Optional<Instant> lastUsed, long counter, Optional<String> client) {
+                        Instant expires, Optional<Instant> lastUsed, long counter, Optional<String> client, Instant adminChecked) {
         public Token {
             scopes = List.copyOf(scopes);
             groups = List.copyOf(groups);
@@ -106,7 +111,7 @@ public final class EditorTokens {
         String text = "anm_" + tokenId + "." + tokenSecret;
         Instant created = now();
         Token token = new Token(tokenId, sha256(text), pending.grant().label(), pending.grant().admin(), pending.grant().scopes(), pending.grant().groups(),
-                created, created.plus(pending.grant().lifetime()), Optional.empty(), 0, client.map((String name) -> name.length() > 128 ? name.substring(0, 128) : name));
+                created, created.plus(pending.grant().lifetime()), Optional.empty(), 0, client.map((String name) -> name.length() > 128 ? name.substring(0, 128) : name), created);
         tokens.put(tokenId, token);
         save();
         return Map.entry(text, token);
@@ -123,7 +128,7 @@ public final class EditorTokens {
             throw new EditorError(EditorError.Code.UNAUTHORIZED, "A valid editor token is required.");
         if (!now().isBefore(token.expires())) throw new EditorError(EditorError.Code.TOKEN_EXPIRED, "This token expired; pair the browser again.");
         Token used = new Token(token.id(), token.hash(), token.label(), token.admin(), token.scopes(), token.groups(), token.created(), token.expires(),
-                Optional.of(now()), token.counter(), token.client());
+                Optional.of(now()), token.counter(), token.client(), token.adminChecked());
         tokens.put(id, used);
         return used;
     }
@@ -141,7 +146,16 @@ public final class EditorTokens {
         if (token == null) throw new EditorError(EditorError.Code.TOKEN_REVOKED, "This token was revoked.");
         if (counter <= token.counter()) throw new EditorError(EditorError.Code.COUNTER_REPLAYED, "X-Animus-Counter must exceed " + token.counter() + ".");
         tokens.put(tokenId, new Token(token.id(), token.hash(), token.label(), token.admin(), token.scopes(), token.groups(), token.created(), token.expires(),
-                token.lastUsed(), counter, token.client()));
+                token.lastUsed(), counter, token.client(), token.adminChecked()));
+        save();
+    }
+
+    /** Records that the token's admin still holds {@code animus.admin}. Writes at most once an hour per token. */
+    public synchronized void confirmAdmin(String tokenId) throws IOException {
+        Token token = tokens.get(tokenId);
+        if (token == null || token.adminChecked().plus(Duration.ofHours(1)).isAfter(now())) return;
+        tokens.put(tokenId, new Token(token.id(), token.hash(), token.label(), token.admin(), token.scopes(), token.groups(), token.created(), token.expires(),
+                token.lastUsed(), token.counter(), token.client(), now()));
         save();
     }
 
@@ -208,13 +222,16 @@ public final class EditorTokens {
             for (JsonElement element : saved.getAsJsonArray("tokens")) {
                 JsonObject entry = element.getAsJsonObject();
                 List<EditorScope> scopes = new ArrayList<>();
-                for (JsonElement scope : entry.getAsJsonArray("scopes")) scopes.add(EditorScope.parse(scope.getAsString()).orElseThrow(() -> new IllegalArgumentException("unknown scope " + scope)));
+                for (JsonElement scope : entry.getAsJsonArray("scopes")) {
+                    if (scope.getAsString().equals(RETIRED_SCOPE)) continue;
+                    scopes.add(EditorScope.parse(scope.getAsString()).orElseThrow(() -> new IllegalArgumentException("unknown scope " + scope)));
+                }
                 List<String> groups = new ArrayList<>();
                 for (JsonElement group : entry.getAsJsonArray("groups")) groups.add(group.getAsString());
                 Token token = new Token(entry.get("id").getAsString(), entry.get("hash").getAsString(), entry.get("label").getAsString(),
                         optional(entry, "admin").map(UUID::fromString), scopes, groups, Instant.parse(entry.get("created").getAsString()),
                         Instant.parse(entry.get("expires").getAsString()), optional(entry, "lastUsed").map(Instant::parse), entry.get("counter").getAsLong(),
-                        optional(entry, "client"));
+                        optional(entry, "client"), optional(entry, "adminChecked").map(Instant::parse).orElse(Instant.parse(entry.get("created").getAsString())));
                 tokens.put(token.id(), token);
             }
             if (saved.has("revoked")) for (JsonElement element : saved.getAsJsonArray("revoked")) {
@@ -247,6 +264,7 @@ public final class EditorTokens {
             token.lastUsed().ifPresent((Instant used) -> entry.addProperty("lastUsed", used.toString()));
             entry.addProperty("counter", token.counter());
             token.client().ifPresent((String client) -> entry.addProperty("client", client));
+            entry.addProperty("adminChecked", token.adminChecked().toString());
             list.add(entry);
         }
         saved.add("tokens", list);

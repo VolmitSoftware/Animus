@@ -76,6 +76,24 @@ final class RelaySettings {
         1,
         4096,
       ),
+      maxAppsPerAddressPerServer: integer(
+        'MAX_APPS_PER_ADDRESS_PER_SERVER',
+        defaults.maxAppsPerAddressPerServer,
+        1,
+        4096,
+      ),
+      maxAgentConnectionsPerAddress: integer(
+        'MAX_SERVER_CONNECTIONS_PER_ADDRESS',
+        defaults.maxAgentConnectionsPerAddress,
+        1,
+        100000,
+      ),
+      maxAppConnectionsPerAddress: integer(
+        'MAX_APP_CONNECTIONS_PER_ADDRESS',
+        defaults.maxAppConnectionsPerAddress,
+        1,
+        100000,
+      ),
       maxAgents: integer('MAX_SERVERS', defaults.maxAgents, 1, 100000),
       maxApps: integer('MAX_APPS', defaults.maxApps, 1, 100000),
       handshakeTimeout: seconds(
@@ -86,6 +104,7 @@ final class RelaySettings {
         'SUBSCRIPTION_TIMEOUT_SECONDS',
         defaults.subscriptionTimeout,
       ),
+      signInTimeout: seconds('SIGN_IN_TIMEOUT_SECONDS', defaults.signInTimeout),
       requestTimeout: seconds(
         'REQUEST_TIMEOUT_SECONDS',
         defaults.requestTimeout,

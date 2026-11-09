@@ -131,6 +131,26 @@ class EditorApiTest {
     }
 
     @Test
+    void pair_fromMoreAddressesThanTracked_sharesOneWindow() throws Exception {
+        JsonObject body = new JsonObject();
+        body.addProperty("tokenId", "tok_unknown1");
+        body.addProperty("secret", "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM");
+        for (int address = 0; address < 4096; address++)
+            error("pairing-invalid", 401, harness.request(pairFrom("10.0." + address / 256 + "." + address % 256, body)));
+        for (int address = 0; address < harness.settings.pairAttemptsPerMinute(); address++)
+            error("pairing-invalid", 401, harness.request(pairFrom("10.1." + address / 256 + "." + address % 256, body)));
+        error("rate-limited", 429, harness.request(pairFrom("10.2.0.0", body)));
+        error("pairing-invalid", 401, harness.request(pairFrom("10.0.0.1", body)));
+    }
+
+    private static EditorRequest pairFrom(String address, JsonObject body) {
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Origin", EditorHarness.ORIGIN);
+        headers.put(EditorReplies.PEER_HEADER, address);
+        return new EditorRequest(EditorRequest.Transport.DIRECT, "POST", "/v1/pair", headers, Optional.of(body));
+    }
+
+    @Test
     void request_withoutOrWithBadToken_isUnauthorized() throws Exception {
         error("unauthorized", 401, harness.send("GET", "/v1/catalog", null, null));
         error("unauthorized", 401, harness.send("GET", "/v1/catalog", "anm_tok_nothere1.ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM", null));

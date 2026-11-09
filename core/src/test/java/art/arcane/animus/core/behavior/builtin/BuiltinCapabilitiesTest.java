@@ -67,7 +67,7 @@ class BuiltinCapabilitiesTest {
 
     private static BuiltinActionSettings grants(List<String> behaviors, List<String> namespaces) {
         BuiltinActionSettings defaults = BuiltinActionSettings.DEFAULT;
-        return new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), behaviors, namespaces, defaults.navigationWaits());
+        return new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), behaviors, namespaces, defaults.navigationWaits(), List.of());
     }
     private static Key key(String name) { return new Key("animus", name); }
 
@@ -615,7 +615,10 @@ class BuiltinCapabilitiesTest {
         return compiled.program().orElseThrow();
     }
     private BehaviorEngine.Report run(BehaviorProgram program, boolean preview, java.util.function.Predicate<String> grants) throws Exception {
-        BehaviorEngine engine = new BehaviorEngine(BehaviorEngine.Limits.defaults(), new HostBehaviorInvoker(host, grants), ignored -> {}, art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
+        return run(program, preview, grants, behavior -> false);
+    }
+    private BehaviorEngine.Report run(BehaviorProgram program, boolean preview, java.util.function.Predicate<String> grants, java.util.function.Predicate<String> rawText) throws Exception {
+        BehaviorEngine engine = new BehaviorEngine(BehaviorEngine.Limits.defaults(), new HostBehaviorInvoker(host, grants, rawText), ignored -> {}, art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
         UUID id = engine.start(program, new BehaviorEngine.Context(NPC, Optional.of(PLAYER), preview)).value().orElseThrow();
         for (int i = 0; i < 2000 && engine.inspect(id).orElseThrow().state() == BehaviorEngine.State.RUNNING; i++) { engine.tick(); platform.pump(); Thread.sleep(1); }
         BehaviorEngine.Report report = engine.inspect(id).orElseThrow();
@@ -654,5 +657,40 @@ class BuiltinCapabilitiesTest {
         BehaviorEngine.Report granted = run(program, false, builtins::commandAllowed);
         assertEquals(BehaviorEngine.State.COMPLETED, granted.state(), granted.toString());
         assertEquals(List.of("command:CONSOLE:say hi"), platform.calls);
+    }
+
+    @Test void interpolatedTextOutsideTheSafeSetNeverReachesACommand() throws Exception {
+        start(Platform.PAPER, 5000, grants(List.of("town:greeter"), List.of()));
+        BehaviorProgram bound = program("{\"type\":\"action\",\"capability\":\"animus:command\",\"arguments\":{\"command\":null},\"bindings\":{\"/command\":{\"variable\":\"line\"}}}");
+        BehaviorEngine.Report refused = run(bound, false, builtins::commandAllowed);
+        assertEquals(BehaviorEngine.State.FAILED, refused.state(), refused.toString());
+        BehaviorProgram templated = program("{\"type\":\"action\",\"capability\":\"animus:command\",\"arguments\":{\"command\":null},\"templates\":{\"/command\":\"give {{ line }} minecraft:bread 1\"}}");
+        assertEquals(BehaviorEngine.State.FAILED, run(templated, false, builtins::commandAllowed).state());
+        assertTrue(platform.calls.isEmpty(), "a space in interpolated text could add arguments");
+        BehaviorProgram safe = program("{\"type\":\"action\",\"capability\":\"animus:command\",\"arguments\":{\"command\":null},\"templates\":{\"/command\":\"give {{ 'Alex' }} minecraft:bread {{ 2 }}\"}}");
+        BehaviorEngine.Report ran = run(safe, false, builtins::commandAllowed);
+        assertEquals(BehaviorEngine.State.COMPLETED, ran.state(), ran.toString());
+        assertEquals(List.of("command:CONSOLE:give Alex minecraft:bread 2"), platform.calls);
+    }
+
+    @Test void rawTextGrantLetsABehaviorInterpolateWordsButNeverControlCharactersOrASlash() throws Exception {
+        start(Platform.PAPER, 5000, grants(List.of("town:greeter"), List.of()));
+        BehaviorProgram templated = program("{\"type\":\"action\",\"capability\":\"animus:command\",\"arguments\":{\"command\":null},\"templates\":{\"/command\":\"say {{ line }}\"}}");
+        BehaviorEngine.Report ran = run(templated, false, builtins::commandAllowed, "town:greeter"::equals);
+        assertEquals(BehaviorEngine.State.COMPLETED, ran.state(), ran.toString());
+        assertEquals(List.of("command:CONSOLE:say Bound hello"), platform.calls);
+        BehaviorProgram broken = program("{\"type\":\"action\",\"capability\":\"animus:command\",\"arguments\":{\"command\":null},\"templates\":{\"/command\":\"say {{ line }}{{ '\\\\n' }}op Alex\"}}");
+        assertEquals(BehaviorEngine.State.FAILED, run(broken, false, builtins::commandAllowed, "town:greeter"::equals).state());
+        BehaviorProgram slashed = program("{\"type\":\"action\",\"capability\":\"animus:command\",\"arguments\":{\"command\":null},\"templates\":{\"/command\":\"{{ '/' }}op Alex\"}}");
+        assertEquals(BehaviorEngine.State.FAILED, run(slashed, false, builtins::commandAllowed, "town:greeter"::equals).state());
+        assertEquals(1, platform.calls.size());
+    }
+
+    @Test void consoleCommandRefusesAPlayerNameOutsideTheSafeSet() throws Exception {
+        start(Platform.PAPER, 5000, grants(List.of("town:greeter"), List.of()));
+        platform.playerName = Optional.of("Al ex");
+        Outcome<String> refused = action("command", "{\"command\":\"give {player_name} minecraft:bread\"}", Optional.of(PLAYER), false, true, Optional.of("town:greeter"));
+        assertEquals(Outcome.Status.INVALID, refused.status(), refused.diagnostics().toString());
+        assertTrue(platform.calls.isEmpty());
     }
 }

@@ -87,11 +87,12 @@ final class DenizenDropIn {
         return ids;
     }
 
-    /** Applies the staged import, binding behaviors to the installed NPCs. Adds its transaction to {@code transactions}. */
-    static List<String> apply(DocumentStore store, JsonObject state, NpcRepository.Installed installed, JsonArray transactions) throws IOException {
+    /** Applies the staged import, binding behaviors to the installed NPCs. Its transaction goes through {@code journal}. */
+    static List<String> apply(DocumentStore store, JsonObject state, NpcRepository.Installed installed, ImportJournal journal) throws IOException {
         JsonObject part = state.getAsJsonObject("denizen");
-        DenizenImporter.Applied applied = new DenizenImporter().apply(store, part.get("importId").getAsString(), installed);
-        transactions.add(applied.transaction());
+        DenizenImporter.Applied[] result = new DenizenImporter.Applied[1];
+        journal.commit(state, (String transaction) -> (result[0] = new DenizenImporter().apply(store, part.get("importId").getAsString(), installed, transaction)).transaction());
+        DenizenImporter.Applied applied = result[0];
         part.addProperty("state", "applied");
         List<String> lines = new ArrayList<>();
         lines.add("Denizen behaviors installed in behaviors/denizen/; " + applied.states() + " flag state files; "

@@ -306,17 +306,20 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
         flight.launched(BukkitShots.position(projectile));
         flying.put(projectile.getUniqueId(), new Flying(projectile, kind.get(), shooter, flight, ticks + FLIGHT_TICKS));
     }
+    private static final art.arcane.animus.core.virtual.SpatialNpcIndex.Scan EMPTY_SCAN = new art.arcane.animus.core.virtual.SpatialNpcIndex.Scan(List.of(), Optional.empty(), 0, 0);
+    private static final ProjectileFlight.Scanner NOTHING_NEAR = (WorldPosition center, double radius, art.arcane.animus.core.virtual.SpatialNpcIndex.Budget budget) -> EMPTY_SCAN;
     /** Each followed projectile's last move is tested against NPC bodies; a strike is a projectile hit by its shooter. */
     private void flights() {
         if (flying.isEmpty()) return;
         if (!module.running()) { flying.clear(); return; }
+        // With no combat NPC registered nothing can be struck: flights still advance, but skip the spatial query.
+        ProjectileFlight.Scanner scanner = module.engine().size() == 0 ? NOTHING_NEAR
+                : (WorldPosition center, double radius, art.arcane.animus.core.virtual.SpatialNpcIndex.Budget budget) -> world.nearbyNpcs(center, radius, null, budget);
         for (java.util.Iterator<Flying> each = flying.values().iterator(); each.hasNext();) {
             Flying next = each.next();
             Projectile projectile = next.projectile();
             if (!projectile.isValid() || ticks > next.expires() || projectile instanceof org.bukkit.entity.AbstractArrow arrow && arrow.isInBlock()) { each.remove(); continue; }
-            Optional<ProjectileFlight.Hit> hit = next.flight().advance(BukkitShots.position(projectile), BukkitShots.velocity(projectile),
-                    (WorldPosition center, double radius, art.arcane.animus.core.virtual.SpatialNpcIndex.Budget budget) -> world.nearbyNpcs(center, radius, null, budget),
-                    module.engine()::shootable);
+            Optional<ProjectileFlight.Hit> hit = next.flight().advance(BukkitShots.position(projectile), BukkitShots.velocity(projectile), scanner, module.engine()::shootable);
             if (hit.isEmpty()) continue;
             module.engine().shot(hit.get().npc(), BukkitShots.shot(projectile, next.kind(), next.shooter(), next.flight(), random));
             BukkitShots.land(projectile, next.kind(), hit.get().point(), next.flight().spent());

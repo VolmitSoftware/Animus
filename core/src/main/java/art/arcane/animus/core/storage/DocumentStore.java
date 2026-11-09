@@ -20,6 +20,10 @@ public final class DocumentStore implements AutoCloseable {
             + "|state/builds/[a-z0-9][a-z0-9_-]{0,63}(?:/undo-[0-9]{5})?\\.json|state/editor/changes/[A-Za-z0-9_-]{16,128}\\.json"
             + "|state/rig-catalog/last-valid/(?:rigs|animations)/[a-z0-9_-]+/[a-z0-9_/-]+\\.json";
     private static final long MAX_TRANSACTION_BYTES = 256L * 1024 * 1024;
+    private static final boolean WINDOWS = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).startsWith("windows");
+    /** Generated object kinds whose objects are named only by pointers, receipts and import plans, so unnamed ones can go. */
+    private static final List<String> PRUNED_OBJECTS = List.of("npc-definitions", "behavior-catalog", "rig-catalog", "import-applications");
+    private static final java.util.regex.Pattern OBJECT_HASH = java.util.regex.Pattern.compile("[a-f0-9]{64}");
     static { WriteNotices.preload(); }
     private final Path root;
     private final FileChannel lockChannel;
@@ -326,6 +330,63 @@ public final class DocumentStore implements AutoCloseable {
         return removed;
     }
 
+    /**
+     * Deletes generated objects under {@link #PRUNED_OBJECTS} that no file in {@code state/}, {@code backups/} or
+     * {@code imports/} names and that are older than {@code minimumAge}, so a write still between storing an object and
+     * committing its pointer keeps it. Any reference file that cannot be read keeps every object.
+     */
+    public synchronized int collectObjects(java.time.Duration minimumAge, java.time.Instant now) throws IOException {
+        ensureWritable();
+        recover();
+        Set<Path> pruned = new HashSet<>();
+        for (String namespace : PRUNED_OBJECTS) pruned.add(resolve("state/objects/" + namespace));
+        Set<String> referenced = new HashSet<>();
+        for (String folder : List.of("state", "backups", "imports")) {
+            Path start = resolve(folder);
+            if (!Files.isDirectory(start, LinkOption.NOFOLLOW_LINKS)) continue;
+            try (java.util.stream.Stream<Path> files = Files.walk(start)) {
+                for (Path file : (Iterable<Path>) files::iterator) {
+                    if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || pruned.contains(file.getParent()) || file.getFileName().toString().equals("store.lock")) continue;
+                    // Latin-1 decodes any bytes, so malformed user JSON in a receipt still yields its hashes.
+                    java.util.regex.Matcher found = OBJECT_HASH.matcher(new String(Files.readAllBytes(file), StandardCharsets.ISO_8859_1));
+                    while (found.find()) referenced.add(found.group());
+                }
+            } catch (IOException | java.io.UncheckedIOException unreadable) { return 0; }
+        }
+        java.time.Instant cutoff = now.minus(minimumAge);
+        int removed = 0;
+        for (Path objects : pruned) {
+            if (!Files.isDirectory(objects, LinkOption.NOFOLLOW_LINKS)) continue;
+            try (DirectoryStream<Path> files = Files.newDirectoryStream(objects, "*.json")) {
+                for (Path file : files) {
+                    String name = file.getFileName().toString();
+                    if (!name.matches("[a-f0-9]{64}\\.json") || referenced.contains(name.substring(0, 64)) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)
+                            || !Files.getLastModifiedTime(file, LinkOption.NOFOLLOW_LINKS).toInstant().isBefore(cutoff)) continue;
+                    delete(file);
+                    removed++;
+                }
+            }
+        }
+        return removed;
+    }
+
+    /** Deletes the {@code imports/.preview-*} folders an import left while staging when the server stopped. Only safe before any import runs. */
+    public synchronized int removeStalePreviews() throws IOException {
+        ensureWritable();
+        Path imports = resolve("imports");
+        if (!Files.isDirectory(imports, LinkOption.NOFOLLOW_LINKS)) return 0;
+        List<Path> stale = new ArrayList<>();
+        try (DirectoryStream<Path> children = Files.newDirectoryStream(imports, ".preview-*")) {
+            for (Path child : children) if (Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS)) stale.add(child);
+        }
+        for (Path folder : stale) {
+            try (java.util.stream.Stream<Path> tree = Files.walk(folder)) {
+                for (Path path : tree.sorted(Comparator.reverseOrder()).toList()) Files.delete(path);
+            }
+        }
+        return stale.size();
+    }
+
     private void recover() throws IOException {
         String pending = read("state/pending.json");
         if (pending != null) finish(JsonDocuments.object(pending));
@@ -483,8 +544,14 @@ public final class DocumentStore implements AutoCloseable {
         }
     }
 
-    private static void syncDirectory(Path directory) throws IOException {
+    /**
+     * Best effort: the file itself was already forced before the rename. Windows cannot open a directory for reading at
+     * all, and some file systems refuse a directory sync, so a refusal must not fail a commit whose rename already happened.
+     */
+    private static void syncDirectory(Path directory) {
+        if (WINDOWS) return;
         try (FileChannel channel = FileChannel.open(directory, READ)) { channel.force(true); }
+        catch (IOException | UnsupportedOperationException unsupported) { /* The rename stands; only its directory entry flush is skipped. */ }
     }
     private void ensureOpen() { if (closed) throw new IllegalStateException("Document store is closed"); }
     private void ensureWritable() throws IOException {

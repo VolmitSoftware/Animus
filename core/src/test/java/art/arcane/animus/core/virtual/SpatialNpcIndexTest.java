@@ -42,6 +42,15 @@ class SpatialNpcIndexTest {
         var unavailable = index.scan(new SpatialNpcIndex.Query(query.center(), 1), null, new SpatialNpcIndex.Budget(1, 10), c -> false);
         assertTrue(unavailable.candidates().isEmpty()); assertEquals(0, unavailable.candidatesVisited()); assertTrue(unavailable.complete());
     }
+    @Test void chunkVisibilityIsAskedWithoutHoldingTheIndex() {
+        SpatialNpcIndex index = new SpatialNpcIndex(10);
+        index.upsert(npc(1, "world", 8, 8).snapshot()); index.upsert(npc(2, "world", 24, 8).snapshot());
+        List<Boolean> held = new ArrayList<>();
+        var scan = index.scan(new SpatialNpcIndex.Query(new WorldPosition("world", new Vec3(16, 64, 8)), 16), null, new SpatialNpcIndex.Budget(64, 64),
+                c -> { held.add(Thread.holdsLock(index)); return c.x() == 0; });
+        assertEquals(List.of(false, false), held, "a platform check may take its own locks");
+        assertEquals(List.of(new UUID(0, 1)), scan.candidates().stream().map(VirtualNpcState.Snapshot::npcId).toList());
+    }
     @Test void reindexesMovesAndRejectsStaleUpdatesAndCapacityOverflow() {
         SpatialNpcIndex index = new SpatialNpcIndex(1); var state = npc(1, "world", 8, 8); var initial = state.snapshot(); index.upsert(initial);
         assertThrows(IllegalStateException.class, () -> index.upsert(npc(2, "world", 8, 8).snapshot()));

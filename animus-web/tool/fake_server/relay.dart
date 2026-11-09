@@ -194,7 +194,14 @@ class _RelayConnection {
       address: address,
     );
     if (call.method == 'GET' && call.route == '/v1/events') return _stream(id, call);
-    _respond(id, server.api.handle(call));
+    final FakeResponse response = server.api.handle(call);
+    final String? challenge = call.header('x-animus-challenge');
+    if (call.route == '/v1/hello' && challenge != null && response.status == 200) {
+      // The server signs the challenge so the browser knows no relay forged the answer.
+      unawaited(server.identity.prove(challenge).then((Map<String, String> proof) => _respond(id, response.withHeaders(proof))));
+      return;
+    }
+    _respond(id, response);
   }
 
   void _stream(int id, FakeRequest call) {

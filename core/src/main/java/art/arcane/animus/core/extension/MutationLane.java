@@ -8,10 +8,14 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /** Serial durable mutation, bounded acknowledgment delivery, and engine-owned termination cleanup.
- * Engine observers/cleanup are quick trusted engine hooks, not extension callback surfaces.
+ * Engine observers/cleanup are quick trusted engine hooks, not extension callback surfaces. Close drains work already
+ * queued, within a limit, so a write accepted just before a stop still lands.
  */
 public final class MutationLane implements AutoCloseable {
     private static final int MAXIMUM_LIMIT=1024;
+    /** How long close keeps running queued work before it cancels the rest. */
+    public static final Duration DRAIN_LIMIT=Duration.ofSeconds(10);
+    private static final System.Logger LOG=System.getLogger("Animus");
     public enum CleanupState { NOT_SCHEDULED, QUEUED, RUNNING, SUCCEEDED, FAILED }
     public enum EngineTaskEvent { CANCELLED, FAILED }
     @FunctionalInterface public interface EngineTaskObserver {
@@ -34,7 +38,9 @@ public final class MutationLane implements AutoCloseable {
     private final Set<Work> active=new HashSet<>();
     private final CompletableFuture<Void> drained=new CompletableFuture<>();
     private int pendingMutations;
-    private long slowDeliveries,drainStartedNanos,failedEngineTasks,cancelledEngineTasks,observerFailures;
+    private long slowDeliveries,drainStartedNanos,failedEngineTasks,cancelledEngineTasks,observerFailures,drainDeadlineNanos;
+    private int abandoned;
+    private Duration drainLimit=DRAIN_LIMIT;
     private boolean closed,drainScheduled,drainActive,drainNotificationFinished;
     private CleanupState cleanupState=CleanupState.NOT_SCHEDULED;
     private String lastEngineFailure="none";
@@ -133,17 +139,24 @@ public final class MutationLane implements AutoCloseable {
                 closed&&pendingMutations==0,drainActive,drainActive&&now-drainStartedNanos>=deliveryBudgetNanos,
                 notices,failedEngineTasks,cancelledEngineTasks,observerFailures,cleanupState,lastEngineFailure,quiescentLocked());
     }
-    @Override public void close() {
+    /** Stops admission and drains queued work within {@link #DRAIN_LIMIT}. */
+    @Override public void close(){close(DRAIN_LIMIT);}
+    /** Stops admission. Queued work still runs in order until {@code drainLimit} has passed; work reached after that is cancelled and logged. */
+    public void close(Duration drainLimit) {
+        if(drainLimit==null || drainLimit.isNegative())throw new IllegalArgumentException("Drain limit must not be negative");
         synchronized(this) {
-            if(closed)return;closed=true;
-            for(Work task:List.copyOf(active))if(task.phase==0){worker.remove(task);task.cancelQueuedLocked();}
+            if(closed)return;closed=true;this.drainLimit=drainLimit;drainDeadlineNanos=System.nanoTime()+drainLimit.toNanos();
             maybeDrainLocked();
         }
     }
+    /** Called as queued work is reached after close: past the drain limit it is cancelled instead of run. */
+    private boolean pastDrainLocked(){return closed && System.nanoTime()-drainDeadlineNanos>=0;}
     /** No accepted mutation/notice remains. Queue the engine cleanup before shutting down the mutation worker. */
     private void maybeDrainLocked(){
         if(!closed || pendingMutations!=0 || drainScheduled)return;
         drainScheduled=true;notifyAll();deliveries.shutdown();cleanupState=CleanupState.QUEUED;
+        if(abandoned>0)LOG.log(System.Logger.Level.WARNING,abandoned+" queued file writes were cancelled at shutdown without being written: they were still waiting when the "
+                +drainLimit.toMillis()+"ms drain limit passed");
         worker.execute(this::cleanupOnWorker);worker.shutdown();
         drainSignal.execute(()->{
             synchronized(this){drainActive=true;drainStartedNanos=System.nanoTime();}
@@ -167,7 +180,13 @@ public final class MutationLane implements AutoCloseable {
     private abstract class Work implements Runnable {
         // Host monitor protects queued/running/delivery-queued/delivering/cancel-notification-queued states.
         int phase;long deliveryStartedNanos;
-        final boolean enter(){synchronized(MutationLane.this){if(phase!=0)return false;phase=1;return true;}}
+        final boolean enter(){
+            synchronized(MutationLane.this){
+                if(phase!=0)return false;
+                if(pastDrainLocked()){abandoned++;cancelQueuedLocked();return false;}
+                phase=1;return true;
+            }
+        }
         abstract void cancelQueuedLocked();
     }
     private final class EngineWork extends Work {

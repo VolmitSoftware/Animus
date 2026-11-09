@@ -61,12 +61,12 @@ class EditorListenerTest {
             assertEquals(204, preflight.statusCode());
             assertEquals(EditorHarness.ORIGIN, preflight.headers().firstValue("Access-Control-Allow-Origin").orElseThrow());
             assertTrue(preflight.headers().firstValue("Access-Control-Allow-Headers").orElseThrow().contains("X-Animus-Counter"));
-            HttpResponse<String> large = client.send(HttpRequest.newBuilder(URI.create(base + "/v1/validate"))
-                    .POST(HttpRequest.BodyPublishers.ofString("x".repeat(settings.requestBodyBytes() + 1))).build(), HttpResponse.BodyHandlers.ofString());
-            assertEquals(413, large.statusCode());
             HttpResponse<String> outside = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + listener.port() + "/other")).build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(404, outside.statusCode());
             String token = harness.token();
+            HttpResponse<String> large = client.send(HttpRequest.newBuilder(URI.create(base + "/v1/validate")).header("Authorization", "Bearer " + token)
+                    .POST(HttpRequest.BodyPublishers.ofString("x".repeat(settings.requestBodyBytes() + 1))).build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(413, large.statusCode());
             HttpResponse<String> catalog = client.send(HttpRequest.newBuilder(URI.create(base + "/v1/catalog?kind=npc")).header("Authorization", "Bearer " + token).build(),
                     HttpResponse.BodyHandlers.ofString());
             assertEquals(200, catalog.statusCode());
@@ -326,6 +326,83 @@ class EditorListenerTest {
             assertEquals(200, hello.statusCode());
             assertThrows(IOException.class, () -> HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + listener.port() + "/animus/v1/hello"))
                     .timeout(Duration.ofSeconds(5)).build(), HttpResponse.BodyHandlers.ofString()));
+        }
+    }
+
+    /** Sends a request head on a raw socket and reads the status line, failing if the server waits for more. */
+    private static String statusLine(Socket client, String head) throws IOException {
+        client.setSoTimeout(5000);
+        client.getOutputStream().write(head.getBytes(StandardCharsets.US_ASCII));
+        client.getOutputStream().flush();
+        StringBuilder line = new StringBuilder();
+        InputStream input = client.getInputStream();
+        for (int read = input.read(); read >= 0 && read != '\r'; read = input.read()) line.append((char) read);
+        return line.toString();
+    }
+
+    @Test
+    void http_tokenIsCheckedBeforeTheBodyIsRead() throws Exception {
+        EditorSettings settings = settings(0, "", "");
+        try (EditorHarness harness = new EditorHarness(directory, settings);
+             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+            listener.start();
+            try (Socket client = new Socket("127.0.0.1", listener.port())) {
+                String status = statusLine(client, "POST /animus/v1/validate HTTP/1.1\r\nHost: x\r\nContent-Length: 4000\r\n\r\n");
+                assertEquals("HTTP/1.1 401 Unauthorized", status, "an unauthenticated body is never waited for");
+            }
+            try (Socket client = new Socket("127.0.0.1", listener.port())) {
+                String status = statusLine(client, "POST /animus/v1/pair HTTP/1.1\r\nHost: x\r\nContent-Length: 8192\r\n\r\n");
+                assertEquals("HTTP/1.1 413 Content Too Large", status, "pairing takes a small body only");
+            }
+            String token = harness.token();
+            try (Socket client = new Socket("127.0.0.1", listener.port())) {
+                String status = statusLine(client, "POST /animus/v1/imports HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer " + token + "\r\nContent-Length: 4000\r\n\r\n");
+                assertEquals("HTTP/1.1 403 Forbidden", status, "an upload without the import scope is refused before its bytes arrive");
+            }
+        }
+    }
+
+    @Test
+    void http_slowHeadIsCutOff() throws Exception {
+        EditorSettings settings = settings(0, "", "");
+        try (EditorHarness harness = new EditorHarness(directory, settings);
+             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+            listener.start();
+            try (Socket client = new Socket("127.0.0.1", listener.port())) {
+                client.setSoTimeout(20_000);
+                OutputStream output = client.getOutputStream();
+                output.write("GET /animus/v1/hello HTTP/1.1\r\n".getBytes(StandardCharsets.US_ASCII));
+                long started = System.nanoTime();
+                boolean closed = false;
+                try {
+                    for (int index = 0; index < 40 && !closed; index++) {
+                        output.write('X');
+                        output.flush();
+                        Thread.sleep(250);
+                    }
+                } catch (IOException reset) { closed = true; }
+                if (!closed) closed = client.getInputStream().read() < 0;
+                assertTrue(closed, "a head that trickles in is dropped");
+                assertTrue(System.nanoTime() - started < TimeUnit.SECONDS.toNanos(9), "within the head deadline");
+            }
+        }
+    }
+
+    @Test
+    void http_oneAddressCannotHoldEveryConnection() throws Exception {
+        EditorSettings settings = settings(0, "", "");
+        try (EditorHarness harness = new EditorHarness(directory, settings);
+             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+            listener.start();
+            List<Socket> held = new java.util.ArrayList<>();
+            try {
+                for (int index = 0; index < EditorListener.CONNECTIONS_PER_ADDRESS; index++) held.add(new Socket("127.0.0.1", listener.port()));
+                try (Socket extra = new Socket("127.0.0.1", listener.port())) {
+                    extra.setSoTimeout(5000);
+                    byte[] reply = extra.getInputStream().readAllBytes();
+                    assertTrue(new String(reply, StandardCharsets.ISO_8859_1).startsWith("HTTP/1.1 503"), "the address has its share of connections");
+                }
+            } finally { for (Socket socket : held) socket.close(); }
         }
     }
 

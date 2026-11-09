@@ -8,11 +8,11 @@ Every NPC is a JSON file you can edit by hand, through `/animus` commands, or in
 |---|---|
 | Minecraft | 26.1.2, 26.2 and 26.3 |
 | Java | 25 |
-| Plugin servers | Paper, Spigot and Folia, one jar for all three |
-| Mod servers | Fabric, NeoForge and Forge, as a server-side mod |
+| Plugin servers | Paper, Spigot and Folia, one jar for all three. Supported |
+| Mod servers | Fabric, NeoForge and Forge, as a server-side mod. Experimental |
 | Documentation | [docs.volmitsoftware.com/animus](https://docs.volmitsoftware.com/animus/) |
 
-Paper, Spigot, Folia and the mod loaders run the same NPC runtime, commands, behaviors, navigation, mounts, riding, combat and building. The differences are listed under [platform differences](https://docs.volmitsoftware.com/animus/01-installation-compatibility#platform-differences): Folia runs each NPC on the region that owns its chunk, and mod servers have no protection plugin, no Vault economy and no Bukkit events.
+Supported on Paper, Spigot and Folia; Fabric, Forge and NeoForge are experimental. All of them run the same NPC runtime, commands, behaviors, navigation, mounts, riding, combat and building. The differences are listed under [platform differences](https://docs.volmitsoftware.com/animus/01-installation-compatibility#platform-differences): Folia runs each NPC on the region that owns its chunk, and mod servers have no protection plugin, no Vault economy and no Bukkit events.
 
 ## Getting started
 

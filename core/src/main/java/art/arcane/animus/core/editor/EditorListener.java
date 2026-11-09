@@ -54,7 +54,13 @@ import javax.net.ssl.SSLServerSocket;
  */
 public final class EditorListener implements AutoCloseable {
     public static final String BASE = "/animus";
+    /** Connections one address may hold at once, so slow or idle clients from one place cannot take every slot. */
+    public static final int CONNECTIONS_PER_ADDRESS = 16;
+    /** The largest body a request without a valid token may send: pairing and the open endpoints. */
+    public static final int OPEN_BODY_BYTES = 4096;
     private static final int HEAD_BYTES = 16 * 1024, WEBSOCKET_FRAME_BYTES = 64 * 1024, REQUESTS_PER_CONNECTION = 1000;
+    /** An idle connection waits this long for the next request; once its first byte arrives the whole head must follow within {@link #HEAD_MILLIS}. */
+    private static final int IDLE_MILLIS = 15_000, HEAD_MILLIS = 5_000;
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
     private static final String WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
     private volatile EditorSettings settings;
@@ -63,6 +69,7 @@ public final class EditorListener implements AutoCloseable {
     private final Consumer<String> log;
     private final Semaphore connections;
     private final Set<Socket> open = ConcurrentHashMap.newKeySet();
+    private final Map<String, Integer> perAddress = new ConcurrentHashMap<>();
     private volatile ServerSocket server;
     private volatile boolean closed;
     private Thread acceptor;
@@ -142,13 +149,21 @@ public final class EditorListener implements AutoCloseable {
                 if (!closed) log.accept("Editor listener stopped accepting: " + stopped.getMessage());
                 return;
             }
+            String address = socket.getInetAddress().getHostAddress();
             if (!connections.tryAcquire()) {
-                Thread.ofVirtual().start(() -> refuse(socket));
+                Thread.ofVirtual().start(() -> refuse(socket, "The editor listener has its maximum of connections open."));
+                continue;
+            }
+            if (perAddress.merge(address, 1, Integer::sum) > CONNECTIONS_PER_ADDRESS) {
+                leave(address);
+                connections.release();
+                Thread.ofVirtual().start(() -> refuse(socket, "This address has its maximum of " + CONNECTIONS_PER_ADDRESS + " editor connections open."));
                 continue;
             }
             open.add(socket);
             if (closed) {
                 open.remove(socket);
+                leave(address);
                 connections.release();
                 try { socket.close(); }
                 catch (IOException ignored) { /* Closing while stopping. */ }
@@ -158,16 +173,19 @@ public final class EditorListener implements AutoCloseable {
                 try { serve(socket); }
                 finally {
                     open.remove(socket);
+                    leave(address);
                     connections.release();
                 }
             });
         }
     }
 
-    private void refuse(Socket socket) {
+    private void leave(String address) { perAddress.computeIfPresent(address, (String key, Integer count) -> count <= 1 ? null : count - 1); }
+
+    private void refuse(Socket socket, String reason) {
         try (socket) {
             socket.setSoTimeout(2000);
-            write(socket.getOutputStream(), EditorReplies.error(new EditorError(EditorError.Code.BUSY, "The editor listener has its maximum of connections open.", 1000, null)), false);
+            write(socket.getOutputStream(), EditorReplies.error(new EditorError(EditorError.Code.BUSY, reason, 1000, null)), false);
         } catch (IOException ignored) { /* The client left first. */ }
     }
 
@@ -176,13 +194,12 @@ public final class EditorListener implements AutoCloseable {
     private void serve(Socket socket) {
         String address = socket.getInetAddress().getHostAddress();
         try (socket) {
-            socket.setSoTimeout(15_000);
             socket.setTcpNoDelay(true);
             InputStream input = new BufferedInputStream(socket.getInputStream());
             OutputStream output = socket.getOutputStream();
             for (int served = 0; served < REQUESTS_PER_CONNECTION && !closed; served++) {
                 Head head;
-                try { head = head(input); }
+                try { head = head(socket, input); }
                 catch (EOFException | SocketTimeoutException idle) { return; }
                 catch (EditorError invalid) { write(output, EditorReplies.error(invalid), false); return; }
                 if (head == null) return;
@@ -204,7 +221,10 @@ public final class EditorListener implements AutoCloseable {
                 long length;
                 try { length = Long.parseLong(head.headers().getOrDefault("content-length", "0").strip()); }
                 catch (NumberFormatException invalid) { write(output, EditorReplies.error(new EditorError(EditorError.Code.INVALID_REQUEST, "Content-Length is not a number.")), false); return; }
-                long limit = target.startsWith("/v1/imports") ? settings.importBodyBytes() : settings.requestBodyBytes();
+                // The token and scope are checked from the head, so only an authenticated request may send a large body.
+                EditorRequestHandler.Admission admission = handler.admit(new EditorRequest(EditorRequest.Transport.DIRECT, head.method(), target, headers(head, address), Optional.empty()));
+                if (admission.refusal().isPresent()) { write(output, admission.refusal().get(), false); return; }
+                long limit = !admission.authenticated() ? OPEN_BODY_BYTES : target.startsWith("/v1/imports") ? settings.importBodyBytes() : settings.requestBodyBytes();
                 if (length < 0 || length > limit) {
                     write(output, EditorReplies.error(new EditorError(EditorError.Code.TOO_LARGE, "Request bodies are limited to " + limit + " bytes here.")), false);
                     return;
@@ -212,7 +232,6 @@ public final class EditorListener implements AutoCloseable {
                 socket.setSoTimeout(60_000);
                 byte[] body = input.readNBytes((int) length);
                 if (body.length != length) return;
-                socket.setSoTimeout(15_000);
                 EditorResponse response;
                 try {
                     EditorRequest request = new EditorRequest(EditorRequest.Transport.DIRECT, head.method(), target, headers(head, address), body(target, body));
@@ -253,12 +272,23 @@ public final class EditorListener implements AutoCloseable {
         catch (IOException invalid) { throw new EditorError(EditorError.Code.INVALID_REQUEST, "The body is not one JSON object: " + invalid.getMessage()); }
     }
 
-    /** Reads a request line and headers, or null at a clean end of stream. */
-    private static Head head(InputStream input) throws IOException, EditorError {
+    /**
+     * Reads a request line and headers, or null at a clean end of stream. The first byte may take {@link #IDLE_MILLIS}; the
+     * rest of the head must arrive within {@link #HEAD_MILLIS} of it, however slowly it trickles.
+     */
+    private static Head head(Socket socket, InputStream input) throws IOException, EditorError {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         int state = 0, read;
+        socket.setSoTimeout(IDLE_MILLIS);
+        long deadline = 0;
         while (state < 4) {
+            if (deadline != 0) {
+                long left = (deadline - System.nanoTime()) / 1_000_000;
+                if (left <= 0) throw new SocketTimeoutException("The request head was too slow");
+                socket.setSoTimeout((int) left);
+            }
             read = input.read();
+            if (deadline == 0) deadline = System.nanoTime() + HEAD_MILLIS * 1_000_000L;
             if (read < 0) {
                 if (bytes.size() == 0) return null;
                 throw new EOFException();

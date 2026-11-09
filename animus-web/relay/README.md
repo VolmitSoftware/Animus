@@ -8,11 +8,19 @@ Everything is in memory. The relay stores no documents, tokens or frames, and lo
 
 The relay is a trusted pass-through. TLS (Cloud Run's) protects traffic on the wire, but the relay process reads every frame it forwards, including the editor's bearer tokens and the documents being edited. End-to-end encryption between browser and server is planned for a later release. Until then, whoever operates the relay can read the traffic it forwards. Tokens are scoped, expire after 7 days by default and can be revoked with `/animus editor revoke`.
 
+Over the relay the editor checks that it reached the paired server before it sends a token or pairing secret. It sends a random 32-byte `X-Animus-Challenge` (base64url) with `GET /v1/hello`; the server answers with `X-Animus-Server-Key` and `X-Animus-Proof`, an Ed25519 signature over the UTF-8 text `animus-editor-proof/1 ` followed by the challenge. The editor needs the key's SHA-256 to equal the pinned fingerprint and the signature to verify. The prefix differs from the registration prefix `animus-relay/1 `, so neither signature can stand in for the other. This stops a relay from posing as a server that is not connected to it. It does not stop a relay that forwards to the real server from reading the traffic.
+
 The relay does not check tokens. The server checks every forwarded request the same way as a direct one (token, scope, `X-Animus-Counter`, origin).
 
 ## Protocol
 
-Frames are JSON text messages, one object each. Their definitions are the `relay-*` entries in `schema/editor-v1.schema.json`, and `schema/editor-v1.endpoints.json` lists which side sends which (`relay`). The relay closes a connection that breaks a rule with a `relay-error` frame and close code 4008.
+Frames are JSON text messages, one object each. Their definitions are the `relay-*` entries in `schema/editor-v1.schema.json`, and `schema/editor-v1.endpoints.json` lists which side sends which (`relay`). The relay closes a connection that breaks a rule with a `relay-error` frame and close code 4008. A message whose frame headers announce more than `MAX_FRAME_BYTES` (one frame, or continuation frames together) ends the TCP connection at once, before the payload is read.
+
+### Addresses
+
+The caller's address is the last `X-Forwarded-For` entry, the one Cloud Run's front end appends, or the socket peer when the header is missing or that entry is not an IP address. Earlier entries are set by the client and ignored. The address is used for the per-address limits and forwarded to the server, which uses it for pairing rate limits and its audit log. Behind another proxy that appends its own entry, this would be the proxy's address.
+
+Each address may hold `MAX_SERVER_CONNECTIONS_PER_ADDRESS` `/agent` connections and `MAX_APP_CONNECTIONS_PER_ADDRESS` `/app` connections, registered or not. Past that the upgrade gets 503.
 
 ### Server, `/agent`
 
@@ -26,9 +34,10 @@ The server's handshake must carry no `Origin` header.
 ### Browser, `/app`
 
 1. The handshake's `Origin` must equal one of `ALLOWED_APP_ORIGINS` exactly. Otherwise the relay answers 403.
-2. Within 10 s the browser sends `{"type":"subscribe","protocol":1,"fingerprint":"sha256:<hex>"}`. The relay answers `{"type":"subscribed","fingerprint":...,"online":true|false}`, and later `{"type":"status","online":...}` when the server connects or disconnects.
-3. The browser sends `request` frames: `{"type":"request","id":N,"method":"GET|POST|DELETE","path":"/v1/...","headers":{...},"body":...}`. Ids are positive integers unique among the browser's open requests. The relay answers with the same id. Before forwarding, the relay replaces `Origin` with the handshake's origin and `X-Forwarded-For` with the browser's address, and removes `Forwarded` and `Host`.
-4. Event streams use `GET /v1/events` with the token in `Authorization` (the relay path has no `event-auth` frame). The browser sends `{"type":"close","id":N}` to end a stream.
+2. Within 10 s the browser sends `{"type":"subscribe","protocol":1,"fingerprint":"sha256:<hex>"}`. The relay answers `{"type":"subscribed","fingerprint":...,"online":true|false}`, and later `{"type":"status","online":...}` when the server connects or disconnects. One address may hold at most `MAX_APPS_PER_ADDRESS_PER_SERVER` subscriptions to one server.
+3. Within 30 s of subscribing the browser must have an event stream the server accepted (a 2xx answer to `GET /v1/events`, which needs a valid token). Otherwise the relay closes it with a `timeout` error. Pairing (`hello`, then `POST /v1/pair`) fits in that time and then closes.
+4. The browser sends `request` frames: `{"type":"request","id":N,"method":"GET|POST|DELETE","path":"/v1/...","headers":{...},"body":...}`. Ids are positive integers unique among the browser's open requests. The relay answers with the same id. Before forwarding, the relay replaces `Origin` with the handshake's origin and `X-Forwarded-For` with the browser's address, and removes `Forwarded` and `Host`.
+5. Event streams use `GET /v1/events` with the token in `Authorization` (the relay path has no `event-auth` frame). The browser sends `{"type":"close","id":N}` to end a stream.
 
 The relay answers some requests itself, with an `error-response` body:
 
@@ -76,10 +85,14 @@ All settings are environment variables.
 | `MAX_STREAMS_PER_APP` | `4` | Event streams per browser |
 | `MAX_PENDING_GLOBAL` | `4096` | Unanswered requests in total |
 | `MAX_APPS_PER_SERVER` | `64` | Browsers subscribed to one server |
+| `MAX_APPS_PER_ADDRESS_PER_SERVER` | `8` | Browsers from one address subscribed to one server |
+| `MAX_SERVER_CONNECTIONS_PER_ADDRESS` | `32` | `/agent` connections from one address |
+| `MAX_APP_CONNECTIONS_PER_ADDRESS` | `64` | `/app` connections from one address |
 | `MAX_SERVERS` | `1000` | Registered servers |
 | `MAX_APPS` | `4096` | Browser connections |
 | `HANDSHAKE_TIMEOUT_SECONDS` | `10` | Time for a server to register |
 | `SUBSCRIPTION_TIMEOUT_SECONDS` | `10` | Time for a browser to subscribe |
+| `SIGN_IN_TIMEOUT_SECONDS` | `30` | Time after subscribing for a browser to open an accepted event stream |
 | `REQUEST_TIMEOUT_SECONDS` | `10` | Time for a server to answer |
 | `PING_INTERVAL_SECONDS` | `30` | WebSocket ping interval; a peer that misses a pong is closed |
 

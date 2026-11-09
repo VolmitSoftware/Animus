@@ -2,6 +2,7 @@ package art.arcane.animus.core.migration;
 
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
+import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.io.IOException;
@@ -28,6 +29,15 @@ final class ShopkeepersDropIn {
 
     /** The first of imports/shopkeepers/save.yml, imports/inbox/shopkeepers/save.yml and plugins/Shopkeepers/data/save.yml. */
     static Optional<Found> find(DocumentStore store, Optional<Path> plugins) throws IOException {
+        for (Found found : candidates(store, plugins)) {
+            if (!Files.isRegularFile(found.save().path(), LinkOption.NOFOLLOW_LINKS)) continue;
+            Optional<Path> config = found.config().filter((Path path) -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS));
+            return Optional.of(new Found(found.save(), config));
+        }
+        return Optional.empty();
+    }
+
+    private static List<Found> candidates(DocumentStore store, Optional<Path> plugins) throws IOException {
         List<Found> candidates = new ArrayList<>();
         for (String folder : List.of("imports/shopkeepers", "imports/inbox/shopkeepers")) {
             Path directory = store.resolve(folder);
@@ -37,12 +47,18 @@ final class ShopkeepersDropIn {
             Path directory = plugins.get().resolve("Shopkeepers");
             candidates.add(new Found(new CitizensDropIn.Found(directory.resolve("data/save.yml"), "plugins/Shopkeepers/data/save.yml"), Optional.of(directory.resolve("config.yml"))));
         }
-        for (Found found : candidates) {
-            if (!Files.isRegularFile(found.save().path(), LinkOption.NOFOLLOW_LINKS)) continue;
-            Optional<Path> config = found.config().filter((Path path) -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS));
-            return Optional.of(new Found(found.save(), config));
+        return candidates;
+    }
+
+    /** Refuses to apply a staged save whose source file was saved again since the preview. A source removed since is fine. */
+    static void unchanged(DocumentStore store, Optional<Path> plugins, JsonObject state) throws IOException {
+        JsonObject part = state.getAsJsonObject("shopkeepers");
+        String label = part.get("source").getAsString();
+        for (Found found : candidates(store, plugins)) {
+            if (!found.save().label().equals(label) || !Files.isRegularFile(found.save().path(), LinkOption.NOFOLLOW_LINKS)) continue;
+            if (!JsonDocuments.hash(Files.readString(found.save().path())).equals(part.get("sourceSha256").getAsString()))
+                throw new IOException(label + " changed since the preview; run /animus import citizens preview again, then apply");
         }
-        return Optional.empty();
     }
 
     static boolean applied(JsonObject state) { return section(state).map((JsonObject part) -> part.get("state").getAsString().equals("applied")).orElse(false); }
@@ -56,7 +72,10 @@ final class ShopkeepersDropIn {
 
     /** Stages the save into {@code state.shopkeepers} and returns the lines to show. Links are checked against the Citizens save when one is given. */
     static List<String> stage(DocumentStore store, Found found, Optional<Path> citizens, JsonObject state) throws IOException {
+        StableSource.Read source = StableSource.read(found.save().path(), found.save().label());
         ShopkeepersImporter.Preview preview = new ShopkeepersImporter().preview(found.save().path(), found.config(), citizens, store);
+        if (!preview.summary().get("sourceSha256").getAsString().equals(source.sha256()))
+            throw new IOException(found.save().label() + " changed while the preview read it; if a plugin is saving it, wait and run preview again");
         JsonObject part = new JsonObject();
         part.addProperty("source", found.save().label());
         part.addProperty("sourceSha256", preview.summary().get("sourceSha256").getAsString());
@@ -76,11 +95,12 @@ final class ShopkeepersDropIn {
         return lines;
     }
 
-    /** Applies a staged save, binding every Citizens shopkeeper whose NPC is installed. Adds its transaction to {@code transactions}. */
-    static List<String> apply(DocumentStore store, JsonObject state, NpcRepository.Installed installed, JsonArray transactions) throws IOException {
+    /** Applies a staged save, binding every Citizens shopkeeper whose NPC is installed. Its transaction goes through {@code journal}. */
+    static List<String> apply(DocumentStore store, JsonObject state, NpcRepository.Installed installed, ImportJournal journal) throws IOException {
         JsonObject part = state.getAsJsonObject("shopkeepers");
-        ShopkeepersImporter.Applied applied = new ShopkeepersImporter().apply(store, part.get("importId").getAsString(), installed);
-        transactions.add(applied.transaction());
+        ShopkeepersImporter.Applied[] result = new ShopkeepersImporter.Applied[1];
+        journal.commit(state, (String transaction) -> (result[0] = new ShopkeepersImporter().apply(store, part.get("importId").getAsString(), installed, transaction)).transaction());
+        ShopkeepersImporter.Applied applied = result[0];
         part.addProperty("state", "applied");
         part.add("pending", applied.pending());
         List<String> lines = new ArrayList<>();
@@ -90,14 +110,18 @@ final class ShopkeepersDropIn {
     }
 
     /** Binds the pending Citizens shopkeepers of an applied save to NPCs installed since. */
-    static List<String> bindPending(DocumentStore store, JsonObject state, NpcRepository.Installed installed, JsonArray transactions) throws IOException {
+    static List<String> bindPending(DocumentStore store, JsonObject state, NpcRepository.Installed installed, ImportJournal journal) throws IOException {
         if (!applied(state)) return List.of();
         JsonObject part = state.getAsJsonObject("shopkeepers");
         JsonArray pending = part.has("pending") ? part.getAsJsonArray("pending") : new JsonArray();
         if (pending.isEmpty()) return List.of();
-        Optional<ShopkeepersImporter.Applied> applied = ShopkeepersImporter.bind(store, pending, installed);
+        List<Optional<ShopkeepersImporter.Applied>> result = new ArrayList<>(List.of(Optional.empty()));
+        journal.commit(state, (String transaction) -> {
+            result.set(0, ShopkeepersImporter.bind(store, pending, installed, transaction));
+            return result.getFirst().map(ShopkeepersImporter.Applied::transaction).orElse(null);
+        });
+        Optional<ShopkeepersImporter.Applied> applied = result.getFirst();
         if (applied.isEmpty()) return List.of(pending.size() + " Shopkeepers shops still wait for their Citizens NPC");
-        transactions.add(applied.get().transaction());
         part.add("pending", applied.get().pending());
         List<String> lines = new ArrayList<>();
         lines.add("Bound " + applied.get().bound() + " Shopkeepers shops to their Citizens NPCs; " + applied.get().pending().size() + " still wait; tx " + applied.get().transaction());

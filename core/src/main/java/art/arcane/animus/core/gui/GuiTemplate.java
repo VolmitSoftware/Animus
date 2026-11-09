@@ -63,6 +63,24 @@ public final class GuiTemplate {
     public String source() { return source; }
     public boolean constant() { return parts.stream().allMatch((Object part) -> part instanceof String); }
 
+    /**
+     * The text for a console command: empty when a hole's text leaves the safe set of letters, digits and {@code _ . : + -},
+     * or fails, so a viewer's input can never add words, selectors or quotes to the command.
+     */
+    public java.util.Optional<String> renderCommand(GuiExpression.Scope scope) {
+        StringBuilder out = new StringBuilder();
+        for (Object part : parts) {
+            if (part instanceof GuiExpression expression) {
+                String text;
+                try { text = GuiExpression.text(expression.evaluate(scope)); }
+                catch (GuiExpression.Invalid failed) { return java.util.Optional.empty(); }
+                if (!art.arcane.animus.core.behavior.ArgumentTemplate.SAFE_TEXT.matcher(text).matches()) return java.util.Optional.empty();
+                out.append(text);
+            } else if (part instanceof String literal) out.append(literal);
+        }
+        return java.util.Optional.of(out.toString());
+    }
+
     public String render(GuiExpression.Scope scope) {
         StringBuilder out = new StringBuilder();
         for (Object part : parts) {

@@ -212,7 +212,7 @@ public final class AnimusPlugin extends JavaPlugin {
             NpcRuntime<Player, ItemStack> owners = living;
             screenTicks = ownerTicks.apply(measured.timed(Subsystem.GUI, () -> {
                 for (UUID viewer : screenService.screens().viewing()) owners.players().deliver(viewer, screenService.screens()::tick);
-                for (Player online : getServer().getOnlinePlayers()) owners.players().deliver(online.getUniqueId(), holoService::tick);
+                if (!holoService.idle()) for (Player online : getServer().getOnlinePlayers()) owners.players().deliver(online.getUniqueId(), holoService::tick);
             }));
             shops.reload(catalog -> {});
             guis.reload(catalog -> {});
@@ -325,7 +325,21 @@ public final class AnimusPlugin extends JavaPlugin {
         if (proof != null) proof.close();
         AnimusRuntime activeRuntime = runtime;
         runtime = null;
-        if (activeRuntime != null) activeRuntime.closeAsync();
+        if (activeRuntime != null) awaitClosed(activeRuntime);
+    }
+
+    /**
+     * Waits, bounded, for queued writes, the final flushes and the data folder lock, so a reload can lock it again and a
+     * stop does not exit while daemon file threads still write.
+     */
+    private void awaitClosed(AnimusRuntime closing) {
+        try {
+            if (!closing.closeAndWait(AnimusRuntime.SHUTDOWN_WAIT))
+                getLogger().warning("File writes were still running " + AnimusRuntime.SHUTDOWN_WAIT.toSeconds() + "s after stop; they keep going and the data folder stays locked until they end");
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            getLogger().warning("Stop was interrupted while file writes were finishing");
+        }
     }
 
     @Override
@@ -439,7 +453,7 @@ public final class AnimusPlugin extends JavaPlugin {
         EditorService service = new EditorService(runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(runtime, commands, owners, extensions,
                 modulePlatform.name().toLowerCase(Locale.ROOT), "", features, new BukkitLookups(getServer())::read,
                 (Player player) -> player.hasPermission("animus.admin"), new BukkitEditorNotices(this, replies), (String message) -> getLogger().info(message),
-                new BukkitEditorTerrain(this, regions))), (String message) -> getLogger().info(message),
+                new BukkitEditorTerrain(this, regions), (java.util.UUID player) -> BukkitOfflineAdmin.check(getServer(), player))), (String message) -> getLogger().info(message),
                 (String message) -> getLogger().warning(message));
         try {
             service.start();

@@ -81,6 +81,7 @@ sealed class EditorRoute {
       case 'citizens':
         return parts.length == 1 ? const CitizensRoute() : const HomeRoute();
       case 'pair':
+        if (parts.length == 1) return const PairRoute();
         return parts.length == 2 ? PairRoute(parts[1]) : const HomeRoute();
       case 'server':
         return parts.length >= 2 ? ServerRoute(decode(parts[1]), parts.skip(2).map(decode).toList()) : const HomeRoute();
@@ -284,13 +285,14 @@ class DocumentRoute extends EditorRoute {
 }
 
 class PairRoute extends EditorRoute {
-  const PairRoute(this.code);
+  const PairRoute([this.code = '']);
 
-  /// The ANM1. pairing code, kept only in the fragment.
+  /// The ANM1. pairing code from the link. The pair page keeps it in memory
+  /// and swaps the address for the code-free `#/pair`.
   final String code;
 
   @override
-  String format() => '#/pair/$code';
+  String format() => code.isEmpty ? '#/pair' : '#/pair/$code';
 
   @override
   bool operator ==(Object other) => other is PairRoute && other.code == code;

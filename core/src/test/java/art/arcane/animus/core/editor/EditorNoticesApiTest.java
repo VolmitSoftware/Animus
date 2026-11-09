@@ -142,6 +142,43 @@ class EditorNoticesApiTest {
     }
 
     @Test
+    void recheck_unconfirmedAdminKeepsTheTokenAtMostSevenDays() throws Exception {
+        String token = harness.token();
+        String id = token.substring(4, token.indexOf('.'));
+        harness.host.admin = EditorHost.Admin.UNKNOWN;
+        harness.clock.advance(java.time.Duration.ofDays(6));
+        recheck();
+        assertTrue(harness.api.parts().tokens().find(id).isPresent(), "an offline admin keeps the token for a while");
+        harness.host.admin = EditorHost.Admin.ADMIN;
+        recheck();
+        harness.host.admin = EditorHost.Admin.UNKNOWN;
+        harness.clock.advance(java.time.Duration.ofDays(6));
+        recheck();
+        assertTrue(harness.api.parts().tokens().find(id).isPresent(), "a confirmation starts the seven days again");
+        harness.flushNotices();
+        harness.clock.advance(java.time.Duration.ofDays(2));
+        recheck();
+        assertTrue(harness.api.parts().tokens().find(id).isEmpty(), "seven days without a confirmation revokes");
+        assertEquals(List.of("[Animus]: Brian's editor was revoked after 7 days without confirming animus.admin"), harness.flushNotices());
+        EditorTokens reloaded = new EditorTokens(harness.store, harness.clock);
+        assertTrue(reloaded.find(id).isEmpty());
+    }
+
+    @Test
+    void recheck_confirmationSurvivesARestart() throws Exception {
+        String token = harness.token();
+        String id = token.substring(4, token.indexOf('.'));
+        harness.clock.advance(java.time.Duration.ofDays(5));
+        recheck();
+        assertEquals(harness.clock.instant(), new EditorTokens(harness.store, harness.clock).find(id).orElseThrow().adminChecked());
+    }
+
+    private void recheck() throws Exception {
+        harness.api.recheckAdmins();
+        harness.lane.submit(() -> {}).get(5, java.util.concurrent.TimeUnit.SECONDS);
+    }
+
+    @Test
     void stagedImportApplied_isOneNotice() throws Exception {
         List<EditorScope> importer = List.of(EditorScope.READ, EditorScope.IMPORT, EditorScope.APPLY_NPCS, EditorScope.APPLY_BEHAVIORS, EditorScope.APPLY_GUI);
         String token = harness.token(EditorHarness.grant(importer));

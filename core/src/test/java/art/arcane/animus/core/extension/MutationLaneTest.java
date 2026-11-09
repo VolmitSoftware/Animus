@@ -62,16 +62,38 @@ class MutationLaneTest {
             assertThrows(IllegalArgumentException.class,()->lane.limits(2,Duration.ZERO));
         }
     }
-    @Test void shutdownCancelsQueuedWorkAndLetsRunningCommitFinishDurably()throws Exception{
-        MutationLane lane=new MutationLane(3);CountDownLatch started=new CountDownLatch(1),continueCommit=new CountDownLatch(1);
+    @Test void shutdownDrainsQueuedWritesAfterTheRunningCommit()throws Exception{
+        MutationLane lane=new MutationLane(3);CountDownLatch started=new CountDownLatch(1),continueCommit=new CountDownLatch(1);AtomicInteger engineRan=new AtomicInteger();
         try{
             var running=lane.submit(()->{started.countDown();release(continueCommit);return Outcome.ok("durable");});release(started);
-            var queued=lane.submit(()->{fail("Cancelled operation ran");return Outcome.ok("bad");});
-            lane.close();assertEquals(Outcome.Status.CANCELLED,await(queued).status());assertFalse(running.toCompletableFuture().isDone());
+            var queued=lane.submit(()->Outcome.ok("drained"));
+            lane.executor((Runnable task,MutationLane.EngineTaskEvent event,Throwable failure)->fail("queued write was "+event)).execute(engineRan::incrementAndGet);
+            lane.close();assertFalse(queued.toCompletableFuture().isDone());assertFalse(running.toCompletableFuture().isDone());
             assertFalse(lane.awaitMutations(Duration.ZERO));assertFalse(lane.status().mutationsDrained());
             assertEquals(Outcome.Status.UNAVAILABLE,await(lane.submit(()->Outcome.ok("late"))).status());
             continueCommit.countDown();assertTrue(lane.awaitMutations(Duration.ofSeconds(1)));assertEquals("durable",await(running).value().orElseThrow());
+            assertEquals("drained",await(queued).value().orElseThrow());assertEquals(1,engineRan.get());assertEquals(0,lane.status().cancelledEngineTasks());
         }finally{continueCommit.countDown();lane.close();}
+    }
+    @Test void queuedWritesPastTheDrainLimitAreCancelledAndLogged()throws Exception{
+        List<String> warnings=Collections.synchronizedList(new ArrayList<>());
+        java.util.logging.Handler capture=new java.util.logging.Handler(){
+            @Override public void publish(java.util.logging.LogRecord record){if(record.getLevel().intValue()>=java.util.logging.Level.WARNING.intValue())warnings.add(record.getMessage());}
+            @Override public void flush(){}
+            @Override public void close(){}
+        };
+        java.util.logging.Logger.getLogger("Animus").addHandler(capture);
+        MutationLane lane=new MutationLane(3);CountDownLatch started=new CountDownLatch(1),continueCommit=new CountDownLatch(1),cancelled=new CountDownLatch(1);
+        try{
+            var running=lane.submit(()->{started.countDown();release(continueCommit);return Outcome.ok("durable");});release(started);
+            var queued=lane.submit(()->{fail("Cancelled operation ran");return Outcome.ok("bad");});
+            lane.executor((Runnable task,MutationLane.EngineTaskEvent event,Throwable failure)->{if(event==MutationLane.EngineTaskEvent.CANCELLED)cancelled.countDown();})
+                    .execute(()->fail("Cancelled engine write ran"));
+            lane.close(Duration.ZERO);continueCommit.countDown();
+            assertEquals("durable",await(running).value().orElseThrow());assertEquals(Outcome.Status.CANCELLED,await(queued).status());release(cancelled);
+            assertTrue(lane.awaitCleanup(Duration.ofSeconds(3)));assertEquals(1,lane.status().cancelledEngineTasks());
+            eventually(()->warnings.stream().anyMatch((String line)->line.contains("2 queued file writes")));
+        }finally{continueCommit.countDown();lane.close();java.util.logging.Logger.getLogger("Animus").removeHandler(capture);}
     }
     @Test void failedWorkReleasesCapacityAndDoesNotLeakPayloads()throws Exception{
         try(MutationLane lane=new MutationLane(1)){
@@ -124,8 +146,8 @@ class MutationLaneTest {
         try{
             var running=lane.submit(()->{started.countDown();release(finish);return Outcome.ok("durable");});release(started);
             var queued=lane.submit(()->{fail("Cancelled mutation ran");return Outcome.ok("bad");});queued.thenRun(()->{callback.countDown();release(unblock);});
-            var closed=CompletableFuture.runAsync(lane::close);release(callback);await(closed);
-            assertFalse(lane.awaitMutations(Duration.ZERO));finish.countDown();assertTrue(lane.awaitMutations(Duration.ofSeconds(1)));
+            var closed=CompletableFuture.runAsync(()->lane.close(Duration.ZERO));await(closed);
+            assertFalse(lane.awaitMutations(Duration.ZERO));finish.countDown();release(callback);assertTrue(lane.awaitMutations(Duration.ofSeconds(1)));
             assertEquals("durable",await(running).value().orElseThrow());awaitActiveDeliveries(lane,1);
             unblock.countDown();assertEquals(Outcome.Status.CANCELLED,await(queued).status());
         }finally{finish.countDown();unblock.countDown();lane.close();}

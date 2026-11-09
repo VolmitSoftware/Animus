@@ -54,6 +54,12 @@ void main() {
       }
     });
 
+    test('should give the pairing page a code-free address to replace the link with', () {
+      expect(const PairRoute().format(), '#/pair');
+      expect(EditorRoute.parse('#/pair'), const PairRoute());
+      expect(EditorRoute.parse('#/pair/ANM1.eyJ2IjoxfQ'), const PairRoute('ANM1.eyJ2IjoxfQ'));
+    });
+
     test('should fall back to home or the workspace for unknown routes', () {
       expect(EditorRoute.parse(''), const HomeRoute());
       expect(EditorRoute.parse('#/nowhere'), const HomeRoute());

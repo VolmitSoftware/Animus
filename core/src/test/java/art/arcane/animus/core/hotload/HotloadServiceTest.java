@@ -133,6 +133,14 @@ class HotloadServiceTest {
         assertEquals(List.of(false), dings.stream().distinct().toList());
     }
 
+    @Test void packSubfoldersCopiedSeparatelyAreNotWatchedAsBehaviors() {
+        for (String folder : List.of("npcs", "shops", "gui")) {
+            assertTrue(HotloadTargets.of("packs/town/" + folder + "/guard.json").isEmpty(), folder);
+        }
+        assertTrue(HotloadTargets.of("packs/town/behaviors/greet.json").isPresent());
+        assertTrue(HotloadTargets.of("packs/town/pack.json").isPresent());
+    }
+
     @Test void npcEditReloadsAndAnInvalidEditKeepsTheLastValidVersion() throws Exception {
         Path file = root.resolve("npcs/town/guard.json");
         Files.createDirectories(file.getParent());

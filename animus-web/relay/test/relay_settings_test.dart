@@ -23,6 +23,10 @@ void main() {
             'https://Animus-Editor.web.app, http://127.0.0.1:8098',
         'MAX_PENDING_PER_APP': '8',
         'REQUEST_TIMEOUT_SECONDS': '20',
+        'MAX_SERVER_CONNECTIONS_PER_ADDRESS': '3',
+        'MAX_APP_CONNECTIONS_PER_ADDRESS': '5',
+        'MAX_APPS_PER_ADDRESS_PER_SERVER': '2',
+        'SIGN_IN_TIMEOUT_SECONDS': '45',
       },
     );
     expect(settings.port, 9000);
@@ -32,6 +36,10 @@ void main() {
     ]);
     expect(settings.limits.maxPendingPerApp, 8);
     expect(settings.limits.requestTimeout, const Duration(seconds: 20));
+    expect(settings.limits.maxAgentConnectionsPerAddress, 3);
+    expect(settings.limits.maxAppConnectionsPerAddress, 5);
+    expect(settings.limits.maxAppsPerAddressPerServer, 2);
+    expect(settings.limits.signInTimeout, const Duration(seconds: 45));
   });
 
   test('should refuse wildcard, path and malformed origins', () {

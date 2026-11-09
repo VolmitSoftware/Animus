@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import art.arcane.animus.core.behavior.schema.RepositoryFiles;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
@@ -76,7 +77,7 @@ class ReactMetricCatalogTest {
     }
 
     @Test void docsListEveryKey() throws Exception {
-        Path page = Path.of(System.getProperty("animusSchemaDirectory")).getParent().resolveSibling("docs").resolve("animus/17-debug-react-metrics.md");
+        Path page = RepositoryFiles.wikiPage("17-debug-react-metrics.md");
         assumeTrue(Files.isRegularFile(page), "docs checkout not beside the repository");
         String text = Files.readString(page);
         for (ReactMetricCatalog.Spec spec : ReactMetricCatalog.SPECS) assertTrue(text.contains("`" + spec.key() + "`"), page + " lacks " + spec.key());

@@ -73,7 +73,10 @@ public final class NpcRepository {
     }
     public List<String> diagnostics() { return problems.entrySet().stream().map(entry -> entry.getKey() + ": " + entry.getValue()).toList(); }
 
-    /** Restores only known invalid existing files, never deleted definitions or unknown malformed records. */
+    /**
+     * Restores only known invalid existing files, never deleted definitions or unknown malformed records. Any other file
+     * that cannot load is skipped and logged, and stays on disk unchanged, so one bad file never stops the rest.
+     */
     public synchronized List<String> loadForStartup() throws IOException {
         if (loaded) throw new IllegalStateException("NPC repository is already loaded");
         return scan(true, false, true).diagnostics();
@@ -91,8 +94,9 @@ public final class NpcRepository {
     private record Read(String path, NpcDefinition definition, String sourceHash, String error) {}
 
     /**
-     * Reads the group files, then every definition file. At startup any definition error refuses the whole set (after
-     * durable recovery). A live reload applies each file on its own: a file that cannot be read, would take another
+     * Reads the group files, then every definition file. At startup a file restores from durable recovery when it can;
+     * otherwise it is skipped with a warning, and of two files with one identity the recovery-backed one, then the first
+     * by path, is kept. A live reload applies each file on its own: a file that cannot be read, would take another
      * definition's identity, or was edited to name a missing group or an invalid combination keeps its own last valid
      * version, a new file that fails is skipped, and only that file's error is reported. An unchanged file whose groups
      * changed under it keeps its last valid effective definition and is listed in {@link #groupProblems()}.
@@ -101,6 +105,8 @@ public final class NpcRepository {
         GroupCatalog catalog = GroupCatalog.load(store, apply ? groups : GroupCatalog.EMPTY);
         Map<String, Read> reads = new TreeMap<>();
         Map<String, String> recovered = new TreeMap<>();
+        // At startup the identity each file's recovery copy holds stands in for the running definition when claiming.
+        Map<String, NpcDefinition> checkpointed = new HashMap<>();
         Path directory = store.resolve("npcs");
         if (Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) {
             for (Path file : JsonDocumentTree.files(directory, NpcPaths.TREE_DEPTH)) {
@@ -108,6 +114,7 @@ public final class NpcRepository {
                 if (reads.size() >= 100_000) throw new IOException("NPC definition limit exceeded: 100000");
                 try {
                     DefinitionCheckpoints.Saved saved = startup && NpcPaths.file(path) ? checkpoints.read(path).orElse(null) : null;
+                    if (saved != null) checkpointed.put(path, saved.definition());
                     try {
                         String json = JsonDocuments.read(file);
                         NpcDefinition definition = NpcDefinition.read(path, json);
@@ -126,13 +133,14 @@ public final class NpcRepository {
         store.verifyReadable();
         Map<String, NpcDefinition> previousByPath = new HashMap<>();
         for (NpcDefinition definition : stored.values()) previousByPath.put(definition.path(), definition);
+        Map<String, NpcDefinition> claimants = startup ? checkpointed : previousByPath;
         Map<String, NpcDefinition> candidates = new TreeMap<>(), effective = new TreeMap<>();
         Map<String, Map<String, String>> sources = new TreeMap<>();
         Map<String, String> nextHashes = new HashMap<>(), errors = new TreeMap<>(), nextGroupProblems = new TreeMap<>();
         Set<UUID> uuids = new HashSet<>();
         // Unchanged identities claim first, then edited files, then new ones: a newcomer never displaces a running definition.
         List<Read> order = new ArrayList<>(reads.values());
-        order.sort(Comparator.comparingInt((Read read) -> claimOrder(read, previousByPath.get(read.path()))));
+        order.sort(Comparator.comparingInt((Read read) -> claimOrder(read, claimants.get(read.path()))));
         for (Read read : order) {
             String problem = read.error();
             if (problem == null) {
@@ -165,9 +173,10 @@ public final class NpcRepository {
                 errors.put(read.path(), problem + "; kept the last valid revision " + kept.revision());
             } else errors.put(read.path(), problem);
         }
-        if (startup && !errors.isEmpty()) {
-            problems = Collections.unmodifiableMap(new TreeMap<>(errors));
-            throw new IOException(String.join("; ", diagnostics()));
+        if (startup) {
+            for (Map.Entry<String, String> error : errors.entrySet())
+                LOG.log(System.Logger.Level.WARNING, "Skipped NPC file " + error.getKey() + ": " + error.getValue() + "; the file is unchanged, fix it then /animus reload");
+            for (Map.Entry<String, String> restored : recovered.entrySet()) LOG.log(System.Logger.Level.WARNING, "NPC file " + restored.getKey() + ": " + restored.getValue());
         }
         Map<String, String> reported = new TreeMap<>(recovered);
         reported.putAll(errors);

@@ -1,19 +1,37 @@
 import 'dart:convert';
 
+import 'package:animus_editor/services/server/server_proof.dart' show editorProofPrefix, proofHeader, serverKeyHeader;
+import 'package:cryptography/cryptography.dart';
+
 import 'protocol.dart';
 
-/// The fake server's identity: the raw Ed25519 public key of
-/// schema/fixtures/editor/pairing.json (bytes 0..31). The fake never signs,
-/// so no private key exists.
+/// Seed of the fake server's Ed25519 key, made up for tests.
+final List<int> fakeSeed = List<int>.generate(32, (int index) => 0xa0 + index);
+
+/// The public key of [fakeSeed], raw bytes in base64url without padding.
+const String fakeServerKey = 'T9CZzNR9eJPf6ewkQU7LDZtUICMqrTDZHEZb4zy-ZcQ';
+
+/// `sha256:` and the hex SHA-256 of [fakeServerKey]'s bytes.
+const String fakeFingerprint = 'sha256:a18112b0b7b4225ff30527e0f7cf7a1e3742f632b03b65f4542703c3a5654dc9';
+
+/// The fake server's identity: the Ed25519 key pair of [fakeSeed].
 class FakeIdentity {
-  FakeIdentity() : serverKeyBytes = List<int>.generate(32, (int index) => index);
+  String get serverKey => fakeServerKey;
 
-  final List<int> serverKeyBytes;
+  String get fingerprint => fakeFingerprint;
 
-  String get serverKey => base64UrlNoPadding(serverKeyBytes);
+  /// Hello response headers that answer [challenge].
+  Future<Map<String, String>> prove(String challenge) => proofHeaders(fakeSeed, challenge);
+}
 
-  /// `sha256:630dcd...`, the fingerprint in pairing codes and hello.
-  String get fingerprint => 'sha256:${sha256Hex(serverKeyBytes)}';
+/// The key and signature headers of the key pair from [seed], signing
+/// [prefix] and [challenge].
+Future<Map<String, String>> proofHeaders(List<int> seed, String challenge, {String prefix = editorProofPrefix}) async {
+  final Ed25519 ed25519 = Ed25519();
+  final SimpleKeyPair pair = await ed25519.newKeyPairFromSeed(seed);
+  final SimplePublicKey key = await pair.extractPublicKey();
+  final Signature signature = await ed25519.sign(utf8.encode('$prefix$challenge'), keyPair: pair);
+  return <String, String>{serverKeyHeader: base64UrlNoPadding(key.bytes), proofHeader: base64UrlNoPadding(signature.bytes)};
 }
 
 /// A pairing code: `ANM1.` and the payload JSON in base64url without padding,

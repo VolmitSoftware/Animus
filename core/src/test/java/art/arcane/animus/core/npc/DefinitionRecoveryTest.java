@@ -64,7 +64,12 @@ class DefinitionRecoveryTest {
             assertNull(store.read(POINTER));
         }
         Files.writeString(root.resolve(PATH), "{a new invalid file");
-        try (AnimusRuntime runtime = runtime()) { assertThrows(IOException.class, runtime::start); }
+        try (AnimusRuntime runtime = runtime()) {
+            runtime.start();
+            assertTrue(runtime.npcs().find("guard").isEmpty(), "a deleted identity is not resurrected");
+            assertTrue(runtime.npcs().find("other").isPresent());
+            assertTrue(runtime.npcs().diagnostics().stream().anyMatch((String line) -> line.startsWith(PATH + ": ")));
+        }
         assertEquals("{a new invalid file", Files.readString(root.resolve(PATH)));
     }
 
@@ -118,8 +123,9 @@ class DefinitionRecoveryTest {
         Files.writeString(root.resolve("state/objects/npc-definitions/" + object + ".json"), NpcRepositoryTest.JSON.replace("Guard", "Tampered"));
         Files.writeString(root.resolve(PATH), "{broken");
         try (AnimusRuntime runtime = runtime()) {
-            assertTrue(assertThrows(IOException.class, runtime::start).getMessage().contains("hash changed"));
-            assertFalse(runtime.isRunning());
+            runtime.start();
+            assertTrue(runtime.npcs().find("guard").isEmpty(), "a tampered recovery copy is never activated");
+            assertTrue(runtime.npcs().diagnostics().getFirst().contains("hash changed"), runtime.npcs().diagnostics().toString());
         }
         assertEquals("{broken", Files.readString(root.resolve(PATH)));
     }
@@ -142,7 +148,12 @@ class DefinitionRecoveryTest {
         }
         Files.writeString(root.resolve(PATH), "{broken");
         Files.writeString(root.resolve("npcs/town/other.json"), NpcRepositoryTest.JSON.replace("\"id\":\"guard\"", "\"id\":\"other\""));
-        try (AnimusRuntime runtime = runtime()) { assertTrue(assertThrows(IOException.class, runtime::start).getMessage().contains("$.uuid: duplicate")); }
+        try (AnimusRuntime runtime = runtime()) {
+            runtime.start();
+            assertEquals("Guard", runtime.npcs().find("guard").orElseThrow().name(), "the restored record keeps its identity");
+            assertTrue(runtime.npcs().find("other").isEmpty());
+            assertTrue(runtime.npcs().diagnostics().stream().anyMatch((String line) -> line.startsWith("npcs/town/other.json: $.uuid: duplicate")), runtime.npcs().diagnostics().toString());
+        }
     }
 
     @Test void validationDoesNotActivateDefinitionsOrPublishRecoveryObjects() throws Exception {
@@ -182,7 +193,7 @@ class DefinitionRecoveryTest {
             store.rollback(imported);
         }
         Files.writeString(root.resolve(PATH), "{unrelated malformed replacement");
-        try (AnimusRuntime runtime = runtime()) { assertThrows(IOException.class, runtime::start); }
+        try (AnimusRuntime runtime = runtime()) { runtime.start(); assertTrue(runtime.npcs().find("guard").isEmpty(), "an undone import is not restored from a stale checkpoint"); }
         assertEquals("{unrelated malformed replacement", Files.readString(root.resolve(PATH)));
     }
 
@@ -209,6 +220,6 @@ class DefinitionRecoveryTest {
             assertNull(store.read(POINTER));
         }
         Files.writeString(root.resolve(PATH), "{new invalid record");
-        try (AnimusRuntime runtime = runtime()) { assertThrows(IOException.class, runtime::start); }
+        try (AnimusRuntime runtime = runtime()) { runtime.start(); assertTrue(runtime.npcs().find("guard").isEmpty(), "a removed checkpoint is not restored"); }
     }
 }

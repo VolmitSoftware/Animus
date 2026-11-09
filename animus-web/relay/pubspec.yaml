@@ -8,8 +8,8 @@ environment:
 
 dependencies:
   shelf: 1.4.2
-  shelf_web_socket: 3.0.0
   web_socket_channel: 3.0.3
+  stream_channel: 2.1.4
   crypto: 3.0.7
   cryptography: 2.9.0
 

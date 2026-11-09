@@ -19,8 +19,9 @@ import java.util.Objects;
 /**
  * Upgrades every versioned document kind to the schema version this build reads. Each kind has an ordered chain: the
  * first entry is the identity at the kind's first version (1, or 3 for holograms, which keep Gloss's numbering), and
- * each later entry turns a document of one version into the next. Rewrites are committed in one {@link DocumentStore} transaction, so they are journaled, recover after a
- * crash and leave a rollback receipt holding the original bytes. A document newer than the chain, or one whose step
+ * each later entry turns a document of one version into the next. Rewrites are committed in {@link DocumentStore} transactions
+ * of at most {@link #BATCH} documents, so they are journaled, recover after a crash and leave rollback receipts holding the
+ * original bytes. A document newer than the chain, or one whose step
  * fails, is reported and left byte-for-byte in place.
  */
 public final class SchemaMigrations {
@@ -33,10 +34,16 @@ public final class SchemaMigrations {
         public Kind { roots = List.copyOf(roots); }
     }
 
-    /** What one pass changed: the transaction is null when nothing was rewritten. */
-    public record Report(String transaction, List<String> migrated, List<String> problems) {
-        public Report { migrated = List.copyOf(migrated); problems = List.copyOf(problems); }
+    /** What one pass changed: one transaction per batch, none when nothing was rewritten. */
+    public record Report(List<String> transactions, List<String> migrated, List<String> problems) {
+        public Report { transactions = List.copyOf(transactions); migrated = List.copyOf(migrated); problems = List.copyOf(problems); }
     }
+
+    /**
+     * Documents per transaction. A journal holds at most 10000 entries, and each NPC file can bring its recovery pointer
+     * along, so batches stay well under that.
+     */
+    private static final int BATCH = 2_000;
 
     public static final Kind NPC = new Kind("NPC definition", List.of("npcs"));
     public static final Kind BEHAVIOR = new Kind("behavior", List.of("behaviors", "packs/*/behaviors"));
@@ -96,7 +103,7 @@ public final class SchemaMigrations {
         return result;
     }
 
-    /** Migrates every stale document in the store in one transaction. Call before the catalogs load. */
+    /** Migrates every stale document in the store, in batches. Call before the catalogs load. */
     public Report apply(DocumentStore store) throws IOException {
         List<DocumentStore.Change> changes = new ArrayList<>();
         List<String> migrated = new ArrayList<>(), problems = new ArrayList<>();
@@ -122,8 +129,9 @@ public final class SchemaMigrations {
                 }
             }
         }
-        String transaction = changes.isEmpty() ? null : store.commit(changes);
-        return new Report(transaction, migrated, problems);
+        List<String> transactions = new ArrayList<>();
+        for (int from = 0; from < changes.size(); from += BATCH) transactions.add(store.commit(changes.subList(from, Math.min(changes.size(), from + BATCH))));
+        return new Report(transactions, migrated, problems);
     }
 
     private Chain chain(Kind kind) {

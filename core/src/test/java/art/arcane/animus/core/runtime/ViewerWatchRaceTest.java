@@ -132,6 +132,8 @@ class ViewerWatchRaceTest {
         /** Chunks the host reports loaded; every chunk by default. */
         volatile java.util.function.BiPredicate<Integer, Integer> loaded = (Integer x, Integer z) -> true;
         art.arcane.animus.core.navigation.DoorPassage.Doors doors = art.arcane.animus.core.navigation.DoorPassage.NONE;
+        /** What {@code item} answers for each definition item. */
+        java.util.function.Function<NpcItem, Object> items = (NpcItem item) -> new Object();
         PersistedNpcService<Player, Object> service;
         /** Whether the calling thread counts as the owner; while false, {@code execute} queues work in {@link #scheduled}. */
         volatile boolean ownerThread = true;
@@ -273,7 +275,7 @@ class ViewerWatchRaceTest {
         @Override public art.arcane.animus.core.navigation.DoorPassage.Doors doors() { return harness.doors; }
         @Override public boolean solid(String world, int x, int y, int z) { return y < 64; }
         @Override public boolean registeredEntity(UUID uuid) { return false; }
-        @Override public Object item(NpcItem item, String path, List<String> errors) { return new Object(); }
+        @Override public Object item(NpcItem item, String path, List<String> errors) { return harness.items.apply(item); }
         @Override public Object copy(Object item) { return item; }
         @Override public boolean interactionAllowed(Player player, UUID npc, Interaction action, double distance) { return true; }
         @Override public void waypointReached(UUID npc, String id, UUID route, int waypoint, WorldPosition at) { harness.reached.add(waypoint); }

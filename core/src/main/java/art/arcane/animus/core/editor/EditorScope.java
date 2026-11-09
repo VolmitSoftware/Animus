@@ -12,12 +12,16 @@ public enum EditorScope {
     APPLY_BEHAVIORS("apply:behaviors"),
     APPLY_GUI("apply:gui"),
     APPLY_RIGS("apply:rigs"),
+    /**
+     * Changes to documents that run commands or other privileged capabilities, which amounts to console access. Never a
+     * default; pairing it needs {@code animus.editor.commands}.
+     */
+    APPLY_COMMANDS("apply:commands"),
     IMPORT("import"),
     SPAWN("spawn"),
-    TERRAIN("terrain"),
-    ADMIN("admin");
+    TERRAIN("terrain");
 
-    /** What /animus web pair grants unless scopes= says otherwise. */
+    /** What /animus editor pair grants unless scopes= says otherwise. */
     public static final List<EditorScope> DEFAULT_PAIRING = List.of(READ, VALIDATE, PREVIEW, APPLY_NPCS, APPLY_BEHAVIORS, APPLY_GUI, APPLY_RIGS, TERRAIN);
 
     private final String wireName;

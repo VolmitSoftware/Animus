@@ -155,6 +155,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private static final int AWAKE_RECHECK_TICKS = 20;
     /** How long a body that died stays shown lying down, as a vanilla death does. */
     private static final int DYING_TICKS = 20;
+    /** How long a viewer whose packet callbacks overflowed waits for the backlog to drain before it is shown every NPC again. */
+    static final int RESYNC_TICKS = 20;
+    /** How long a leg waits after a failed plan or a blocked step before it is planned again. */
+    public static final int REPLAN_BACKOFF_TICKS = 10;
     private static final int SUPPORT_CELLS = 4096;
     private static final double HULL_WIDTH_LIMIT = 4, HULL_HEIGHT_LIMIT = 8;
     /** Fastest route leg in blocks per second; combat pursuit is limited further by {@code [combat] maximumSpeed}. */
@@ -207,6 +211,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private final Set<RouteReadTask> routeReads = new HashSet<>();
     private final ConcurrentLinkedQueue<RouteReadCompletion> routeReadCompletions = new ConcurrentLinkedQueue<>();
     private final Map<UUID, String> selections = new HashMap<>(), viewerFailures = new HashMap<>();
+    /** Viewers dropped after a callback overflow, and the tick from which they may be admitted again. */
+    private final Map<UUID, Long> resyncs = new HashMap<>();
     /** Packet callbacks from network threads; at most {@link #completionCapacity} wait, a bound a hotload may change. */
     private final ConcurrentLinkedQueue<Runnable> completions = new ConcurrentLinkedQueue<>();
     private final AtomicInteger completionCount = new AtomicInteger();
@@ -360,7 +366,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         for (AppearanceTask task : appearanceTasks) task.cancelled = true;
         appearanceTasks.clear(); appearanceCompletions.clear();
         clearCompletions();
-        entries.clear(); byUuid.clear(); selections.clear(); viewerFailures.clear(); changes.clear(); definitions.clear();
+        entries.clear(); byUuid.clear(); selections.clear(); viewerFailures.clear(); resyncs.clear(); changes.clear(); definitions.clear();
         admissions = Collections.emptyIterator();
         if (navigation != null) navigation.close();
         navigation = null;
@@ -581,38 +587,43 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             Value value = lookOrder.removeFirst(); lookOrder.addLast(value);
             if (tickNumber < value.nextLook) continue;
             value.nextLook = tickNumber + LookClose.INTERVAL_TICKS;
-            if (!valueCurrent(value) || !value.state.snapshot().active()) continue;
-            LookClose look = value.lookClose;
-            if (mountRuntime.vehicleOf(value.spec.definition().id()) != null || riders.riderOf(value.spec.definition().uuid()) != null) continue;
-            if (!look.whileNavigating() && (value.routeTask != null || (value.route != null && (value.route.plan != null || value.route.execution != null)))) continue;
-            // A playing recording faces where the recorder looked.
-            if (value.recording != null) continue;
-            WorldPosition at = value.state.snapshot().position();
-            Vec3 eye = LookClose.eye(at.point(), bodyHeight(value));
-            List<LookClose.Candidate<P>> candidates = new ArrayList<>();
-            // Players near the NPC from the chunk index, not every viewer; only admitted viewers are candidates, as before.
-            for (P player : playersNear(new WorldPosition(at.world(), eye), look.range() + 2, LOOK_CANDIDATES)) {
-                Viewer viewer = viewers.get(host.id(player));
-                if (viewer == null || viewer.failed || !viewer.world.equals(at.world()) || host.dead(viewer.player)) continue;
-                Presented body = viewer.visible.get(value.spec.definition().uuid());
-                candidates.add(new LookClose.Candidate<>(viewer.player, host.eye(viewer.player), body != null && body.value == value && body.bound && !body.retired));
-            }
-            boolean looked = false;
-            for (LookClose.Candidate<P> candidate : look.ranked(eye, candidates)) {
-                double distance = candidate.eye().distance(eye);
-                if (look.lineOfSight() && distance > .000001
-                        && !host.clearSight(candidate.player(), candidate.eye(), eye.subtract(candidate.eye()).normalized(), Math.max(0, distance - .0001))) continue;
-                LookClose.facing(eye, candidate.eye()).ifPresent((LookClose.Facing facing) -> setPose(value, facing.yaw(), facing.pitch(), value.onGround));
-                looked = true;
-                break;
-            }
-            if (!looked && look.npcs()) looked = lookAtNpc(value, at, eye, look.range());
-            if (!looked && look.randomLook().isPresent() && look.randomLook().get().active() && tickNumber >= value.nextRandomLook) {
-                LookClose.RandomLook random = look.randomLook().get();
-                LookClose.Facing facing = random.pick(java.util.concurrent.ThreadLocalRandom.current());
-                setPose(value, facing.yaw(), facing.pitch(), value.onGround);
-                value.nextRandomLook = tickNumber + random.delayTicks();
-            }
+            try { lookClose(value); }
+            catch (RuntimeException failure) { quarantine(value, "look-close", failure); }
+        }
+    }
+    /** One look-close turn of one NPC. */
+    private void lookClose(Value value) {
+        if (!valueCurrent(value) || !value.state.snapshot().active()) return;
+        LookClose look = value.lookClose;
+        if (mountRuntime.vehicleOf(value.spec.definition().id()) != null || riders.riderOf(value.spec.definition().uuid()) != null) return;
+        if (!look.whileNavigating() && (value.routeTask != null || (value.route != null && (value.route.plan != null || value.route.execution != null)))) return;
+        // A playing recording faces where the recorder looked.
+        if (value.recording != null) return;
+        WorldPosition at = value.state.snapshot().position();
+        Vec3 eye = LookClose.eye(at.point(), bodyHeight(value));
+        List<LookClose.Candidate<P>> candidates = new ArrayList<>();
+        // Players near the NPC from the chunk index, not every viewer; only admitted viewers are candidates, as before.
+        for (P player : playersNear(new WorldPosition(at.world(), eye), look.range() + 2, LOOK_CANDIDATES)) {
+            Viewer viewer = viewers.get(host.id(player));
+            if (viewer == null || viewer.failed || !viewer.world.equals(at.world()) || host.dead(viewer.player)) continue;
+            Presented body = viewer.visible.get(value.spec.definition().uuid());
+            candidates.add(new LookClose.Candidate<>(viewer.player, host.eye(viewer.player), body != null && body.value == value && body.bound && !body.retired));
+        }
+        boolean looked = false;
+        for (LookClose.Candidate<P> candidate : look.ranked(eye, candidates)) {
+            double distance = candidate.eye().distance(eye);
+            if (look.lineOfSight() && distance > .000001
+                    && !host.clearSight(candidate.player(), candidate.eye(), eye.subtract(candidate.eye()).normalized(), Math.max(0, distance - .0001))) continue;
+            LookClose.facing(eye, candidate.eye()).ifPresent((LookClose.Facing facing) -> setPose(value, facing.yaw(), facing.pitch(), value.onGround));
+            looked = true;
+            break;
+        }
+        if (!looked && look.npcs()) looked = lookAtNpc(value, at, eye, look.range());
+        if (!looked && look.randomLook().isPresent() && look.randomLook().get().active() && tickNumber >= value.nextRandomLook) {
+            LookClose.RandomLook random = look.randomLook().get();
+            LookClose.Facing facing = random.pick(java.util.concurrent.ThreadLocalRandom.current());
+            setPose(value, facing.yaw(), facing.pitch(), value.onGround);
+            value.nextRandomLook = tickNumber + random.delayTicks();
         }
     }
 
@@ -1109,38 +1120,44 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (turns < count) pressure.busy(tickNumber);
         for (int i = 0; i < turns; i++) {
             Value value = rigTicks.removeFirst(); rigTicks.addLast(value);
-            if (!valueCurrent(value)) continue;
-            if (value.rigGeneration != catalog.generation()) {
-                boolean had = value.rig != null, toggled = value.rigGeneration == Long.MIN_VALUE;
-                value.rigGeneration = catalog.generation();
-                // A hotload that switched rigs on or off binds again; a catalog reload refreshes a rig in place when it can.
-                if (toggled || value.rig == null || !value.rig.refresh(catalog, tickNumber)) {
-                    bindRig(value);
-                    if (had || value.rig != null) representBody(value);
-                }
-            }
-            if (value.rig == null || !value.state.snapshot().active()) continue;
-            long started = sampling ? metrics.start() : 0;
-            value.rig.equip(value.equipment, host::copy);
-            NpcRig.Step step = value.rig.tick(tickNumber, walking(value));
-            UUID npc = value.spec.definition().uuid();
-            NpcRig.Events events = animationEvents;
-            if (events != null) for (RigPlayback.Fired fired : step.events()) events.fired(npc, fired);
-            for (RigPlayback.Finished done : step.finished())
-                if (triggers != null) triggers.animationFinished(npc, done.animation(), done.layer());
-            if (sampling) metrics.npcCost(metrics.npc(value.spec.definition().uuid()), metrics.start() - started);
+            try { tickRig(value, catalog, sampling); }
+            catch (RuntimeException failure) { quarantine(value, "rig", failure); }
         }
         // Sampling new segments is cosmetic; clip endings above still fire their triggers under load.
         if (!pressure.allows(PresentationPressure.Tier.COSMETIC, tickNumber)) return;
         long nanos = System.nanoTime();
         int plans = 0;
-        for (int i = 0; i < count && plans < rigSettings.plansPerTick(); i++) {
+        // A rig quarantined above has left both queues, so this pass counts the queue again.
+        for (int i = 0, planned = rigOrder.size(); i < planned && plans < rigSettings.plansPerTick(); i++) {
             Value value = rigOrder.removeFirst(); rigOrder.addLast(value);
             NpcRig<I> rig = value.rig;
             if (rig == null || !value.state.snapshot().active() || !rig.due(tickNumber, value.yaw)) continue;
-            rig.plan(tickNumber, value.yaw, rigSettings.sampleTicks(), nanos);
+            try { rig.plan(tickNumber, value.yaw, rigSettings.sampleTicks(), nanos); }
+            catch (RuntimeException failure) { quarantine(value, "rig", failure); }
             plans++;
         }
+    }
+    private void tickRig(Value value, RigCatalog catalog, boolean sampling) {
+        if (!valueCurrent(value)) return;
+        if (value.rigGeneration != catalog.generation()) {
+            boolean had = value.rig != null, toggled = value.rigGeneration == Long.MIN_VALUE;
+            value.rigGeneration = catalog.generation();
+            // A hotload that switched rigs on or off binds again; a catalog reload refreshes a rig in place when it can.
+            if (toggled || value.rig == null || !value.rig.refresh(catalog, tickNumber)) {
+                bindRig(value);
+                if (had || value.rig != null) representBody(value);
+            }
+        }
+        if (value.rig == null || !value.state.snapshot().active()) return;
+        long started = sampling ? metrics.start() : 0;
+        value.rig.equip(value.equipment, host::copy);
+        NpcRig.Step step = value.rig.tick(tickNumber, walking(value));
+        UUID npc = value.spec.definition().uuid();
+        NpcRig.Events events = animationEvents;
+        if (events != null) for (RigPlayback.Fired fired : step.events()) events.fired(npc, fired);
+        for (RigPlayback.Finished done : step.finished())
+            if (triggers != null) triggers.animationFinished(npc, done.animation(), done.layer());
+        if (sampling) metrics.npcCost(metrics.npc(value.spec.definition().uuid()), metrics.start() - started);
     }
     /** The body shows bones of a rig the NPC no longer has: it is respawned, which is authoritative work. */
     private boolean rigReplaced(Presented body) {
@@ -1732,7 +1749,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                     else {
                         LongLeg.Next next = route.longLeg.planned(planned);
                         if (next == LongLeg.Next.BLOCKED) blockLeg(route, "failed: " + planned.status());
-                        else if (next == LongLeg.Next.RETRY) routeStatus(route, "replanning", "attempt " + route.longLeg.attempts() + " after " + planned.status());
+                        else if (next == LongLeg.Next.RETRY) {
+                            route.nextAttempt = tickNumber + REPLAN_BACKOFF_TICKS;
+                            routeStatus(route, "replanning", "attempt " + route.longLeg.attempts() + " after " + planned.status());
+                        }
                         else {
                             route.segment = next == LongLeg.Next.SEGMENT;
                             Vec3 end = next == LongLeg.Next.FINAL ? route.goal.point() : planned.path().getLast().point();
@@ -1804,7 +1824,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     /** Terrain changed in front of the body: plan again from here until the leg runs out of tries. */
     private void blockedStep(Route route, String reason) {
         if (route.longLeg.blocked() == LongLeg.Next.BLOCKED) { blockLeg(route, reason); return; }
-        route.execution = null; route.segment = false;
+        route.execution = null; route.segment = false; route.nextAttempt = tickNumber + REPLAN_BACKOFF_TICKS;
         routeStatus(route, "replanning", reason);
     }
     /**
@@ -1861,22 +1881,27 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         int cells = SUPPORT_CELLS, waiting = supportOrder.size(), visited = 0;
         for (; visited < waiting && cells > 0 && simulationLeft > 0 && available(); visited++) {
             Value value = supportOrder.removeFirst(); simulationLeft--;
-            WorldPosition at = value.state.snapshot().position();
-            if (!falls(value) || !host.worldLoaded(at.world())) { value.supportQueued = false; value.fallSpeed = 0; value.fall.reset(); continue; }
-            boolean swims = BodyMobility.forBody(value.spec.type(), moveWidth(value), moveHeight(value)).supports(MovementProfile.Mode.SWIM);
-            IdleFall.Step step = IdleFall.step(at.point(), value.fallSpeed, value.movement.gravity(), moveWidth(value), moveHeight(value), swims, host.collision(at.world()));
-            cells -= step.sampled();
-            value.fallSpeed = step.speed();
-            landed(value, at, step);
-            boolean falling = step.outcome() == IdleFall.Outcome.FALLING;
-            if (falling || step.outcome() == IdleFall.Outcome.LANDED) {
-                value.state.move(new WorldPosition(at.world(), step.to())); index.upsert(value.state.snapshot());
-                value.poseRevision++; setPose(value, value.yaw, value.pitch, !falling);
-            }
-            if (falling) supportOrder.addLast(value);
-            else value.supportQueued = false;
+            try { cells -= support(value); }
+            catch (RuntimeException failure) { value.supportQueued = false; quarantine(value, "idle fall", failure); }
         }
         if (visited < waiting) pressure.busy(tickNumber);
+    }
+    /** One idle-fall step of one NPC; it stays queued while it falls. Returns the terrain cells sampled. */
+    private int support(Value value) {
+        WorldPosition at = value.state.snapshot().position();
+        if (!falls(value) || !host.worldLoaded(at.world())) { value.supportQueued = false; value.fallSpeed = 0; value.fall.reset(); return 0; }
+        boolean swims = BodyMobility.forBody(value.spec.type(), moveWidth(value), moveHeight(value)).supports(MovementProfile.Mode.SWIM);
+        IdleFall.Step step = IdleFall.step(at.point(), value.fallSpeed, value.movement.gravity(), moveWidth(value), moveHeight(value), swims, host.collision(at.world()));
+        value.fallSpeed = step.speed();
+        landed(value, at, step);
+        boolean falling = step.outcome() == IdleFall.Outcome.FALLING;
+        if (falling || step.outcome() == IdleFall.Outcome.LANDED) {
+            value.state.move(new WorldPosition(at.world(), step.to())); index.upsert(value.state.snapshot());
+            value.poseRevision++; setPose(value, value.yaw, value.pitch, !falling);
+        }
+        if (falling) supportOrder.addLast(value);
+        else value.supportQueued = false;
+        return step.sampled();
     }
     /** Arrival keeps doors the NPC still stands in only while another leg follows; a finished route closes them all. */
     private void arrive(Route route) {
@@ -2062,7 +2087,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             }
             for (int i = 0; i < MAX_SKIN_READS; i++) {
                 SkinCompletion completion = skinCompletions.poll(); if (completion == null) break;
-                finishSkin(completion);
+                try { finishSkin(completion); }
+                catch (RuntimeException failure) { quarantine(completion.task.entry.id, "activation", failure); }
             }
             for (int i = 0; i < MAX_SKIN_READS; i++) {
                 AppearanceCompletion completion = appearanceCompletions.poll(); if (completion == null) break;
@@ -2074,6 +2100,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             if (snapshot.size() > MAX_DEFINITIONS) throw new IllegalStateException("Definition runtime limit exceeded: " + MAX_DEFINITIONS);
             definitions.publish(snapshot, forced);
             if (forced) { viewerFailures.clear(); admissions = host.onlinePlayers().iterator(); }
+            if (!resyncs.isEmpty() && resyncs.values().removeIf((Long due) -> due <= tickNumber)) admissions = host.onlinePlayers().iterator();
             int work = 0;
             while (work < RECONCILE_WORK) {
                 if (changes.isEmpty()) {
@@ -2083,7 +2110,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                 }
                 DefinitionQueue.Change change = changes.peekFirst();
                 if (!definitions.current(change)) { changes.removeFirst(); continue; }
-                if (!reconcile(change)) break;
+                try { if (!reconcile(change)) break; }
+                catch (RuntimeException failure) { quarantine(change.id(), "activation", failure); }
                 changes.removeFirst(); work++;
             }
             mountRuntime.resolve();
@@ -2109,7 +2137,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             for (Viewer viewer : viewers.values()) if (viewer.glowing != null && tickNumber >= viewer.glowEnds && unglow(viewer)) viewer.glowing = null;
             List<Viewer> updated = new ArrayList<>();
             int used = FairViewerWork.run(viewerOrder, settings.updatesPerTick(), settings.packetsPerTick(), this::current, (Viewer viewer, int remaining) -> {
-                if (viewer.failed) { fail(viewer, "packet callbacks", null, "Packet callback queue full"); return 0; }
+                if (viewer.failed) { resync(viewer); return 0; }
                 if (!host.online(viewer.player)) { disconnect(viewer.player); return 0; }
                 if (host.dead(viewer.player)) { disconnect(viewer.player); return 0; }
                 if (!viewer.world.equals(host.position(viewer.player).world())) { disconnect(viewer.player); admissions = host.onlinePlayers().iterator(); return 0; }
@@ -2120,10 +2148,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                 return update(viewer, remaining);
             });
             if (used >= settings.packetsPerTick()) pressure.shortOfBudget(tickNumber);
-            // Cosmetic work spends only what every viewer's despawns, moves and spawns left over.
-            for (Viewer viewer : updated) {
-                if (!current(viewer)) continue;
-                used += presentCosmetics(viewer, settings.packetsPerTick() - used);
+            // Cosmetic work spends what the despawns, moves and spawns left, split evenly; rig bones have their own budget, so every viewer is visited.
+            for (int i = 0; i < updated.size(); i++) {
+                Viewer viewer = updated.get(i);
+                if (current(viewer)) used += presentCosmetics(viewer, Math.ceilDiv(Math.max(0, settings.packetsPerTick() - used), updated.size() - i));
             }
             metrics.lap(Subsystem.PRESENTATION, mark);
             packetUse += Math.min(100, used * 100 / Math.max(1, settings.packetsPerTick()));
@@ -2141,6 +2169,30 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     }
 
     private void warnActivation(String message) { host.warn(message); }
+    private void quarantine(Value value, String operation, RuntimeException failure) {
+        Entry entry = byUuid.get(value.spec.definition().uuid());
+        if (entry != null && entry.value == value) quarantine(entry.id, operation, failure);
+        else failures.record(operation, "npc=" + value.spec.definition().id(), failure);
+    }
+    /**
+     * One NPC's work failed: the failure is recorded and that NPC alone stops, as an owner turn does on Folia. Its body is
+     * removed and stays down until its definition changes or the NPCs reload.
+     */
+    private void quarantine(String id, String operation, RuntimeException failure) {
+        failures.record(operation, "npc=" + id, failure);
+        Entry entry = entries.get(id);
+        if (entry == null) return;
+        if (entry.task != null) { entry.task.cancelled = true; entry.task = null; }
+        Value value = entry.value;
+        if (value != null) {
+            try { removeValue(entry); }
+            catch (RuntimeException cleanup) {
+                entry.value = null;
+                byUuid.remove(value.spec.definition().uuid(), entry); index.remove(value.spec.definition().uuid());
+            }
+        }
+        entry.error = "stopped after a runtime failure in " + operation + ": " + concise(failure);
+    }
     private boolean reconcile(DefinitionQueue.Change change) {
         NpcDefinition definition = change.definition(); Entry entry = entries.get(change.id());
         if (!DefinitionSpec.spawned(definition)) { activationWarnings.cleared(change.id()); if (entry != null) remove(entry); return true; }
@@ -2229,7 +2281,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             try { if (!admissions.hasNext()) return; player = admissions.next(); }
             catch (ConcurrentModificationException changed) { admissions = host.onlinePlayers().iterator(); return; }
             UUID id = host.id(player);
-            if (!host.online(player) || host.dead(player) || viewers.containsKey(id) || viewerFailures.containsKey(id)) continue;
+            if (!host.online(player) || host.dead(player) || viewers.containsKey(id) || viewerFailures.containsKey(id) || resyncs.containsKey(id)) continue;
             Viewer viewer = new Viewer(player); viewers.put(id, viewer); viewerOrder.addLast(viewer);
             try {
                 packets.watch(player, (BodyTransport.Interaction input) -> interact(viewer, input)).whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
@@ -2243,11 +2295,13 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         int sent = 0;
         viewer.turns++;
         WorldPosition at = host.position(viewer.player);
-        Map<Long, Boolean> delivered = new HashMap<>();
+        Map<Long, Boolean> delivered = viewer.deliveredChunks; delivered.clear();
         Predicate<ChunkPosition> visibleChunk = (ChunkPosition chunk) -> chunk.world().equals(at.world()) && delivered.computeIfAbsent(ChunkPosition.key(chunk.x(), chunk.z()),
                 (Long ignored) -> host.chunkLoaded(at.world(), chunk.x(), chunk.z()) && host.chunkSent(viewer.player, chunk.x(), chunk.z()));
-        for (Presented body : List.copyOf(viewer.visible.values()))
-            if (!eligible(viewer, body.value, at, visibleChunk)) retire(viewer, body);
+        List<Presented> leaving = null;
+        for (Presented body : viewer.visible.values())
+            if (!eligible(viewer, body.value, at, visibleChunk)) { if (leaving == null) leaving = new ArrayList<>(); leaving.add(body); }
+        if (leaving != null) for (Presented body : leaving) retire(viewer, body);
         while (!viewer.retirements.isEmpty() && sent < packetBudget && admit(viewer, PresentationPressure.Tier.DESPAWN)) {
             Presented body = viewer.retirements.removeFirst(); sent++;
             handOver(viewer, () -> packets.despawn(viewer.player, body.body)).whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
@@ -2553,6 +2607,12 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (viewerFailures.size() < settings.maximumViewers()) viewerFailures.put(host.id(viewer.player), error);
         disconnect(viewer.player);
     }
+    /** The viewer's packet callbacks overflowed: it is dropped and shown every NPC again once the backlog has drained. */
+    private void resync(Viewer viewer) {
+        failures.record("packet callbacks", context(viewer, null), "Packet callback queue full; the viewer is shown its NPCs again");
+        disconnect(viewer.player);
+        resyncs.put(host.id(viewer.player), tickNumber + RESYNC_TICKS);
+    }
     /** The transport could not watch the viewer. A closed connection waits quietly for the quit, rejoin, teleport or respawn that follows it. */
     private void watchFailed(Viewer viewer, Throwable failure) {
         if (!current(viewer)) return;
@@ -2595,7 +2655,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         riders.playerLeaving(player, "offline");
         disconnect(player); selections.remove(id);
         if (triggers != null) triggers.forget(id);
-        viewerFailures.remove(id);
+        viewerFailures.remove(id); resyncs.remove(id);
         admissions = host.onlinePlayers().iterator();
     }
     /** An accepted teleport. The dismount teleport keeps the world and nearby presentation. */
@@ -2616,7 +2676,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             stopRoute(route.value, "cancelled: world unloaded");
         refresh();
     }
-    private void reset(P player) { disconnect(player); viewerFailures.remove(host.id(player)); admissions = host.onlinePlayers().iterator(); }
+    private void reset(P player) { disconnect(player); viewerFailures.remove(host.id(player)); resyncs.remove(host.id(player)); admissions = host.onlinePlayers().iterator(); }
     @Override public void close() {
         if (closed) return;
         if (mountRuntime != null) mountRuntime.close();
@@ -2634,7 +2694,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         appearanceTasks.clear(); appearanceCompletions.clear();
         viewers.values().forEach((Viewer viewer) -> viewer.guard.close()); viewers.clear(); viewerOrder.clear(); showing.clear();
         entries.values().forEach((Entry entry) -> { if (entry.value != null) { failWatch(entry.value, "cancelled: runtime shutdown"); entry.value.state.despawn(); index.remove(entry.value.spec.definition().uuid()); } });
-        entries.clear(); byUuid.clear(); selections.clear(); viewerFailures.clear(); changes.clear(); definitions.clear();
+        entries.clear(); byUuid.clear(); selections.clear(); viewerFailures.clear(); resyncs.clear(); changes.clear(); definitions.clear();
         if (packets != null) packets.close();
     }
 
@@ -2750,6 +2810,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     final class Viewer {
         final P player; final UUID id; final String world; final ViewerSession guard; final PreviewBodies<P, I> preview;
         final Map<UUID, Presented> visible = new HashMap<>(), retiring = new HashMap<>();
+        /** Whether each chunk reached this viewer, remembered for one update only. */
+        final Map<Long, Boolean> deliveredChunks = new HashMap<>();
         /** The body glowing for this player alone after a selection, and the tick its glow ends on. */
         Presented glowing; long glowEnds;
         final Deque<Presented> retirements = new ArrayDeque<>();

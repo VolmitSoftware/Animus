@@ -1,5 +1,6 @@
 package art.arcane.animus.core.text;
 
+import art.arcane.animus.core.behavior.schema.RepositoryFiles;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -98,18 +99,12 @@ class ChatLineTest {
     /** Every {@code [Docs]} target is a heading on its wiki page, slugged as Wiki.js does. */
     @Test void everyDocsLinkNamesAHeadingOnItsPage() throws Exception {
         for (DocsLink link : DocsLink.values()) {
-            Path page = wiki().resolve(link.page() + ".md");
+            Path page = RepositoryFiles.wikiPage(link.page() + ".md");
             assumeTrue(Files.isRegularFile(page), "docs checkout not beside the repository");
             List<String> anchors = Files.readAllLines(page).stream().filter((String row) -> row.startsWith("#"))
                     .map((String heading) -> heading.replaceFirst("^#+\\s*", "").toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9 -]", "").strip().replace(' ', '-')).toList();
             assertTrue(anchors.contains(link.anchor()), link + " points to a missing heading: " + link.anchor());
         }
-    }
-
-    private static Path wiki() {
-        Path current = Path.of("").toAbsolutePath();
-        while (current != null && !Files.isRegularFile(current.resolve("settings.gradle"))) current = current.getParent();
-        return current.resolveSibling("docs").resolve("animus");
     }
 
     private static String plain(Component component) { return PlainTextComponentSerializer.plainText().serialize(component); }

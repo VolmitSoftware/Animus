@@ -74,13 +74,29 @@ class PlayerAccessOwnerTest {
                 "test", "", Map::of, () -> EditorHost.Lookups.NONE, (ViewerWatchRaceTest.Player player) -> false, new EditorNoticeChannel() {
                     @Override public Optional<String> name(UUID player) { return Optional.empty(); }
                     @Override public void deliver(EditorNotice notice) {}
-                }, (String line) -> {}, null));
+                }, (String line) -> {}, null, (UUID offline) -> EditorHost.Admin.UNKNOWN));
         harness.ownerThread = false;
         List<EditorHost.Admin> answers = new ArrayList<>();
 
         host.admin(harness.player.id(), answers::add);
         harness.runScheduled();
         assertEquals(List.of(EditorHost.Admin.NOT_ADMIN), answers);
+    }
+
+    @Test
+    void theEditorAdminRecheckAsksTheServerAboutAnOfflinePlayer() throws IOException {
+        ViewerWatchRaceTest.Harness harness = harness();
+        UUID away = UUID.randomUUID();
+        List<UUID> asked = new ArrayList<>();
+        RuntimeEditorHost<ViewerWatchRaceTest.Player> host = new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(harness.runtime, Runnable::run, harness.service, null,
+                "test", "", Map::of, () -> EditorHost.Lookups.NONE, (ViewerWatchRaceTest.Player player) -> true, new EditorNoticeChannel() {
+                    @Override public Optional<String> name(UUID player) { return Optional.empty(); }
+                    @Override public void deliver(EditorNotice notice) {}
+                }, (String line) -> {}, null, (UUID offline) -> { asked.add(offline); return EditorHost.Admin.NOT_ADMIN; }));
+        List<EditorHost.Admin> answers = new ArrayList<>();
+        host.admin(away, answers::add);
+        assertEquals(List.of(EditorHost.Admin.NOT_ADMIN), answers, "a de-opped admin is caught while offline");
+        assertEquals(List.of(away), asked);
     }
 
     private ViewerWatchRaceTest.Harness harness() throws IOException {

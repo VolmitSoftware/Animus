@@ -5,12 +5,13 @@ import 'package:animus_editor/services/server/error_copy.dart';
 import 'package:animus_editor/services/server/pairing.dart';
 import 'package:animus_editor/services/server/server_connection.dart';
 import 'package:animus_editor/services/server/server_profiles.dart';
+import 'package:animus_editor/services/server/server_proof.dart';
 import 'package:animus_editor/services/server/transport.dart';
 import 'package:animus_editor/state/server_hub.dart';
 import 'package:test/test.dart';
 
-import 'fixtures.dart';
 import 'server_connection_test.dart' show Waits, profile, settle, token;
+import '../tool/fake_server/identity.dart';
 import 'support/fake_transport.dart';
 
 const ApiResponse _tokenAnswer = ApiResponse(200, <String, Object?>{
@@ -18,7 +19,7 @@ const ApiResponse _tokenAnswer = ApiResponse(200, <String, Object?>{
   'tokenId': 'tok_0001AbCd',
   'scopes': <Object?>['read'],
   'expiresAt': '2030-01-01T00:00:00Z',
-  'fingerprint': fixtureFingerprint,
+  'fingerprint': fakeFingerprint,
 });
 
 ApiResponse _refuse(String code) => ApiResponse(errorStatusFor(code), <String, Object?>{'error': <String, Object?>{'code': code, 'message': 'server words'}});
@@ -27,8 +28,7 @@ int errorStatusFor(String code) => code == 'pairing-invalid' ? 401 : 500;
 
 void main() {
   final SharedSchemas schemas = SharedSchemas.embedded;
-  final Map<String, Object?> pairing = readFixture('editor/pairing.json')! as Map<String, Object?>;
-  final PairingPayload both = decodePairingCode(((pairing['valid']! as List<Object?>)[1]! as Map<String, Object?>)['code']! as String, schemas);
+  final PairingPayload both = fakePayload(directUrl: 'http://127.0.0.1:9797', relayUrl: 'ws://127.0.0.1:9797');
 
   group('pairing', () {
     test('should try the relay when the direct path refuses the pairing', () async {
@@ -58,6 +58,32 @@ void main() {
             .having((PairingRefused refused) => refused.code, 'code', 'pairing-invalid')
             .having((PairingRefused refused) => refused.message, 'message', contains('Run /animus editor pair and open the new link.'))),
       );
+    });
+
+    test('should send the secret over the relay only after the server proves its key', () async {
+      final FakeNetwork network = FakeNetwork(serverHandler(rest: (ApiRequest request) => _tokenAnswer));
+      network.down.add(ConnectionPath.direct);
+      expect((await ServerConnection.pair(both, network.open)).$2, ConnectionPath.relay);
+      final ApiRequest hello = network.sent.firstWhere(((ConnectionPath, ApiRequest) sent) => sent.$2.path == '/v1/hello').$2;
+      expect(hello.headers[challengeHeader], hasLength(43));
+    });
+
+    test('should not send the secret over a relay that cannot prove the pinned key', () async {
+      final Map<String, FakeHandler> relays = <String, FakeHandler>{
+        'no proof': serverHandler(prove: false, rest: (ApiRequest request) => _tokenAnswer),
+        'another key': serverHandler(seed: otherSeed, rest: (ApiRequest request) => _tokenAnswer),
+        'bad signature': tamperedProof(serverHandler(rest: (ApiRequest request) => _tokenAnswer)),
+        'relay registration prefix': serverHandler(prefix: 'animus-relay/1 ', rest: (ApiRequest request) => _tokenAnswer),
+      };
+      for (final MapEntry<String, FakeHandler> relay in relays.entries) {
+        final FakeNetwork network = FakeNetwork(relay.value);
+        await expectLater(
+          ServerConnection.pair(fakePayload(relayUrl: 'ws://127.0.0.1:9797'), network.open),
+          throwsA(isA<PairingRefused>().having((PairingRefused refused) => refused.message, 'message', transportErrorCopy['wrong-server']!.text)),
+          reason: relay.key,
+        );
+        expect(network.sent.map(((ConnectionPath, ApiRequest) sent) => sent.$2.path), <String>['/v1/hello'], reason: relay.key);
+      }
     });
 
     test('should not lose an unexpected failure on a path', () async {
@@ -117,7 +143,7 @@ void main() {
   });
 
   group('saved servers', () {
-    const ServerProfile other = ServerProfile(fingerprint: fixtureFingerprint, serverKey: fixtureServerKey, name: 'Other', relayUrl: 'wss://relay');
+    const ServerProfile other = ServerProfile(fingerprint: fakeFingerprint, serverKey: fakeServerKey, name: 'Other', relayUrl: 'wss://relay');
 
     ServerHub hub(MemoryKeyValueStore local, {List<String>? forgotten}) => ServerHub(
           profiles: ServerProfileStore(local: local, session: MemoryKeyValueStore()),

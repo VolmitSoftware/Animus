@@ -3,11 +3,14 @@ package art.arcane.animus.core.editor;
 import art.arcane.animus.core.editor.transport.EditorRequest;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -125,6 +128,32 @@ public final class EditorMessages {
         if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString() || value.getAsString().length() > maximumLength)
             throw invalid("$." + key + ": expected a string of at most " + maximumLength + " characters");
         return Optional.of(value.getAsString());
+    }
+
+    /** Catalog cursors: {@code <kind ordinal>\n<path>}, compared by kind and then path. */
+    static int compareCursor(String key, String after) {
+        int kindA = Integer.parseInt(key.substring(0, key.indexOf('\n'))), kindB = Integer.parseInt(after.substring(0, after.indexOf('\n')));
+        return kindA != kindB ? Integer.compare(kindA, kindB) : key.substring(key.indexOf('\n') + 1).compareTo(after.substring(after.indexOf('\n') + 1));
+    }
+
+    static String cursorKey(JsonObject entry) {
+        return DocumentKind.parse(entry.get("kind").getAsString()).orElseThrow().ordinal() + "\n" + entry.get("path").getAsString();
+    }
+
+    static String encodeCursor(String key) { return Base64.getUrlEncoder().withoutPadding().encodeToString(key.getBytes(StandardCharsets.UTF_8)); }
+
+    static String cursor(String value) throws EditorError {
+        try {
+            String key = new String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8);
+            if (key.matches("[0-9]{1,2}\n[a-z0-9_./-]{1,1024}")) return key;
+        } catch (IllegalArgumentException invalid) { /* Refused below. */ }
+        throw invalid("after: not a catalog cursor");
+    }
+
+    static JsonObject queryObject(Map<String, String> query) {
+        JsonObject object = new JsonObject();
+        query.forEach(object::addProperty);
+        return object;
     }
 
     public static EditorError invalid(String message) { return new EditorError(EditorError.Code.INVALID_REQUEST, message); }

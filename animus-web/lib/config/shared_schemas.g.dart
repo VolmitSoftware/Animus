@@ -192,7 +192,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   "description": "Request, response, change-set, diagnostic, event and relay envelopes for /animus/v1. Each $defs entry is one message; schema/editor-v1.endpoints.json maps methods and paths to them. All bodies are UTF-8 JSON objects. Unknown fields in responses are ignored by clients; servers refuse unknown fields in requests.",
   "$defs": {
     "protocol": {"const": 1},
-    "scope": {"enum": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs", "import", "spawn", "terrain", "admin"]},
+    "scope": {"enum": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs", "apply:commands", "import", "spawn", "terrain"]},
     "kind": {
       "enum": ["npc", "route", "recording", "skin", "group", "behavior", "pack", "shop", "inventory", "menu", "hologram", "text-animation", "presets", "rig", "animation", "server-behaviors"],
       "description": "Document kinds. Folders and apply scopes are listed in editor-v1.endpoints.json."

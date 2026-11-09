@@ -107,7 +107,7 @@ public final class AnimusCommandTree extends CommandGroup {
 
     /**
      * A player gets one line, the headline and the runtime state, with the runtime counters and the settings in effect
-     * behind {@code [Details]}; the console gets the headline, the runtime counters and the settings line.
+     * behind {@code [Details]} for admins only; the console gets the headline, the runtime counters and the settings line.
      */
     static void status(CommandActor actor, List<String> lines, String runtime) {
         int split = runtime.indexOf(" | ");
@@ -119,7 +119,8 @@ public final class AnimusCommandTree extends CommandGroup {
             details.subList(0, Math.min(2, details.size())).forEach(actor::tell);
             return;
         }
-        actor.rich(ChatLine.reply(lines.getFirst() + " | " + state).details("Details", details).docs(DocsLink.COMMANDS));
+        ChatLine line = ChatLine.reply(lines.getFirst() + " | " + state);
+        actor.rich((actor.permitted(AnimusDirector.ADMIN) ? line.details("Details", details) : line).docs(DocsLink.COMMANDS));
     }
 
     @Director(description = "List saved NPCs; click an id to inspect it")

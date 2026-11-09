@@ -60,7 +60,7 @@ class BuiltinManualRunTest {
                 """.formatted(NPC)));
         BuiltinActionSettings defaults = BuiltinActionSettings.DEFAULT;
         BuiltinCapabilities builtins = new BuiltinCapabilities(platform, new MemoryBehaviorState(), choice -> {},
-                new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), List.of("town:allowed"), List.of(), defaults.navigationWaits()), log::add);
+                new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), List.of("town:allowed"), List.of(), defaults.navigationWaits(), List.of()), log::add);
         extensions = new ExtensionRuntime(root.resolve("modules"), Platform.PAPER, DEFINITIONS, new ModuleSettings(true, 16, 5000, 250), line -> {}, state -> {}, builtins);
         extensions.start();
         long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);

@@ -78,6 +78,23 @@ class HoloServiceTest {
              "actions": [{"type": "navigate", "mode": "page", "target": "next"}], "viewDistance": 16}
             """;
 
+    @Test void playersNeedNoHologramTickUntilAHologramExistsAndAgainOnceItIsCleared() throws IOException {
+        reload();
+        assertTrue(holograms.idle(), "an empty catalog needs no per-player tick");
+        write("gui/holograms", "town:sign", SIGN);
+        write("gui/text-animations", "town:blink", "{\"schemaVersion\": 1, \"revision\": 1, \"mode\": \"ascend\", \"frameIntervalMs\": 60000, \"frames\": [\"two\"]}");
+        reload();
+        assertFalse(holograms.idle(), "a placed hologram is drawn on the player's tick");
+        tick(1);
+        assertEquals(List.of("Page one for Alex"), displays.texts(alex));
+        Files.delete(directory.resolve("gui/holograms/town/sign.json"));
+        reload();
+        assertFalse(holograms.idle(), "the hologram the player still sees must be cleared first");
+        tick(HoloService.SCAN_TICKS * 2);
+        assertEquals(List.of(), displays.texts(alex));
+        assertTrue(holograms.idle());
+    }
+
     @Test void aHologramAppearsInRangeTurnsPagesOnAimedClicksAndLeavesOutOfRange() throws IOException {
         write("gui/holograms", "town:sign", SIGN);
         write("gui/text-animations", "town:blink", "{\"schemaVersion\": 1, \"revision\": 1, \"mode\": \"ascend\", \"frameIntervalMs\": 60000, \"frames\": [\"two\"]}");

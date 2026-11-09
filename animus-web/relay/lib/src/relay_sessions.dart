@@ -120,7 +120,9 @@ final class AgentSession {
 }
 
 /// One `/app` connection: a subscription to one server, then requests and
-/// closes.
+/// closes. A browser that has no event stream accepted by the server within
+/// `signInTimeout` of subscribing is closed, so idle subscribers cannot hold a
+/// server's browser slots.
 final class AppSession {
   final RelayBroker _broker;
   final RelaySink _sink;
@@ -128,6 +130,7 @@ final class AppSession {
   final String? _origin;
   final String? _address;
   late final Timer _subscriptionTimer;
+  Timer? _signInTimer;
   bool _closed = false;
 
   AppSession({
@@ -169,6 +172,11 @@ final class AppSession {
       );
       if (refused != null) return _fail(refused, 'subscription refused');
       _subscriptionTimer.cancel();
+      _signInTimer = Timer(_broker.limits.signInTimeout, () {
+        if (!_broker.isSignedIn(_sink)) {
+          _fail(RelayErrorCode.timeout, 'no event stream opened in time');
+        }
+      });
       return;
     }
     if (frame is SubscribeFrame) {
@@ -181,6 +189,7 @@ final class AppSession {
     if (_closed) return;
     _closed = true;
     _subscriptionTimer.cancel();
+    _signInTimer?.cancel();
     _broker.unregisterApp(_sink);
   }
 

@@ -54,16 +54,12 @@ class RuntimeFilesTest {
         } finally { release.countDown(); }
     }
 
-    @Test void shutdownCancelsQueuedWorkButLetsTheRunningCommitKeepItsStorage() throws Exception {
+    @Test void shutdownDrainsQueuedWritesWhileTheRunningCommitKeepsItsStorage() throws Exception {
         CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
-        CountDownLatch cancelled = new CountDownLatch(1);
-        AtomicInteger accidentallyRan = new AtomicInteger();
+        AtomicInteger queuedRan = new AtomicInteger(), late = new AtomicInteger();
         AnimusRuntime runtime = runtime();
         try {
-            Executor files = runtime.fileExecutor((task, event, error) -> {
-                if (event == MutationLane.EngineTaskEvent.CANCELLED) cancelled.countDown();
-                else throw new AssertionError(error);
-            });
+            Executor files = runtime.fileExecutor((task, event, error) -> { throw new AssertionError(event + ": " + error); });
             DefinitionService api = runtime.definitionGateway().scoped(() -> true);
             files.execute(() -> {
                 entered.countDown(); await(release);
@@ -71,23 +67,40 @@ class RuntimeFilesTest {
                 catch (Exception failure) { throw new AssertionError(failure); }
             });
             await(entered);
-            files.execute(accidentallyRan::incrementAndGet);
+            files.execute(() -> { queuedRan.incrementAndGet(); assertTrue(runtime.npcs().find("guard").isPresent(), "a queued write still sees the storage"); });
             var queued = api.find(new NpcHandle(java.util.UUID.randomUUID()));
             runtime.closeAsync();
             assertFalse(runtime.isRunning());
             assertFalse(runtime.fileStatus().mutationsDrained());
-            assertThrows(RejectedExecutionException.class, () -> files.execute(accidentallyRan::incrementAndGet));
+            assertThrows(RejectedExecutionException.class, () -> files.execute(late::incrementAndGet));
             assertThrows(IllegalStateException.class, runtime::start);
             assertThrows(java.io.IOException.class, () -> new DocumentStore(root));
             assertNotNull(runtime.documents());
-            assertEquals(1, cancelled.getCount());
+            assertEquals(0, queuedRan.get());
             release.countDown();
             runtime.close();
             assertEquals(MutationLane.CleanupState.SUCCEEDED, runtime.fileStatus().cleanupState());
-            await(cancelled);
-            assertEquals(0, accidentallyRan.get());
-            assertEquals(Outcome.Status.CANCELLED, queued.toCompletableFuture().get(5, TimeUnit.SECONDS).status());
+            assertEquals(1, queuedRan.get());
+            assertEquals(0, late.get());
+            assertEquals(Outcome.Status.UNAVAILABLE, queued.toCompletableFuture().get(5, TimeUnit.SECONDS).status());
             assertTrue(runtime.awaitFileQuiescence(java.time.Duration.ofSeconds(5)));
+            runtime.start();
+            assertEquals("Guard", runtime.npcs().find("guard").orElseThrow().name());
+        } finally { release.countDown(); runtime.close(); }
+    }
+
+    @Test void closeAndWaitReturnsOnlyOnceTheLockIsReleased() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
+        AnimusRuntime runtime = runtime();
+        try {
+            create(runtime);
+            runtime.fileExecutor((task, event, error) -> {}).execute(() -> { entered.countDown(); await(release); });
+            await(entered);
+            assertFalse(runtime.closeAndWait(java.time.Duration.ofMillis(50)), "a running write holds the stop");
+            assertThrows(java.io.IOException.class, () -> new DocumentStore(root));
+            CompletableFuture.runAsync(release::countDown, CompletableFuture.delayedExecutor(100, TimeUnit.MILLISECONDS));
+            assertTrue(runtime.closeAndWait(java.time.Duration.ofSeconds(5)));
+            try (DocumentStore reopened = new DocumentStore(root)) { assertNotNull(reopened.read("npcs/default/guard.json")); }
             runtime.start();
             assertEquals("Guard", runtime.npcs().find("guard").orElseThrow().name());
         } finally { release.countDown(); runtime.close(); }

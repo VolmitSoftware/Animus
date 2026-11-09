@@ -16,7 +16,16 @@ public final class Capabilities {
     public record Availability(Descriptor descriptor,boolean available,String reason) {
         public Availability {Objects.requireNonNull(descriptor);ApiText.text(reason,2048,"reason");}
     }
-    /** {@code behavior} names the accepted JSON behavior making this call; it is empty for direct dispatch. */
+    /**
+     * {@code behavior} names the accepted JSON behavior making this call; it is empty for direct dispatch.
+     *
+     * @param npc NPC the call applies to
+     * @param player player the call applies to, if any
+     * @param argumentsJson capability arguments as a JSON object
+     * @param preview true when the call only previews its effect
+     * @param cancellation signal that stops the call early
+     * @param behavior behavior that requested the call
+     */
     public record Invocation(NpcHandle npc,Optional<UUID> player,String argumentsJson,boolean preview,Cancellation cancellation,Optional<String> behavior) {
         public Invocation {Objects.requireNonNull(npc);player=Objects.requireNonNull(player);ApiText.text(argumentsJson,65536,"arguments JSON");Objects.requireNonNull(cancellation);behavior=Objects.requireNonNull(behavior);}
     }

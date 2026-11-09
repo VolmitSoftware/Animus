@@ -8,12 +8,15 @@ import 'dart:io';
 import 'package:animus_editor/logic/json_schema.dart';
 import 'package:animus_editor/logic/shared_schemas.dart';
 import 'package:animus_editor/logic/suggest/completion_sources.dart';
+import 'package:animus_editor/services/server/server_proof.dart';
+import 'package:cryptography/cryptography.dart';
 import 'package:test/test.dart';
 
+import '../tool/fake_server/identity.dart';
 import '../tool/fake_server/server.dart';
 
 const String origin = 'http://127.0.0.1:8098';
-const String fingerprint = 'sha256:630dcd2966c4336691125448bbb25b4ff412a49c732db2c8abc1b8581bd710dd';
+const String fingerprint = fakeFingerprint;
 
 /// Fails unless [body] is valid for the editor-v1 `$defs` entry [definition].
 void expectMessage(String definition, Object? body) {
@@ -155,7 +158,8 @@ Future<Frames> relay() async {
 }
 
 /// Sends a relay request and returns its response frame.
-Future<Map<String, Object?>> relayCall(Frames frames, int id, String method, String path, {String? token, Object? body, int? count}) async {
+Future<Map<String, Object?>> relayCall(Frames frames, int id, String method, String path,
+    {String? token, Object? body, int? count, Map<String, String> headers = const <String, String>{}}) async {
   frames.send(<String, Object?>{
     'type': 'request',
     'id': id,
@@ -165,6 +169,7 @@ Future<Map<String, Object?>> relayCall(Frames frames, int id, String method, Str
       'Origin': 'http://ignored.example',
       if (token != null) 'Authorization': 'Bearer $token',
       if (count != null) 'X-Animus-Counter': '$count',
+      ...headers,
     },
     'body': ?body,
   });
@@ -556,6 +561,22 @@ void main() {
     expect(closing['reason'], 'token-revoked');
     await events.closed;
     expect((await call('GET', '/animus/v1/catalog', token: token)).errorCode, 'token-revoked');
+  });
+
+  test('the fake key pair derives the pinned key and fingerprint', () async {
+    final SimplePublicKey key = await (await Ed25519().newKeyPairFromSeed(fakeSeed)).extractPublicKey();
+    expect(base64UrlNoPadding(key.bytes), fakeServerKey);
+    expect(server.identity.fingerprint, fakeFingerprint);
+  });
+
+  test('the relay emulation signs a challenged hello with the server key', () async {
+    final Frames frames = await relay();
+    final String challenge = newChallenge();
+    final Map<String, Object?> hello = await relayCall(frames, 1, 'GET', '/v1/hello', headers: <String, String>{challengeHeader: challenge});
+    final Map<String, String> headers = (hello['headers']! as Map<String, Object?>).cast<String, String>();
+    expect(await verifyServerProof(headers, challenge: challenge, fingerprint: fakeFingerprint), isTrue);
+    expect(await verifyServerProof(headers, challenge: newChallenge(), fingerprint: fakeFingerprint), isFalse);
+    await frames.socket.close();
   });
 
   test('the relay emulation answers requests and streams events', () async {

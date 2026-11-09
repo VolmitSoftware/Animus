@@ -483,11 +483,11 @@ public final class TriggerDispatcher implements TriggerSink {
             release(iterator, pending);
             if (result.status() != Outcome.Status.OK) {
                 idle(binding, pending.player());
-                drop(binding, DropReason.START_FAILED);
                 if (!result.diagnostics().isEmpty()) {
                     Diagnostic refusal = result.diagnostics().getFirst();
                     lastStartFailure = new Diagnostic(refusal.severity(), refusal.code(), "npc=" + binding.definition.id() + " trigger=" + binding.key() + " " + refusal.field(), refusal.message());
                 }
+                drop(binding, DropReason.START_FAILED);
                 continue;
             }
             starts++;

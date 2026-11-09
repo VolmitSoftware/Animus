@@ -18,7 +18,7 @@ class AdministrationTest {
         try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
             runtime.start(); Administration admin = new Administration(runtime);
             assertTrue(admin.status().getFirst().contains(" on Bukkit 26.3 | "), admin.status().getFirst());
-            assertTrue(admin.status().stream().anyMatch((String line) -> line.startsWith("Settings in effect:") && line.contains("packetsPerTick=32")));
+            assertTrue(admin.status().stream().anyMatch((String line) -> line.startsWith("Settings in effect:") && line.contains("packetsPerTick=512")));
             art.arcane.animus.core.config.SettingsEdit.apply(runtime, "npcs", (com.google.gson.JsonObject npcs) -> npcs.addProperty("packetsPerTick", 12));
             art.arcane.animus.core.config.SettingsEdit.apply(runtime, "editor", (com.google.gson.JsonObject editor) -> editor.addProperty("port", 9811));
             String line = admin.status().stream().filter((String text) -> text.startsWith("Settings in effect:")).findFirst().orElseThrow();

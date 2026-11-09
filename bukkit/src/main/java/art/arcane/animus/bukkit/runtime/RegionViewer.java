@@ -107,7 +107,8 @@ final class RegionViewer {
     private void turn() {
         if (!host.current(this)) return;
         if (!host.regions.owns(player)) return;
-        if (failed) { host.fail(this, "packet callbacks", null, "Packet callback queue full"); return; }
+        // Overflowed callbacks: rebuild this viewer from scratch instead of leaving it without NPCs until it rejoins.
+        if (failed) { host.noteFailure("packet callbacks", "viewer=" + player.getName(), "Packet callback queue full; the viewer is shown its NPCs again"); host.reset(this); return; }
         if (!player.isOnline()) { host.disconnect(this); return; }
         if (player.isDead()) { host.disconnect(this); return; }
         if (!epoch.equals(host.epochs.capture(player)) || !world.equals(player.getWorld().getUID())

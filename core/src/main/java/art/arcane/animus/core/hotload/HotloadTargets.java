@@ -35,8 +35,14 @@ public final class HotloadTargets {
             boolean schematic = lower.endsWith(".schem") || lower.endsWith(".schematic") || lower.endsWith(".nbt");
             return schematic ? Optional.of(new Target(path, Area.SCHEMATIC, Optional.empty())) : Optional.empty();
         }
-        if (!lower.endsWith(".json")) return Optional.empty();
+        if (!lower.endsWith(".json") || copiedSeparately(path)) return Optional.empty();
         return DocumentKind.forPath(path).map((DocumentKind kind) -> new Target(path, Area.DOCUMENT, Optional.of(kind)));
+    }
+
+    /** Pack folders whose npcs, shops and GUIs are copied into the data folders by hand, so they are not behavior documents. */
+    private static boolean copiedSeparately(String path) {
+        String[] segments = path.split("/");
+        return segments.length > 3 && segments[0].equals("packs") && (segments[2].equals("npcs") || segments[2].equals("shops") || segments[2].equals("gui"));
     }
 
     /** Editor and operating system scratch names: dot files, backups, swap and partial downloads. */

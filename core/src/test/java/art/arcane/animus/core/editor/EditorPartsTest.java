@@ -203,4 +203,20 @@ class EditorPartsTest {
         assertThrows(IllegalArgumentException.class, () -> EditorCommands.grant(actor(null), "", "root", "", "", 7));
         assertThrows(IllegalArgumentException.class, () -> EditorCommands.grant(actor(null), "", "", "", "forever", 7));
     }
+
+    @Test
+    void pairOptions_commandScopeNeedsItsOwnPermissionAndIsNeverADefault() {
+        assertFalse(EditorScope.DEFAULT_PAIRING.contains(EditorScope.APPLY_COMMANDS));
+        assertTrue(EditorScope.parse("admin").isEmpty(), "the unused admin scope is gone");
+        CommandActor admin = new CommandActor() {
+            @Override public boolean permitted(String node) { return !node.equals(EditorCommands.COMMANDS_PERMISSION); }
+            @Override public void tell(String message) {}
+            @Override public Optional<UUID> player() { return Optional.of(EditorHarness.ADMIN); }
+            @Override public boolean reply(Runnable action) { action.run(); return true; }
+        };
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> EditorCommands.grant(admin, "", "read,apply:behaviors,apply:commands", "", "", 7));
+        assertTrue(refused.getMessage().contains(EditorCommands.COMMANDS_PERMISSION), refused.getMessage());
+        assertEquals(List.of(EditorScope.APPLY_BEHAVIORS, EditorScope.APPLY_COMMANDS), EditorCommands.grant(actor(EditorHarness.ADMIN), "", "apply:behaviors,apply:commands", "", "", 7).scopes());
+        assertEquals(List.of(EditorScope.APPLY_COMMANDS), EditorCommands.grant(actor(null), "", "apply:commands", "", "", 7).scopes());
+    }
 }

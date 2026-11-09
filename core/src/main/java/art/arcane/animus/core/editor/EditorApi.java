@@ -14,6 +14,7 @@ import art.arcane.animus.core.editor.transport.EditorEventSink;
 import art.arcane.animus.core.editor.transport.EditorEventStream;
 import art.arcane.animus.core.editor.transport.EditorRequest;
 import art.arcane.animus.core.editor.transport.EditorRequestHandler;
+import art.arcane.animus.core.editor.transport.EditorRequestHandler.Admission;
 import art.arcane.animus.core.editor.transport.EditorResponse;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -54,6 +55,8 @@ import java.util.function.Supplier;
  */
 public final class EditorApi implements EditorRequestHandler {
     public static final int PROTOCOL = 1;
+    /** How long a token keeps working while the server cannot tell whether its admin still holds {@code animus.admin}. */
+    public static final Duration UNCONFIRMED_ADMIN = Duration.ofDays(7);
     private static final Map<String, String> CORS = Map.of("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS",
             "Access-Control-Allow-Headers", "Authorization, Content-Type, X-Animus-Counter, If-None-Match", "Access-Control-Expose-Headers", "ETag", "Access-Control-Max-Age", "600",
             "Access-Control-Allow-Private-Network", "true", "Vary", "Origin");
@@ -72,6 +75,8 @@ public final class EditorApi implements EditorRequestHandler {
     private final EditorSchemas schemas = new EditorSchemas();
     private final Map<String, AtomicInteger> inFlight = new ConcurrentHashMap<>();
     private final Map<String, double[]> buckets = new ConcurrentHashMap<>();
+    private static final int PAIR_WINDOW_ADDRESSES = 4096;
+    private static final String SHARED_PAIR_WINDOW = "";
     private final Map<String, long[]> pairWindows = new ConcurrentHashMap<>();
     private final EditorTerrainReads terrain = new EditorTerrainReads(this::parts);
 
@@ -105,6 +110,28 @@ public final class EditorApi implements EditorRequestHandler {
     private static EditorResponse internal(Throwable failure) {
         System.getLogger("Animus").log(System.Logger.Level.WARNING, "Editor request failed: " + failure.getClass().getSimpleName() + ": " + failure.getMessage());
         return EditorReplies.error(new EditorError(EditorError.Code.INTERNAL, "The server could not complete the request; see the server log."));
+    }
+
+    /**
+     * A head is checked before its body is read: the origin, and outside the open endpoints the bearer token and the
+     * endpoint's scope. Only an authenticated request may send more than a small body.
+     */
+    @Override
+    public Admission admit(EditorRequest head) {
+        try {
+            origin(head);
+            String method = head.method(), path = head.route();
+            if (method.equals("OPTIONS") || path.equals("/v1/hello") || path.equals("/v1/pair")) return Admission.OPEN;
+            EditorTokens.Token token = parts.tokens().authenticate(bearer(head));
+            Optional<Route> route = path.startsWith("/v1/") ? match(method, path.substring(4).split("/", -1)) : Optional.empty();
+            if (route.isPresent() && route.get().scope() != null && !token.has(route.get().scope()))
+                throw new EditorError(EditorError.Code.SCOPE_MISSING, "This token lacks " + route.get().scope().wireName() + ".");
+            return Admission.AUTHENTICATED;
+        } catch (EditorError refused) {
+            Map<String, String> cors = cors(head);
+            EditorResponse response = EditorReplies.error(refused);
+            return Admission.refused(cors.isEmpty() ? response : EditorReplies.withHeaders(response, cors));
+        }
     }
 
     /** CORS headers for an allowed browser origin on the direct path. */
@@ -237,16 +264,23 @@ public final class EditorApi implements EditorRequestHandler {
         }
     }
 
-    /** Fixed one-minute window per address for unauthenticated pairing and event authentication. */
+    /**
+     * Fixed one-minute window per address for unauthenticated pairing and event authentication. Past
+     * {@link #PAIR_WINDOW_ADDRESSES} addresses in one minute, new ones share a single window, so the map stays bounded.
+     */
     private void pairRate(String address) throws EditorError {
         long minute = parts.clock().millis() / 60_000;
-        long[] window = pairWindows.computeIfAbsent(address, (String key) -> new long[]{minute, 0});
+        long[] window = pairWindows.get(address);
+        if (window == null) {
+            if (pairWindows.size() >= PAIR_WINDOW_ADDRESSES) pairWindows.entrySet().removeIf((Map.Entry<String, long[]> entry) -> entry.getValue()[0] != minute);
+            String key = pairWindows.size() >= PAIR_WINDOW_ADDRESSES ? SHARED_PAIR_WINDOW : address;
+            window = pairWindows.computeIfAbsent(key, (String unused) -> new long[]{minute, 0});
+        }
         synchronized (window) {
             if (window[0] != minute) { window[0] = minute; window[1] = 0; }
             if (++window[1] > parts.settings().pairAttemptsPerMinute())
                 throw new EditorError(EditorError.Code.RATE_LIMITED, "Too many pairing attempts from this address.", 60_000 - parts.clock().millis() % 60_000, null);
         }
-        if (pairWindows.size() > 4096) pairWindows.entrySet().removeIf((Map.Entry<String, long[]> entry) -> entry.getValue()[0] != minute);
     }
 
     private static CompletionStage<EditorResponse> done(EditorResponse response) { return CompletableFuture.completedFuture(response); }
@@ -376,13 +410,13 @@ public final class EditorApi implements EditorRequestHandler {
 
     private CompletionStage<EditorResponse> catalog(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
         Map<String, String> query = EditorReplies.query(request);
-        EditorMessages.fields(queryObject(query), "$query", Set.of("kind", "after"));
+        EditorMessages.fields(EditorMessages.queryObject(query), "$query", Set.of("kind", "after"));
         Set<DocumentKind> kinds = EnumSet.allOf(DocumentKind.class);
         String kindName = query.get("kind");
         if (kindName != null && !kindName.isEmpty())
             kinds = EnumSet.of(DocumentKind.parse(kindName).orElseThrow(() -> EditorMessages.invalid("kind: unknown kind " + kindName)));
         String rawAfter = query.get("after");
-        Optional<String> after = rawAfter == null || rawAfter.isEmpty() ? Optional.empty() : Optional.of(cursor(rawAfter));
+        Optional<String> after = rawAfter == null || rawAfter.isEmpty() ? Optional.empty() : Optional.of(EditorMessages.cursor(rawAfter));
         Set<DocumentKind> chosen = kinds;
         return files(token, () -> {
             JsonArray documents = new JsonArray();
@@ -390,9 +424,9 @@ public final class EditorApi implements EditorRequestHandler {
             int page = 1000;
             for (EditorDocuments.Location location : parts.documents().list(chosen)) {
                 String key = location.kind().ordinal() + "\n" + location.path();
-                if (after.isPresent() && compare(key, after.get()) <= 0) continue;
+                if (after.isPresent() && EditorMessages.compareCursor(key, after.get()) <= 0) continue;
                 if (!visible(token, location.kind(), location.id())) continue;
-                if (documents.size() == page) { next = encodeCursor(cursorKey(documents.get(page - 1).getAsJsonObject())); break; }
+                if (documents.size() == page) { next = EditorMessages.encodeCursor(EditorMessages.cursorKey(documents.get(page - 1).getAsJsonObject())); break; }
                 EditorDocuments.Stored stored = parts.documents().read(location);
                 if (!stored.exists()) continue;
                 documents.add(EditorChanges.catalogEntry(location.kind(), location.id(), location.path(), stored.revision(), stored.hash()));
@@ -402,31 +436,6 @@ public final class EditorApi implements EditorRequestHandler {
             if (next == null) body.add("next", com.google.gson.JsonNull.INSTANCE); else body.addProperty("next", next);
             return EditorResponse.json(200, body);
         });
-    }
-
-    private static int compare(String key, String after) {
-        int kindA = Integer.parseInt(key.substring(0, key.indexOf('\n'))), kindB = Integer.parseInt(after.substring(0, after.indexOf('\n')));
-        return kindA != kindB ? Integer.compare(kindA, kindB) : key.substring(key.indexOf('\n') + 1).compareTo(after.substring(after.indexOf('\n') + 1));
-    }
-
-    private static String cursorKey(JsonObject entry) {
-        return DocumentKind.parse(entry.get("kind").getAsString()).orElseThrow().ordinal() + "\n" + entry.get("path").getAsString();
-    }
-
-    private static String encodeCursor(String key) { return Base64.getUrlEncoder().withoutPadding().encodeToString(key.getBytes(StandardCharsets.UTF_8)); }
-
-    private static String cursor(String value) throws EditorError {
-        try {
-            String key = new String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8);
-            if (key.matches("[0-9]{1,2}\n[a-z0-9_./-]{1,1024}")) return key;
-        } catch (IllegalArgumentException invalid) { /* Refused below. */ }
-        throw EditorMessages.invalid("after: not a catalog cursor");
-    }
-
-    private static JsonObject queryObject(Map<String, String> query) {
-        JsonObject object = new JsonObject();
-        query.forEach(object::addProperty);
-        return object;
     }
 
     private static boolean visible(EditorTokens.Token token, DocumentKind kind, String id) {
@@ -601,6 +610,7 @@ public final class EditorApi implements EditorRequestHandler {
         set.documents().forEach((EditorMessages.Change change) -> kinds.add(change.kind()));
         scopes(token, kinds, set.documents().stream().filter((EditorMessages.Change change) -> change.kind() == DocumentKind.NPC)
                 .flatMap((EditorMessages.Change change) -> java.util.stream.Stream.concat(java.util.stream.Stream.of(change.id()), change.from().stream())).toList());
+        EditorCommandGuard.requireForChanges(token, set.documents(), EditorCommandGuard.privileged(parts.host().capabilities()));
         String requestHash = EditorTokens.sha256(body.toString());
         parts.changes().queued(set.idempotencyKey());
         try {
@@ -664,7 +674,8 @@ public final class EditorApi implements EditorRequestHandler {
         try {
             return files(token, () -> {
                 try {
-                    EditorChanges.Outcome outcome = parts.changes().undo(changeId, key, token.id(), (Set<DocumentKind> kinds, List<String> ids) -> scopes(token, kinds, ids));
+                    EditorChanges.Outcome outcome = parts.changes().undo(changeId, key, token.id(), EditorCommandGuard.forUndo(token,
+                            (Set<DocumentKind> kinds, List<String> ids) -> scopes(token, kinds, ids), EditorCommandGuard.privileged(parts.host().capabilities())));
                     published(outcome, token, EditorNotifySettings.Kind.ROLLBACK, "undid");
                     audit("undo", Optional.of(token.id()), token.admin(), request, List.of(changeId), outcome.body().get("status").getAsString());
                     return EditorResponse.json(outcome.status(), outcome.body());
@@ -767,6 +778,7 @@ public final class EditorApi implements EditorRequestHandler {
                 categories.add(category.getAsString());
             }
         }
+        EditorCommandGuard.requireForImport(token, step, categories, parts.host().commandGrants());
         return files(token, () -> {
             Map<String, String> before = hashes();
             JsonObject review;
@@ -960,20 +972,25 @@ public final class EditorApi implements EditorRequestHandler {
     }
 
     /**
-     * Revokes tokens whose issuing player lost {@code animus.admin}. The permission answer arrives on the player's owner
-     * thread; the revoke writes token and audit files, so it moves to the file lane. A full lane retries next minute.
+     * Revokes tokens whose issuing player lost {@code animus.admin}, or whose admin went unconfirmed for {@link #UNCONFIRMED_ADMIN}.
+     * The answer arrives on the player's owner thread; recording it writes files, so it moves to the file lane. A full lane
+     * retries next minute.
      */
     public void recheckAdmins() {
         for (EditorTokens.Token token : parts.tokens().list()) {
             token.admin().ifPresent((UUID admin) -> parts.host().admin(admin, (EditorHost.Admin status) -> {
-                if (status != EditorHost.Admin.NOT_ADMIN) return;
+                boolean stale = status == EditorHost.Admin.UNKNOWN && !token.adminChecked().plus(UNCONFIRMED_ADMIN).isAfter(parts.clock().instant());
+                if (status == EditorHost.Admin.UNKNOWN && !stale) return;
+                String cause = stale ? "after " + UNCONFIRMED_ADMIN.toDays() + " days without confirming animus.admin" : "after losing animus.admin";
                 try {
                     parts.host().files().execute(() -> {
                         try {
-                            if (!revoke(token.id(), "token-revoked", "after losing animus.admin").isEmpty())
-                                parts.audit().record(new EditorAudit.Entry("revoke", Optional.of(token.id()), Optional.of(admin), "server", "admin-check", List.of(), "animus.admin removed"));
+                            if (status == EditorHost.Admin.ADMIN) parts.tokens().confirmAdmin(token.id());
+                            else if (!revoke(token.id(), "token-revoked", cause).isEmpty())
+                                parts.audit().record(new EditorAudit.Entry("revoke", Optional.of(token.id()), Optional.of(admin), "server", "admin-check", List.of(),
+                                        stale ? "animus.admin unconfirmed" : "animus.admin removed"));
                         } catch (IOException failure) {
-                            System.getLogger("Animus").log(System.Logger.Level.WARNING, "Editor token revoke failed: " + failure.getMessage());
+                            System.getLogger("Animus").log(System.Logger.Level.WARNING, "Editor admin check failed: " + failure.getMessage());
                         }
                     });
                 } catch (RejectedExecutionException full) { /* The next minute retries. */ }

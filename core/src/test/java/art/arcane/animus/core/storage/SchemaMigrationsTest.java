@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
@@ -34,7 +35,7 @@ class SchemaMigrationsTest {
         try (DocumentStore store = new DocumentStore(root)) {
             store.commit(List.of(new DocumentStore.Change("npcs/test/a.json", "missing", document(1, ",\"name\":\"Bob\""))));
             SchemaMigrations.Report report = standard.apply(store);
-            assertNull(report.transaction());
+            assertTrue(report.transactions().isEmpty());
             assertTrue(report.migrated().isEmpty());
             assertTrue(report.problems().isEmpty());
             assertEquals(document(1, ",\"name\":\"Bob\""), store.read("npcs/test/a.json"));
@@ -48,15 +49,33 @@ class SchemaMigrationsTest {
                     new DocumentStore.Change("behaviors/greet.json", "missing", document(1, ""))));
             SchemaMigrations.Report report = synthetic(RENAME_NAME).apply(store);
             assertEquals(List.of("npcs/test/a.json"), report.migrated());
-            assertNotNull(report.transaction());
+            assertEquals(1, report.transactions().size());
             JsonObject migrated = JsonDocuments.object(store.read("npcs/test/a.json"));
             assertEquals(2, migrated.get("schemaVersion").getAsInt());
             assertEquals("Bob", migrated.get("title").getAsString());
             assertFalse(migrated.has("name"));
             assertEquals(document(1, ""), store.read("behaviors/greet.json"));
-            assertNotNull(store.read("backups/" + report.transaction() + ".json"));
-            store.rollback(report.transaction());
+            assertNotNull(store.read("backups/" + report.transactions().getFirst() + ".json"));
+            store.rollback(report.transactions().getFirst());
             assertEquals(original, store.read("npcs/test/a.json"));
+        }
+    }
+
+    @Test void apply_moreNpcsThanOneTransactionHolds_migratesInBatches() throws Exception {
+        int count = 2_001;
+        new DocumentStore(root).close();
+        Path npcs = Files.createDirectories(root.resolve("npcs/bulk")), pointers = Files.createDirectories(root.resolve("state/npc-definitions/last-valid/npcs/bulk"));
+        for (int i = 0; i < count; i++) {
+            Files.writeString(npcs.resolve("n" + i + ".json"), document(1, ",\"name\":\"Bob\""));
+            Files.writeString(pointers.resolve("n" + i + ".json"), "{}");
+        }
+        try (DocumentStore store = new DocumentStore(root)) {
+            SchemaMigrations.Report report = synthetic(RENAME_NAME).apply(store);
+            assertEquals(count, report.migrated().size());
+            assertTrue(report.problems().isEmpty(), report.problems().toString());
+            assertEquals(2, report.transactions().size(), "2,001 documents take two batches of at most 2,000");
+            assertEquals(2, JsonDocuments.object(store.read("npcs/bulk/n" + (count - 1) + ".json")).get("schemaVersion").getAsInt());
+            assertNull(store.read("state/npc-definitions/last-valid/npcs/bulk/n0.json"), "a migrated source drops its stale recovery copy");
         }
     }
 
@@ -67,7 +86,7 @@ class SchemaMigrationsTest {
             migrations.apply(store);
             String once = store.read("npcs/test/a.json");
             SchemaMigrations.Report again = migrations.apply(store);
-            assertNull(again.transaction());
+            assertTrue(again.transactions().isEmpty());
             assertTrue(again.migrated().isEmpty());
             assertEquals(once, store.read("npcs/test/a.json"));
         }
@@ -92,7 +111,7 @@ class SchemaMigrationsTest {
             store.commit(List.of(new DocumentStore.Change("npcs/test/a.json", "missing", original)));
             SchemaMigrations failing = synthetic((JsonObject document) -> { throw new IOException("synthetic step failed"); });
             SchemaMigrations.Report report = failing.apply(store);
-            assertNull(report.transaction());
+            assertTrue(report.transactions().isEmpty());
             assertTrue(report.migrated().isEmpty());
             assertEquals(1, report.problems().size());
             assertTrue(report.problems().getFirst().contains("synthetic step failed"));

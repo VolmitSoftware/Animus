@@ -2,6 +2,7 @@ package art.arcane.animus.core.editor.relay;
 
 import art.arcane.animus.core.config.EditorRelaySettings;
 import art.arcane.animus.core.editor.EditorIdentity;
+import art.arcane.animus.core.editor.EditorReplies;
 import art.arcane.animus.core.editor.transport.EditorEventSink;
 import art.arcane.animus.core.editor.transport.EditorEventStream;
 import art.arcane.animus.core.editor.transport.EditorRequest;
@@ -34,6 +35,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 
 /**
  * Connects this server out to the editor relay and answers the browser requests it forwards through the same
@@ -42,11 +44,22 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Runs on its own daemon thread and the JDK WebSocket threads and never touches world state; the handler does that on
  * its own lanes. Reconnects with jittered backoff, reads one frame at a time, and refuses frames over
- * {@code relayFrameBytes}. The relay can read everything it forwards (no end-to-end encryption yet).
+ * {@code relayFrameBytes}. Signs a browser's {@value #CHALLENGE_HEADER} so the editor can check it reached this key
+ * before it sends a token or pairing secret. The relay can still read everything it forwards (no end-to-end encryption
+ * yet).
  */
 public final class EditorRelayClient implements AutoCloseable {
     public static final int PROTOCOL = 1;
     public static final String CHALLENGE_PREFIX = "animus-relay/1 ";
+    /**
+     * What this server signs, followed by the browser's {@value #CHALLENGE_HEADER}, to prove to the editor that the relay
+     * reached the paired key. The prefix differs from {@link #CHALLENGE_PREFIX}, so neither signature passes as the other.
+     */
+    public static final String PROOF_PREFIX = "animus-editor-proof/1 ";
+    public static final String CHALLENGE_HEADER = "X-Animus-Challenge";
+    public static final String SERVER_KEY_HEADER = "X-Animus-Server-Key";
+    public static final String PROOF_HEADER = "X-Animus-Proof";
+    private static final Pattern NONCE = Pattern.compile("[A-Za-z0-9_-]{43}");
     private static final System.Logger LOG = System.getLogger("Animus");
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
     private static final int MAX_QUEUED_FRAMES = 1024;
@@ -245,7 +258,7 @@ public final class EditorRelayClient implements AutoCloseable {
                     case "challenge" -> {
                         if (number(frame, "protocol") != PROTOCOL) throw new IllegalArgumentException("relay protocol " + frame.get("protocol"));
                         String nonce = string(frame, "nonce");
-                        if (!nonce.matches("[A-Za-z0-9_-]{43}")) throw new IllegalArgumentException("challenge nonce");
+                        if (!NONCE.matcher(nonce).matches()) throw new IllegalArgumentException("challenge nonce");
                         JsonObject register = new JsonObject();
                         register.addProperty("type", "register");
                         register.addProperty("protocol", PROTOCOL);
@@ -303,7 +316,7 @@ public final class EditorRelayClient implements AutoCloseable {
                 respond(id, EditorResponse.error(503, "busy", "too many relayed requests"));
                 return;
             }
-            Route route = new Route(id);
+            Route route = new Route(id, proof(request));
             routes.put(id, route);
             boolean stream = request.method().equals("GET") && request.route().equals("/v1/events");
             CompletionStage<?> answered;
@@ -322,6 +335,13 @@ public final class EditorRelayClient implements AutoCloseable {
                 answered = CompletableFuture.completedFuture(null);
             }
             answered.whenComplete((Object result, Throwable failure) -> active.decrementAndGet());
+        }
+
+        /** Proof headers for a request with a well-formed {@value #CHALLENGE_HEADER}, else none. */
+        private Map<String, String> proof(EditorRequest request) {
+            return request.header(CHALLENGE_HEADER).filter((String challenge) -> NONCE.matcher(challenge).matches())
+                    .map((String challenge) -> Map.of(SERVER_KEY_HEADER, identity.serverKey(), PROOF_HEADER, identity.sign(PROOF_PREFIX + challenge)))
+                    .orElse(Map.of());
         }
 
         private EditorResponse internal(Throwable failure) {
@@ -422,10 +442,14 @@ public final class EditorRelayClient implements AutoCloseable {
         /** One request or event stream, keyed by the relay's id; it is also the stream's event sink. */
         private final class Route implements EditorEventSink {
             private final long id;
+            private final Map<String, String> proof;
             private boolean answered, streaming, cancelled;
             private Runnable onClose;
 
-            private Route(long id) { this.id = id; }
+            private Route(long id, Map<String, String> proof) {
+                this.id = id;
+                this.proof = proof;
+            }
 
             private void answer(EditorResponse response, boolean keep) {
                 synchronized (this) {
@@ -433,7 +457,7 @@ public final class EditorRelayClient implements AutoCloseable {
                     answered = true;
                 }
                 if (!keep) routes.remove(id, this);
-                boolean delivered = respond(id, response);
+                boolean delivered = respond(id, proof.isEmpty() ? response : EditorReplies.withHeaders(response, proof));
                 if (!keep) return;
                 if (!delivered) {
                     cancel();

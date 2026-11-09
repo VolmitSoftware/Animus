@@ -16,8 +16,10 @@ import '../info_tip.dart';
 import '../../config/docs_links.dart';
 
 /// `#/pair/<code>`: shows the server the code names and exchanges its
-/// one-time secret for a token. One column: the mark, the server's name, its
-/// fingerprint as the thing to check, the paths, the remember switch, Pair.
+/// one-time secret for a token. The code moves into memory and the address
+/// becomes `#/pair`, so the secret stays out of history. One column: the
+/// mark, the server's name, its fingerprint as the thing to check, the paths,
+/// the remember switch, Pair.
 class PairPage extends StatefulWidget {
   const PairPage({required this.code, required this.hub, required this.onPaired, super.key, this.now});
 
@@ -36,6 +38,7 @@ class PairPage extends StatefulWidget {
 const String newCodeStep = 'Run /animus editor pair again, then open or paste the new link.';
 
 class _PairPageState extends State<PairPage> {
+  String _code = '';
   PairingPayload? _payload;
   String? _invalid;
   String? _problem;
@@ -48,8 +51,11 @@ class _PairPageState extends State<PairPage> {
   @override
   void initState() {
     super.initState();
+    if (component.code.isEmpty) return;
+    _code = component.code;
+    replaceHistoryHash(const PairRoute().format());
     try {
-      _payload = decodePairingCode(component.code, component.hub.schemas);
+      _payload = decodePairingCode(_code, component.hub.schemas);
     } on PairingCodeError catch (invalid) {
       _invalid = invalid.message;
     }
@@ -61,7 +67,7 @@ class _PairPageState extends State<PairPage> {
       _problem = null;
     });
     try {
-      final String id = await component.hub.pair(component.code, remember: _remember, client: _client.trim());
+      final String id = await component.hub.pair(_code, remember: _remember, client: _client.trim());
       final String name = component.hub.server(id)?.name ?? id;
       if (component.hub.storageRefused) {
         ArcaneSonner.warning('Paired with $name for this tab only. The browser refused storage.');
@@ -162,6 +168,7 @@ class _PairPageState extends State<PairPage> {
 
   void _goTo(String code) {
     setState(() {
+      _code = code;
       _problem = null;
       _invalid = null;
       try {
@@ -171,10 +178,6 @@ class _PairPageState extends State<PairPage> {
         _invalid = invalid.message;
       }
     });
-    if (_payload != null) {
-      // The address keeps the code, so a reload shows the same server.
-      navigate(PairRoute(code).format());
-    }
   }
 }
 

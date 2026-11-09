@@ -2,7 +2,15 @@ package art.arcane.animus.api;
 
 import java.util.*;
 
-/** Trusted Java module contract. This declaration does not sandbox or authenticate code. */
+/**
+ * Trusted Java module contract. This declaration does not sandbox or authenticate code.
+ *
+ * @param id module id
+ * @param version module version
+ * @param api supported API range
+ * @param platforms platforms the module runs on
+ * @param dependencies ids of modules this one needs
+ */
 public record ModuleManifest(String id,Version version,ApiRange api,Set<Platform> platforms,List<Dependency> dependencies) {
     public record Dependency(String id,Version minimumInclusive,Version maximumExclusive) {
         public Dependency {ApiText.id(id);Objects.requireNonNull(minimumInclusive);Objects.requireNonNull(maximumExclusive);if(minimumInclusive.compareTo(maximumExclusive)>=0)throw new IllegalArgumentException("Empty dependency version range");}

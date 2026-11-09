@@ -27,6 +27,14 @@ public final class Integrations {
     /**
      * Combat has a target; a block change has none and its target position is the block. {@code player} is the
      * player who started a build. Categories are lowercase target categories such as {@code animals}.
+     *
+     * @param action action being checked
+     * @param actor party performing the action
+     * @param actorPosition position of the actor
+     * @param target party being acted on, if any
+     * @param targetPosition position of the target or block
+     * @param targetCategories lowercase target categories
+     * @param player player who started a build, if any
      */
     public record ProtectionRequest(ProtectionAction action,Party actor,Position actorPosition,Optional<Party> target,Position targetPosition,Set<String> targetCategories,Optional<UUID> player) {
         public ProtectionRequest {Objects.requireNonNull(action);Objects.requireNonNull(actor);Objects.requireNonNull(actorPosition);target=Objects.requireNonNull(target);Objects.requireNonNull(targetPosition);targetCategories=Set.copyOf(targetCategories);player=Objects.requireNonNull(player);}

@@ -271,7 +271,18 @@ public final class AnimusModRuntime {
         if (active.combat != null) active.combat.close();
         if (active.living != null) active.living.close();
         if (active.ticks != null) active.ticks.close();
-        if (active.runtime != null) active.runtime.closeAsync();
+        if (active.runtime != null) awaitClosed(active.runtime);
+    }
+
+    /** Waits, bounded, for queued writes and the final flushes, so the server does not exit while daemon file threads still write. */
+    private static void awaitClosed(AnimusRuntime closing) {
+        try {
+            if (!closing.closeAndWait(AnimusRuntime.SHUTDOWN_WAIT))
+                LOGGER.warn("File writes were still running {}s after stop; they keep going and the data folder stays locked until they end", AnimusRuntime.SHUTDOWN_WAIT.toSeconds());
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            LOGGER.warn("Stop was interrupted while file writes were finishing");
+        }
     }
 
     /** The web editor API, the same as on Bukkit: the embedded listener and the relay client, both off until config.toml enables them. */
@@ -283,7 +294,7 @@ public final class AnimusModRuntime {
         EditorService service = new EditorService(next.runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(next.runtime, files, next.living,
                 next.extensions, platform.name().toLowerCase(java.util.Locale.ROOT), "", features, new ModLookups(server)::read,
                 (ServerPlayer player) -> VanillaRuntimeHost.permitted(player.permissions(), "animus.admin"), new ModEditorNotices(server), LOGGER::info,
-                new ModEditorTerrain(server))), LOGGER::info, LOGGER::warn);
+                new ModEditorTerrain(server), (java.util.UUID player) -> ModOfflineAdmin.check(server, player))), LOGGER::info, LOGGER::warn);
         try {
             service.start();
             next.editor = service;

@@ -61,7 +61,7 @@ final class EditorHarness implements AutoCloseable {
         final List<String> presented = new ArrayList<>(), ended = new ArrayList<>();
         final Map<String, Consumer<String>> leave = new LinkedHashMap<>();
         final List<EditorNotice> notices = new java.util.concurrent.CopyOnWriteArrayList<>();
-        boolean online = true, previews = true, rejectFiles;
+        boolean online = true, previews = true, rejectFiles, commandGrants;
         Admin admin = Admin.ADMIN;
         List<String> activation = List.of(), reloadProblems = List.of();
         volatile EditorTerrain terrain;
@@ -88,6 +88,8 @@ final class EditorHarness implements AutoCloseable {
         @Override public List<Capabilities.Availability> capabilities() { return List.of(); }
 
         @Override public boolean online(UUID player) { return online; }
+
+        @Override public boolean commandGrants() { return commandGrants; }
 
         @Override public void admin(UUID player, Consumer<Admin> result) { result.accept(admin); }
 

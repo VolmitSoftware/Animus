@@ -69,12 +69,31 @@ public final class SpatialNpcIndex {
         return Optional.ofNullable(removed);
     }
 
-    /** chunkVisible must read an immutable platform snapshot; this method never loads terrain. */
-    public synchronized Scan scan(Query query, Cursor cursor, Budget budget, Predicate<ChunkPosition> chunkVisible) {
+    /**
+     * chunkVisible must read an immutable platform snapshot; this method never loads terrain. It is asked outside the
+     * index lock, once per occupied cell the scan may reach, so a platform check may take its own locks.
+     */
+    public Scan scan(Query query, Cursor cursor, Budget budget, Predicate<ChunkPosition> chunkVisible) {
         Objects.requireNonNull(query, "query"); Objects.requireNonNull(budget, "budget"); Objects.requireNonNull(chunkVisible, "chunkVisible");
         Vec3 center = query.center().point();
         Window window = new Window(query.center().world(), chunk(center.x() - query.radius()), chunk(center.x() + query.radius()),
                 chunk(center.z() - query.radius()), chunk(center.z() + query.radius()));
+        int start = cursor != null && cursor.window.equals(window) ? cursor.cell : 0;
+        Map<ChunkPosition, Boolean> visible = new HashMap<>();
+        for (ChunkPosition chunk : occupied(window, start, budget.maxCells())) visible.put(chunk, chunkVisible.test(chunk));
+        // A cell that filled after the visibility pass counts as not visible until the next scan.
+        return scan(query, window, cursor, budget, (ChunkPosition chunk) -> visible.getOrDefault(chunk, false));
+    }
+    private synchronized List<ChunkPosition> occupied(Window window, int start, int maxCells) {
+        List<ChunkPosition> found = new ArrayList<>();
+        for (int cell = start; cell < window.size() && cell - start < maxCells; cell++) {
+            ChunkPosition chunk = window.cell(cell);
+            if (chunks.containsKey(chunk)) found.add(chunk);
+        }
+        return found;
+    }
+    private synchronized Scan scan(Query query, Window window, Cursor cursor, Budget budget, Predicate<ChunkPosition> chunkVisible) {
+        Vec3 center = query.center().point();
         int cell = cursor != null && cursor.window.equals(window) ? cursor.cell : 0;
         UUID after = cursor != null && cursor.window.equals(window) ? cursor.after : null;
         int cellsVisited = 0, candidatesVisited = 0;

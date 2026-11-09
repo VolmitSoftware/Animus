@@ -303,4 +303,50 @@ void main() {
     expect(small.registerServer(_server, FakeSink()), isTrue);
     expect(small.registerServer('sha256:${'b' * 64}', FakeSink()), isFalse);
   });
+
+  test('should bound subscriptions from one address to one server', () {
+    final RelayBroker small = RelayBroker(
+      limits: const RelayLimits(maxAppsPerAddressPerServer: 2),
+    );
+    expect(
+      small.subscribeApp(FakeSink(), _server, address: '198.51.100.1'),
+      isNull,
+    );
+    expect(
+      small.subscribeApp(FakeSink(), _server, address: '198.51.100.1'),
+      isNull,
+    );
+    expect(
+      small.subscribeApp(FakeSink(), _server, address: '198.51.100.1'),
+      RelayErrorCode.capacity,
+    );
+    expect(
+      small.subscribeApp(FakeSink(), _server, address: '198.51.100.2'),
+      isNull,
+    );
+    expect(
+      small.subscribeApp(
+        FakeSink(),
+        'sha256:${'b' * 64}',
+        address: '198.51.100.1',
+      ),
+      isNull,
+    );
+  });
+
+  test(
+    'should count a browser as signed in once the server opens its stream',
+    () {
+      expect(broker.isSignedIn(browser), isFalse);
+      broker.routeFromApp(browser, _app(request(1, path: '/v1/hello')));
+      broker.routeFromAgent(_server, agent, _agent(_response(1)));
+      expect(broker.isSignedIn(browser), isFalse);
+      broker.routeFromApp(browser, _app(request(2, path: '/v1/events')));
+      broker.routeFromAgent(_server, agent, _agent(_response(2, 401)));
+      expect(broker.isSignedIn(browser), isFalse);
+      broker.routeFromApp(browser, _app(request(3, path: '/v1/events')));
+      broker.routeFromAgent(_server, agent, _agent(_response(3)));
+      expect(broker.isSignedIn(browser), isTrue);
+    },
+  );
 }

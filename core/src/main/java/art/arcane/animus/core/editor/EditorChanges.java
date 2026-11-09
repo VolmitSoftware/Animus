@@ -201,6 +201,10 @@ public final class EditorChanges {
             return new Outcome(409, body, Set.of(), false, false, new JsonArray(), new JsonArray());
         }
         if (writes.isEmpty()) throw new EditorError(EditorError.Code.NOT_FOUND, "Change " + changeId + " wrote no editor documents to undo.");
+        for (DocumentStore.Change write : writes) {
+            EditorDocuments.Location location = byPath.get(write.path());
+            if (write.content() != null) scopes.restores(location.kind(), location.id(), write.content());
+        }
         String transaction = UUID.randomUUID().toString();
         JsonArray versions = new JsonArray();
         result.values().forEach(versions::add);
@@ -211,8 +215,13 @@ public final class EditorChanges {
         return new Outcome(200, body, kinds, true, true, catalog, deleted);
     }
 
-    /** Checks that the token may apply every kind and NPC id of a change before an undo runs. */
-    @FunctionalInterface public interface ScopeCheck { void check(Set<DocumentKind> kinds, List<String> ids) throws EditorError; }
+    /** Checks that the token may apply every kind and NPC id of a change before an undo runs, and each document it restores. */
+    @FunctionalInterface public interface ScopeCheck {
+        void check(Set<DocumentKind> kinds, List<String> ids) throws EditorError;
+
+        /** Called for every document the undo writes back, before anything is written. */
+        default void restores(DocumentKind kind, String id, String content) throws EditorError {}
+    }
 
     /** {@code GET /v1/changes/{key}}. */
     public synchronized JsonObject status(String key) throws IOException {

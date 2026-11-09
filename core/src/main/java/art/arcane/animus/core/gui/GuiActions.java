@@ -108,8 +108,14 @@ public final class GuiActions<P, S> {
         ScreenHost<P, S> host = context.host();
         P player = context.player();
         switch (action) {
-            case GuiModel.Command command -> host.command(command.source() == GuiModel.CommandSource.PLAYER ? Optional.of(player) : Optional.empty(),
-                    command.command().render(scope));
+            case GuiModel.Command command -> {
+                if (command.source() == GuiModel.CommandSource.PLAYER) host.command(Optional.of(player), command.command().render(scope));
+                else {
+                    Optional<String> text = command.command().renderCommand(scope);
+                    if (text.isEmpty()) return false;
+                    host.command(Optional.empty(), text.get());
+                }
+            }
             case GuiModel.Sound sound -> host.sound(player, sound.sound(), sound.source(), sound.volume(), sound.pitch());
             case GuiModel.Message message -> host.message(player, RichText.colorize(message.message().render(scope)));
             case GuiModel.Title title -> host.title(player, RichText.colorize(title.title().render(scope)),

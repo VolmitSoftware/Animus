@@ -23,15 +23,26 @@ class StatusReplyTest {
         assertEquals("[Animus]: v0.1.0 on Paper 26.3 | 4 NPCs | NPC runtime ready [Details] [Docs]", PlainTextComponentSerializer.plainText().serialize(line.component()));
     }
 
+    @Test void aPlayerWithoutAdminGetsTheHeadlineButNotTheCountersAndSettings() {
+        List<Object> sent = new ArrayList<>();
+        AnimusCommandTree.status(actor(UUID.randomUUID(), sent, false), LINES, RUNTIME);
+        assertEquals(1, sent.size());
+        String shown = PlainTextComponentSerializer.plainText().serialize(((ChatLine) sent.getFirst()).component());
+        assertEquals("[Animus]: v0.1.0 on Paper 26.3 | 4 NPCs | NPC runtime ready [Docs]", shown);
+        assertFalse(((ChatLine) sent.getFirst()).console().contains("Settings in effect"));
+    }
+
     @Test void theConsoleGetsTheHeadlineCountersAndBudgets() {
         List<Object> sent = new ArrayList<>();
         AnimusCommandTree.status(actor(null, sent), LINES, RUNTIME);
         assertEquals(List.of("v0.1.0 on Paper 26.3 | 4 NPCs", RUNTIME, "Settings in effect: npcs on"), sent);
     }
 
-    private static CommandActor actor(UUID player, List<Object> sent) {
+    private static CommandActor actor(UUID player, List<Object> sent) { return actor(player, sent, true); }
+
+    private static CommandActor actor(UUID player, List<Object> sent, boolean admin) {
         return new CommandActor() {
-            @Override public boolean permitted(String node) { return true; }
+            @Override public boolean permitted(String node) { return admin || !node.equals(AnimusDirector.ADMIN); }
             @Override public void tell(String message) { sent.add(RichText.plain(message)); }
             @Override public void rich(ChatLine line) { sent.add(line); }
             @Override public Optional<UUID> player() { return Optional.ofNullable(player); }

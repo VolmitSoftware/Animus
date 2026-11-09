@@ -38,10 +38,14 @@ public final class BehaviorTemplate {
     }
     public String field(){return field;}
 
-    public String evaluate(BehaviorExpression.Environment environment){
+    public String evaluate(BehaviorExpression.Environment environment){return evaluate(environment,false);}
+    /** With {@code strict}, each hole's text must be {@link ArgumentTemplate#SAFE_TEXT}; the literal text around it is trusted. */
+    public String evaluate(BehaviorExpression.Environment environment,boolean strict){
         StringBuilder out=new StringBuilder();
         for(Object part:parts){
-            out.append(part instanceof BehaviorExpression hole?GuiExpression.text(hole.evaluate(environment)):(String)part);
+            String text=part instanceof BehaviorExpression hole?GuiExpression.text(hole.evaluate(environment)):(String)part;
+            if(strict&&part instanceof BehaviorExpression)ArgumentTemplate.requireSafe(text,field);
+            out.append(text);
             if(out.length()>BehaviorExpression.MAX_TEXT)throw new BehaviorExpression.Failed("behavior-expression-failed",field,"text exceeds "+BehaviorExpression.MAX_TEXT+" characters");
         }
         return out.toString();

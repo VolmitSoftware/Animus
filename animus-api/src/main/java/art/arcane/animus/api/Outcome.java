@@ -2,7 +2,14 @@ package art.arcane.animus.api;
 
 import java.util.*;
 
-/** Expected rejection and unavailable capability are distinct from execution failure. */
+/**
+ * Expected rejection and unavailable capability are distinct from execution failure.
+ *
+ * @param <T> value type
+ * @param status result status
+ * @param value result value when present
+ * @param diagnostics diagnostics explaining the result
+ */
 public record Outcome<T>(Status status,Optional<T> value,List<Diagnostic> diagnostics) {
     public enum Status { OK, INVALID, NOT_FOUND, CONFLICT, UNAVAILABLE, BUSY, CANCELLED, FAILED, TIMED_OUT }
     public Outcome {Objects.requireNonNull(status);value=Objects.requireNonNull(value);diagnostics=List.copyOf(diagnostics);if(status!=Status.OK && value.isPresent())throw new IllegalArgumentException("Rejected outcome cannot carry a value");}

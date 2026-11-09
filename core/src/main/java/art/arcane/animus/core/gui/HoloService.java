@@ -74,6 +74,16 @@ public final class HoloService<P, S> implements AutoCloseable {
     DisplayTransport<P> transport() { return transport; }
     public HoloCatalog catalog() { return catalog; }
     public Set<UUID> viewing() { return Set.copyOf(viewers.keySet()); }
+    /**
+     * True when no player needs {@link #tick}: the catalog has no hologram, and no player has a menu open, a delayed
+     * action, a hologram still drawn or a cooldown running. Any thread; a stale answer only delays one tick.
+     */
+    public boolean idle() {
+        if (closed) return true;
+        if (!catalog.holograms().isEmpty()) return false;
+        for (Viewer viewer : viewers.values()) if (viewer.busy()) return false;
+        return true;
+    }
 
     public String status() {
         HoloCatalog current = catalog;
@@ -95,7 +105,7 @@ public final class HoloService<P, S> implements AutoCloseable {
         private final Deque<Opened> history = new ArrayDeque<>();
         private MenuSession<P, S> menu;
         private Optional<UUID> menuNpc = Optional.empty();
-        private long tick;
+        private long tick, cooledAt;
         private boolean watched;
 
         private Viewer(P player) { this.player = player; this.id = host.id(player); }
@@ -107,8 +117,10 @@ public final class HoloService<P, S> implements AutoCloseable {
             Long until = cooldowns.get(key);
             if (until != null && until > tick) return false;
             cooldowns.put(key, tick + ticks);
+            cooledAt = Math.max(cooledAt, tick + ticks);
             return true;
         }
+        private boolean busy() { return menu != null || !pending.isEmpty() || !holograms.isEmpty() || cooledAt > tick; }
 
         boolean schedule(int ticks, Runnable work) {
             if (pending.size() >= MAXIMUM_PENDING) {

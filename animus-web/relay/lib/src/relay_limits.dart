@@ -25,6 +25,16 @@ final class RelayLimits {
 
   /// Browser connections subscribed to one server.
   final int maxAppsPerServer;
+
+  /// Browser connections from one address subscribed to one server, so one
+  /// address cannot take every [maxAppsPerServer] slot of a server.
+  final int maxAppsPerAddressPerServer;
+
+  /// Open `/agent` connections from one address, registered or not.
+  final int maxAgentConnectionsPerAddress;
+
+  /// Open `/app` connections from one address, subscribed or not.
+  final int maxAppConnectionsPerAddress;
   final int maxAgents;
   final int maxApps;
 
@@ -35,6 +45,10 @@ final class RelayLimits {
   final int maxAgentOutboundQueue;
   final Duration handshakeTimeout;
   final Duration subscriptionTimeout;
+
+  /// Time a subscribed browser has to open an event stream the server
+  /// accepts (which needs a valid token) before the relay closes it.
+  final Duration signInTimeout;
   final Duration requestTimeout;
   final Duration pingInterval;
 
@@ -47,12 +61,16 @@ final class RelayLimits {
     this.maxStreamsPerApp = 4,
     this.maxPendingGlobal = 4096,
     this.maxAppsPerServer = 64,
+    this.maxAppsPerAddressPerServer = 8,
+    this.maxAgentConnectionsPerAddress = 32,
+    this.maxAppConnectionsPerAddress = 64,
     this.maxAgents = 1000,
     this.maxApps = 4096,
     this.maxAppOutboundQueue = 256,
     this.maxAgentOutboundQueue = 1024,
     this.handshakeTimeout = const Duration(seconds: 10),
     this.subscriptionTimeout = const Duration(seconds: 10),
+    this.signInTimeout = const Duration(seconds: 30),
     this.requestTimeout = const Duration(seconds: 10),
     this.pingInterval = const Duration(seconds: 30),
   });
@@ -70,12 +88,26 @@ final class RelayLimits {
     _range(maxStreamsPerApp, 1, 64, 'maxStreamsPerApp');
     _range(maxPendingGlobal, maxPendingPerApp, 100000, 'maxPendingGlobal');
     _range(maxAppsPerServer, 1, 4096, 'maxAppsPerServer');
+    _range(maxAppsPerAddressPerServer, 1, 4096, 'maxAppsPerAddressPerServer');
+    _range(
+      maxAgentConnectionsPerAddress,
+      1,
+      100000,
+      'maxAgentConnectionsPerAddress',
+    );
+    _range(
+      maxAppConnectionsPerAddress,
+      1,
+      100000,
+      'maxAppConnectionsPerAddress',
+    );
     _range(maxAgents, 1, 100000, 'maxAgents');
     _range(maxApps, 1, 100000, 'maxApps');
     _range(maxAppOutboundQueue, 1, 65536, 'maxAppOutboundQueue');
     _range(maxAgentOutboundQueue, 1, 65536, 'maxAgentOutboundQueue');
     _duration(handshakeTimeout, 'handshakeTimeout');
     _duration(subscriptionTimeout, 'subscriptionTimeout');
+    _duration(signInTimeout, 'signInTimeout');
     _duration(requestTimeout, 'requestTimeout');
     _duration(pingInterval, 'pingInterval');
   }

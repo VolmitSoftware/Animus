@@ -218,6 +218,8 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
 
     public boolean commandAllowed(String behavior) { return settings.commandAllowed(behavior); }
 
+    public boolean rawTextAllowed(String behavior) { return settings.rawTextAllowed(behavior); }
+
     /**
      * A hotload of {@code [behaviors.actions]}: the command allow-lists and the default choice lifetime apply to the next
      * action; the queue, wait and choice budgets are adopted by their owners on the next tick or prompt. Lowered caps keep
@@ -728,7 +730,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         String identified = written.contains(PLAYER_TOKEN) ? written.replace(PLAYER_TOKEN, target(call).toString()) : written;
         Optional<UUID> named = identified.contains(PLAYER_NAME_TOKEN) ? Optional.of(target(call)) : Optional.empty();
         Supplier<String> work = () -> {
-            String command = withPlayerName(identified, named);
+            String command = withPlayerName(identified, named.map(this::commandSafeName));
             log.accept("Behavior command: behavior=" + behavior.get() + " npc=" + call.npc().uuid() + " as=" + source.name().toLowerCase(Locale.ROOT)
                     + player.map(id -> " player=" + id).orElse("") + " command=" + command.substring(0, Math.min(command.length(), MAXIMUM_LOGGED_COMMAND)));
             platform.runCommand(source, player, command);
@@ -948,6 +950,17 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         if (text(call.arguments, "audience").orElse("trigger").equals("nearby"))
             return new Audience(Optional.empty(), decimal(call.arguments, "radius").orElse(16));
         return new Audience(Optional.of(target(call)), 0);
+    }
+
+    /**
+     * Owner only. A name for a console command must be one word without quotes, brackets or selectors; Bedrock prefixes such as
+     * {@code .} and {@code *} pass.
+     */
+    private UUID commandSafeName(UUID player) {
+        Optional<String> name = platform.playerName(player);
+        if (name.isPresent() && !name.get().matches("[\\p{L}\\p{N}_.*-]{1,32}"))
+            throw new CapabilityRefusal(Outcome.Status.INVALID, "player-name-unsafe", "The triggering player's name cannot be written into a command");
+        return player;
     }
 
     /** Owner only. Replaces {player_name} with the player's current name. */

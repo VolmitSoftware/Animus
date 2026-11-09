@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:animus_relay/animus_relay.dart';
 import 'package:test/test.dart';
@@ -249,4 +250,221 @@ void main() {
       );
     },
   );
+
+  group('with tight limits', () {
+    late HttpServer tight;
+    late Uri tightBase;
+
+    setUp(() async {
+      tight = await startRelayServer(
+        port: 0,
+        address: '127.0.0.1',
+        allowedAppOrigins: const <String>[_origin],
+        limits: const RelayLimits(
+          maxFrameBytes: 1024,
+          maxAgentConnectionsPerAddress: 2,
+          maxAppConnectionsPerAddress: 2,
+          signInTimeout: Duration(milliseconds: 300),
+        ),
+      );
+      tightBase = Uri.parse('ws://127.0.0.1:${tight.port}/');
+    });
+
+    tearDown(() => tight.close(force: true));
+
+    Future<_Peer> open(
+      String path,
+      String forwardedFor, {
+      String? origin,
+    }) async {
+      final IOWebSocketChannel channel = IOWebSocketChannel.connect(
+        tightBase.resolve(path),
+        headers: <String, Object>{
+          'Origin': ?origin,
+          'X-Forwarded-For': forwardedFor,
+        },
+      );
+      await channel.ready;
+      return _Peer(channel);
+    }
+
+    test(
+      'should forward the address the front end appended, not the browser\'s',
+      () async {
+        final TestServer identity = await TestServer.create();
+        final IOWebSocketChannel agentChannel = IOWebSocketChannel.connect(
+          tightBase.resolve('/agent'),
+        );
+        await agentChannel.ready;
+        final _Peer agent = _Peer(agentChannel);
+        final Map<String, Object?> challenge = await agent.next();
+        agent.sendText(await identity.register(challenge['nonce']! as String));
+        await agent.next();
+        for (final (String header, String expected) in <(String, String)>[
+          ('6.6.6.6, 203.0.113.9', '203.0.113.9'),
+          ('203.0.113.7', '203.0.113.7'),
+          ('6.6.6.6, not-an-address', '127.0.0.1'),
+        ]) {
+          final _Peer browser = await open('/app', header, origin: _origin);
+          browser.send(<String, Object?>{
+            'type': 'subscribe',
+            'protocol': 1,
+            'fingerprint': identity.fingerprint,
+          });
+          await browser.next();
+          browser.send(request(1));
+          final Map<String, Object?> forwarded = await agent.next();
+          expect(
+            (forwarded['headers']! as Map<String, Object?>)['X-Forwarded-For'],
+            expected,
+            reason: header,
+          );
+          await browser.close();
+          await agent.next();
+        }
+      },
+    );
+
+    test('should refuse connections past the per-address limit', () async {
+      final List<_Peer> open2 = <_Peer>[
+        await open('/app', '198.51.100.1', origin: _origin),
+        await open('/app', '198.51.100.1', origin: _origin),
+        await open('/agent', '198.51.100.1'),
+        await open('/agent', '198.51.100.1'),
+      ];
+      await expectLater(
+        open('/app', '198.51.100.1', origin: _origin),
+        throwsA(anything),
+      );
+      await expectLater(open('/agent', '198.51.100.1'), throwsA(anything));
+      final _Peer other = await open('/app', '198.51.100.2', origin: _origin);
+      await open2.first.close();
+      await other.close();
+      final _Peer again = await _eventually(
+        () => open('/app', '198.51.100.1', origin: _origin),
+      );
+      await again.close();
+      for (final _Peer peer in open2.skip(1)) {
+        await peer.close();
+      }
+    });
+
+    test('should close a browser that does not sign in on time', () async {
+      final _Peer browser = await open('/app', '198.51.100.3', origin: _origin);
+      browser.send(<String, Object?>{
+        'type': 'subscribe',
+        'protocol': 1,
+        'fingerprint': 'sha256:${'c' * 64}',
+      });
+      expect((await browser.next())['type'], 'subscribed');
+      expect(
+        await browser.next(),
+        containsPair('code', RelayErrorCode.timeout),
+      );
+    });
+
+    for (final (String name, List<List<int>> frames)
+        in <(String, List<List<int>>)>[
+          (
+            'a frame header over the limit',
+            <List<int>>[
+              _frameHeader(fin: true, opcode: 1, length: 64 * 1024 * 1024),
+            ],
+          ),
+          (
+            'fragments that add up past the limit',
+            <List<int>>[
+              _frame(
+                fin: false,
+                opcode: 1,
+                payload: List<int>.filled(800, 0x61),
+              ),
+              _frame(
+                fin: false,
+                opcode: 0,
+                payload: List<int>.filled(800, 0x61),
+              ),
+            ],
+          ),
+        ]) {
+      test('should drop a connection that sends $name', () async {
+        final Socket socket = await Socket.connect('127.0.0.1', tight.port);
+        final Completer<void> closed = Completer<void>();
+        final BytesBuilder received = BytesBuilder();
+        socket.listen(
+          received.add,
+          onDone: closed.complete,
+          onError: (Object error) {
+            if (!closed.isCompleted) closed.complete();
+          },
+        );
+        socket.write(
+          'GET /agent HTTP/1.1\r\n'
+          'Host: 127.0.0.1:${tight.port}\r\n'
+          'Upgrade: websocket\r\n'
+          'Connection: Upgrade\r\n'
+          'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n'
+          'Sec-WebSocket-Version: 13\r\n\r\n',
+        );
+        await _eventually(() async {
+          if (!latin1.decode(received.toBytes()).contains('\r\n\r\n')) {
+            throw StateError('no upgrade yet');
+          }
+          return true;
+        });
+        for (final List<int> frame in frames) {
+          socket.add(frame);
+        }
+        await socket.flush();
+        await closed.future.timeout(const Duration(seconds: 3));
+        socket.destroy();
+      });
+    }
+  });
 }
+
+/// Retries [attempt] until it succeeds or two seconds pass.
+Future<T> _eventually<T>(Future<T> Function() attempt) async {
+  final Stopwatch clock = Stopwatch()..start();
+  while (true) {
+    try {
+      return await attempt();
+    } on Object {
+      if (clock.elapsed > const Duration(seconds: 2)) rethrow;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+  }
+}
+
+/// A masked client frame header announcing [length] payload bytes.
+List<int> _frameHeader({
+  required bool fin,
+  required int opcode,
+  required int length,
+}) {
+  final BytesBuilder bytes = BytesBuilder()..addByte((fin ? 0x80 : 0) | opcode);
+  if (length < 126) {
+    bytes.addByte(0x80 | length);
+  } else if (length < 65536) {
+    bytes
+      ..addByte(0x80 | 126)
+      ..add(<int>[length >> 8, length & 0xff]);
+  } else {
+    bytes.addByte(0x80 | 127);
+    for (int shift = 56; shift >= 0; shift -= 8) {
+      bytes.addByte((length >> shift) & 0xff);
+    }
+  }
+  bytes.add(const <int>[0, 0, 0, 0]);
+  return bytes.toBytes();
+}
+
+/// A whole masked client frame (a zero mask leaves [payload] as is).
+List<int> _frame({
+  required bool fin,
+  required int opcode,
+  required List<int> payload,
+}) => <int>[
+  ..._frameHeader(fin: fin, opcode: opcode, length: payload.length),
+  ...payload,
+];

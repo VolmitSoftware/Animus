@@ -16,7 +16,10 @@ import java.util.function.Consumer;
  * API lives in core. Methods without a thread note may be called from any thread and must not block.
  */
 public interface EditorHost {
-    /** Whether the issuing admin still holds {@code animus.admin}. {@code UNKNOWN} keeps the token, as for an offline player. */
+    /**
+     * Whether the issuing admin still holds {@code animus.admin}. {@code UNKNOWN} keeps the token, for at most
+     * {@link EditorApi#UNCONFIRMED_ADMIN} after the last {@code ADMIN} answer.
+     */
     enum Admin { ADMIN, NOT_ADMIN, UNKNOWN }
 
     /** One entry of {@code GET /v1/capabilities}. */
@@ -59,8 +62,14 @@ public interface EditorHost {
 
     boolean online(UUID player);
 
-    /** Reports whether the player still holds {@code animus.admin}, on any thread. */
+    /** Reports whether the player still holds {@code animus.admin}, online or offline where the platform can tell, on any thread. */
     void admin(UUID player, Consumer<Admin> result);
+
+    /**
+     * Whether {@code [behaviors.actions]} lets any behavior or namespace run commands. While it does, an editor import could
+     * install a document that runs them, so import steps need {@code apply:commands}.
+     */
+    default boolean commandGrants() { return true; }
 
     /** Problems that stop an NPC definition from activating, checked where the platform requires. */
     CompletionStage<List<String>> activationProblems(NpcDefinition definition);

@@ -35,7 +35,7 @@ class EngineBridgeTest {
         Runnable queued=()->{fail("Cancelled task ran");pending.complete("bad");};
         try{
             executor.execute(()->{started.countDown();release(finish);order.add("running-finished");});release(started);executor.execute(queued);
-            lane.close();assertEquals(1,lane.status().queuedEngineNotifications());assertFalse(pending.isDone());
+            lane.close(Duration.ZERO);assertEquals(1,lane.status().queuedMutations());assertFalse(pending.isDone());
             assertFalse(lane.awaitCleanup(Duration.ZERO));finish.countDown();assertTrue(lane.awaitCleanup(Duration.ofSeconds(1)));
             assertTrue(pending.isCancelled());assertSame(queued,observed.get());assertNotSame(Thread.currentThread(),observerThread.get());
             assertEquals(List.of("running-finished","cancel-notice","cleanup"),order);assertEquals(1,lane.status().cancelledEngineTasks());

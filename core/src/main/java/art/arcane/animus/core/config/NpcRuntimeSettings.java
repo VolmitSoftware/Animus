@@ -4,7 +4,9 @@ import art.arcane.animus.core.presentation.BodyRules;
 
 /**
  * Plugin-wide runtime budgets; definitions and state remain separate JSON documents. {@code packetsPerTick} is the NPC
- * packet work of one tick shared by every viewer (per region on Folia), {@code pendingSpawnsPerViewer} the spawns one
+ * packet work of one tick, split evenly across the {@code updatesPerTick} viewers updated (per region on Folia); the
+ * defaults give about five packets per player per tick at 100 players, and each viewer's own {@code queuePerViewer} and
+ * {@code pendingSpawnsPerViewer} still bound what one connection receives. {@code pendingSpawnsPerViewer} is the spawns one
  * viewer may have unacknowledged, and {@code lookUpdatesPerTick} the look-close NPCs that may turn in one tick.
  * {@code simulationPerTick} is the NPC upkeep of one tick (idle falls and rig playback, per region on Folia),
  * {@code queuePerViewer} the packet operations one viewer may have unsent, and {@code degradedIntervalTicks} how far apart
@@ -16,7 +18,7 @@ import art.arcane.animus.core.presentation.BodyRules;
 public record NpcRuntimeSettings(boolean enabled, int viewDistance, int maximumVisible, int maximumViewers, int updatesPerTick,
                                  int packetsPerTick, int pendingSpawnsPerViewer, int lookUpdatesPerTick,
                                  int simulationPerTick, int queuePerViewer, int degradedIntervalTicks) {
-    public static final NpcRuntimeSettings DEFAULT = new NpcRuntimeSettings(true, 48, 64, 256, 16, 32, 8, 32, 512, 24, 4);
+    public static final NpcRuntimeSettings DEFAULT = new NpcRuntimeSettings(true, 48, 64, 256, 64, 512, 8, 32, 512, 24, 4);
     public NpcRuntimeSettings {
         if (viewDistance < 8 || viewDistance > 256 || maximumVisible < 1 || maximumVisible > 128
                 || maximumViewers < 1 || maximumViewers > 1024 || updatesPerTick < 1 || updatesPerTick > 64

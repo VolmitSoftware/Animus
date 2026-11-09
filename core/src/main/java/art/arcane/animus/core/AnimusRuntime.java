@@ -32,6 +32,12 @@ import java.util.function.Consumer;
 /** Owns durable state and the one file-mutation lane used by platform commands and extensions. */
 public final class AnimusRuntime implements AutoCloseable {
     private static final Pattern TRANSACTION_ID = Pattern.compile("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}");
+    /** How long a stop waits for queued writes, the final flushes and the storage lock release before it gives up and logs. */
+    public static final Duration SHUTDOWN_WAIT = Duration.ofSeconds(30);
+    /** How often rollback receipts rotate and unnamed generated objects are removed while the server runs. */
+    private static final Duration MAINTENANCE_INTERVAL = Duration.ofHours(6);
+    /** A generated object younger than this may belong to a write still in progress, so maintenance keeps it. */
+    private static final Duration OBJECT_GRACE = Duration.ofDays(1);
     private final RuntimeEnvironment environment;
     private final Consumer<Throwable> cleanupFailureObserver;
     private volatile PluginSettings settings;
@@ -44,6 +50,7 @@ public final class AnimusRuntime implements AutoCloseable {
     private BehaviorStateStore behaviorState;
     private volatile art.arcane.animus.core.migration.CitizensDropIn.Host importHost = art.arcane.animus.core.migration.CitizensDropIn.Host.NONE;
     private RigLibrary rigs;
+    private java.util.concurrent.ScheduledExecutorService maintenance;
     private final art.arcane.animus.core.extension.ModuleHooks moduleHooks = new art.arcane.animus.core.extension.ModuleHooks();
     private volatile CatalogReloads catalogs = CatalogReloads.NONE;
     private volatile art.arcane.animus.core.text.Placeholders placeholders = art.arcane.animus.core.text.Placeholders.NONE;
@@ -75,7 +82,9 @@ public final class AnimusRuntime implements AutoCloseable {
         try {
             PluginSettings loaded = PluginSettings.load(opened);
             migrateSchemas(opened);
+            sweepPreviews(opened);
             rotateBackups(opened, loaded.files());
+            collectObjects(opened);
             NpcRepository repository = new NpcRepository(opened);
             repository.loadForStartup();
             BehaviorStateStore state = BehaviorStateStore.open(opened, loaded.behaviors().state());
@@ -92,6 +101,7 @@ public final class AnimusRuntime implements AutoCloseable {
             definitions = facade;
             behaviorState = state;
             rigs = rigLibrary;
+            maintenance = scheduleMaintenance(lane);
             cleanupFailure = null;
             closing = false;
             settings = loaded;
@@ -103,7 +113,7 @@ public final class AnimusRuntime implements AutoCloseable {
         SchemaMigrations.Report report = SchemaMigrations.standard().apply(store);
         System.Logger log = System.getLogger("Animus");
         if (!report.migrated().isEmpty())
-            log.log(System.Logger.Level.INFO, "Migrated " + report.migrated().size() + " documents to the current schema; rollback " + report.transaction());
+            log.log(System.Logger.Level.INFO, "Migrated " + report.migrated().size() + " documents to the current schema; rollback " + String.join(", ", report.transactions()));
         for (String problem : report.problems()) log.log(System.Logger.Level.WARNING, "Schema migration: " + problem);
     }
 
@@ -123,29 +133,91 @@ public final class AnimusRuntime implements AutoCloseable {
         }
     }
 
-    /** Initiate shutdown without blocking a platform owner. A running durable operation is not interrupted. */
+    /** Initiate shutdown without blocking. Queued writes drain and a running durable operation is not interrupted. */
     public synchronized void closeAsync() {
         if (settings == null || closing) return;
         closing = true;
         AnimusLog.shared().flush();
+        maintenance.shutdownNow();
         definitions.close();
         fileWork.close();
     }
 
-    /** For standalone owners/tests. Platform shutdown uses closeAsync; never call this from the file worker. */
-    @Override public void close() {
+    /**
+     * Initiates shutdown, then waits up to {@code timeout} for queued writes, the final behavior state flush and the
+     * storage lock release. False when they are still finishing; never call this from the file worker.
+     */
+    public boolean closeAndWait(Duration timeout) throws InterruptedException {
         MutationLane lane;
         synchronized (this) { closeAsync(); lane = fileWork; }
-        if (lane == null) return;
+        return lane == null || lane.awaitCleanup(timeout);
+    }
+
+    /** For standalone owners and tests: {@link #closeAndWait} for {@link #SHUTDOWN_WAIT}, failing when cleanup did not finish or failed. */
+    @Override public void close() {
         try {
-            if (!lane.awaitCleanup(Duration.ofSeconds(5)))
+            if (!closeAndWait(SHUTDOWN_WAIT))
                 throw new IllegalStateException("File worker is still finishing; storage remains owned until cleanup completes");
         } catch (InterruptedException failure) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted while waiting for file cleanup; shutdown remains pending", failure);
         }
-        if (lane.status().cleanupState() != MutationLane.CleanupState.SUCCEEDED)
+        MutationLane lane;
+        synchronized (this) { lane = fileWork; }
+        if (lane != null && lane.status().cleanupState() != MutationLane.CleanupState.SUCCEEDED)
             throw new IllegalStateException("File cleanup failed", cleanupFailure);
+    }
+
+    /** One daemon timer that only queues {@link #maintain} on the file lane, so maintenance never races a write. */
+    private java.util.concurrent.ScheduledExecutorService scheduleMaintenance(MutationLane lane) {
+        java.util.concurrent.ScheduledExecutorService timer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor((Runnable job) -> {
+            Thread thread = new Thread(job, "Animus-maintenance");
+            thread.setDaemon(true);
+            return thread;
+        });
+        Executor files = lane.executor((Runnable task, MutationLane.EngineTaskEvent event, Throwable failure) -> {
+            if (event == MutationLane.EngineTaskEvent.FAILED) System.getLogger("Animus").log(System.Logger.Level.WARNING, "File maintenance failed: " + failure);
+        });
+        long every = MAINTENANCE_INTERVAL.toMinutes();
+        timer.scheduleAtFixedRate(() -> {
+            try { files.execute(this::maintain); }
+            catch (java.util.concurrent.RejectedExecutionException busy) { /* Busy or stopping: the next interval tries again. */ }
+        }, every, every, java.util.concurrent.TimeUnit.MINUTES);
+        return timer;
+    }
+
+    /** Rotates rollback receipts and removes generated objects nothing names. Runs on the file lane. */
+    void maintain() {
+        DocumentStore store;
+        FileWorkSettings files;
+        synchronized (this) {
+            if (documents == null || settings == null) return;
+            store = documents;
+            files = settings.files();
+        }
+        rotateBackups(store, files);
+        collectObjects(store);
+    }
+
+    /** Import staging folders left by a stop mid-import; nothing imports yet at startup. */
+    private static void sweepPreviews(DocumentStore store) {
+        System.Logger log = System.getLogger("Animus");
+        try {
+            int removed = store.removeStalePreviews();
+            if (removed > 0) log.log(System.Logger.Level.INFO, "Removed " + removed + " unfinished import previews under imports/");
+        } catch (IOException | RuntimeException failure) {
+            log.log(System.Logger.Level.WARNING, "Import preview cleanup skipped: " + failure.getMessage());
+        }
+    }
+
+    private static void collectObjects(DocumentStore store) {
+        System.Logger log = System.getLogger("Animus");
+        try {
+            int removed = store.collectObjects(OBJECT_GRACE, Instant.now());
+            if (removed > 0) log.log(System.Logger.Level.INFO, "Removed " + removed + " stored copies under state/objects/ that nothing names any more");
+        } catch (IOException | RuntimeException failure) {
+            log.log(System.Logger.Level.WARNING, "Stored copy cleanup skipped: " + failure.getMessage());
+        }
     }
 
     /** Only the lane invokes this hook, after mutation and internal cancellation work have ended. */
@@ -157,7 +229,7 @@ public final class AnimusRuntime implements AutoCloseable {
             finally { if (owned != null) owned.close(); }
         }
         catch (IOException failure) { throw new UncheckedIOException(failure); }
-        finally { documents = null; npcs = null; definitions = null; settings = null; behaviorState = null; rigs = null; }
+        finally { documents = null; npcs = null; definitions = null; settings = null; behaviorState = null; rigs = null; maintenance = null; }
     }
 
     public synchronized Executor fileExecutor(MutationLane.EngineTaskObserver observer) {

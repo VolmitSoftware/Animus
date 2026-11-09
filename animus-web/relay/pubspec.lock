@@ -258,7 +258,7 @@ packages:
     source: hosted
     version: "1.2.0"
   shelf_web_socket:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: shelf_web_socket
       sha256: "3632775c8e90d6c9712f883e633716432a27758216dfb61bd86a8321c0580925"
@@ -298,7 +298,7 @@ packages:
     source: hosted
     version: "1.12.2"
   stream_channel:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: stream_channel
       sha256: "969e04c80b8bcdf826f8f16579c7b14d780458bd97f56d107d3950fdbeef059d"
