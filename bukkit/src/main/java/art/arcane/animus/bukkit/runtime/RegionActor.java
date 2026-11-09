@@ -728,7 +728,7 @@ final class RegionActor implements RegionOwner.Body {
     void lookAt(WorldPosition target) {
         WorldPosition from = state.snapshot().position();
         if (!from.world().equals(target.world()) || from.point().distance(target.point()) > 64)
-            throw new IllegalArgumentException("Look target must be within64 blocks in the same world");
+            throw new IllegalArgumentException("Look target must be within 64 blocks in the same world");
         Optional<LookClose.Facing> facing = LookClose.facing(LookClose.eye(from.point(), bodyHeight()), target.point());
         if (facing.isEmpty()) return;
         setPose(facing.get().yaw(), facing.get().pitch(), onGround);

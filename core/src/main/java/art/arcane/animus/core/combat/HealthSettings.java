@@ -111,6 +111,16 @@ public record HealthSettings(boolean killable, Defense defense, Death death, Res
         return dead != null && dead.isJsonPrimitive() && dead.getAsJsonPrimitive().isBoolean() && dead.getAsBoolean();
     }
 
+    /**
+     * The NPC's maximum health: {@code maximumHealth}, else the {@code max_health} attribute, else 20. It holds whether or
+     * not the NPC is killable or fights, so the live body and its health readouts follow the setting.
+     */
+    public static double maximum(JsonObject definition) {
+        JsonElement modules = definition.get("modules");
+        JsonObject known = modules != null && modules.isJsonObject() ? modules.getAsJsonObject() : new JsonObject();
+        return parse(module(known).orElseGet(JsonObject::new), NpcAttributes.of(definition)).defense().maximumHealth();
+    }
+
     public static HealthSettings parse(JsonObject module, NpcAttributes attributes) {
         CombatSettings.Reader root = new CombatSettings.Reader(module, ROOT);
         root.known("killable", "maximumHealth", "armor", "armorFromEquipment", "invulnerableTicks", "knockback", "regenerate", "regenerateTicks",

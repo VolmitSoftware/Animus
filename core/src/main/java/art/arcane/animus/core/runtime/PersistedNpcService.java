@@ -389,7 +389,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         Value value = navigable(id); Objects.requireNonNull(target);
         WorldPosition from = value.state.snapshot().position();
         if (!from.world().equals(target.world()) || from.point().distance(target.point()) > 64)
-            throw new IllegalArgumentException("Look target must be within64 blocks in the same world");
+            throw new IllegalArgumentException("Look target must be within 64 blocks in the same world");
         LookClose.facing(LookClose.eye(from.point(), bodyHeight(value)), target.point())
                 .ifPresent((LookClose.Facing facing) -> setPose(value, facing.yaw(), facing.pitch(), value.onGround));
     }

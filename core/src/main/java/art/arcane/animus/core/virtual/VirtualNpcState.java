@@ -93,11 +93,14 @@ public final class VirtualNpcState {
         return reconfigured(next, width, height, maximumHealth);
     }
 
-    /** As above, with a new maximum. Current health never rises, and falls only to fit the new maximum. */
+    /**
+     * As above, with a new maximum. Raising it keeps the same fraction of health, so a full NPC fills to the new maximum;
+     * lowering it clamps current health to fit. A dead NPC stays dead.
+     */
     public synchronized VirtualNpcState reconfigured(WorldPosition next, double width, double height, double newMaximumHealth) {
         if (revision == Long.MAX_VALUE) throw new IllegalStateException("Runtime revision exhausted");
         VirtualNpcState copy = new VirtualNpcState(npcId, next, width, height, newMaximumHealth);
-        copy.health = Math.min(health, newMaximumHealth);
+        copy.health = newMaximumHealth > maximumHealth ? health * newMaximumHealth / maximumHealth : Math.min(health, newMaximumHealth);
         copy.active = active;
         copy.revision = revision + 1;
         return copy;

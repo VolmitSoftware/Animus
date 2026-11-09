@@ -15,7 +15,7 @@ public final class RouteDocuments {
         Path path = documents.resolve("routes/" + reference + ".json");
         byte[] bytes;
         try (var input = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS)) { bytes = input.readNBytes(64 * 1024 + 1); }
-        if (bytes.length > 64 * 1024) throw new IOException("Reusable route exceeds64 KiB");
+        if (bytes.length > 64 * 1024) throw new IOException("Reusable route exceeds 64 KiB");
         return WaypointSettings.document(StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString());
     }
 }

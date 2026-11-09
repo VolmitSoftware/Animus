@@ -1,6 +1,6 @@
 package art.arcane.animus.core.runtime;
 
-import art.arcane.animus.core.combat.CombatSettings;
+import art.arcane.animus.core.combat.HealthSettings;
 import art.arcane.animus.core.navigation.BlockPos;
 import art.arcane.animus.core.navigation.BodyTerrain;
 import art.arcane.animus.core.navigation.LongLeg;
@@ -36,7 +36,7 @@ public final class RouteRules {
      * a time.
      */
     public static void validateLeg(WorldPosition origin, WorldPosition destination, MovementProfile.Mode mode, double speed, double hullWidth, double hullHeight) {
-        if (!Double.isFinite(speed) || speed < 1 || speed > MAXIMUM_SPEED) throw new IllegalArgumentException("Navigation speed must be1..10 blocks/second");
+        if (!Double.isFinite(speed) || speed < 1 || speed > MAXIMUM_SPEED) throw new IllegalArgumentException("Navigation speed must be 1..10 blocks/second");
         if (!origin.world().equals(destination.world())) throw new IllegalArgumentException("Navigation requires the same world");
         // The origin may rest on a partial surface (path, farmland, slab) where an earlier route ended; the goal names a block.
         if (mode == MovementProfile.Mode.WALK && destination.point().y() != Math.rint(destination.point().y()))
@@ -82,7 +82,7 @@ public final class RouteRules {
         return segment ? "kinematic; live collision revalidation; long leg segment" : "kinematic; live collision revalidation";
     }
     public static double maximumHealth(DefinitionSpec<?> spec) {
-        return CombatSettings.active(spec.definition()).map((CombatSettings combat) -> combat.health().defense().maximumHealth()).orElse(20.0);
+        return HealthSettings.maximum(spec.definition().json());
     }
     /** The body size multiplier: hitbox, reach and path clearance follow it, as the viewers' clients draw it. */
     public static double scale(DefinitionSpec<?> spec) { return spec.appearance().traits().attributes().scale(); }
