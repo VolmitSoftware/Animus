@@ -5,7 +5,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SplashScreenTest {
-    private static final SplashScreen.Details READY = new SplashScreen.Details("0.1.0", "Paper 26.3-12-abc1234", true, 25, "2026-11-07");
+    private static final SplashScreen.Details READY = new SplashScreen.Details("0.1.0", "Paper 26.3-12-abc1234", SplashScreen.Startup.READY, 25, "2026-11-07");
 
     @Test void colorizeSwitchesOnlyWhenTheGlyphKindChanges() {
         assertEquals("[F]██[E]╗ [F]█[E]╔═╝", SplashScreen.colorize("██╗ █╔═╝", "[F]", "[E]"));
@@ -26,8 +26,10 @@ class SplashScreenTest {
         assertTrue(lines.get(4).endsWith("   Server: Paper 26.3-12-abc1234 | MC Support: " + BuildIdentity.MINECRAFT_VERSIONS.getFirst() + " - "
                 + BuildIdentity.MINECRAFT_VERSIONS.getLast()), lines.get(4));
         assertTrue(lines.get(5).endsWith("   Java: 25 | Date: 2026-11-07"), lines.get(5));
-        assertTrue(SplashScreen.render(new SplashScreen.Details("0.1.0", "Fabric 26.3", false, 25, "2026-11-07"), SplashScreen.Colors.PLAIN)
-                .contains("| Startup: DEGRADED\n"));
+        assertTrue(SplashScreen.render(new SplashScreen.Details("0.1.0", "Fabric 26.3", SplashScreen.Startup.degraded(List.of("behaviors", "editor")), 25, "2026-11-07"),
+                SplashScreen.Colors.PLAIN).contains("| Startup: DEGRADED (behaviors, editor)\n"));
+        assertTrue(SplashScreen.render(new SplashScreen.Details("0.1.0", "Fabric 26.3", SplashScreen.Startup.FAILED, 25, "2026-11-07"), SplashScreen.Colors.PLAIN)
+                .contains("| Startup: FAILED (the error is above)\n"));
     }
 
     @Test void miniMessageTagsUseThePinkPaletteAndGreenOnlyForReady() {
@@ -36,9 +38,9 @@ class SplashScreenTest {
         assertTrue(banner.contains("<#ff4fa3>╗"), "bright pink edge");
         assertTrue(banner.contains("<#55ff55>READY"));
         assertFalse(banner.contains("<#ff5555>"), "red is for a degraded start");
-        assertTrue(SplashScreen.render(new SplashScreen.Details("0.1.0", "Paper", false, 25, "2026-11-07"), SplashScreen.Colors.MINIMESSAGE)
-                .contains("<#ff5555>DEGRADED"));
-        assertTrue(SplashScreen.render(new SplashScreen.Details("0.1.0", "Odd <red>build", true, 25, "2026-11-07"), SplashScreen.Colors.MINIMESSAGE)
+        assertTrue(SplashScreen.render(new SplashScreen.Details("0.1.0", "Paper", SplashScreen.Startup.degraded(List.of("shops")), 25, "2026-11-07"), SplashScreen.Colors.MINIMESSAGE)
+                .contains("<#ff5555>DEGRADED (shops)"));
+        assertTrue(SplashScreen.render(new SplashScreen.Details("0.1.0", "Odd <red>build", SplashScreen.Startup.READY, 25, "2026-11-07"), SplashScreen.Colors.MINIMESSAGE)
                 .contains("Odd \\<red>build"), "server text is never read as a tag");
     }
 

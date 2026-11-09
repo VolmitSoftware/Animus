@@ -92,7 +92,7 @@ public final class ApplicationChecks {
                 JsonObject manifest=JsonDocuments.object(Files.readString(copy.report())).getAsJsonObject("documents");
                 String object=manifest.entrySet().iterator().next().getValue().getAsJsonObject().get("objectHash").getAsString();
                 Files.writeString(store.resolve("state/objects/import-applications/"+object+".json"),"{}");
-                rejects(()->ImportApplications.apply(store,converted.id(),copy.applicationId()),"hash changed");
+                rejects(()->ImportApplications.apply(store,converted.id(),copy.applicationId()),"stored copy state/objects/");
                 check(store.read("npcs/copy-copy/citizens-1-copy.json")==null,"tampered object installs nothing");
             }
             try(DocumentStore store=new DocumentStore(root.resolve("new-collision"))){

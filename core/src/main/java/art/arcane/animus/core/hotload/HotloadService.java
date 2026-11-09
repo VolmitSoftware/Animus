@@ -51,13 +51,19 @@ public final class HotloadService implements AutoCloseable {
      * @param living the NPC runtime, for the activation check an NPC edit gets in the editor too
      * @param console runs work on the server's console owner (the main thread, or Folia's global region); rejects when it cannot
      * @param refreshScreens re-renders open shop and GUI windows, on their owners
+     * @param log what was applied, at INFO
+     * @param warn a refused edit, an ignored config key and a failed poll, at WARN, so an admin's dropped edit is never missed
      */
-    public record Parts(AnimusRuntime runtime, Executor files, Executor console, NpcRuntime<?, ?> living, OperatorChannel operators, Runnable refreshScreens, Consumer<String> log) {
+    public record Parts(AnimusRuntime runtime, Executor files, Executor console, NpcRuntime<?, ?> living, OperatorChannel operators, Runnable refreshScreens,
+                        Consumer<String> log, Consumer<String> warn) {
         public Parts {
             Objects.requireNonNull(runtime); Objects.requireNonNull(files); Objects.requireNonNull(console); Objects.requireNonNull(living);
-            Objects.requireNonNull(operators); Objects.requireNonNull(refreshScreens); Objects.requireNonNull(log);
+            Objects.requireNonNull(operators); Objects.requireNonNull(refreshScreens); Objects.requireNonNull(log); Objects.requireNonNull(warn);
         }
     }
+
+    /** Above this many applied files in one poll, the log gets one summary line instead of a line per file. */
+    static final int LISTED_FILES = 5;
 
     private record Item(HotloadEngine.Snapshot snapshot, HotloadTargets.Target target, HotloadValidation.Verdict verdict) {
         Item refused(String error) { return new Item(snapshot, target, HotloadValidation.Verdict.refused(error)); }
@@ -88,7 +94,7 @@ public final class HotloadService implements AutoCloseable {
         });
         worker.scheduleWithFixedDelay(() -> {
             try { cycle(); }
-            catch (RuntimeException | LinkageError failure) { parts.log().accept("Hotload poll failed: " + failure); }
+            catch (RuntimeException | LinkageError failure) { parts.warn().accept("Hotload poll failed: " + failure); }
         }, 0, POLL_MILLIS, TimeUnit.MILLISECONDS);
     }
 
@@ -118,16 +124,16 @@ public final class HotloadService implements AutoCloseable {
             engine.clear();
             watchingAll = settings.enabled();
             try { engine.prime(); }
-            catch (IOException failure) { parts.log().accept("Hotload could not read the data folder: " + failure.getMessage()); return; }
+            catch (IOException failure) { parts.warn().accept("Hotload could not read the data folder: " + failure.getMessage()); return; }
             primed = true;
             return;
         }
         List<HotloadEngine.Snapshot> snapshots;
         try { snapshots = engine.poll(settings.readsPerPoll()); }
-        catch (IOException failure) { parts.log().accept("Hotload scan failed: " + failure.getMessage()); return; }
+        catch (IOException failure) { parts.warn().accept("Hotload scan failed: " + failure.getMessage()); return; }
         if (source.truncated() && !warnedTruncated) {
             warnedTruncated = true;
-            parts.log().accept("Hotload watches at most " + settings.maximumFiles() + " files ([hotload] maximumFiles); edits to the rest need /animus reload");
+            parts.warn().accept("Hotload watches at most " + settings.maximumFiles() + " files ([hotload] maximumFiles); edits to the rest need /animus reload");
         }
         if (!snapshots.isEmpty()) apply(snapshots);
     }
@@ -162,6 +168,7 @@ public final class HotloadService implements AutoCloseable {
             } else reported = problems.get();
         }
         boolean screens = false;
+        List<String> applied = new ArrayList<>();
         for (Item item : checked) {
             Item settled = reloadRefusal(item, reported);
             String file = item.target().path();
@@ -171,7 +178,7 @@ public final class HotloadService implements AutoCloseable {
                 // An explicit edit or delete of this NPC replaces the refused file instead of answering a conflict.
                 if (item.target().kind().filter((DocumentKind kind) -> kind == DocumentKind.NPC).isPresent() && item.snapshot().content() != null)
                     parts.runtime().npcs().refused(file, JsonDocuments.hash(item.snapshot().content()));
-                parts.log().accept("Hotload refused " + file + ": " + error);
+                parts.warn().accept("Hotload refused " + file + ": " + error);
                 String kept = item.target().area() == HotloadTargets.Area.SCHEMATIC ? "builds cannot use it until it is fixed" : HotloadMessages.KEPT;
                 parts.operators().notifyOperators(List.of(HotloadMessages.refused(file, error, kept)), settings().sound());
                 continue;
@@ -181,11 +188,14 @@ public final class HotloadService implements AutoCloseable {
             screens |= item.target().area() == HotloadTargets.Area.CONFIG || item.verdict().kind().map(SCREENS::contains).orElse(false);
             boolean liveSwitch = parts.living().switchesLive();
             Predicate<String> restart = item.target().area() == HotloadTargets.Area.CONFIG ? (String key) -> SettingsLiveness.restartRequired(key, liveSwitch) : (String key) -> false;
+            item.verdict().warnings().forEach(parts.warn());
             List<HotloadDiff.Change> changes = HotloadDiff.diff(file, delta.get().before(), delta.get().after());
             if (changes.isEmpty()) continue;
-            parts.log().accept("Hotloaded " + file + " (" + changes.size() + (changes.size() == 1 ? " change)" : " changes)"));
+            applied.add(file + " (" + changes.size() + (changes.size() == 1 ? " change)" : " changes)"));
             parts.operators().notifyOperators(HotloadMessages.applied(file, changes, restart), settings().sound());
         }
+        if (applied.size() > LISTED_FILES) parts.log().accept("Hotloaded " + applied.size() + " files, first " + String.join(", ", applied.subList(0, 3)));
+        else applied.forEach((String line) -> parts.log().accept("Hotloaded " + line));
         if (screens) parts.refreshScreens().run();
     }
 
@@ -225,7 +235,7 @@ public final class HotloadService implements AutoCloseable {
         catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); return Optional.empty(); }
         catch (TimeoutException slow) { return Optional.empty(); }
         catch (ExecutionException failure) {
-            parts.log().accept("Hotload apply failed: " + failure.getCause());
+            parts.warn().accept("Hotload apply failed: " + failure.getCause());
             return Optional.of(List.of(String.valueOf(failure.getCause().getMessage())));
         }
     }

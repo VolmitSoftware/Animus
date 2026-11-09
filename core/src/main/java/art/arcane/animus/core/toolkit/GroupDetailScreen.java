@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.npc.GroupDocument;
@@ -20,6 +21,7 @@ final class GroupDetailScreen<P, S> extends ToolScreen<P, S> {
     }
 
     @Override String title() { return "Group " + group; }
+    @Override String node() { return PermissionNodes.NPC_EDIT; }
     @Override int rows() { return 6; }
 
     @Override void draw() {

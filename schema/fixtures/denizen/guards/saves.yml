@@ -1,0 +1,20 @@
+# Synthetic Citizens save for the Denizen guards fixture. Not taken from any server.
+npc:
+  3:
+    name: Banker
+    uuid: 00000000-0000-4000-8000-000000000003
+    traits:
+      type: PLAYER
+      spawned: true
+      location: {world: world, x: 3.5, y: 64.0, z: 3.5, yaw: 0.0, pitch: 0.0}
+      assignment:
+        assignment: bank_assignment
+  4:
+    name: Greeter
+    uuid: 00000000-0000-4000-8000-000000000004
+    traits:
+      type: PLAYER
+      spawned: true
+      location: {world: world, x: 4.5, y: 64.0, z: 4.5, yaw: 0.0, pitch: 0.0}
+      assignment:
+        assignment: greeter_assignment

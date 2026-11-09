@@ -127,7 +127,7 @@ public final class BehaviorCommands implements AutoCloseable {
     public void status(CommandActor sender){
         List<String> lines=statusLines();String summary=statusSummary();
         if(!sender.reply(()->{
-            if(closed.get()||!sender.permitted("animus.admin"))return;
+            if(closed.get()||!permitted(sender))return;
             if(sender.player().isEmpty())lines.stream().map(BehaviorCommands::boundedLine).forEach(sender::tell);
             else sender.rich(ChatLine.reply(summary).details("Details",lines));
         }))unavailableReplies.incrementAndGet();
@@ -188,7 +188,7 @@ public final class BehaviorCommands implements AutoCloseable {
     private void listed(CommandActor sender,String title,String verb,List<String> rows,int page,String empty,Function<String,String> click){
         if(sender==null||closed.get())return;
         List<String> bounded=rows.stream().map(row->Arrays.stream(row.split("\n")).map(BehaviorCommands::boundedLine).collect(Collectors.joining("\n"))).toList();
-        if(!sender.reply(()->{if(!closed.get()&&sender.permitted("animus.admin"))CommandGroup.listing(sender,title,"/animus behaviors "+verb,bounded,page,empty,click);}))
+        if(!sender.reply(()->{if(!closed.get()&&permitted(sender))CommandGroup.listing(sender,title,"/animus behaviors "+verb,bounded,page,empty,click);}))
             unavailableReplies.incrementAndGet();
     }
     public void stateStatus(CommandActor sender){reply(sender,stateLines());}
@@ -209,8 +209,8 @@ public final class BehaviorCommands implements AutoCloseable {
         catch(RuntimeException invalid){reply(sender,List.of("Behaviors: "+Objects.toString(invalid.getMessage(),invalid.getClass().getSimpleName())));}
     }
     /** Ids for completion: loaded behaviors, NPC definitions and the executions running now. */
-    public List<String> behaviorIds(){return catalogSnapshot().byId().keySet().stream().sorted().limit(100).toList();}
-    public List<String> executionIds(){BehaviorRuntime runtime=coordinator;return runtime==null?List.of():runtime.snapshot().executions().keySet().stream().map(UUID::toString).sorted().limit(100).toList();}
+    public List<String> behaviorIds(){return catalogSnapshot().byId().keySet().stream().sorted().toList();}
+    public List<String> executionIds(){BehaviorRuntime runtime=coordinator;return runtime==null?List.of():runtime.snapshot().executions().keySet().stream().map(UUID::toString).sorted().toList();}
     /** A deleted NPC has no definition left; its stored state stays reachable through the UUID. */
     private UUID npcIdentity(String npc){
         NpcDefinition definition=repository.snapshot().get(npc);
@@ -375,7 +375,7 @@ public final class BehaviorCommands implements AutoCloseable {
                 if(closed.get())return;
                 // Startup reports every line: a malformed source kept on its last-valid program must name its exact errors.
                 if(initial)messages.forEach(report);else reply(sender,messages);
-            }catch(IOException | RuntimeException | LinkageError | AssertionError error){failed("catalog-operation: "+error.getClass().getSimpleName());}
+            }catch(IOException | RuntimeException | LinkageError | AssertionError error){failed("catalog-operation: "+(error.getMessage()==null?error.getClass().getSimpleName():error.getMessage()));}
             finally{
                 fileTask.compareAndSet(this,null);releaseWaiters(served);
                 if(reloadAgain.compareAndSet(true,false)&&!closed.get())submitCatalog(null,false,false,Optional.empty(),true);
@@ -550,8 +550,10 @@ public final class BehaviorCommands implements AutoCloseable {
     /** A player gets the first line with every line behind [Details]; the console gets every line. */
     private void reply(CommandActor sender,List<String> lines){
         if(sender==null||closed.get())return;List<String> bounded=lines.stream().map(BehaviorCommands::boundedLine).toList();
-        if(!sender.reply(()->{if(!closed.get()&&sender.permitted("animus.admin"))answer(sender,bounded);}))unavailableReplies.incrementAndGet();
+        if(!sender.reply(()->{if(!closed.get()&&permitted(sender))answer(sender,bounded);}))unavailableReplies.incrementAndGet();
     }
+    /** Whether the sender may still read a behavior reply when it arrives: either behavior node. */
+    private static boolean permitted(CommandActor sender){return sender.permitted(PermissionNodes.BEHAVIORS)||sender.permitted(PermissionNodes.BEHAVIOR_STATE);}
     static void answer(CommandActor sender,List<String> lines){
         if(lines.isEmpty())return;
         if(sender.player().isPresent()&&lines.size()>1){sender.rich(ChatLine.reply(lines.getFirst()).details("Details",lines));return;}

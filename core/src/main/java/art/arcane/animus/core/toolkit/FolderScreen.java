@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.npc.NpcDefinition;
@@ -21,6 +22,7 @@ final class FolderScreen<P, S> extends ToolScreen<P, S> {
     FolderScreen(Toolkit<P, S> toolkit, ScreenManager<P, S>.Viewer viewer, Toolkit.Commands commands) { super(toolkit, viewer, commands); }
 
     @Override String title() { return "Folders"; }
+    @Override String node() { return PermissionNodes.NPC_EDIT; }
     @Override int rows() { return 6; }
 
     /** Every folder that holds an NPC, and {@code npcs/} itself, with how many NPCs sit directly in it. */

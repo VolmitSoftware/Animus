@@ -120,10 +120,11 @@ function watch(page, errors, allow) {
   page.on('pageerror', (error) => errors.push(String(error)));
 }
 
-async function pairWith(page, code, {remember = false} = {}) {
+async function pairWith(page, code, {remember = true} = {}) {
   await page.goto(`${site}/#/pair/${code}`);
   await page.locator('[data-testid="pair-fingerprint"]').waitFor();
-  if (remember) await page.getByRole('switch', {name: 'Remember this browser'}).click();
+  const toggle = page.getByRole('switch', {name: 'Remember this browser'});
+  if ((await toggle.isChecked()) !== remember) await toggle.click();
   await page.getByRole('button', {name: 'Pair', exact: true}).click();
   await page.waitForFunction(() => location.hash.startsWith('#/server/'));
 }
@@ -149,6 +150,8 @@ async function run(browser, width, height, label, theme) {
   await page.locator('[data-testid="pair-fingerprint"]', {hasText: 'sha256:'}).waitFor();
   assert.equal(await page.evaluate(() => location.hash), '#/pair', 'the link code leaves the address once read');
   assert.equal(await page.getByRole('switch', {name: 'Remember this browser'}).count(), 1, 'remember is a labelled switch');
+  assert.equal(await page.getByRole('switch', {name: 'Remember this browser'}).isChecked(), true, 'remember starts on');
+  await page.getByTestId('pair-remember-note').getByText('stays paired until the pairing expires').waitFor();
   await shot(page, `${label}-01-pair`);
   await page.getByRole('button', {name: 'Pair', exact: true}).click();
   await page.waitForFunction(() => location.hash.startsWith('#/server/'));

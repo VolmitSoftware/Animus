@@ -3,6 +3,7 @@ package art.arcane.animus.core.command;
 import art.arcane.animus.api.Capabilities;
 import art.arcane.animus.core.editor.EditorScope;
 import art.arcane.animus.core.extension.ModuleHooks;
+import art.arcane.animus.core.extension.ModuleHost;
 import art.arcane.animus.core.gui.exchange.GlossIds;
 import art.arcane.animus.core.migration.CitizensDropIn;
 import art.arcane.animus.core.npc.NpcDefinition;
@@ -16,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.TreeSet;
 import java.util.UUID;
@@ -25,13 +27,12 @@ import java.util.stream.Stream;
  * Tab completion values by parameter name for the whole {@code /animus} tree. Each parameter name means one thing
  * everywhere, so one switch serves every command: {@code group} is a trait group, {@code folder} an NPC folder,
  * {@code source} an entry of {@code imports/inbox/}. Numbers offer typical values; coordinates offer where the player
- * stands. Called on the actor's owner; a source that cannot answer offers nothing.
+ * stands. Lists are whole: the director cuts them only after the typed prefix, so ids late in the alphabet still
+ * complete. Called on the actor's owner; a source that cannot answer offers nothing.
  */
 final class CommandCompletions {
-    private static final int LIMIT = 100;
-    /** Common entity types offered for {@code type}; any {@code namespace:type} is accepted. */
-    static final List<String> TYPES = List.of("minecraft:player", "minecraft:villager", "minecraft:wandering_trader", "minecraft:zombie",
-            "minecraft:skeleton", "minecraft:iron_golem", "minecraft:armor_stand", "minecraft:horse", "minecraft:wolf", "minecraft:cat");
+    /** The body types an NPC can have, offered for {@code type}; create and edit refuse any other. */
+    static final List<String> TYPES = art.arcane.animus.core.presentation.BodyRules.TYPES.stream().sorted().toList();
     /** The bodies the packet preview tools can show. */
     static final List<String> PROOF_BODIES = List.of("minecraft:player", "minecraft:armor_stand", "minecraft:horse", "minecraft:turtle", "minecraft:frog",
             "minecraft:llama", "minecraft:armadillo", "minecraft:ender_dragon");
@@ -40,32 +41,35 @@ final class CommandCompletions {
 
     CommandCompletions(CommandGroup tree) { this.tree = tree; }
 
-    Collection<String> values(String parameter, CommandActor actor) {
+    /** Values for {@code parameter}; {@code given} holds what was typed already, by parameter name. */
+    Collection<String> values(String parameter, CommandActor actor, Map<String, String> given) {
         CommandServices services = tree.services;
         return switch (parameter) {
             case "npc" -> npcs(actor);
             case "ids" -> npcs(actor);
             case "id" -> List.of(freeId());
-            case "build" -> Stream.concat(services.builds().buildIds().stream(), npcs(actor).stream()).distinct().limit(LIMIT).toList();
+            case "build" -> Stream.concat(services.builds().buildIds().stream(), npcs(actor).stream()).distinct().toList();
             case "behavior" -> { BehaviorCommands current = services.behaviors().get(); yield current == null ? List.of() : current.behaviorIds(); }
             case "state" -> { BehaviorCommands current = services.behaviors().get(); yield current == null ? List.of() : current.stateBehaviors(); }
             case "execution" -> { BehaviorCommands current = services.behaviors().get(); yield current == null ? List.of() : current.executionIds(); }
-            case "group" -> tree.runtime().npcs().groups().groups().keySet().stream().limit(LIMIT).toList();
+            case "group" -> List.copyOf(tree.runtime().npcs().groups().groups().keySet());
             case "folder", "folders" -> folders();
-            case "tag" -> tree.runtime().npcs().all().stream().flatMap((NpcDefinition definition) -> definition.tags().stream()).distinct().sorted().limit(LIMIT).toList();
+            case "tag" -> tree.runtime().npcs().all().stream().flatMap((NpcDefinition definition) -> definition.tags().stream()).distinct().sorted().toList();
             case "attribute" -> NpcCommands.ids();
             case "setting" -> HealthSetting.NAMES;
-            case "value" -> List.of(NpcCommands.RESET);
+            case "value" -> given.containsKey("setting") ? healthValues(given.get("setting")) : List.of(NpcCommands.RESET);
             case "shop" -> services.shops().shopIds();
             case "gui" -> services.guis().guiIds();
             case "menu" -> services.guis().menuIds();
             case "document" -> Stream.concat(Stream.of("all"), Stream.concat(services.guis().guiIds().stream(), services.guis().menuIds().stream())).distinct().toList();
             case "namespace" -> List.of(GlossIds.DEFAULT_NAMESPACE);
             case "schematic" -> services.builds().schematicNames();
-            case "animation" -> tree.runtime().rigs().catalog().animations().keySet().stream().limit(LIMIT).toList();
+            case "animation" -> List.copyOf(tree.runtime().rigs().catalog().animations().keySet());
             case "capability" -> services.extensions() == null ? List.of() : services.extensions().capabilities().stream()
-                    .map((Capabilities.Availability capability) -> capability.descriptor().key().toString()).limit(LIMIT).toList();
-            case "converter" -> tree.runtime().moduleHooks().converters().stream().map((ModuleHooks.Converter converter) -> converter.descriptor().key().toString()).limit(LIMIT).toList();
+                    .map((Capabilities.Availability capability) -> capability.descriptor().key().toString()).toList();
+            case "module" -> services.extensions() == null ? List.of() : services.extensions().modules().stream()
+                    .map((ModuleHost.ModuleStatus module) -> module.manifest().id()).toList();
+            case "converter" -> tree.runtime().moduleHooks().converters().stream().map((ModuleHooks.Converter converter) -> converter.descriptor().key().toString()).toList();
             case "input", "patch" -> List.of("{}");
             case "token" -> services.editor().revocable();
             case "scopes" -> Arrays.stream(EditorScope.values()).map(EditorScope::wireName).toList();
@@ -74,10 +78,15 @@ final class CommandCompletions {
             case "player" -> services.players().get();
             case "viewer" -> services.debug().viewers();
             case "uuid" -> Stream.concat(actor.player().stream(), actor.nearby().stream()).map(UUID::toString).distinct().toList();
-            case "target" -> nearby(actor, false);
-            case "mob", "charge" -> nearby(actor, true);
+            case "target" -> targets(actor, false);
+            case "charge" -> targets(actor, true);
+            case "mob" -> nearby(actor);
             case "enabled" -> List.of("on", "off", DiagnosticCommands.TOGGLE);
+            case "confirm" -> List.of("confirm");
             case "style" -> List.of("native", "chest");
+            case "mode" -> List.of("buy", "sell", "trade");
+            case "price" -> List.of("1", "10", "100");
+            case "rows" -> List.of("1", "2", "3", "4", "5", "6");
             case "recording" -> services.recordings().ids();
             case "type" -> TYPES;
             case "body" -> PROOF_BODIES;
@@ -117,11 +126,30 @@ final class CommandCompletions {
         };
     }
 
-    /** NPC ids, and {@code @selected} when the player has a selection. */
+    /** NPC ids, and {@code @selected} when the player has one NPC selected. */
     private List<String> npcs(CommandActor actor) {
-        List<String> ids = new ArrayList<>(tree.runtime().npcs().all().stream().map(NpcDefinition::id).limit(LIMIT).toList());
-        if (actor.player().isPresent() && tree.living().selection(actor.player().get()).isPresent()) ids.add(CommandGroup.SELECTED);
+        return ids(tree.runtime().npcs().all(), actor.player().map((UUID player) -> tree.selection(player).size() == 1).orElse(false));
+    }
+
+    /** Every id, then {@code @selected} when it names one NPC. */
+    static List<String> ids(Collection<NpcDefinition> all, boolean selected) {
+        List<String> ids = new ArrayList<>(all.stream().map(NpcDefinition::id).toList());
+        if (selected) ids.add(CommandGroup.SELECTED);
         return ids;
+    }
+
+    /** The values a health setting takes, then {@code reset}; only {@code reset} for a setting not known. */
+    static List<String> healthValues(String setting) {
+        List<String> values = new ArrayList<>(HealthSetting.values(setting));
+        values.add(NpcCommands.RESET);
+        return values;
+    }
+
+    /** Players by name, NPC ids and nearby entities, for a combat target; {@code stop} first where it ends the command. */
+    private List<String> targets(CommandActor actor, boolean stop) {
+        List<String> players = List.copyOf(tree.services.players().get());
+        List<String> npcs = tree.runtime().npcs().all().stream().map(NpcDefinition::id).toList();
+        return WorldCommands.Targets.offered(stop, actor.player().isPresent(), players, npcs, actor.nearby());
     }
 
     /** {@code npc1}, {@code npc2} and so on: the first id no NPC uses. */
@@ -133,7 +161,7 @@ final class CommandCompletions {
     }
 
     private List<String> folders() {
-        return tree.runtime().npcs().all().stream().map(NpcDefinition::group).filter((String folder) -> !folder.isEmpty()).distinct().sorted().limit(LIMIT).toList();
+        return tree.runtime().npcs().all().stream().map(NpcDefinition::group).filter((String folder) -> !folder.isEmpty()).distinct().sorted().toList();
     }
 
     /** The player's world first, then every world an NPC stands in. */
@@ -143,7 +171,6 @@ final class CommandCompletions {
         for (NpcDefinition definition : tree.runtime().npcs().all()) {
             JsonObject position = definition.json().getAsJsonObject("position");
             if (position != null && position.has("world")) worlds.add(position.get("world").getAsString());
-            if (worlds.size() >= LIMIT) break;
         }
         return List.copyOf(worlds);
     }
@@ -164,13 +191,8 @@ final class CommandCompletions {
 
     static String block(Vec3 point) { return (long) Math.floor(point.x()) + "," + (long) Math.floor(point.y()) + "," + (long) Math.floor(point.z()); }
 
-    /** Nearby entity UUIDs, nearest first; {@code stop} first for commands it ends. */
-    private static List<String> nearby(CommandActor actor, boolean stop) {
-        List<String> values = new ArrayList<>();
-        if (stop) values.add(WorldCommands.STOP);
-        actor.nearby().forEach((UUID id) -> values.add(id.toString()));
-        return values;
-    }
+    /** {@code stop}, then nearby entity UUIDs, nearest first: a mob has no name to give. */
+    private static List<String> nearby(CommandActor actor) { return WorldCommands.Targets.offered(true, false, List.of(), List.of(), actor.nearby()); }
 
     /** The Animus data folder; completion reads the folders under it. */
     private Path data() {

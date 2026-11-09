@@ -43,7 +43,7 @@ def metadata(archive):
 
 
 def inputs(manifest, module):
-    prefixes = ('animus-api/', 'core/', 'gradle/') + (('bukkit/',) if module == 'bukkit' else ())
+    prefixes = ('animus-api/', 'core/', 'gradle/') + (('animus-bukkit-api/', 'bukkit/') if module == 'bukkit' else ())
     root_files = {'build.gradle', 'settings.gradle', 'gradle.properties', 'gradlew', 'gradlew.bat'}
     return {name: {path: sha for path, sha in project['files'].items()
                    if name != 'Animus' or path in root_files or path.startswith(prefixes)}

@@ -3,6 +3,7 @@ package art.arcane.animus.core.editor;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import art.arcane.animus.core.storage.DocumentStore;
@@ -59,6 +60,18 @@ class EditorIdentityTest {
             assertNotEquals(text, tampered);
             Files.writeString(file, tampered);
             assertTrue(assertThrows(IOException.class, () -> EditorIdentity.loadOrCreate(store)).getMessage().contains("does not match"));
+        }
+    }
+
+    @Test
+    void aDamagedIdentityFileIsOneLineThatNamesTheFileAndTheFix() throws IOException {
+        try (DocumentStore store = new DocumentStore(root)) {
+            EditorIdentity.loadOrCreate(store);
+            Files.writeString(root.resolve(EditorIdentity.RELATIVE_PATH), "{\"v\": 1, \"seed\": ");
+            String message = assertThrows(IOException.class, () -> EditorIdentity.loadOrCreate(store)).getMessage();
+            assertTrue(message.startsWith(EditorIdentity.RELATIVE_PATH + " is damaged ("), message);
+            assertTrue(message.endsWith("delete it and restart to create a new editor identity, then pair the editor again"), message);
+            assertFalse(message.contains("\n"), message);
         }
     }
 

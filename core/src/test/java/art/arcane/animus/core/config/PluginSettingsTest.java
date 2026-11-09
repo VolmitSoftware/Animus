@@ -98,8 +98,7 @@ class PluginSettingsTest {
             IOException error = assertThrows(IOException.class, () -> PluginSettings.load(store));
             assertTrue(error.getMessage().contains("rigs: sampleTicks must be within 1..20"), error.getMessage());
             Files.writeString(root.resolve("config.toml"), "[rigs]\nbones = 3\n");
-            error = assertThrows(IOException.class, () -> PluginSettings.load(store));
-            assertTrue(error.getMessage().contains("bones is not a rig setting"), error.getMessage());
+            assertEquals(RigSettings.DEFAULT, PluginSettings.load(store).rigs(), "an unknown key is ignored");
         }
     }
     @Test void hotloadSettingsAreReadFromTomlAndBounded() throws Exception {
@@ -116,8 +115,7 @@ class PluginSettingsTest {
             IOException error = assertThrows(IOException.class, () -> PluginSettings.load(store));
             assertTrue(error.getMessage().contains("hotload: maximumFileBytes must be within 1024..16777216"), error.getMessage());
             Files.writeString(root.resolve("config.toml"), "[hotload]\nding = true\n");
-            error = assertThrows(IOException.class, () -> PluginSettings.load(store));
-            assertTrue(error.getMessage().contains("ding is not a hotload setting"), error.getMessage());
+            assertEquals(HotloadSettings.DEFAULT, PluginSettings.load(store).hotload(), "an unknown key is ignored");
         }
     }
     @Test void backupRotationIsReadFromFilesTableAndBounded() throws Exception {
@@ -129,14 +127,50 @@ class PluginSettingsTest {
             assertEquals(new FileWorkSettings(32, 250, 50, 3), PluginSettings.load(store).files());
             Files.writeString(root.resolve("config.toml"), "[files]\nbackupsKept = 0\n");
             IOException error = assertThrows(IOException.class, () -> PluginSettings.load(store));
-            assertTrue(error.getMessage().contains("backupsKept=1..100000"), error.getMessage());
+            assertTrue(error.getMessage().contains("files: backupsKept must be within 1..100000, not 0"), error.getMessage());
         }
     }
-    @Test void parsedTextNamesTheLabelAndTheField() {
-        IOException error = assertThrows(IOException.class, () -> PluginSettings.parse("[npcs]\nviewDistance = 'far'\n", Path.of("config.toml")));
-        assertEquals("config.toml: npcs: viewDistance must be an integer", error.getMessage());
-        error = assertThrows(IOException.class, () -> PluginSettings.parse("[npcs\nviewDistance = 1\n", Path.of("config.toml")));
-        assertTrue(error.getMessage().startsWith("config.toml: invalid TOML"), error.getMessage());
+    @Test void parsedTextNamesTheLabelTheLineAndTheField() {
+        IOException error = assertThrows(IOException.class, () -> PluginSettings.parse("# notes\n[npcs]\nviewDistance = 'far'\n", Path.of("config.toml")));
+        assertEquals("config.toml line 3: npcs: viewDistance must be an integer", error.getMessage());
+        error = assertThrows(IOException.class, () -> PluginSettings.parse("[npcs]\nmaximumVisible = 300\n", Path.of("config.toml")));
+        assertEquals("config.toml line 2: npcs: maximumVisible must be within 1..128, not 300", error.getMessage());
+        error = assertThrows(IOException.class, () -> PluginSettings.parse("splashScreen = true\n[npcs\nviewDistance = 1\n", Path.of("config.toml")));
+        assertTrue(error.getMessage().startsWith("config.toml line 2, column 1: invalid TOML"), error.getMessage());
+        assertFalse(error.getMessage().contains("\n"), error.getMessage());
+        error = assertThrows(IOException.class, () -> PluginSettings.parse("[npcs]\nviewDistance = \n", Path.of("config.toml")));
+        assertEquals("config.toml line 2: npcs.viewDistance has no value", error.getMessage());
+    }
+
+    @Test void unknownKeysInEveryTableAreIgnoredWithOneWarningEach() throws Exception {
+        java.util.List<String> warnings = new java.util.ArrayList<>();
+        String text = "statusMessage = 'old'\n[npcs]\nviewDistence = 10\n[navigation]\nroutesPerTik = 3\n[editor]\nlistnerEnabled = true\n"
+                + "[editor.notify.sounds.party]\nsound = ''\n[shops.messages]\nbougth = 'x'\n[future]\nkeep = true\n";
+        PluginSettings settings = PluginSettings.parse(text, Path.of("config.toml"), warnings::add);
+        assertEquals(NpcRuntimeSettings.DEFAULT, settings.npcs());
+        assertEquals(java.util.List.of(
+                "config.toml line 1: statusMessage is not a setting at the top level; it is ignored",
+                "config.toml line 3: viewDistence is not a setting in [npcs]; it is ignored; did you mean viewDistance?",
+                "config.toml line 5: routesPerTik is not a setting in [navigation]; it is ignored; did you mean routesPerTick?",
+                "config.toml line 7: listnerEnabled is not a setting in [editor]; it is ignored; did you mean listenerEnabled?",
+                "config.toml line 8: party is not a setting in [editor.notify.sounds]; it is ignored",
+                "config.toml line 11: bougth is not a setting in [shops.messages]; it is ignored; did you mean bought?",
+                "config.toml line 12: future is not a setting at the top level; it is ignored"), warnings.stream().sorted(java.util.Comparator.comparingInt(
+                        (String line) -> Integer.parseInt(line.replaceAll("^config\\.toml line (\\d+):.*$", "$1")))).toList());
+    }
+
+    @Test void theWrittenFileHasEveryDocumentedKeyIncludingRelayAndShopMessages() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            PluginSettings.load(store);
+            String toml = Files.readString(root.resolve("config.toml"));
+            for (String key : java.util.List.of("relayReconnectMinSeconds = 1", "relayReconnectMaxSeconds = 60", "relayFrameBytes = 1048576", "relayConcurrentRequests = 64",
+                    "playerCooldownTicks = 20", "maximumAreas = 256", "[shops.messages]", "bought = "))
+                assertTrue(toml.contains(key), key);
+            assertTrue(toml.contains("# Spacing of one player's runs of an interaction trigger"), toml);
+            java.util.List<String> warnings = new java.util.ArrayList<>();
+            PluginSettings.load(store, warnings::add);
+            assertEquals(java.util.List.of(), warnings, "the written file has no unknown key");
+        }
     }
     @Test void navigationBudgetsAreReadFromTomlAndBounded() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
@@ -150,8 +184,7 @@ class PluginSettingsTest {
             IOException error = assertThrows(IOException.class, () -> PluginSettings.load(store));
             assertTrue(error.getMessage().contains("navigation: routesPerTick must be within 1..4096"), error.getMessage());
             Files.writeString(root.resolve("config.toml"), "[navigation]\nmaximumRoutes = 32\n");
-            error = assertThrows(IOException.class, () -> PluginSettings.load(store));
-            assertTrue(error.getMessage().contains("maximumRoutes is not a navigation setting"), error.getMessage());
+            assertEquals(NavigationSettings.DEFAULT, PluginSettings.load(store).navigation(), "an unknown key is ignored");
             Files.writeString(root.resolve("config.toml"), "[navigation]\nplanningJobs = 96\ncaptureReadsPerTick = 8192\n");
             navigation = PluginSettings.load(store).navigation();
             assertEquals(96, navigation.planningJobs());
@@ -172,8 +205,7 @@ class PluginSettingsTest {
             IOException error = assertThrows(IOException.class, () -> PluginSettings.load(store));
             assertTrue(error.getMessage().contains("placeholders: refreshTicks must be 0 or within 20..72000"), error.getMessage());
             Files.writeString(root.resolve("config.toml"), "[placeholders]\ninterval = 40\n");
-            error = assertThrows(IOException.class, () -> PluginSettings.load(store));
-            assertTrue(error.getMessage().contains("interval is not a placeholders setting"), error.getMessage());
+            assertEquals(0, PluginSettings.load(store).placeholders().refreshTicks(), "an unknown key is ignored");
         }
     }
     @Test void recordingSettingsAreReadFromTomlAndBounded() throws Exception {
@@ -194,8 +226,7 @@ class PluginSettingsTest {
             error = assertThrows(IOException.class, () -> PluginSettings.load(store));
             assertTrue(error.getMessage().contains("recordings: ghostColor must be one of the sixteen chat colours"), error.getMessage());
             Files.writeString(root.resolve("config.toml"), "[recordings]\nghostOpacity = 3\n");
-            error = assertThrows(IOException.class, () -> PluginSettings.load(store));
-            assertTrue(error.getMessage().contains("ghostOpacity is not a recording setting"), error.getMessage());
+            assertEquals(RecordingSettings.DEFAULT, PluginSettings.load(store).recordings(), "an unknown key is ignored");
             Files.writeString(root.resolve("config.toml"), "[recordings]\nghostGlow = 1\n");
             error = assertThrows(IOException.class, () -> PluginSettings.load(store));
             assertTrue(error.getMessage().contains("recordings: ghostGlow must be a boolean"), error.getMessage());
@@ -207,7 +238,7 @@ class PluginSettingsTest {
             "ghostStretchTicks = 601", "maximumPreviews = 0", "maximumPreviews = 33"})
     void recordingRangesMatchTheDesign(String line) {
         IOException error = assertThrows(IOException.class, () -> PluginSettings.parse("[recordings]\n" + line + "\n", Path.of("config.toml")));
-        assertTrue(error.getMessage().startsWith("config.toml: recordings: " + line.substring(0, line.indexOf(' ')) + " must be within "), error.getMessage());
+        assertTrue(error.getMessage().startsWith("config.toml line 2: recordings: " + line.substring(0, line.indexOf(' ')) + " must be within "), error.getMessage());
     }
     @Test void recordingRangeEdgesAreAccepted() throws IOException {
         RecordingSettings low = PluginSettings.parse("[recordings]\nsampleTicks = 1\nmaximumTicks = 200\nmaximumFileBytes = 65536\n"

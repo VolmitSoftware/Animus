@@ -3,6 +3,7 @@ package art.arcane.animus.core.runtime;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.control.ControlInbox;
+import art.arcane.animus.core.control.RideEntry;
 import art.arcane.animus.core.control.RideLedger;
 import art.arcane.animus.core.control.RideSession;
 import art.arcane.animus.core.control.RideSettings;
@@ -63,9 +64,9 @@ final class RiderService<P, I> implements AutoCloseable {
     }
     private enum Exit { RESTORE_POSITION, LEAVE_POSITION }
     private final class Ride {
-        final RideSession session; final P player; final Vehicle<P> vehicle; final BodyTransport.ControlSubscription input;
-        Ride(RideSession session, P player, Vehicle<P> vehicle, BodyTransport.ControlSubscription input) {
-            this.session = session; this.player = player; this.vehicle = vehicle; this.input = input;
+        final RideSession session; final P player; final Vehicle<P> vehicle; final BodyTransport.ControlSubscription input; final RideEntry entry;
+        Ride(RideSession session, P player, Vehicle<P> vehicle, BodyTransport.ControlSubscription input, RideEntry entry) {
+            this.session = session; this.player = player; this.vehicle = vehicle; this.input = input; this.entry = entry;
         }
     }
     private static final int MOTION_CELLS = 1024, STAND_CELLS = 256;
@@ -132,7 +133,7 @@ final class RiderService<P, I> implements AutoCloseable {
         BodyTransport.ControlSubscription input;
         try { input = presentation.subscribe(player); }
         catch (RuntimeException failure) { ledger.remove(session); session.close("input-unavailable"); return "your connection is not ready: " + failure.getMessage(); }
-        Ride ride = new Ride(session, player, vehicle, input);
+        Ride ride = new Ride(session, player, vehicle, input, new RideEntry(host.rideEntry(), host.id(player), vehicle.snapshot().position()));
         UUID id = host.id(player);
         rides.put(id, ride);
         vehicle.claim();
@@ -182,6 +183,7 @@ final class RiderService<P, I> implements AutoCloseable {
                 host.pitch(ride.player), input, probe(world, ride.vehicle));
         if (step.action() == RideSession.Action.STOP) { end(ride, step.reason(), RideSession.leavesRiderInPlace(step.reason()) ? Exit.LEAVE_POSITION : Exit.RESTORE_POSITION); return; }
         if (ride.session.state() != RideSession.State.RIDING) return;
+        if (!step.position().equals(position) && !ride.entry.allows(new WorldPosition(npc.position().world(), step.position()))) { end(ride, RideEntry.DENIED, Exit.RESTORE_POSITION); return; }
         if (!step.position().equals(position) || step.yaw() != ride.vehicle.yaw()) ride.vehicle.commit(step.position(), step.yaw());
         place(ride);
     }

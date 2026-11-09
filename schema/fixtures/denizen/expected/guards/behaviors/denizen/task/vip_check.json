@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:task/vip_check",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "condition",
+      "expression": "!(has_flag('player', 'vip'))",
+      "then": {
+        "type": "sequence",
+        "steps": [
+          {
+            "type": "action",
+            "capability": "animus:message",
+            "arguments": {
+              "text": "VIP only."
+            }
+          },
+          {
+            "type": "return"
+          }
+        ]
+      }
+    }
+  }
+}

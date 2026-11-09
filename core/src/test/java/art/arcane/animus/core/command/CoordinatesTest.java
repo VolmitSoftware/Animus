@@ -73,7 +73,7 @@ class CoordinatesTest {
 
     @Test void completionOffersTildesThenTheLookedAtBlock() {
         AnimusDirector director = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
-        AnimusDirectorTest.Actor player = new AnimusDirectorTest.Actor(true, AnimusDirector.ADMIN) {
+        AnimusDirectorTest.Actor player = new AnimusDirectorTest.Actor(true, AnimusDirector.ADMIN, PermissionNodes.NPC_CREATE) {
             @Override public Optional<art.arcane.animus.core.virtual.WorldPosition> position() {
                 return Optional.of(new art.arcane.animus.core.virtual.WorldPosition("world", new Vec3(0.5, 64, 0.5)));
             }
@@ -81,7 +81,7 @@ class CoordinatesTest {
         };
         assertEquals(List.of("~ ~ ~", "12 63 -30"), director.complete(player, new String[]{"create", "guard", ""}).subList(0, 2));
         assertEquals(List.of("~ ~", "63 -30"), director.complete(player, new String[]{"create", "guard", "~", ""}).subList(0, 2));
-        List<String> console = director.complete(new AnimusDirectorTest.Actor(false, AnimusDirector.ADMIN), new String[]{"create", "guard", ""});
+        List<String> console = director.complete(new AnimusDirectorTest.Actor(false, AnimusDirector.ADMIN, PermissionNodes.NPC_CREATE), new String[]{"create", "guard", ""});
         assertFalse(console.contains("~ ~ ~"), "the console has no position to offer: " + console);
     }
 

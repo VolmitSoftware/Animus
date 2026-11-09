@@ -29,6 +29,6 @@ public record NavigationSettings(int routesPerTick, int motionCellsPerTick, int 
     public NavigationLimits limits() { return new NavigationLimits(captureReadsPerTick, planningJobs, NavigationLimits.DEFAULT.maximumCaptureVoxels()); }
 
     private static void require(String field, int value, int minimum, int maximum) {
-        if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum);
+        if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum + ", not " + value);
     }
 }

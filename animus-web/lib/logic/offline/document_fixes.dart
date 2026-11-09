@@ -151,7 +151,9 @@ List<DocumentFix> fixesFor(AnimusDocument document, {math.Random? random}) {
       final Object? fallback = _defaultFor(document, steps, schema, random);
       if (fallback != null) {
         final String shown = fallback is Map || fallback is List ? 'a default' : jsonEncode(fallback);
-        fix = DocumentFix(diagnostic.path, 'Add $field ($shown)', (Object? value) => writeIn(value, steps, fallback));
+        // A generated UUID is too long for a button; the fix says what it adds.
+        final String label = field == 'uuid' ? 'Add a new UUID' : 'Add $field ($shown)';
+        fix = DocumentFix(diagnostic.path, label, (Object? value) => writeIn(value, steps, fallback));
       }
     } else if (diagnostic.message == 'unknown field') {
       fix = DocumentFix(diagnostic.path, 'Remove $field', (Object? value) => writeIn(value, steps, null));

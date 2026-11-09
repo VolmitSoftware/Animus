@@ -52,8 +52,13 @@ class _LiveBarState extends State<LiveBar> {
   bool _pairing = false;
   String _code = '';
 
+  /// On a phone the actions fold away while there is nothing to apply,
+  /// preview or undo; Actions shows them anyway.
+  bool _actionsShown = false;
+
   static const String _undoId = 'animus-live-undo';
   static const String _pairId = 'animus-live-pair';
+  static const String _actionsId = 'animus-live-actions';
 
   void _pairWith() {
     final String code = extractPairingCode(_code);
@@ -83,7 +88,11 @@ class _LiveBarState extends State<LiveBar> {
     final String? cause = session.waiting ? LiveSession.otherTab : (status.online ? null : phaseHint(status, hasToken: session.connection.token != null));
     final String? expiry = status.online ? expiryLine(session.connection.tokenLeft) : null;
     final bool pairAgain = status.phase == ConnectionPhase.needsPairing || (status.phase == ConnectionPhase.offline && session.connection.token == null);
-    return dom.section(classes: 'animus-live', attributes: const <String, String>{'aria-label': 'Live editing'}, <Widget>[
+    final bool foldable = drafts.isEmpty && preview == null && undoable.isEmpty && session.conflicts.isEmpty && !_confirmUndo;
+    return dom.section(
+      classes: 'animus-live${foldable && !_actionsShown ? ' is-folded' : ''}',
+      attributes: const <String, String>{'aria-label': 'Live editing'},
+      <Widget>[
       dom.div(classes: 'animus-live-head', <Widget>[
         ConnectionPill(status: status, hasToken: session.connection.token != null),
         dom.span(classes: 'animus-live-count', attributes: const <String, String>{'data-testid': 'draft-count'}, <Widget>[
@@ -108,6 +117,15 @@ class _LiveBarState extends State<LiveBar> {
               },
             ),
           Button.ghost(label: 'Server page', size: ButtonSize.small, onPressed: component.onOpenServer),
+          if (foldable)
+            dom.span(classes: 'animus-live-fold', <Widget>[
+              Button.ghost(
+                label: 'Actions',
+                size: ButtonSize.small,
+                attributes: <String, String>{'aria-expanded': '$_actionsShown', 'aria-controls': _actionsId},
+                onPressed: () => setState(() => _actionsShown = !_actionsShown),
+              ),
+            ]),
         ]),
       ]),
       if (cause != null && cause.isNotEmpty)
@@ -140,7 +158,7 @@ class _LiveBarState extends State<LiveBar> {
           Button.ghost(label: 'Check again', size: ButtonSize.small, disabled: !online || !idle, onPressed: session.checkPending),
           Button.ghost(label: 'Stop waiting', size: ButtonSize.small, disabled: !idle || !owned, onPressed: session.forgetPending),
         ]),
-      dom.div(classes: 'animus-live-actions', <Widget>[
+      dom.div(id: _actionsId, classes: 'animus-live-actions', <Widget>[
         dom.div(classes: 'animus-live-group', attributes: const <String, String>{'role': 'group', 'aria-label': 'Send drafts to the server'}, <Widget>[
           const dom.span(classes: 'animus-muted', <Widget>[
             InfoTip(
@@ -229,7 +247,9 @@ class _LiveBarState extends State<LiveBar> {
         ]),
       if (session.log.isNotEmpty)
         Fold(classes: 'animus-live-log', summary: <Widget>[
-          dom.span(attributes: const <String, String>{'data-testid': 'live-last'}, <Widget>[Component.text(session.log.last.message)]),
+          dom.span(attributes: const <String, String>{'data-testid': 'live-last'}, <Widget>[
+            Component.text(session.freshNotice?.message ?? 'Activity (${session.log.length})'),
+          ]),
         ], children: <Widget>[
           dom.ul(<Widget>[
             for (final LiveNotice notice in session.log.reversed.take(12))

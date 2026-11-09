@@ -579,9 +579,9 @@ public final class HoloService<P, S> implements AutoCloseable {
     }
 
     /** Chest GUI ids, menu ids, and the Gloss exchange, for {@code /animus gui}. */
-    public List<String> guiIds() { return shops.catalog().guis().keySet().stream().sorted().limit(100).toList(); }
+    public List<String> guiIds() { return shops.catalog().guis().keySet().stream().sorted().toList(); }
 
-    public List<String> menuIds() { return catalog.menus().keySet().stream().sorted().limit(100).toList(); }
+    public List<String> menuIds() { return catalog.menus().keySet().stream().sorted().toList(); }
 
     public GlossExchange exchange() { return exchange; }
 

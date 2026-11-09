@@ -13,7 +13,11 @@ import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.gui.Screens;
 import art.arcane.animus.core.inventory.Economy;
 import art.arcane.animus.core.migration.ShopImporter;
+import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.npc.NpcItem;
+import art.arcane.animus.core.storage.DocumentStore;
+import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -77,6 +81,9 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
         screens.placeholders(runtime::placeholders);
         settingsListener = runtime.onSettings((art.arcane.animus.core.config.PluginSettings next) -> applySettings(next.shops()));
     }
+
+    /** Why shop counters started without some saved data, for the startup banner; empty when everything loaded. */
+    public String stateProblem() { return store.problem(); }
 
     /**
      * A hotload of {@code [shops]}: messages, price format, economy and the on/off switch apply to the next window and
@@ -232,7 +239,7 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
     }
 
     /** Shop ids, for completion. */
-    public List<String> shopIds() { return catalog.shops().keySet().stream().sorted().limit(100).toList(); }
+    public List<String> shopIds() { return catalog.shops().keySet().stream().sorted().toList(); }
 
     /** {@code id | title | pages}, one row per loaded shop, for a paged listing. */
     public List<String> rows() {
@@ -258,7 +265,37 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
             if (player.isEmpty()) { actor.tell(Palette.error("Unknown player " + named.get())); return; }
         }
         store.ledger().reset(shop, player);
-        actor.tell(Palette.success("Cleared limits and stock of " + shop + player.map((UUID id) -> " for " + id).orElse("")));
+        actor.tell(Palette.success("Cleared limits and stock of " + shop + named.map((String name) -> " for " + name).orElse("")));
+    }
+
+    /**
+     * Adds the item in the player's main hand to the shop as one offer: a buy or sell offer at {@code price}, or a trade
+     * for what the off hand holds. A shop with no file yet gets one. The catalog reloads once the file is saved.
+     */
+    public void stock(CommandActor actor, String shop, String mode, Optional<String> price, int page) {
+        ShopDocument.Mode chosen;
+        try { chosen = ShopDocument.Mode.valueOf(mode.toUpperCase(java.util.Locale.ROOT)); }
+        catch (IllegalArgumentException unknown) { actor.tell(Palette.error("mode= is buy, sell or trade")); return; }
+        Optional<java.math.BigDecimal> amount;
+        try { amount = price.map(java.math.BigDecimal::new); }
+        catch (NumberFormatException notNumber) { actor.tell(Palette.error("price= is a number, such as price=10 or price=2.5")); return; }
+        String path;
+        try { path = art.arcane.animus.core.editor.EditorDocuments.pathFor(art.arcane.animus.core.editor.DocumentKind.SHOP, shop); }
+        catch (art.arcane.animus.core.editor.EditorError invalid) { actor.tell(Palette.error("A shop id is namespace:path in lowercase, such as town:baker")); return; }
+        deliver(actor, Optional.empty(), (P player) -> {
+            Optional<NpcItem> held = host.worn(player, EquipmentSlot.MAIN_HAND);
+            if (held.isEmpty()) { actor.tell(Palette.error("Hold the item to offer in your main hand")); return; }
+            Optional<NpcItem> cost = host.worn(player, EquipmentSlot.OFF_HAND);
+            fileWork(actor, "Shop stock", () -> {
+                String current = runtime.documents().read(path);
+                com.google.gson.JsonObject document = current == null ? ShopOffers.empty(shop) : JsonDocuments.object(current);
+                ShopOffers.Added added = ShopOffers.add(document, chosen, held.get(), cost, amount, page);
+                String tx = runtime.documents().commit(List.of(new DocumentStore.Change(path, current == null ? "missing" : JsonDocuments.hash(current), JsonDocuments.write(added.document()))));
+                String what = held.get().count() + " " + held.get().id().substring(held.get().id().indexOf(':') + 1) + " as " + chosen.key() + " offer " + added.entry();
+                answer(actor, Palette.success((current == null ? "Created " + path + " and added " : "Added ") + what + " in slot " + added.slot() + " of page " + page + "; tx " + tx));
+                reload((ShopCatalog next) -> {});
+            });
+        });
     }
 
     /** Reads a dtlTraders or Shopkeepers folder from {@code imports/inbox/}, with an optional saves file there too. */
@@ -267,17 +304,17 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
             actor.tell(Palette.error("Shop import takes a folder and an optional .yml file directly under imports/inbox/"));
             return;
         }
-        fileWork(actor, () -> {
+        fileWork(actor, "Shop import", () -> {
             Optional<Path> savesFile = saves.isPresent() ? Optional.of(runtime.documents().resolve("imports/inbox/" + saves.get())) : Optional.empty();
             ShopImporter.Preview preview = new ShopImporter().preview(runtime.documents().resolve("imports/inbox/" + folder), savesFile, runtime.documents());
             answer(actor, "Shop preview " + preview.id() + ": " + preview.shops() + " shops, " + preview.entries() + " entries, "
                     + preview.issues() + " issues, limit data " + preview.limitStatus());
-            answer(actor, "Review " + preview.directory().resolve("report.json") + ", then /animus shop import apply " + preview.id());
+            answer(actor, "Review " + preview.directory().resolve("report.json") + ", then /animus import shops apply " + preview.id());
         });
     }
 
     public void importApply(CommandActor actor, String importId) {
-        fileWork(actor, () -> {
+        fileWork(actor, "Shop import", () -> {
             String transaction = new ShopImporter().apply(runtime.documents(), importId);
             answer(actor, Palette.success("Shop import applied; tx " + transaction));
             reload((ShopCatalog next) -> answer(actor, "Loaded " + next.shops().size() + " shops, " + next.problems().size() + " problems; imported limit counts load at restart"));
@@ -286,11 +323,11 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
 
     @FunctionalInterface private interface FileWork { void run() throws IOException; }
 
-    private void fileWork(CommandActor actor, FileWork work) {
+    private void fileWork(CommandActor actor, String label, FileWork work) {
         try {
             files.execute(() -> {
                 try { work.run(); }
-                catch (IOException | RuntimeException failure) { answer(actor, Palette.error("Shop import: " + failure.getMessage())); }
+                catch (IOException | RuntimeException failure) { answer(actor, Palette.error(label + ": " + failure.getMessage())); }
             });
         } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }

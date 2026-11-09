@@ -66,7 +66,7 @@ class _ServerOverviewState extends State<ServerOverview> {
     final ServerProfile profile = connection.profile;
     final ServerToken? token = connection.token;
     final Map<String, Object?> features = (connection.capabilities?['features'] as Map<String, Object?>?) ?? const <String, Object?>{};
-    final String hint = phaseHint(status, hasToken: token != null);
+    final String hint = phaseHint(status, hasToken: token != null, connectHere: true);
     return dom.div(classes: 'animus-overview', <Widget>[
       dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Connection'}, <Widget>[
         dom.h2(<Widget>[Component.text(profile.name)]),

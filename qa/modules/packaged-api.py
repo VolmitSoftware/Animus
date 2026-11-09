@@ -48,7 +48,7 @@ def metadata(path):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--api-jar',type=Path,default=ROOT/'animus-api/build/libs/animus-api-1.1.0-SNAPSHOT.jar')
+    parser.add_argument('--api-jar',type=Path,default=ROOT/'animus-api/build/libs/animus-api-1.2.0-SNAPSHOT.jar')
     parser.add_argument('--runtime-jar',type=Path,default=ROOT/'bukkit/build/libs/Animus v0.1.0 [CraftBukkit] 26.1.2-26.3.jar')
     parser.add_argument('--volmlib',type=Path,default=ROOT/'.qa/multiplexor-sources-runtime-9/VolmLib')
     parser.add_argument('--java-home',type=Path,default=Path('/opt/homebrew/opt/openjdk@25'))
@@ -89,9 +89,9 @@ def main():
             receipt['canonicalBuildLog']={'path':str(inputs/'canonical-build.log'),'sha256':capture(args.build_log,inputs/'canonical-build.log')}
         # Production/build inputs are isolated; ignored private fixtures and arbitrary workspace files are never copied.
         source=output/'custom-source'/'Animus';volmlib=output/'custom-source'/'VolmLib'
-        production=source_files(ROOT,['animus-api/src','core/src','bukkit/src','converter/src','gradle'],
+        production=source_files(ROOT,['animus-api/src','animus-bukkit-api/src','core/src','bukkit/src','converter/src','gradle'],
             ['settings.gradle','build.gradle','gradle.properties','gradlew','gradlew.bat','LICENSE',
-             'animus-api/build.gradle','core/build.gradle','bukkit/build.gradle','converter/build.gradle'])
+             'animus-api/build.gradle','animus-bukkit-api/build.gradle','core/build.gradle','bukkit/build.gradle','converter/build.gradle'])
         for path in production:
             name=str(path.relative_to(ROOT));receipt['sources'][name]=capture(path,source/name)
         for path in [Path(__file__),ROOT/'qa/modules/PackagedApiProbe.java',*source_files(ROOT,['examples/modules/reference/src'],['examples/modules/reference/build.py'])]:
@@ -149,7 +149,7 @@ def main():
         custom=inputs/'custom-runtime.jar';shutil.copy2(built[0],custom)
         receipt['artifacts']['customRuntime']={'path':str(custom),'sha256':sha(custom),'builtFrom':str(source),'projectGroup':CUSTOM}
         watched[str(custom)]=sha(custom)
-        custom_api=source/'animus-api/build/libs/animus-api-1.1.0-SNAPSHOT.jar'
+        custom_api=source/'animus-api/build/libs/animus-api-1.2.0-SNAPSHOT.jar'
         receipt['artifacts']['customApi']={'path':str(custom_api),'sha256':sha(custom_api)}
         check('custom-api-bytecode-stable',archive_classes(custom_api)==api_classes)
         variant('custom',custom,CUSTOM)

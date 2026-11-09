@@ -79,6 +79,14 @@ public final class EditorIdentity {
             ownerOnly(path);
             return created;
         }
+        try { return read(path); }
+        catch (IOException | RuntimeException damaged) {
+            String reason = damaged.getMessage() == null ? damaged.getClass().getSimpleName() : damaged.getMessage().replace(RELATIVE_PATH + ": ", "");
+            throw new IOException(RELATIVE_PATH + " is damaged (" + reason + "); delete it and restart to create a new editor identity, then pair the editor again", damaged);
+        }
+    }
+
+    private static EditorIdentity read(Path path) throws IOException {
         JsonObject document = JsonDocuments.object(JsonDocuments.read(path));
         JsonElement version = document.get("v"), seedText = document.get("seed"), key = document.get("serverKey");
         if (version == null || !version.isJsonPrimitive() || version.getAsInt() != VERSION || seedText == null || !seedText.isJsonPrimitive() || key == null || !key.isJsonPrimitive())

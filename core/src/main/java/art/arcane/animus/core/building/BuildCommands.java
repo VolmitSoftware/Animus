@@ -70,7 +70,7 @@ public final class BuildCommands {
                 String row = row(line);
                 int split = row.indexOf(" | ");
                 return split < 0 ? row : row.substring(0, split);
-            }).limit(100).toList();
+            }).toList();
         } catch (RuntimeException unreadable) { return List.of(); }
     }
 

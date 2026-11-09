@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 6,
-  "importId": "0671286a039de00e5007b09105ebd238c5d1ae4ccfd50fcce3dbe8cfe60359ab",
+  "converterVersion": 7,
+  "importId": "f6a552e1cdf2fe3a991ff375682f26b4ac81a87c8bdf52662f6903331f930471",
   "notice": "Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.",
   "sources": {
     "scripts/guard.dsc": "2aeddb30391c8fa3c1e8c06a17e2f0a557e58128157d6533c51bbb3382e9364f"
@@ -50,13 +50,16 @@
   "behaviorStatus": {
     "denizen:task/guard_orders": "partial"
   },
+  "heldBehaviors": {},
   "commandBehaviors": [
     "denizen:task/guard_orders"
   ],
   "serverBehaviors": [],
   "guis": [],
   "sounds": {},
-  "issues": [],
+  "issues": [
+    "guard.dsc:6: execute as_op runs as the player without operator rights; the command fails where it needs them"
+  ],
   "preserved": [
     {
       "source": "guard.dsc:11",

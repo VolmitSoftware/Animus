@@ -15,8 +15,8 @@ import java.util.concurrent.RejectedExecutionException;
  * {@code /animus tools}: the chest-GUI tool palette, the selection wand and the manage screen. {@code /animus tools}
  * alone opens the palette. The same screens open on every platform.
  */
-@Director(name = ToolkitCommands.GROUP, description = "Click-to-manage NPC tools: palette, wand and manage screen")
-@AnimusPermission(AnimusDirector.ADMIN)
+@Director(name = ToolkitCommands.GROUP, aliases = "tool", description = "Click-to-manage NPC tools: palette, wand and manage screen")
+@AnimusPermission(PermissionNodes.TOOLS)
 final class ToolkitCommands extends CommandGroup {
     static final String GROUP = "tools", OPEN = "open";
 

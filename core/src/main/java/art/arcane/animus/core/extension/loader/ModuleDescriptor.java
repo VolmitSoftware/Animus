@@ -25,7 +25,8 @@ public record ModuleDescriptor(ModuleManifest manifest,String main,List<String> 
         try {
             JsonObject root=JsonDocuments.object(text);keys(root,"schemaVersion","id","version","api","platforms","dependencies","main","exports");
             if(integer(root,"schemaVersion")!=1)throw new IllegalArgumentException("Unsupported schemaVersion");
-            JsonObject api=object(root,"api");keys(api,"minimumMajor","maximumMajor");
+            JsonObject api=object(root,"api");
+            if(api.has("minimumMinor"))keys(api,"minimumMajor","maximumMajor","minimumMinor");else keys(api,"minimumMajor","maximumMajor");
             Set<Platform> platforms=new LinkedHashSet<>();
             for(JsonElement entry:array(root,"platforms",6))if(!platforms.add(Platform.valueOf(string(entry))))throw new IllegalArgumentException("Duplicate platform");
             List<ModuleManifest.Dependency> dependencies=new ArrayList<>();
@@ -36,7 +37,7 @@ public record ModuleDescriptor(ModuleManifest manifest,String main,List<String> 
             }
             List<String> exports=new ArrayList<>();for(JsonElement value:array(root,"exports",32))exports.add(string(value));
             return new ModuleDescriptor(new ModuleManifest(string(root,"id"),version(string(root,"version")),
-                    new ApiRange(integer(api,"minimumMajor"),integer(api,"maximumMajor")),platforms,dependencies),string(root,"main"),exports);
+                    new ApiRange(integer(api,"minimumMajor"),integer(api,"maximumMajor"),api.has("minimumMinor")?integer(api,"minimumMinor"):0),platforms,dependencies),string(root,"main"),exports);
         }catch(IllegalArgumentException|IllegalStateException|NullPointerException error){throw new IOException("Invalid module manifest: "+error.getMessage(),error);}
     }
     private static void keys(JsonObject object,String...allowed){

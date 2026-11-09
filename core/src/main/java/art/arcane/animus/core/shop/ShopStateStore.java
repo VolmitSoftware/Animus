@@ -31,7 +31,8 @@ import java.util.stream.Stream;
 /**
  * Durable shop counters. Changes are appended to {@code ledger.journal} after a short debounce on a background
  * thread and forced to disk; the journal is folded into {@code ledger.json} when it grows and at shutdown. A torn
- * last journal line from a crash is ignored with a warning. Imported counts in {@code imports/<id>.json} are merged
+ * last journal line from a crash is ignored with a warning. A damaged {@code ledger.json} or journal line never stops the
+ * plugin: the file is copied to {@code <name>.bad-<time>}, the counters start without it, and a warning names the file. Imported counts in {@code imports/<id>.json} are merged
  * once, and the snapshot remembers which imports it holds.
  */
 public final class ShopStateStore implements AutoCloseable {
@@ -47,6 +48,8 @@ public final class ShopStateStore implements AutoCloseable {
     private final Set<String> imports = new HashSet<>();
     private final ScheduledExecutorService writer;
     private boolean scheduled, closed;
+    /** Why a damaged ledger file was set aside at load, or empty. */
+    private String problem = "";
 
     public ShopStateStore(Path directory, Path logs, long flushMillis, Consumer<String> warn) throws IOException {
         this.directory = Objects.requireNonNull(directory);
@@ -64,6 +67,9 @@ public final class ShopStateStore implements AutoCloseable {
     }
 
     public ShopLedger ledger() { return ledger; }
+
+    /** Why shop counters started from less than was saved: a damaged ledger file set aside at load. Empty when all loaded. */
+    public String problem() { return problem; }
 
     /** The write delay for changes queued from now on; a write already scheduled keeps its time. */
     public synchronized void flushMillis(long millis) { flushMillis = Math.max(0, millis); }
@@ -121,6 +127,24 @@ public final class ShopStateStore implements AutoCloseable {
         }
     }
 
+    /**
+     * Sets a damaged ledger file aside as {@code <name>.bad-<time>} and warns at WARN level. The snapshot is moved, so the
+     * next compaction writes a clean one; the journal is copied and its readable lines still apply.
+     */
+    private void quarantine(Path file, boolean move, Throwable cause) {
+        Path bad = file.resolveSibling(file.getFileName() + ".bad-" + System.currentTimeMillis());
+        String reason = cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
+        try {
+            if (move) Files.move(file, bad); else Files.copy(file, bad);
+            problem = "shop counters in " + file.getFileName() + " were damaged (" + reason + "); the file was saved as " + bad.getFileName()
+                    + (move ? " and shop limits and stock counts started empty" : " and its unreadable lines were skipped");
+        } catch (IOException failure) {
+            problem = "shop counters in " + file.getFileName() + " were damaged (" + reason + ") and could not be set aside: " + failure.getMessage()
+                    + "; shop limits and stock counts started without them";
+        }
+        System.getLogger("Animus").log(System.Logger.Level.WARNING, "Shops: " + problem);
+    }
+
     private void journal(ShopLedger.Change change) {
         synchronized (this) {
             if (closed) return;
@@ -150,12 +174,19 @@ public final class ShopStateStore implements AutoCloseable {
     private void load() throws IOException {
         Path snapshot = directory.resolve("ledger.json");
         if (Files.exists(snapshot)) {
+            Set<String> applied = new HashSet<>();
+            List<ShopLedger.Change> changes;
             try {
                 JsonObject json = JsonDocuments.object(JsonDocuments.read(snapshot));
-                for (JsonElement id : json.getAsJsonArray("imports")) imports.add(id.getAsString());
-                JsonArray counters = json.getAsJsonArray("counters");
-                for (ShopLedger.Change change : ShopLedger.Change.parseAll(counters.toString())) ledger.apply(change);
-            } catch (IOException | RuntimeException invalid) { throw new IOException("Cannot read shop state " + snapshot + ": " + invalid.getMessage(), invalid); }
+                for (JsonElement id : json.getAsJsonArray("imports")) applied.add(id.getAsString());
+                changes = ShopLedger.Change.parseAll(json.getAsJsonArray("counters").toString());
+            } catch (IOException | RuntimeException invalid) {
+                changes = List.of();
+                applied.clear();
+                quarantine(snapshot, true, invalid);
+            }
+            imports.addAll(applied);
+            for (ShopLedger.Change change : changes) ledger.apply(change);
         }
         Path journal = directory.resolve("ledger.journal");
         if (Files.exists(journal)) {
@@ -166,7 +197,7 @@ public final class ShopStateStore implements AutoCloseable {
                 try { ledger.apply(ShopLedger.Change.parse(line)); }
                 catch (RuntimeException torn) {
                     if (index == lines.size() - 1) warn.accept("Ignored an incomplete last line in " + journal);
-                    else throw new IOException("Cannot read shop state " + journal + " line " + (index + 1) + ": " + torn.getMessage(), torn);
+                    else if (problem.isEmpty()) quarantine(journal, false, new IOException("line " + (index + 1) + ": " + torn.getMessage(), torn));
                 }
             }
         }

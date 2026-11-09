@@ -18,16 +18,25 @@ import java.util.concurrent.CompletionException;
  * Finds the signed skin of a Minecraft account by name. The answer completes off the server thread; callers hand it
  * back to the player's owner.
  */
-@FunctionalInterface interface SkinLookup {
+@FunctionalInterface public interface SkinLookup {
     String NAME = "[A-Za-z0-9_]{1,16}";
 
     /** What a lookup found: the account's own spelling and its skin, or why there is none. */
     record Found(Optional<String> name, Optional<BodySkin> skin, String problem) {
-        static Found skin(String name, BodySkin skin) { return new Found(Optional.of(name), Optional.of(skin), ""); }
-        static Found missing(String problem) { return new Found(Optional.empty(), Optional.empty(), problem); }
+        public static Found skin(String name, BodySkin skin) { return new Found(Optional.of(name), Optional.of(skin), ""); }
+        public static Found missing(String problem) { return new Found(Optional.empty(), Optional.empty(), problem); }
     }
 
     CompletableFuture<Found> find(String name);
+
+    /** The one Mojang lookup the Skins screen and {@code /animus npc skin} share, made on first use. */
+    static SkinLookup shared() { return Shared.LOOKUP; }
+
+    /** Holds the shared lookup, so its HTTP client is made only when a skin is first looked up. */
+    final class Shared {
+        private static final SkinLookup LOOKUP = mojang();
+        private Shared() {}
+    }
 
     /** Mojang's public profile API: the name to an account id, then the id to its signed textures. */
     static SkinLookup mojang() {

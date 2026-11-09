@@ -54,7 +54,8 @@ final class ContentCommands {
 
     static Optional<String> given(String value) { return value.isBlank() ? Optional.empty() : Optional.of(value); }
 
-    @Director(name = "modules", description = "Inspect the module runtime and call module capabilities")
+    @Director(name = "modules", aliases = "module", description = "Inspect the module runtime and call module capabilities")
+    @AnimusPermission(PermissionNodes.BEHAVIORS)
     static final class Modules extends CommandGroup {
         Modules(CommandServices services) { super(services); }
 
@@ -81,6 +82,7 @@ final class ContentCommands {
         }
 
         @Director(description = "List installed modules and their state")
+        @Positional("page")
         void list(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             CommandActor actor = actor();
             ExtensionRuntime extensions = extensions(actor);
@@ -95,7 +97,18 @@ final class ContentCommands {
             listing(actor, "Modules (" + rows.size() + ")", "/" + BuildIdentity.ID + " modules list", rows, page, "No modules installed");
         }
 
+        @Director(description = "Resume a suspended module now")
+        void resume(@Param(name = "module", description = "The module id") String module) {
+            CommandActor actor = actor();
+            ExtensionRuntime extensions = extensions(actor);
+            if (extensions == null) return;
+            Outcome<ModuleHost.ModuleStatus> resumed = extensions.resume(module);
+            if (resumed.status() == Outcome.Status.OK) actor.tell(Palette.success("Module " + module + " resumed"));
+            else actor.tell(Palette.error("Module " + module + ": " + resumed.diagnostics().stream().map(Diagnostic::message).collect(Collectors.joining("; "))));
+        }
+
         @Director(description = "List the actions and conditions modules offer")
+        @Positional("page")
         void capabilities(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             CommandActor actor = actor();
             ExtensionRuntime extensions = extensions(actor);
@@ -140,7 +153,8 @@ final class ContentCommands {
         }
     }
 
-    @Director(name = "rigs", description = "Load rigs and play their animations")
+    @Director(name = "rigs", aliases = "rig", description = "Load rigs and play their animations")
+    @AnimusPermission(PermissionNodes.RIGS)
     static final class Rigs extends CommandGroup {
         Rigs(CommandServices services) { super(services); }
 
@@ -159,6 +173,7 @@ final class ContentCommands {
         }
 
         @Director(description = "List rig and animation problems")
+        @Positional("page")
         void problems(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             CommandActor actor = actor();
             listing(actor, "Rig problems", "/" + BuildIdentity.ID + " rigs problems", runtime().rigs().catalog().problems(), page, "No rig problems");
@@ -194,7 +209,8 @@ final class ContentCommands {
         enum Loop { DEFAULT, ONCE, LOOP, PINGPONG, HOLD }
     }
 
-    @Director(name = "pack", description = "Build the resource pack for rigged models")
+    @Director(name = "pack", aliases = "packs", description = "Build the resource pack for rigged models")
+    @AnimusPermission(PermissionNodes.RIGS)
     static final class Pack extends CommandGroup {
         private static final int PACK_PROBLEMS = 5;
         Pack(CommandServices services) { super(services); }
@@ -216,13 +232,20 @@ final class ContentCommands {
         }
     }
 
-    @Director(name = "import", description = "Convert Citizens and module formats into despawned NPCs")
+    @Director(name = "import", aliases = "imports", description = "Import Citizens NPCs, module formats, shops and Gloss documents")
+    @AnimusPermission(PermissionNodes.IMPORT)
     static final class Import extends CommandGroup {
         Citizens citizens;
+        Denizen denizen;
+        ServiceCommands.ShopImport shops;
+        ServiceCommands.GuiImport gloss;
 
         Import(CommandServices services) {
             super(services);
             citizens = new Citizens(services);
+            denizen = new Denizen(services);
+            shops = new ServiceCommands.ShopImport(services);
+            gloss = new ServiceCommands.GuiImport(services);
         }
 
         @Director(description = "Convert a file in imports/inbox/ into a reviewable preview")
@@ -271,6 +294,38 @@ final class ContentCommands {
         enum Mode { REJECT, REPLACE, DUPLICATE }
     }
 
+    @Director(name = "denizen", description = "Review and release Denizen behaviors held because a guard did not convert")
+    static final class Denizen extends CommandGroup {
+        Denizen(CommandServices services) { super(services); }
+
+        private void step(Administration.CitizensStep step) {
+            CommandActor actor = actor();
+            Administration administration = new Administration(runtime());
+            files(actor, () -> {
+                AnimusMetrics metrics = AnimusMetrics.current();
+                long started = metrics.start();
+                try { return administration.citizens(step); }
+                finally { metrics.stop(Subsystem.IMPORTS, started); living().refresh(); }
+            });
+        }
+
+        @Director(description = "List the held Denizen behaviors and the lines that did not convert")
+        void held() { step(CitizensDropIn::heldDenizen); }
+
+        @Director(description = "Bind a held Denizen behavior to its NPCs and server list; add confirm after reading it")
+        @Positional("confirm")
+        void release(@Param(name = "behavior", description = "A held behavior id, such as denizen:interact/bank") String behavior,
+                     @Param(name = "confirm", defaultValue = "", description = "confirm, once you have read the behavior") String confirm) {
+            CommandActor actor = actor();
+            boolean confirmed = confirm.equalsIgnoreCase("confirm");
+            step((CitizensDropIn dropIn) -> {
+                Optional<String> refused = art.arcane.animus.core.editor.EditorCommands.releaseRefusal(actor, dropIn.denizenRunsCommands(behavior));
+                if (refused.isPresent()) throw new java.io.IOException(refused.get());
+                return dropIn.releaseDenizen(behavior, confirmed);
+            });
+        }
+    }
+
     @Director(name = "citizens", description = "Migrate a Citizens server: preview, apply, review, accept, rollback")
     static final class Citizens extends CommandGroup {
         Citizens(CommandServices services) { super(services); }
@@ -306,6 +361,8 @@ final class ContentCommands {
         @Director(description = "Turn on reviewed categories, or allow the command namespaces converted behaviors run")
         void accept(@Param(name = "categories", description = "Comma-separated categories, all, or commands") String categories) {
             List<String> chosen = Arrays.stream(categories.split(",")).map(String::strip).filter((String category) -> !category.isEmpty()).toList();
+            Optional<String> refused = art.arcane.animus.core.editor.EditorCommands.acceptRefusal(actor(), chosen);
+            if (refused.isPresent()) { actor().tell(Palette.error(refused.get())); return; }
             step((CitizensDropIn dropIn) -> dropIn.acceptCategories(chosen));
         }
 

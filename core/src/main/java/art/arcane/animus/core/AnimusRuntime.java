@@ -80,11 +80,10 @@ public final class AnimusRuntime implements AutoCloseable {
 
         DocumentStore opened = new DocumentStore(environment.dataDirectory());
         try {
-            PluginSettings loaded = PluginSettings.load(opened);
+            System.Logger log = System.getLogger("Animus");
+            PluginSettings loaded = PluginSettings.load(opened, (String warning) -> log.log(System.Logger.Level.WARNING, warning));
             migrateSchemas(opened);
             sweepPreviews(opened);
-            rotateBackups(opened, loaded.files());
-            collectObjects(opened);
             NpcRepository repository = new NpcRepository(opened);
             repository.loadForStartup();
             BehaviorStateStore state = BehaviorStateStore.open(opened, loaded.behaviors().state());
@@ -117,7 +116,7 @@ public final class AnimusRuntime implements AutoCloseable {
         for (String problem : report.problems()) log.log(System.Logger.Level.WARNING, "Schema migration: " + problem);
     }
 
-    /** Drops old rollback receipts after migration, so the migration's own receipt counts as the newest. An import awaiting review keeps its receipts. */
+    /** Drops old rollback receipts, after migration so the migration's own receipt counts as the newest. An import awaiting review keeps its receipts. */
     private static void rotateBackups(DocumentStore store, FileWorkSettings files) {
         System.Logger log = System.getLogger("Animus");
         try {
@@ -168,7 +167,11 @@ public final class AnimusRuntime implements AutoCloseable {
             throw new IllegalStateException("File cleanup failed", cleanupFailure);
     }
 
-    /** One daemon timer that only queues {@link #maintain} on the file lane, so maintenance never races a write. */
+    /**
+     * One daemon timer that only queues {@link #maintain} on the file lane, so maintenance never races a write. The first
+     * run is right after start: a server upgraded from a build without rotation may have thousands of old receipts, and
+     * removing them on the starting thread would stall the server.
+     */
     private java.util.concurrent.ScheduledExecutorService scheduleMaintenance(MutationLane lane) {
         java.util.concurrent.ScheduledExecutorService timer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor((Runnable job) -> {
             Thread thread = new Thread(job, "Animus-maintenance");
@@ -182,7 +185,7 @@ public final class AnimusRuntime implements AutoCloseable {
         timer.scheduleAtFixedRate(() -> {
             try { files.execute(this::maintain); }
             catch (java.util.concurrent.RejectedExecutionException busy) { /* Busy or stopping: the next interval tries again. */ }
-        }, every, every, java.util.concurrent.TimeUnit.MINUTES);
+        }, 0, every, java.util.concurrent.TimeUnit.MINUTES);
         return timer;
     }
 

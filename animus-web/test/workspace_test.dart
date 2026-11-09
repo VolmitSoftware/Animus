@@ -313,5 +313,45 @@ void main() {
       expect(loaded.documents.single.source, '{"futureField": {"x": 1}}');
       expect((loaded.documents.single.json! as Map<String, Object?>)['futureField'], <String, Object?>{'x': 1});
     });
+
+    test('should keep a Code draft per document until it is applied or discarded', () async {
+      await openExport();
+      expect(store.hasPendingWork, isFalse);
+      store.setCodeDraft(DocumentKind.npc, 'examples/greeter', '{"name": "Typed"}');
+      expect(store.codeDraft(DocumentKind.npc, 'examples/greeter'), '{"name": "Typed"}');
+      expect(store.codeDraft(DocumentKind.npc, 'examples/broken'), isNull);
+      expect(store.hasCodeDraft(DocumentKind.npc, 'examples/greeter'), isTrue);
+      expect(store.hasPendingWork, isTrue, reason: 'closing the tab asks while a Code draft is unapplied');
+      store.setCodeDraft(DocumentKind.npc, 'examples/greeter', null);
+      expect(store.hasCodeDraft(DocumentKind.npc, 'examples/greeter'), isFalse);
+      expect(store.hasPendingWork, isFalse);
+    });
+
+    test('should drop Code drafts with their workspace and their document', () async {
+      await openExport();
+      store.setCodeDraft(DocumentKind.npc, 'examples/greeter', '{}');
+      await store.commit(documents: <DocumentChange>[const DocumentChange(DocumentKind.npc, 'examples/greeter', null)]);
+      expect(store.hasCodeDraft(DocumentKind.npc, 'examples/greeter'), isFalse);
+      store.setCodeDraft(DocumentKind.npc, 'examples/broken', '{}');
+      await store.createWorkspace('Other');
+      expect(store.hasCodeDraft(DocumentKind.npc, 'examples/broken'), isFalse);
+    });
+
+    test('should refuse a pick with no documents and save nothing', () async {
+      final Map<String, Uint8List> serverRoot = <String, Uint8List>{
+        'server.properties': Uint8List(0),
+        'plugins/Other/config.yml': Uint8List(0),
+      };
+      await expectLater(
+        store.openFiles('server', serverRoot, requireDocuments: true, zip: false),
+        throwsA(isA<NoDocumentsFound>().having((NoDocumentsFound refused) => refused.message, 'message', contains('server root'))),
+      );
+      await expectLater(
+        store.openFiles('bad', const <String, Uint8List>{}, requireDocuments: true, zip: true),
+        throwsA(isA<NoDocumentsFound>().having((NoDocumentsFound refused) => refused.message, 'message', contains('not a zip'))),
+      );
+      expect(await repository.list(), isEmpty);
+      expect(store.workspace, isNull);
+    });
   });
 }

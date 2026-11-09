@@ -17,8 +17,9 @@ import java.util.function.Consumer;
  */
 public interface EditorHost {
     /**
-     * Whether the issuing admin still holds {@code animus.admin}. {@code UNKNOWN} keeps the token, for at most
-     * {@link EditorApi#UNCONFIRMED_ADMIN} after the last {@code ADMIN} answer.
+     * Whether the issuing admin still holds a permission node: {@code animus.editor.pair} for the token, {@code animus.editor.commands}
+     * for its {@code apply:commands} scope. {@code UNKNOWN} keeps what the node grants for at most
+     * {@link EditorApi#UNCONFIRMED_ADMIN} after the last confirmation.
      */
     enum Admin { ADMIN, NOT_ADMIN, UNKNOWN }
 
@@ -62,8 +63,14 @@ public interface EditorHost {
 
     boolean online(UUID player);
 
-    /** Reports whether the player still holds {@code animus.admin}, online or offline where the platform can tell, on any thread. */
-    void admin(UUID player, Consumer<Admin> result);
+    /** Reports whether the player still holds the permission node, online or offline where the platform can tell, on any thread. */
+    void permission(UUID player, String node, Consumer<Admin> result);
+
+    /**
+     * {@code [behaviors.actions] rawTextBehaviors}. Flags and quest stages are shared by a behavior namespace, so any behavior in
+     * the namespace of one of these can steer its raw command text, and writing one needs {@code apply:commands}.
+     */
+    default List<String> rawTextBehaviors() { return List.of(); }
 
     /**
      * Whether {@code [behaviors.actions]} lets any behavior or namespace run commands. While it does, an editor import could

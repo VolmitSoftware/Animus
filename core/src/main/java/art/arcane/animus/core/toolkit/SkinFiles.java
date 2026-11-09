@@ -23,12 +23,12 @@ import java.util.Optional;
  * label is a new file: the NPCs and trait groups wearing the old one move to it and the old file goes, all in one
  * transaction, as the web editor does when it changes a skin's arm model.
  */
-final class SkinFiles {
+public final class SkinFiles {
     static final int LABEL = 64;
     private final NpcRepository npcs;
     private final DocumentStore store;
 
-    SkinFiles(NpcRepository npcs, DocumentStore store) { this.npcs = npcs; this.store = store; }
+    public SkinFiles(NpcRepository npcs, DocumentStore store) { this.npcs = npcs; this.store = store; }
 
     /** A skin file, its optional label and who wears it. */
     record Entry(String hash, Optional<String> label, Optional<NpcItem> head, List<String> npcs, List<String> groups) {
@@ -63,6 +63,19 @@ final class SkinFiles {
         if (store.read(path(hash)) == null) store.commit(List.of(new DocumentStore.Change(path(hash), "missing", text)));
         return hash;
     }
+
+    /**
+     * Saves a looked-up skin labelled {@code label} and puts it on the listed player bodies; with none listed it is only
+     * saved. Read and written on the file lane.
+     */
+    public String wear(BodySkin skin, String label, List<String> ids) throws IOException {
+        String hash = save(skin, label);
+        String saved = "Saved " + label + "'s skin as skins/" + hash.substring(0, 12);
+        return ids.isEmpty() ? saved + "; select NPCs and click it to wear it" : saved + "; " + new ToolkitFiles(npcs, store).skin(Optional.of(hash), ids);
+    }
+
+    /** Takes the skin off the listed player bodies. */
+    public String remove(List<String> ids) throws IOException { return new ToolkitFiles(npcs, store).skin(Optional.empty(), ids); }
 
     /** Relabels the skin; a blank label removes it. The wearers move to the new file in the same transaction. */
     String rename(String hash, String label) throws IOException {

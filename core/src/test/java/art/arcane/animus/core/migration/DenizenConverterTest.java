@@ -203,7 +203,8 @@ class DenizenConverterTest {
         assertEquals(object("{\"type\":\"set\",\"variable\":\"d_count\",\"value\":{\"expression\":\"(num(d_count) + 1)\"}}"), loop.getAsJsonObject("body"));
         assertEquals("integer", document.getAsJsonObject("variables").getAsJsonObject("i_1").get("type").getAsString());
         assertEquals("any", document.getAsJsonObject("variables").getAsJsonObject("d_word").get("type").getAsString());
-        assertEquals(3, main.getAsJsonArray("steps").size(), "foreach stop outside a loop is kept");
+        assertEquals(4, main.getAsJsonArray("steps").size(), "foreach stop outside a loop is kept, and the routine ends there");
+        assertEquals("return", step(main, 3).get("type").getAsString());
     }
 
     @Test void flagCommandsSetTypedValuesExpiryAndClear() throws IOException {
@@ -606,7 +607,7 @@ class DenizenConverterTest {
         assertEquals("a.dsc:4", kept.get("source").getAsString());
         assertEquals("tag player.money has no Animus expression", kept.get("reason").getAsString());
         assertEquals("partial", output.report().getAsJsonObject("behaviorStatus").get("denizen:task/t").getAsString());
-        assertEquals(6, output.report().get("converterVersion").getAsInt());
+        assertEquals(7, output.report().get("converterVersion").getAsInt());
     }
 
     @Test void limitsCountLoopBodiesAndMissingElses() {

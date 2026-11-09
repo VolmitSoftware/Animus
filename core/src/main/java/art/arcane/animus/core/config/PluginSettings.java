@@ -14,6 +14,8 @@ import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /** Plugin-wide settings are TOML. NPC definitions, behaviors, state and generated data remain JSON. */
 public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, boolean metrics, NpcRuntimeSettings npcs,
@@ -21,46 +23,59 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
                              ShopSettings shops, EditorRelaySettings relay, EditorSettings editor, RigSettings rigs,
                              NavigationSettings navigation, HotloadSettings hotload, RecordingSettings recordings,
                              PlaceholderSettings placeholders) {
-    public static PluginSettings load(DocumentStore store) throws IOException {
+    /** As {@link #load(DocumentStore, Consumer)}, dropping the warnings; for tools and tests. */
+    public static PluginSettings load(DocumentStore store) throws IOException { return load(store, (String ignored) -> {}); }
+
+    /**
+     * Reads {@code config.toml}, writing it with every default first when it is missing. {@code warnings} hears each key
+     * Animus does not know, with its line; such keys are ignored. A wrong type or range refuses the file.
+     */
+    public static PluginSettings load(DocumentStore store, Consumer<String> warnings) throws IOException {
         Path toml = store.resolve("config.toml");
-        if (Files.exists(toml)) return readToml(toml);
+        if (Files.exists(toml)) return readToml(toml, warnings);
         Path legacy = store.resolve("config.json");
         JsonObject document;
         if (Files.exists(legacy)) {
             String original = JsonDocuments.read(legacy);
             try { document = JsonDocuments.object(original); }
             catch (IOException e) { throw new IOException("Cannot load " + legacy + ": " + e.getMessage(), e); }
-            validate(document, legacy);
+            validate(document.deepCopy(), legacy, ConfigText.of(""), warnings);
             // Leave the old file intact and archive it before creating the authoritative TOML file.
             DocumentStore.atomic(store.resolve("backups/config-" + JsonDocuments.hash(original) + ".json"), original);
-        } else {
-            document = new JsonObject();
-            document.addProperty("packetProofEnabled", false);
-            document.addProperty("splashScreen", true);
-            document.addProperty("metrics", true);
-            document.add("npcs", new Gson().toJsonTree(NpcRuntimeSettings.DEFAULT));
-            document.add("files", new Gson().toJsonTree(FileWorkSettings.DEFAULT));
-            document.add("modules", new Gson().toJsonTree(ModuleSettings.DEFAULT));
-            document.add("behaviors", new Gson().toJsonTree(BehaviorSettings.DEFAULT));
-            document.add("combat", new Gson().toJsonTree(CombatBudgets.DEFAULT));
-            document.add("builds", new Gson().toJsonTree(BuildSettings.DEFAULT));
-            document.add("shops", shopDefaults());
-            document.add("editor", editorDefaults());
-            document.add("rigs", new Gson().toJsonTree(RigSettings.DEFAULT));
-            document.add("navigation", new Gson().toJsonTree(NavigationSettings.DEFAULT));
-            document.add("hotload", new Gson().toJsonTree(HotloadSettings.DEFAULT));
-            document.add("recordings", new Gson().toJsonTree(RecordingSettings.DEFAULT));
-            document.add("placeholders", new Gson().toJsonTree(PlaceholderSettings.DEFAULT));
-        }
+        } else document = defaults();
         String encoded;
         try { encoded = TomlCodec.toToml(document); }
         catch (RuntimeException e) { throw new IOException("Cannot migrate config.json to TOML; original retained", e); }
         if (!document.equals(TomlCodec.toJsonElement(encoded)))
             throw new IOException("config.json cannot be represented losslessly in TOML; original retained");
         DocumentStore.atomic(toml, "# Animus plugin settings. NPC and behavior documents use JSON. Every key: " + DOCS + "\n" + commented(encoded));
-        return readToml(toml);
+        return readToml(toml, warnings);
     }
 
+    /** Every key with its default, as a new config.toml has it. Also the list of keys Animus knows. */
+    static JsonObject defaults() {
+        Gson gson = new Gson();
+        JsonObject document = new JsonObject();
+        document.addProperty("packetProofEnabled", false);
+        document.addProperty("splashScreen", true);
+        document.addProperty("metrics", true);
+        document.add("npcs", gson.toJsonTree(NpcRuntimeSettings.DEFAULT));
+        document.add("files", gson.toJsonTree(FileWorkSettings.DEFAULT));
+        document.add("modules", gson.toJsonTree(ModuleSettings.DEFAULT));
+        document.add("behaviors", gson.toJsonTree(BehaviorSettings.DEFAULT));
+        document.add("combat", gson.toJsonTree(CombatBudgets.DEFAULT));
+        document.add("builds", gson.toJsonTree(BuildSettings.DEFAULT));
+        document.add("shops", shopDefaults());
+        document.add("editor", editorDefaults());
+        document.add("rigs", gson.toJsonTree(RigSettings.DEFAULT));
+        document.add("navigation", gson.toJsonTree(NavigationSettings.DEFAULT));
+        document.add("hotload", gson.toJsonTree(HotloadSettings.DEFAULT));
+        document.add("recordings", gson.toJsonTree(RecordingSettings.DEFAULT));
+        document.add("placeholders", gson.toJsonTree(PlaceholderSettings.DEFAULT));
+        return document;
+    }
+
+    private static final JsonObject KNOWN = defaults();
     private static final String DOCS = ChatLine.docsUrl("03-configuration", "");
     /** The one-line note above each top-level table of a written config.toml; its docs section is named after the table. */
     private static final Map<String, String> TABLES = Map.ofEntries(Map.entry("npcs", "NPC presentation and viewer budgets"),
@@ -69,137 +84,137 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
             Map.entry("editor", "Web editor listener, relay and notices"), Map.entry("rigs", "Rigs and animations"), Map.entry("navigation", "Route planning"),
             Map.entry("hotload", "Live reload of hand edits"), Map.entry("recordings", "Recordings and ghost replays"),
             Map.entry("placeholders", "PlaceholderAPI refresh"));
+    /** Notes above single keys and sub-tables that a table note does not explain. */
+    private static final Map<String, String> NOTES = Map.ofEntries(
+            Map.entry("files.backupsKept", "Rollback receipts kept regardless of age. Each edit keeps about two small files until both limits pass"),
+            Map.entry("files.backupDays", "Receipts older than this many days, beyond backupsKept, are removed; 0 keeps only the newest backupsKept"),
+            Map.entry("editor.relayEnabled", "The relay connects at the first /animus editor pair, then at each start while a token exists"),
+            Map.entry("editor.relayUrl", "The Volmit relay; the server dials out to it, so no port needs to be open"),
+            Map.entry("editor.relayReconnectMinSeconds", "Relay reconnect waits in seconds, shortest then longest"),
+            Map.entry("editor.relayFrameBytes", "Largest relay frame in bytes"),
+            Map.entry("editor.relayConcurrentRequests", "Editor requests the relay runs at once"),
+            Map.entry("shops.messages", "Shop texts with & colour codes; {name} is a placeholder. Delete a line to use the built-in text"),
+            Map.entry("behaviors.triggers.playerCooldownTicks", "Spacing of one player's runs of an interaction trigger that sets no cooldownTicks; 0 turns it off"),
+            Map.entry("behaviors.server.maximumAreas", "Areas tracked for player_area triggers"));
 
     private static String commented(String encoded) {
-        StringBuilder text = new StringBuilder(encoded.length() + 1024);
+        StringBuilder text = new StringBuilder(encoded.length() + 2048);
+        String table = "";
         for (String line : encoded.split("\n", -1)) {
-            String table = line.startsWith("[") && line.endsWith("]") ? line.substring(1, line.length() - 1) : "";
-            if (TABLES.containsKey(table)) text.append("# ").append(TABLES.get(table)).append(": ").append(DOCS).append('#').append(table).append('\n');
+            if (line.startsWith("[") && line.endsWith("]")) {
+                table = line.substring(1, line.length() - 1);
+                if (TABLES.containsKey(table)) text.append("# ").append(TABLES.get(table)).append(": ").append(DOCS).append('#').append(table).append('\n');
+                else if (NOTES.containsKey(table)) text.append("# ").append(NOTES.get(table)).append('\n');
+            } else {
+                int equals = line.indexOf(" = ");
+                String key = equals > 0 ? (table.isEmpty() ? "" : table + ".") + line.substring(0, equals).strip() : "";
+                if (NOTES.containsKey(key)) text.append("# ").append(NOTES.get(key)).append('\n');
+            }
             text.append(line).append('\n');
         }
         return text.substring(0, text.length() - 1);
     }
 
-    private static PluginSettings readToml(Path path) throws IOException {
-        try { return parse(JsonDocuments.read(path), path); }
-        catch (IOException | RuntimeException e) { throw new IOException("Cannot load " + path + ": " + e.getMessage(), e); }
+    private static PluginSettings readToml(Path path, Consumer<String> warnings) throws IOException {
+        String text;
+        try { text = JsonDocuments.read(path); }
+        catch (IOException e) { throw new IOException("Cannot read " + path + ": " + e.getMessage(), e); }
+        return parse(text, path, warnings);
     }
 
-    /** Settings from TOML text, as a hotload reads them; errors name {@code label} and the field. */
-    public static PluginSettings parse(String text, Path label) throws IOException {
-        if (text.length() > 256 * 1024) throw new IOException("Plugin settings exceed 256 KiB");
+    /** As {@link #parse(String, Path, Consumer)}, dropping the warnings; for tools and tests. */
+    public static PluginSettings parse(String text, Path label) throws IOException { return parse(text, label, (String ignored) -> {}); }
+
+    /**
+     * Settings from TOML text, as a start or a hotload reads them. Errors are one line that names {@code label}, the line
+     * and the key; {@code warnings} hears each unknown key, which is ignored.
+     */
+    public static PluginSettings parse(String text, Path label, Consumer<String> warnings) throws IOException {
+        if (text.length() > 256 * 1024) throw new IOException(label + ": plugin settings exceed 256 KiB");
+        ConfigText lines = ConfigText.of(text);
         JsonElement data;
         try { data = TomlCodec.toJsonElement(text); }
-        catch (IOException | RuntimeException invalid) { throw new IOException(label + ": invalid TOML: " + invalid.getMessage(), invalid); }
-        return validate(data, label);
+        catch (IOException | RuntimeException invalid) {
+            String where = lines.syntax(invalid);
+            throw new IOException(label + (where.startsWith("line ") ? " " : ": ") + where, invalid);
+        }
+        String empty = lines.emptyValue();
+        if (!empty.isEmpty()) throw new IOException(label + " " + empty);
+        return validate(data, label, lines, warnings);
     }
 
-    private static PluginSettings validate(JsonElement data, Path path) throws IOException {
+    private static PluginSettings validate(JsonElement data, Path path, ConfigText lines, Consumer<String> warnings) throws IOException {
         if (data == null || !data.isJsonObject()) throw new IOException(path + ": expected settings table");
-        JsonElement proof = data.getAsJsonObject().get("packetProofEnabled");
-        if (proof != null && (!proof.isJsonPrimitive() || !proof.getAsJsonPrimitive().isBoolean()))
-            throw new IOException(path + ": packetProofEnabled must be a boolean");
-        JsonElement splash = data.getAsJsonObject().get("splashScreen");
-        if (splash != null && (!splash.isJsonPrimitive() || !splash.getAsJsonPrimitive().isBoolean()))
-            throw new IOException(path + ": splashScreen must be a boolean");
-        JsonElement metrics = data.getAsJsonObject().get("metrics");
-        if (metrics != null && (!metrics.isJsonPrimitive() || !metrics.getAsJsonPrimitive().isBoolean()))
-            throw new IOException(path + ": metrics must be a boolean");
-        NpcRuntimeSettings defaults = NpcRuntimeSettings.DEFAULT;
-        JsonObject npc = new JsonObject();
-        if (data.getAsJsonObject().has("npcs")) {
-            if (!data.getAsJsonObject().get("npcs").isJsonObject()) throw new IOException(path + ": npcs must be a table");
-            npc = data.getAsJsonObject().getAsJsonObject("npcs");
-        }
-        boolean enabled = defaults.enabled();
-        if (npc.has("enabled")) {
-            if (!npc.get("enabled").isJsonPrimitive() || !npc.getAsJsonPrimitive("enabled").isBoolean())
-                throw new IOException(path + ": npcs.enabled must be a boolean");
-            enabled = npc.get("enabled").getAsBoolean();
-        }
-        NpcRuntimeSettings npcSettings;
-        try {
-            npcSettings = new NpcRuntimeSettings(enabled,
-                    integer(npc, "viewDistance", defaults.viewDistance()), integer(npc, "maximumVisible", defaults.maximumVisible()),
-                    integer(npc, "maximumViewers", defaults.maximumViewers()), integer(npc, "updatesPerTick", defaults.updatesPerTick()),
-                    integer(npc, "packetsPerTick", defaults.packetsPerTick()), integer(npc, "pendingSpawnsPerViewer", defaults.pendingSpawnsPerViewer()),
-                    integer(npc, "lookUpdatesPerTick", defaults.lookUpdatesPerTick()), integer(npc, "simulationPerTick", defaults.simulationPerTick()),
-                    integer(npc, "queuePerViewer", defaults.queuePerViewer()), integer(npc, "degradedIntervalTicks", defaults.degradedIntervalTicks()));
-        } catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": npcs: " + e.getMessage(), e); }
-        FileWorkSettings fileSettings;
-        try {
-            JsonObject files = table(data.getAsJsonObject(), "files");
-            fileSettings = new FileWorkSettings(integer(files, "maximumOperations", FileWorkSettings.DEFAULT.maximumOperations()),
-                    integer(files, "deliveryBudgetMillis", FileWorkSettings.DEFAULT.deliveryBudgetMillis()),
-                    integer(files, "backupsKept", FileWorkSettings.DEFAULT.backupsKept()), integer(files, "backupDays", FileWorkSettings.DEFAULT.backupDays()));
-        } catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": files: " + e.getMessage(), e); }
-        ModuleSettings moduleSettings;
-        try {
-            JsonObject modules = table(data.getAsJsonObject(), "modules");
-            moduleSettings = new ModuleSettings(bool(modules, "enabled", ModuleSettings.DEFAULT.enabled()),
-                    integer(modules, "maximumInvocations", ModuleSettings.DEFAULT.maximumInvocations()),
-                    integer(modules, "invocationTimeoutMillis", ModuleSettings.DEFAULT.invocationTimeoutMillis()),
-                    integer(modules, "deliveryBudgetMillis", ModuleSettings.DEFAULT.deliveryBudgetMillis()));
-        } catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": modules: " + e.getMessage(), e); }
-        BehaviorSettings behaviorSettings;
-        try { behaviorSettings = behaviors(table(data.getAsJsonObject(), "behaviors")); }
-        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": behaviors: " + e.getMessage(), e); }
-        CombatBudgets combatBudgets;
-        try { combatBudgets = combat(table(data.getAsJsonObject(), "combat")); }
-        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": combat: " + e.getMessage(), e); }
-        BuildSettings buildSettings;
-        try { buildSettings = builds(table(data.getAsJsonObject(), "builds")); }
-        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": builds: " + e.getMessage(), e); }
-        ShopSettings shopSettings;
-        try { shopSettings = shops(table(data.getAsJsonObject(), "shops")); }
-        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": shops: " + e.getMessage(), e); }
-        RigSettings rigSettings;
-        try { rigSettings = rigs(table(data.getAsJsonObject(), "rigs")); }
-        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": rigs: " + e.getMessage(), e); }
-        NavigationSettings navigationSettings;
-        try { navigationSettings = navigation(table(data.getAsJsonObject(), "navigation")); }
-        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": navigation: " + e.getMessage(), e); }
-        EditorRelaySettings relaySettings;
-        EditorSettings editorSettings;
-        try {
-            relaySettings = relay(table(data.getAsJsonObject(), "editor"));
-            editorSettings = EditorSettings.parse(table(data.getAsJsonObject(), "editor"));
-        } catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": editor: " + e.getMessage(), e); }
-        HotloadSettings hotloadSettings;
-        try { hotloadSettings = hotload(table(data.getAsJsonObject(), "hotload")); }
-        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": hotload: " + e.getMessage(), e); }
-        RecordingSettings recordingSettings;
-        try { recordingSettings = recordings(table(data.getAsJsonObject(), "recordings")); }
-        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": recordings: " + e.getMessage(), e); }
-        PlaceholderSettings placeholderSettings;
-        try { placeholderSettings = placeholders(table(data.getAsJsonObject(), "placeholders")); }
-        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": placeholders: " + e.getMessage(), e); }
-        return new PluginSettings(proof != null && proof.getAsBoolean(), splash == null || splash.getAsBoolean(), metrics == null || metrics.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings, shopSettings,
+        JsonObject root = data.getAsJsonObject();
+        lines.dropUnknown(path, root, KNOWN, "", warnings);
+        boolean proof = topLevel(root, "packetProofEnabled", false, path, lines);
+        boolean splash = topLevel(root, "splashScreen", true, path, lines);
+        boolean metrics = topLevel(root, "metrics", true, path, lines);
+        if (root.has("npcs") && !root.get("npcs").isJsonObject()) throw new IOException(path + lines.at("npcs") + ": npcs must be a table");
+        NpcRuntimeSettings npcSettings = section(path, lines, "npcs", () -> npcs(table(root, "npcs")));
+        FileWorkSettings fileSettings = section(path, lines, "files", () -> {
+            JsonObject files = table(root, "files");
+            FileWorkSettings d = FileWorkSettings.DEFAULT;
+            return new FileWorkSettings(integer(files, "maximumOperations", d.maximumOperations()), integer(files, "deliveryBudgetMillis", d.deliveryBudgetMillis()),
+                    integer(files, "backupsKept", d.backupsKept()), integer(files, "backupDays", d.backupDays()));
+        });
+        ModuleSettings moduleSettings = section(path, lines, "modules", () -> {
+            JsonObject modules = table(root, "modules");
+            ModuleSettings d = ModuleSettings.DEFAULT;
+            return new ModuleSettings(bool(modules, "enabled", d.enabled()), integer(modules, "maximumInvocations", d.maximumInvocations()),
+                    integer(modules, "invocationTimeoutMillis", d.invocationTimeoutMillis()), integer(modules, "deliveryBudgetMillis", d.deliveryBudgetMillis()));
+        });
+        BehaviorSettings behaviorSettings = section(path, lines, "behaviors", () -> behaviors(table(root, "behaviors")));
+        CombatBudgets combatBudgets = section(path, lines, "combat", () -> combat(table(root, "combat")));
+        BuildSettings buildSettings = section(path, lines, "builds", () -> builds(table(root, "builds")));
+        ShopSettings shopSettings = section(path, lines, "shops", () -> shops(table(root, "shops")));
+        RigSettings rigSettings = section(path, lines, "rigs", () -> rigs(table(root, "rigs")));
+        NavigationSettings navigationSettings = section(path, lines, "navigation", () -> navigation(table(root, "navigation")));
+        EditorRelaySettings relaySettings = section(path, lines, "editor", () -> relay(table(root, "editor")));
+        EditorSettings editorSettings = section(path, lines, "editor", () -> EditorSettings.parse(table(root, "editor")));
+        HotloadSettings hotloadSettings = section(path, lines, "hotload", () -> hotload(table(root, "hotload")));
+        RecordingSettings recordingSettings = section(path, lines, "recordings", () -> recordings(table(root, "recordings")));
+        PlaceholderSettings placeholderSettings = section(path, lines, "placeholders",
+                () -> new PlaceholderSettings(integer(table(root, "placeholders"), "refreshTicks", PlaceholderSettings.DEFAULT.refreshTicks())));
+        return new PluginSettings(proof, splash, metrics, npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings, shopSettings,
                 relaySettings, editorSettings, rigSettings, navigationSettings, hotloadSettings, recordingSettings, placeholderSettings);
+    }
+
+    /** One table's reader; its range and type errors become one line naming the file, the line, the table and the key. */
+    private static <T> T section(Path path, ConfigText lines, String table, Supplier<T> reader) throws IOException {
+        try { return reader.get(); }
+        catch (IllegalArgumentException | ArithmeticException e) {
+            String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            throw new IOException(path + lines.atMessage(table, message) + ": " + table + ": " + message, e);
+        }
+    }
+
+    private static boolean topLevel(JsonObject root, String key, boolean fallback, Path path, ConfigText lines) throws IOException {
+        JsonElement value = root.get(key);
+        if (value == null) return fallback;
+        if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean()) throw new IOException(path + lines.at(key) + ": " + key + " must be a boolean");
+        return value.getAsBoolean();
+    }
+
+    private static NpcRuntimeSettings npcs(JsonObject npc) {
+        NpcRuntimeSettings d = NpcRuntimeSettings.DEFAULT;
+        return new NpcRuntimeSettings(bool(npc, "enabled", d.enabled()),
+                integer(npc, "viewDistance", d.viewDistance()), integer(npc, "maximumVisible", d.maximumVisible()),
+                integer(npc, "maximumViewers", d.maximumViewers()), integer(npc, "updatesPerTick", d.updatesPerTick()),
+                integer(npc, "packetsPerTick", d.packetsPerTick()), integer(npc, "pendingSpawnsPerViewer", d.pendingSpawnsPerViewer()),
+                integer(npc, "lookUpdatesPerTick", d.lookUpdatesPerTick()), integer(npc, "simulationPerTick", d.simulationPerTick()),
+                integer(npc, "queuePerViewer", d.queuePerViewer()), integer(npc, "degradedIntervalTicks", d.degradedIntervalTicks()));
     }
 
     private static HotloadSettings hotload(JsonObject document) {
         HotloadSettings defaults = HotloadSettings.DEFAULT;
-        for (String key : document.keySet())
-            if (!java.util.Set.of("enabled", "sound", "maximumFiles", "readsPerPoll", "maximumFileBytes").contains(key))
-                throw new IllegalArgumentException(key + " is not a hotload setting");
         return new HotloadSettings(bool(document, "enabled", defaults.enabled()), bool(document, "sound", defaults.sound()),
                 integer(document, "maximumFiles", defaults.maximumFiles()), integer(document, "readsPerPoll", defaults.readsPerPoll()),
                 integer(document, "maximumFileBytes", defaults.maximumFileBytes()));
     }
 
-    private static PlaceholderSettings placeholders(JsonObject document) {
-        for (String key : document.keySet())
-            if (!key.equals("refreshTicks")) throw new IllegalArgumentException(key + " is not a placeholders setting");
-        return new PlaceholderSettings(integer(document, "refreshTicks", PlaceholderSettings.DEFAULT.refreshTicks()));
-    }
-
     private static RecordingSettings recordings(JsonObject document) {
         RecordingSettings defaults = RecordingSettings.DEFAULT;
-        for (String key : document.keySet())
-            if (!java.util.Set.of("enabled", "sampleTicks", "maximumTicks", "maximumFileBytes", "maximumSessions", "ghostEnabled", "ghostIntervalTicks",
-                    "ghostStretchTicks", "ghostGlow", "ghostColor", "maximumPreviews").contains(key))
-                throw new IllegalArgumentException(key + " is not a recording setting");
         return new RecordingSettings(bool(document, "enabled", defaults.enabled()), integer(document, "sampleTicks", defaults.sampleTicks()),
                 integer(document, "maximumTicks", defaults.maximumTicks()), integer(document, "maximumFileBytes", defaults.maximumFileBytes()),
                 integer(document, "maximumSessions", defaults.maximumSessions()), bool(document, "ghostEnabled", defaults.ghostEnabled()),
@@ -210,9 +225,6 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
 
     private static NavigationSettings navigation(JsonObject document) {
         NavigationSettings defaults = NavigationSettings.DEFAULT;
-        for (String key : document.keySet())
-            if (!java.util.Set.of("routesPerTick", "motionCellsPerTick", "planningStartsPerTick", "wakeChecksPerTick", "planningJobs", "captureReadsPerTick").contains(key))
-                throw new IllegalArgumentException(key + " is not a navigation setting");
         return new NavigationSettings(integer(document, "routesPerTick", defaults.routesPerTick()),
                 integer(document, "motionCellsPerTick", defaults.motionCellsPerTick()),
                 integer(document, "planningStartsPerTick", defaults.planningStartsPerTick()),
@@ -223,8 +235,6 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
 
     private static RigSettings rigs(JsonObject document) {
         RigSettings defaults = RigSettings.DEFAULT;
-        for (String key : document.keySet())
-            if (!java.util.Set.of("enabled", "maximumBones", "updatesPerTick", "sampleTicks", "plansPerTick").contains(key)) throw new IllegalArgumentException(key + " is not a rig setting");
         return new RigSettings(bool(document, "enabled", defaults.enabled()), integer(document, "maximumBones", defaults.maximumBones()),
                 integer(document, "updatesPerTick", defaults.updatesPerTick()), integer(document, "sampleTicks", defaults.sampleTicks()),
                 integer(document, "plansPerTick", defaults.plansPerTick()));
@@ -251,6 +261,10 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
         JsonObject editor = EditorSettings.DEFAULT.toJson();
         editor.addProperty("relayEnabled", defaults.enabled());
         editor.addProperty("relayUrl", defaults.url());
+        editor.addProperty("relayReconnectMinSeconds", defaults.reconnectMinSeconds());
+        editor.addProperty("relayReconnectMaxSeconds", defaults.reconnectMaxSeconds());
+        editor.addProperty("relayFrameBytes", defaults.frameBytes());
+        editor.addProperty("relayConcurrentRequests", defaults.concurrentRequests());
         return editor;
     }
 
@@ -272,13 +286,14 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
         shops.addProperty("style", defaults.style());
         shops.addProperty("priceFormat", defaults.priceFormat());
         shops.addProperty("flushMillis", defaults.flushMillis());
+        JsonObject messages = new JsonObject();
+        defaults.messages().forEach(messages::addProperty);
+        shops.add("messages", messages);
         return shops;
     }
 
     private static ShopSettings shops(JsonObject document) {
         ShopSettings defaults = ShopSettings.DEFAULT;
-        for (String key : document.keySet())
-            if (!java.util.Set.of("enabled", "economy", "style", "priceFormat", "flushMillis", "messages").contains(key)) throw new IllegalArgumentException(key + " is not a shop setting");
         java.util.Map<String, String> messages = new java.util.LinkedHashMap<>();
         for (java.util.Map.Entry<String, JsonElement> entry : table(document, "messages").entrySet()) {
             if (!entry.getValue().isJsonPrimitive() || !entry.getValue().getAsJsonPrimitive().isString())
@@ -417,7 +432,7 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
     private static int budget(JsonObject object, String field, int fallback, int minimum, int maximum, String table) {
         try {
             int value = integer(object, field, fallback);
-            if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum);
+            if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum + ", not " + value);
             return value;
         } catch (IllegalArgumentException e) { throw new IllegalArgumentException(table + "." + e.getMessage(), e); }
     }
@@ -428,7 +443,7 @@ public record PluginSettings(boolean packetProofEnabled, boolean splashScreen, b
             JsonElement raw = object.get(field);
             if (!raw.isJsonPrimitive() || !raw.getAsJsonPrimitive().isNumber()) throw new IllegalArgumentException(field + " must be an integer");
             long value = raw.getAsBigDecimal().longValueExact();
-            if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum);
+            if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum + ", not " + value);
             return value;
         } catch (ArithmeticException | NumberFormatException e) {
             throw new IllegalArgumentException(table + "." + field + " must be an integer within its budget", e);

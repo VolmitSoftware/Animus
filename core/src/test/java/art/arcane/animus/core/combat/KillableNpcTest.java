@@ -2,6 +2,7 @@ package art.arcane.animus.core.combat;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import art.arcane.animus.core.config.CombatBudgets;
@@ -161,6 +162,16 @@ class KillableNpcTest {
         assertEquals(List.of(npc), world.revived);
         assertEquals(2, health(npc));
         assertEquals(CombatOperations.Status.APPLIED, engine.revive(npc).status(), "Reviving a living NPC heals it");
+    }
+
+    @Test void aRevivalThatFailsDuringTheFallKeepsThePermadeath() {
+        UUID npc = killable("{\"killable\":true,\"respawn\":{\"afterDeath\":\"permadeath\"}}", null, 2);
+        hit(npc, world.player("Alice", 1, 0), 5);
+        run(5);
+        world.refuseRevive = true;
+        assertNotEquals(CombatOperations.Status.APPLIED, engine.revive(npc).status());
+        run(400);
+        assertEquals(List.of(npc), engine.drainPermadeaths(), "The failed revival leaves the permadeath to be recorded");
     }
 
     @Test void aPermadeathWaitsForTheFallUnlessCombatCloses() {

@@ -45,6 +45,7 @@ import art.arcane.volmlib.util.plugin.SplashScreenSupport;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.RuntimeEnvironment;
 import art.arcane.animus.core.SplashScreen;
+import art.arcane.animus.core.StartupCheck;
 import art.arcane.animus.bukkit.building.BukkitBuildPlatform;
 import art.arcane.animus.bukkit.protection.RegionBuildProtection;
 import art.arcane.animus.bukkit.protection.RegionFlags;
@@ -82,6 +83,7 @@ import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.core.inventory.Economy;
 import art.arcane.animus.core.shop.ShopService;
+import java.nio.file.Path;
 import java.util.Optional;
 import java.util.UUID;
 import art.arcane.animus.core.storage.JsonDocuments;
@@ -129,6 +131,9 @@ public final class AnimusPlugin extends JavaPlugin {
         return current == null ? null : current.triggers();
     });
     private volatile boolean stopping;
+    /** Why the last start failed, for /animus replies, or null; the plugin stays enabled so its command can say so. */
+    private volatile String startupFailure;
+    private boolean released;
     private volatile EditorService editor;
     private volatile AnimusMetrics metrics;
     private final DebugWatch debugWatch = new DebugWatch();
@@ -143,13 +148,18 @@ public final class AnimusPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         long started = System.nanoTime();
+        startupFailure = null;
+        released = false;
+        stopping = false;
         try {
             AnimusMetrics measured = AnimusMetrics.restart();
             metrics = measured;
-            RuntimeEnvironment environment = RuntimeEnvironment.bukkit(
-                    getServer().getBukkitVersion(), getDataFolder().toPath(), serverName());
+            Path data = RuntimeEnvironment.resolveDataDirectory(getDataFolder().toPath());
+            RuntimeEnvironment environment = RuntimeEnvironment.bukkit(getServer().getBukkitVersion(), data, serverName());
             runtime = new AnimusRuntime(environment, failure -> getLogger().log(Level.SEVERE, "Animus file cleanup failed", failure));
             runtime.start();
+            getServer().getServicesManager().register(art.arcane.animus.bukkit.api.AnimusNpcs.class,
+                    new art.arcane.animus.bukkit.runtime.BukkitNpcLookup(runtime.npcs()::snapshot), this, ServicePriority.Normal);
             CachedPlaceholders placeholders = BukkitPlaceholders.install(this);
             placeholders.refreshTicks(runtime.placeholderSettings().refreshTicks());
             runtime.onSettings((art.arcane.animus.core.config.PluginSettings next) -> placeholders.refreshTicks(next.placeholders().refreshTicks()));
@@ -168,9 +178,6 @@ public final class AnimusPlugin extends JavaPlugin {
             };
             runtime.importHost(new CitizensDropIn.Host(Optional.ofNullable(getDataFolder().getAbsoluteFile().getParentFile()).map(java.io.File::toPath), citizens, shopkeepers, denizen));
             CitizensGuard.install(citizens);
-            List<String> recovered = runtime.npcs().diagnostics();
-            recovered.stream().limit(5).forEach(problem -> getLogger().warning("Definition kept at last valid version: " + problem));
-            if (recovered.size() > 5) getLogger().warning((recovered.size() - 5) + " more definition problems; /animus validate lists them");
             replies = new ReplyScheduler(this);
             commands = runtime.fileExecutor((task, event, failure) -> {
                 // Services retire their pending callbacks before this lane is closed.
@@ -235,7 +242,9 @@ public final class AnimusPlugin extends JavaPlugin {
                     (String message) -> getLogger().info(message)));
             proof.observeInteractions(modules::interacted);
             if (foliaProof != null) foliaProof.observeInteractions(modules::interacted);
-            behaviors = new BehaviorCommands(getDataFolder().toPath(), runtime, extensions, message -> getLogger().info(message));
+            behaviors = new BehaviorCommands(data, runtime, extensions, (String message) -> {
+                if (message.contains(": FAILED")) getLogger().warning(message); else getLogger().info(message);
+            });
             runtime.catalogs(new RuntimeCatalogs(new RuntimeCatalogs.Parts(runtime, owners::refresh, () -> behaviors,
                     () -> screenService.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {}),
                     () -> holoService.reload((art.arcane.animus.core.gui.HoloCatalog catalog) -> {}), (String message) -> getLogger().info(message))));
@@ -244,7 +253,7 @@ public final class AnimusPlugin extends JavaPlugin {
             hotload = new HotloadService(new HotloadService.Parts(runtime, commands, (Runnable task) -> {
                         if (!replies.reply(getServer().getConsoleSender(), task)) throw new RejectedExecutionException("the server refused console work");
                     }, living, new BukkitOperators(this, replies), screenService::refreshOpen,
-                    (String message) -> getLogger().info(message)));
+                    (String message) -> getLogger().info(message), (String message) -> getLogger().warning(message)));
             hotload.start();
             TriggerDispatcher triggers = behaviors.triggers();
             ServerTriggerDispatcher servers = behaviors.servers();
@@ -278,19 +287,36 @@ public final class AnimusPlugin extends JavaPlugin {
             startEditor(modulePlatform, regions);
             updateMetrics(runtime.metrics());
             runtime.onSettings((PluginSettings next) -> updateMetrics(next.metrics()));
-            if (runtime.splashScreen()) splash(true);
+            SplashScreen.Startup health = StartupCheck.check(runtime, living.available(), shops.stateProblem(), editor, (String warning) -> getLogger().warning(warning));
+            if (runtime.splashScreen()) splash(health);
+            else if (!health.ready()) getLogger().warning("Startup: " + health.label());
             getLogger().info("Enabled " + BuildIdentity.VERSION + " on " + getServer().getName() + " " + environment.minecraftVersion() + (replies.isFolia() ? " (Folia regions)" : "")
                     + " in " + (System.nanoTime() - started) / 1_000_000 + "ms | " + runtime.npcs().all().size() + " NPCs | editor " + editorState());
             BukkitOnboarding.start(this, replies, runtime, commands, () -> stopping);
-        } catch (IOException | ReflectiveOperationException | RuntimeException | LinkageError exception) {
-            getLogger().log(Level.SEVERE, "Failed to start", exception);
-            splash(false);
-            getServer().getPluginManager().disablePlugin(this);
+        } catch (IOException exception) {
+            // A bad config.toml, an unreadable data folder or a damaged file: the message names it, so no stack trace.
+            failed(exception.getMessage(), null);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError exception) {
+            failed(exception.getClass().getSimpleName() + ": " + exception.getMessage(), exception);
         }
+    }
+
+    /**
+     * Logs why the start failed as one SEVERE line, releases what had started, and keeps the plugin enabled so
+     * {@code /animus} can tell players and the console what happened instead of the server's "plugin is disabled" error.
+     */
+    private void failed(String reason, Throwable trace) {
+        startupFailure = reason;
+        String line = "Animus did not start: " + reason + ". Fix it and restart the server.";
+        if (trace == null) getLogger().severe(line); else getLogger().log(Level.SEVERE, line, trace);
+        splash(SplashScreen.Startup.FAILED);
+        onDisable();
     }
 
     @Override
     public void onDisable() {
+        if (released) return;
+        released = true;
         stopping = true;
         // Stop bStats first so no chart callable reads a runtime that is shutting down.
         updateMetrics(false);
@@ -345,6 +371,8 @@ public final class AnimusPlugin extends JavaPlugin {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] arguments) {
         AnimusDirector active = director;
+        String failure = startupFailure;
+        if (failure != null) { sender.sendMessage(Palette.error("Animus did not start: " + failure + ". Fix it and restart; the server log has the details")); return true; }
         BukkitActor actor = new BukkitActor(sender, replies);
         if (stopping || active == null || runtime == null || !runtime.isRunning()) { actor.tell(Palette.error("Not running; the server log has the startup error")); return true; }
         active.execute(actor, arguments);
@@ -452,14 +480,17 @@ public final class AnimusPlugin extends JavaPlugin {
         };
         EditorService service = new EditorService(runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(runtime, commands, owners, extensions,
                 modulePlatform.name().toLowerCase(Locale.ROOT), "", features, new BukkitLookups(getServer())::read,
-                (Player player) -> player.hasPermission("animus.admin"), new BukkitEditorNotices(this, replies), (String message) -> getLogger().info(message),
-                new BukkitEditorTerrain(this, regions), (java.util.UUID player) -> BukkitOfflineAdmin.check(getServer(), player))), (String message) -> getLogger().info(message),
+                (Player player, String node) -> player.hasPermission(node), new BukkitEditorNotices(this, replies), (String message) -> getLogger().info(message),
+                new BukkitEditorTerrain(this, regions), (java.util.UUID player, String node) -> BukkitOfflinePermission.check(getServer(), player, node))), (String message) -> getLogger().info(message),
                 (String message) -> getLogger().warning(message));
         try {
             service.start();
             editor = service;
             if (!service.problem().isEmpty()) getLogger().warning("Editor " + service.problem());
-        } catch (IOException | RuntimeException failure) {
+        } catch (IOException failure) {
+            getLogger().warning("Editor could not start: " + failure.getMessage());
+            service.close();
+        } catch (RuntimeException failure) {
             getLogger().log(Level.WARNING, "Editor could not start", failure);
             service.close();
         }
@@ -504,10 +535,10 @@ public final class AnimusPlugin extends JavaPlugin {
     }
 
     /** Paper and Folia take the banner through their component logger; Spigot gets it as plain text. */
-    private void splash(boolean ready) {
+    private void splash(SplashScreen.Startup startup) {
         try {
             String server = getServer().getName() + " " + SplashScreenSupport.serverVersionWithoutMcSuffix(getServer().getVersion());
-            ComponentLog.logMarkup(this, getLogger(), null, Level.INFO, SplashScreen.render(SplashScreen.Details.current(server, ready), SplashScreen.Colors.MINIMESSAGE), null);
+            ComponentLog.logMarkup(this, getLogger(), null, Level.INFO, SplashScreen.render(SplashScreen.Details.current(server, startup), SplashScreen.Colors.MINIMESSAGE), null);
         } catch (RuntimeException | LinkageError failure) {
             getLogger().log(Level.WARNING, "Splash screen failed to render", failure);
         }

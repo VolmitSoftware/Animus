@@ -62,8 +62,12 @@ class ShellSidebar extends StatefulWidget {
     required this.open,
     required this.onClose,
     this.session,
+    this.hasCodeDraft,
     super.key,
   });
+
+  /// True for a document with Code text not applied to its draft.
+  final bool Function(DocumentKind kind, String id)? hasCodeDraft;
 
   final WorkspaceSnapshot workspace;
   final EditorRoute route;
@@ -308,9 +312,32 @@ class _ShellSidebarState extends State<ShellSidebar> {
                 onPressed: () => _store(<String>{}),
               ),
             ]),
+          if (workspace.server != null && workspace.documents.isEmpty) _nothingOpen(workspace),
           dom.nav(classes: 'animus-tree', attributes: const <String, String>{'aria-label': 'Documents by kind'}, groups),
         ],
       ),
+    ]);
+  }
+
+  /// A just-paired server's workspace: nothing is copied in until opened
+  /// from the server catalog, so say so and offer to open everything.
+  Widget _nothingOpen(WorkspaceSnapshot workspace) {
+    final LiveSession? session = component.session;
+    final int count = session == null || !session.catalogLoaded ? 0 : session.catalog.length;
+    return dom.div(classes: 'animus-sidebar-empty', attributes: const <String, String>{'data-testid': 'sidebar-nothing-open'}, <Widget>[
+      dom.p(classes: 'animus-muted', <Widget>[
+        Component.text(count == 0
+            ? 'Nothing open yet. Documents join this workspace as you open them from the server catalog.'
+            : 'Nothing open yet. The server has $count document${count == 1 ? '' : 's'}.'),
+      ]),
+      if (count > 0)
+        Button.secondary(
+          label: 'Open all $count',
+          size: ButtonSize.small,
+          disabled: !session!.online || !session.owned || session.busy != null,
+          onPressed: () => session.openDocuments(session.catalog),
+        ),
+      dom.a(href: WorkspaceRoute(workspace.id).format(), classes: 'animus-side-link', const <Widget>[Component.text('Pick from the catalog')]),
     ]);
   }
 
@@ -396,6 +423,12 @@ class _ShellSidebarState extends State<ShellSidebar> {
             classes: 'animus-badge is-error',
             attributes: <String, String>{'title': '${errorCount(document)} problem${errorCount(document) == 1 ? '' : 's'}'},
             <Widget>[Component.text('${errorCount(document)}')],
+          ),
+        if (component.hasCodeDraft?.call(kind, document.id) ?? false)
+          const dom.span(
+            classes: 'animus-badge is-draft',
+            attributes: <String, String>{'data-code-draft': 'true', 'title': 'Code draft not applied'},
+            <Widget>[Component.text('code')],
           ),
         if (session != null && workspace.server != null && draftBadge(session, kind, document.id) != null)
           dom.span(

@@ -18,7 +18,9 @@ Frames are JSON text messages, one object each. Their definitions are the `relay
 
 ### Addresses
 
-The caller's address is the last `X-Forwarded-For` entry, the one Cloud Run's front end appends, or the socket peer when the header is missing or that entry is not an IP address. Earlier entries are set by the client and ignored. The address is used for the per-address limits and forwarded to the server, which uses it for pairing rate limits and its audit log. Behind another proxy that appends its own entry, this would be the proxy's address.
+The caller's address comes from `X-Forwarded-For` only when `TRUSTED_PROXY_HOPS` says proxies sit in front of the relay. With the default of 1 (Cloud Run's front end), it is the last entry, the one that front end appends. With N hops it is the Nth entry from the end. With 0 it is the socket peer, and the header is ignored. When the header has fewer entries than trusted hops, or that entry is not an IP address, the socket peer is used. Earlier entries are set by the client and ignored. The address is used for the per-address limits, which count an IPv6 address by its /64, and forwarded to the server, which uses it for pairing rate limits and its audit log.
+
+A self-hosted relay that browsers reach directly must set `TRUSTED_PROXY_HOPS=0`; otherwise any client can choose its own address. Behind a reverse proxy that appends to `X-Forwarded-For`, set it to the number of such proxies.
 
 Each address may hold `MAX_SERVER_CONNECTIONS_PER_ADDRESS` `/agent` connections and `MAX_APP_CONNECTIONS_PER_ADDRESS` `/app` connections, registered or not. Past that the upgrade gets 503.
 
@@ -57,7 +59,7 @@ Imports (`POST /v1/imports`, up to 16 MiB) do not fit in a relay frame. Use the 
 ```sh
 cd animus-web/relay
 dart pub get
-PORT=8080 BIND_ADDRESS=127.0.0.1 ALLOWED_APP_ORIGINS=http://127.0.0.1:8098 dart run bin/relay.dart
+PORT=8080 BIND_ADDRESS=127.0.0.1 TRUSTED_PROXY_HOPS=0 ALLOWED_APP_ORIGINS=http://127.0.0.1:8098 dart run bin/relay.dart
 ```
 
 Point a test server at it with `relayUrl = "ws://127.0.0.1:8080"` in `[editor]` of `config.toml`. Plain `ws://` is accepted only on loopback. Servers in production use `wss://`.
@@ -77,6 +79,7 @@ All settings are environment variables.
 | --- | ---: | --- |
 | `PORT` | `8080` | Listener port |
 | `BIND_ADDRESS` | `0.0.0.0` | Listener address |
+| `TRUSTED_PROXY_HOPS` | `1` | Proxies in front of the relay that append to `X-Forwarded-For`; 0 when browsers connect directly |
 | `ALLOWED_APP_ORIGINS` | `https://animus-editor.web.app` | Comma-separated exact browser origins (`scheme://host[:port]`, no wildcards) |
 | `MAX_FRAME_BYTES` | `1048576` | Largest text frame in UTF-8 bytes |
 | `MAX_APP_MESSAGES_PER_SECOND` | `120` | Frames per second from one browser |

@@ -3,6 +3,7 @@ package art.arcane.animus.bukkit.runtime;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.bukkit.navigation.LiveMovementProbe;
+import art.arcane.animus.core.control.RideEntry;
 import art.arcane.animus.core.control.RideLedger;
 import art.arcane.animus.core.control.RideSession;
 import art.arcane.animus.core.control.RideSettings;
@@ -35,10 +36,10 @@ final class ActorRide {
     /** A rider farther than this from the NPC's feet was moved by something else, such as Folia's same-region teleport. */
     private static final double RIDER_DRIFT = 3;
     private static final class Ride {
-        final RegionRides.Lease<RegionActor> lease; final RideSession session; final Player player; final BodyTransport.ControlSubscription input;
+        final RegionRides.Lease<RegionActor> lease; final RideSession session; final Player player; final BodyTransport.ControlSubscription input; final RideEntry entry;
         int away;
-        Ride(RegionRides.Lease<RegionActor> lease, RideSession session, Player player, BodyTransport.ControlSubscription input) {
-            this.lease = lease; this.session = session; this.player = player; this.input = input;
+        Ride(RegionRides.Lease<RegionActor> lease, RideSession session, Player player, BodyTransport.ControlSubscription input, RideEntry entry) {
+            this.lease = lease; this.session = session; this.player = player; this.input = input; this.entry = entry;
         }
     }
     private final RegionActor actor;
@@ -77,7 +78,7 @@ final class ActorRide {
         BodyTransport.ControlSubscription input;
         try { input = host.packets.subscribeControl(player); }
         catch (RuntimeException failure) { host.rides.release(admission.lease()); session.close("input-unavailable"); return "your connection is not ready: " + failure.getMessage(); }
-        riding = new Ride(admission.lease(), session, player, input);
+        riding = new Ride(admission.lease(), session, player, input, new RideEntry(host.rideEntry, player.getUniqueId(), at));
         actor.claimForRide();
         return null;
     }
@@ -123,6 +124,7 @@ final class ActorRide {
             RideSession.Step step = current.session.tick(System.nanoTime(), at.point(), actor.yaw, look.getYaw(), look.getPitch(), current.input.latest(), probe(host.world(at.world())));
             if (step.action() == RideSession.Action.STOP) { end(current, step.reason(), RideSession.leavesRiderInPlace(step.reason()) ? Exit.LEAVE_POSITION : Exit.RESTORE_POSITION); return; }
             if (current.session.state() != RideSession.State.RIDING) return;
+            if (!step.position().equals(at.point()) && !current.entry.allows(new WorldPosition(at.world(), step.position()))) { end(current, RideEntry.DENIED, Exit.RESTORE_POSITION); return; }
             if (!step.position().equals(at.point()) || step.yaw() != actor.yaw) actor.rideStep(step.position(), step.yaw());
             place(current);
         } catch (RuntimeException failure) {

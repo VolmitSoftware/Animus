@@ -152,6 +152,21 @@ void main() {
     expect(connection.status.phase, ConnectionPhase.online);
   });
 
+  test('should say the server did not answer when both paths are down', () async {
+    network.down.addAll(ConnectionPath.values);
+    await connection.connect();
+    expect(connection.status.phase, ConnectionPhase.reconnecting);
+    expect(connection.status.message, startsWith('Server did not answer on either path.'));
+    expect(connection.status.message, isNot(contains('Relay')));
+  });
+
+  test('should name the path when a server paired with one path does not answer', () async {
+    connection = make(serverProfile: const ServerProfile(fingerprint: fakeFingerprint, serverKey: fakeServerKey, name: 'Town', relayUrl: 'ws://127.0.0.1:9797'));
+    network.down.add(ConnectionPath.relay);
+    await connection.connect();
+    expect(connection.status.message, isNot(contains('either path')), reason: 'one path names its own failure');
+  });
+
   test('should refuse a path that answers with another fingerprint and stop trying', () async {
     network.handler = serverHandler(fingerprint: 'sha256:${'0' * 64}');
     await connection.connect();

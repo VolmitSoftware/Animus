@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.npc.NpcDefinition;
@@ -36,6 +37,7 @@ final class ShopDetailScreen<P, S> extends ToolScreen<P, S> {
     private ShopFiles files() { return new ShopFiles(toolkit.npcs(), toolkit.documents()); }
 
     @Override String title() { return "Shop " + shop.id(); }
+    @Override String node() { return PermissionNodes.SHOPS; }
     @Override int rows() { return 6; }
 
     @Override void draw() {
@@ -55,7 +57,7 @@ final class ShopDetailScreen<P, S> extends ToolScreen<P, S> {
         }
         List<String> users = files().shopUsers(shop.id());
         List<String> summary = new ArrayList<>(List.of("&7" + shop.path(), "&7Offers &f" + shop.offers(), "&7Bound to &f" + names(users, 4),
-                "&7Bound in the selection &f" + bound + "&7 of &f" + selected.size(), "&7Offers are edited in the web editor"));
+                "&7Bound in the selection &f" + bound + "&7 of &f" + selected.size(), "&7Hold an item: /animus shop stock " + shop.id()));
         shop.problem().ifPresent((String problem) -> summary.add("&c" + problem));
         icon(SUMMARY, "minecraft:emerald", title(shop.id()), summary, Optional.empty());
         button(OPEN, "minecraft:chest", title("Open now"), lore(List.of("&7Opens it for you, as a customer sees it"), any("open")), (GuiModel.Click click) -> {
@@ -73,7 +75,7 @@ final class ShopDetailScreen<P, S> extends ToolScreen<P, S> {
         guarded(RESET, "minecraft:hopper", "Reset stock", "Clears limits and stock for everyone", 0, true, () -> viewer.host().command(Optional.of(viewer.player()), "animus shop reset " + shop.id()));
         guarded(UNBIND, "minecraft:shears", "Unbind from selection", "Removes animus:shop from " + ToolkitFiles.count(bound), bound, false,
                 () -> chosen().ifPresent((List<String> ids) -> toolkit.write(viewer, (ToolkitFiles ignored) -> files().unbindShop(shop.id(), ids))));
-        guarded(DELETE, "minecraft:lava_bucket", "Delete shop file", users.isEmpty() ? "Rollback restores it" : "Refused while bound; unbind first", 0, true,
+        guarded(DELETE, "minecraft:lava_bucket", "Delete shop file", users.isEmpty() ? "Deletes the shop file; rollback restores it" : "Refused while bound; unbind first", 0, true,
                 () -> ShopFiles.save(toolkit, viewer, (ToolkitFiles ignored) -> files().deleteShop(shop.id()), ShopBindScreen.RELOAD_COMMAND, () -> { changed.run(); viewer.back(); }));
         back();
     }

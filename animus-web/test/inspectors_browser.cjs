@@ -109,7 +109,7 @@ async function run(browser, viewport, tag, theme) {
   const nameInfo = inspector.getByRole('link', {name: 'Name *', exact: true});
   assert.equal(await docsOf(inspector, 'Name *').getAttribute('href'), 'https://docs.volmitsoftware.com/animus/04-npc-definitions#definition-file');
   assert.equal(await page.locator(`[id="${await nameInfo.getAttribute('aria-describedby')}"]`).textContent(), 'The displayed name.');
-  const name = inspector.getByLabel('name', {exact: true});
+  const name = inspector.getByLabel('Name', {exact: true});
   await name.fill('Greeter Edited');
   await page.waitForTimeout(300);
   // Behaviors sit in the inspector's Behavior part, closed until opened.
@@ -141,11 +141,11 @@ async function run(browser, viewport, tag, theme) {
   await editor.waitFor();
   await noOverflow(page, `${tag} behavior editor as opened`);
   const trigger = editor.locator('[data-node-path="$.triggers[1]"]');
-  await trigger.getByLabel('radius', {exact: true}).fill('8');
+  await trigger.getByLabel('Radius', {exact: true}).fill('8');
   await page.waitForTimeout(300);
   const step = editor.locator('[data-node-path="$.routines.wave.steps[1]"]');
   await chooseAndWait(step.locator('.animus-node-tools button[role="combobox"]').first(), 'wait');
-  await step.getByLabel('ticks', {exact: true}).waitFor();
+  await step.getByLabel('Ticks', {exact: true}).waitFor();
   await page.waitForTimeout(300);
   const wave = editor.locator('[data-routine="wave"]');
   await choose(await selectWith(wave, 'Add step'), 'call');

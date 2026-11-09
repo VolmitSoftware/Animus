@@ -238,6 +238,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private volatile boolean closed;
     private long accepted, rejected;
     long tickNumber;
+    private final ViewerCapNotice capNotice = new ViewerCapNotice();
     /** Online players by chunk, rebuilt on the owner at most once per runtime tick, before the first lookup that needs it. */
     private final NearbyPlayers<P> nearby;
     private long nearbyTick = Long.MIN_VALUE;
@@ -723,6 +724,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             if (shown != null && shown.value == value) retire(viewer, shown);
         }
         if (triggers != null) triggers.activated(npc);
+        host.npcSpawned(npc, entry.id, value.state.snapshot().position());
         return true;
     }
     /**
@@ -2055,6 +2057,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             Optional<TriggerEvent.Attacker> attacker = Optional.ofNullable(value.attacker);
             value.attacker = null;
             if (triggers != null) triggers.changed(before, snapshot, attacker);
+            if (died) host.npcDied(snapshot.npcId(), id, snapshot.position(), attacker);
             if (!snapshot.active() || moved) stopRoute(value, "cancelled by combat lifecycle/position change");
             if (moved) value.poseRevision++;
             if (died) value.dyingUntil = tickNumber + DYING_TICKS;
@@ -2234,13 +2237,19 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         }
         boolean sameNpc = previous != null && previous.spec.definition().uuid().equals(spec.definition().uuid());
         if (previous != null) removeValue(entry);
-        if (previous != null && !sameNpc && triggers != null) triggers.removed(previous.spec.definition().uuid());
+        if (previous != null && !sameNpc) {
+            if (triggers != null) triggers.removed(previous.spec.definition().uuid());
+            host.npcDespawned(previous.spec.definition().uuid(), previous.spec.definition().id());
+        }
         entry.value = new Value(spec, skin, state, geometry.ids, geometry.seat); entry.error = null; activationWarnings.cleared(entry.id);
         byUuid.put(spec.definition().uuid(), entry); index.upsert(state.snapshot());
         mountRuntime.activated(entry.value);
         if (entry.value.rigId != null) { bindRig(entry.value); rigOrder.addLast(entry.value); rigTicks.addLast(entry.value); }
         if (entry.value.lookClose != null) lookOrder.addLast(entry.value);
-        if (!sameNpc && triggers != null) triggers.activated(spec.definition().uuid());
+        if (!sameNpc) {
+            if (triggers != null) triggers.activated(spec.definition().uuid());
+            host.npcSpawned(spec.definition().uuid(), spec.definition().id(), state.snapshot().position());
+        }
         if (!startInline(entry.value)) requestRouteRead(entry.value);
     }
     public static double maximumHealth(DefinitionSpec<?> spec) {
@@ -2254,6 +2263,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             UUID uuid = entry.value.spec.definition().uuid();
             removeValue(entry);
             if (triggers != null) triggers.removed(uuid);
+            host.npcDespawned(uuid, entry.id);
         }
         entries.remove(entry.id);
     }
@@ -2346,6 +2356,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             sent += viewer.preview.update(viewer.player, packets, at, settings.viewDistance(), visibleChunk,
                     (NpcDefinition definition) -> DefinitionSpec.parse(definition, geometries.keySet(), this::world, host::item),
                     (Runnable completion) -> enqueue(viewer, () -> { if (current(viewer)) completion.run(); }), viewer.nativeIds, packetBudget - sent);
+        if (viewer.ready && viewer.visible.size() >= settings.maximumVisible() && capNotice.due(tickNumber) && hiddenByCap(viewer, at, visibleChunk))
+            host.warn(capNotice.warn(tickNumber, host.name(viewer.player), settings.maximumVisible()));
         if (!viewer.ready || !viewer.retirements.isEmpty() || sent >= packetBudget || viewer.pendingSpawns >= settings.pendingSpawnsPerViewer()
                 || viewer.visible.size() >= settings.maximumVisible()) return sent;
         int capacity = Math.min(Math.min(8, packetBudget - sent), Math.min(settings.maximumVisible() - viewer.visible.size(), settings.pendingSpawnsPerViewer() - viewer.pendingSpawns));
@@ -2361,6 +2373,15 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             if (!current(viewer)) break;
         }
         return sent;
+    }
+    /** An NPC in range the viewer would see but for the {@code maximumVisible} cap; one bounded scan from the start. */
+    private boolean hiddenByCap(Viewer viewer, WorldPosition at, Predicate<ChunkPosition> visibleChunk) {
+        SpatialNpcIndex.Scan scan = index.scan(new SpatialNpcIndex.Query(at, settings.viewDistance()), null, new SpatialNpcIndex.Budget(256, settings.maximumVisible() + 1), visibleChunk);
+        for (VirtualNpcState.Snapshot snapshot : scan.candidates()) {
+            Entry entry = byUuid.get(snapshot.npcId());
+            if (entry != null && entry.value != null && !viewer.visible.containsKey(snapshot.npcId()) && !viewer.retiring.containsKey(snapshot.npcId()) && eligible(viewer, entry.value, at, visibleChunk)) return true;
+        }
+        return false;
     }
     /** A live NPC a preview stands in for stays hidden from that viewer only. */
     private boolean eligible(Viewer viewer, Value value, WorldPosition at, Predicate<ChunkPosition> delivered) {

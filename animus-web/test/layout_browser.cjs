@@ -1,4 +1,4 @@
-// Walks every screen of the built site at 1440, 1280, 1024, 768 and 390 px
+// Walks every screen of the built site at 1440, 1280, 1024, 768, 390 and 375 px
 // wide, dark and light, and fails on a layout fault: boxes that overlap a
 // sibling, content clipped by its container, sideways scrolling, a border
 // or divider running through a control, an input too narrow for its value
@@ -13,8 +13,10 @@
 // the preview, code and split views, New document, the NPC and recording
 // lists, Send to a server and the converter.
 // ANIMUS_LAYOUT_WIDTHS (optional, comma separated) limits the widths;
-// ANIMUS_SCREENSHOTS (optional, outside the repository) receives a shot of
-// every screen.
+// ANIMUS_LAYOUT_SCREENS (optional, a regular expression) checks only the
+// screens whose name matches, such as "shop|broken"; ANIMUS_SCREENSHOTS
+// (optional, outside the repository) receives a shot of every screen. A
+// full run takes over 20 minutes and prints one line per width and theme.
 //
 //   python3 tool/serve_site.py --port <port>
 //   ANIMUS_WEB_URL=http://127.0.0.1:<port> PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node test/layout_browser.cjs
@@ -29,7 +31,8 @@ const folders = [
   ...['gui_editors', 'rig_editor', 'groups_recordings', 'npc_browser', 'npc_preview', 'health_part'].map(name => path.resolve(__dirname, 'fixtures', name)),
   path.resolve(__dirname, '../../schema/fixtures/export'),
 ];
-const widths = (process.env.ANIMUS_LAYOUT_WIDTHS || '1440,1280,1024,768,390').split(',').map(Number);
+const widths = (process.env.ANIMUS_LAYOUT_WIDTHS || '1440,1280,1024,768,390,375').split(',').map(Number);
+const screens = process.env.ANIMUS_LAYOUT_SCREENS ? new RegExp(process.env.ANIMUS_LAYOUT_SCREENS) : null;
 
 /** Every layout fault on the page, as readable strings. */
 async function scan(page) {
@@ -222,6 +225,12 @@ async function scan(page) {
     if (document.documentElement.scrollWidth > document.documentElement.clientWidth) {
       out.push(`page scrolls sideways by ${document.documentElement.scrollWidth - document.documentElement.clientWidth}px`);
     }
+    // The shop's chest window shrinks to fit its nine columns rather than
+    // scroll (a pinned tooltip may still reach past it).
+    for (const grid of document.querySelectorAll('.animus-shop-chest .animus-chest-screen > .animus-chest')) {
+      const screen = grid.parentElement;
+      if (grid.offsetWidth > screen.clientWidth + 1) out.push(`shop chest window clips its slots (${grid.offsetWidth} > ${screen.clientWidth})`);
+    }
     return [...new Set(out)];
   });
 }
@@ -258,6 +267,7 @@ async function run(browser, width, theme, failures) {
   page.on('pageerror', error => errors.push(error.message));
   let count = 0;
   const visit = async name => {
+    if (screens && !screens.test(name)) return;
     await settle(page);
     await openParts(page);
     for (const problem of await scan(page)) failures.push(`${width} ${theme} ${name} | ${problem}`);
@@ -345,7 +355,12 @@ async function run(browser, width, theme, failures) {
   const failures = [];
   try {
     for (const width of widths) {
-      for (const theme of ['dark', 'light']) await run(browser, width, theme, failures);
+      for (const theme of ['dark', 'light']) {
+        const started = Date.now();
+        const before = failures.length;
+        await run(browser, width, theme, failures);
+        console.log(`layout_browser: ${width} ${theme} ${failures.length - before} problems, ${Math.round((Date.now() - started) / 1000)} s`);
+      }
     }
   } finally {
     await browser.close();

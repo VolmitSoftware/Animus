@@ -23,7 +23,7 @@ class CommandCompletionsTest {
     @TempDir Path data;
 
     /** Parameters whose value is free text a player makes up; nothing useful can be offered for them. */
-    private static final List<String> FREE_TEXT = List.of("name", "token", "option");
+    private static final List<String> FREE_TEXT = List.of("name", "token", "option", "text", "title");
 
     /** A player standing at 10.7 64 -3.2 in town with one mob nearby. */
     private static class Standing extends AnimusDirectorTest.Actor {
@@ -49,7 +49,7 @@ class CommandCompletionsTest {
                 Class<?> type = parameter.getType();
                 if (type.isEnum() || type == boolean.class || FREE_TEXT.contains(parameter.getName())) continue;
                 try {
-                    Collection<String> offered = tree.values(parameter.getName(), actor);
+                    Collection<String> offered = tree.values(parameter.getName(), actor, java.util.Map.of());
                     if (offered.isEmpty()) missing.put(parameter.getName(), command.path());
                 } catch (RuntimeException needsServer) { /* the source is the running server's */ }
             }
@@ -59,20 +59,18 @@ class CommandCompletionsTest {
     @Test void coordinatesAndTargetsComeFromWhereThePlayerStands() {
         AnimusCommandTree tree = new AnimusCommandTree(null);
         Standing actor = new Standing();
-        assertEquals(List.of("~", "10"), List.copyOf(tree.values("x", actor)));
-        assertEquals(List.of("~", "64"), List.copyOf(tree.values("y", actor)));
-        assertEquals(List.of("~", "-4"), List.copyOf(tree.values("z", actor)), "the block the player stands in");
-        assertEquals(List.of("~,~,~", "10,64,-4"), List.copyOf(tree.values("at", actor)));
+        assertEquals(List.of("~", "10"), List.copyOf(tree.values("x", actor, java.util.Map.of())));
+        assertEquals(List.of("~", "64"), List.copyOf(tree.values("y", actor, java.util.Map.of())));
+        assertEquals(List.of("~", "-4"), List.copyOf(tree.values("z", actor, java.util.Map.of())), "the block the player stands in");
+        assertEquals(List.of("~,~,~", "10,64,-4"), List.copyOf(tree.values("at", actor, java.util.Map.of())));
         Standing looking = new Standing() { @Override public Optional<Vec3> target() { return Optional.of(new Vec3(3, 70, 8)); } };
-        assertEquals(List.of("~", "3"), List.copyOf(tree.values("x", looking)), "the looked-at block comes before the player's own");
-        assertEquals(List.of("~,~,~", "3,70,8"), List.copyOf(tree.values("at", looking)));
-        assertEquals(List.of(actor.mob.toString()), List.copyOf(tree.values("target", actor)));
-        assertEquals(List.of("stop", actor.mob.toString()), List.copyOf(tree.values("charge", actor)), "guard offers stop");
-        assertEquals(List.of("stop", actor.mob.toString()), List.copyOf(tree.values("mob", actor)));
-        assertTrue(tree.values("uuid", actor).contains(actor.player().orElseThrow().toString()), "state deletes take a UUID, not a name");
-        assertTrue(tree.values("value", actor).contains("reset"));
-        assertTrue(tree.values("expires", actor).contains("7d"));
-        assertEquals(CommandCompletions.PROOF_BODIES, List.copyOf(tree.values("body", actor)), "previews offer preview bodies, not NPC types");
+        assertEquals(List.of("~", "3"), List.copyOf(tree.values("x", looking, java.util.Map.of())), "the looked-at block comes before the player's own");
+        assertEquals(List.of("~,~,~", "3,70,8"), List.copyOf(tree.values("at", looking, java.util.Map.of())));
+        assertEquals(List.of("stop", actor.mob.toString()), List.copyOf(tree.values("mob", actor, java.util.Map.of())), "a mob has no name; nearby ones by UUID");
+        assertTrue(tree.values("uuid", actor, java.util.Map.of()).contains(actor.player().orElseThrow().toString()), "state deletes take a UUID, not a name");
+        assertTrue(tree.values("value", actor, java.util.Map.of()).contains("reset"));
+        assertTrue(tree.values("expires", actor, java.util.Map.of()).contains("7d"));
+        assertEquals(CommandCompletions.PROOF_BODIES, List.copyOf(tree.values("body", actor, java.util.Map.of())), "previews offer preview bodies, not NPC types");
     }
 
     @Test void theParametersThatWereWiredWrongNowMeanOneThing() {
@@ -83,6 +81,26 @@ class CommandCompletionsTest {
         assertEquals(List.of("npc", "uuid"), names(find(root, "behaviors", "state", "delete", "relationship")));
         assertEquals(List.of("body", "skin"), names(find(root, "proof", "spawn")));
         assertEquals(List.of("npc", "charge"), names(find(root, "combat", "guard")));
+    }
+
+    @Test void npcIdsAreNotCutBeforeThePrefixIsApplied() throws Exception {
+        List<art.arcane.animus.core.npc.NpcDefinition> many = new ArrayList<>();
+        for (int index = 0; index < 300; index++)
+            many.add(art.arcane.animus.core.npc.NpcDefinition.parse("{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"" + UUID.randomUUID() + "\",\"id\":\"citizens-" + index
+                    + "\",\"type\":\"minecraft:player\",\"group\":\"\",\"name\":\"N\",\"spawned\":false,\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}}"));
+        List<String> ids = CommandCompletions.ids(many, true);
+        assertTrue(ids.contains("citizens-299") && ids.contains(CommandGroup.SELECTED), "every id is offered: " + ids.size());
+        AnimusDirector director = new AnimusDirector(new AnimusDirectorTest.Probe(), (String parameter, CommandActor actor) -> parameter.equals("npc") ? ids : List.of());
+        List<String> offered = director.complete(new AnimusDirectorTest.Actor(false, AnimusDirector.ADMIN), new String[]{"spawn", "citizens-29"});
+        assertTrue(offered.contains("citizens-299") && offered.contains("citizens-29"), offered.toString());
+    }
+
+    @Test void healthValuesFollowTheSetting() {
+        assertEquals(List.of("on", "off", "reset"), CommandCompletions.healthValues("killable"));
+        assertEquals(List.of("respawn", "permadeath", "delete", "reset"), CommandCompletions.healthValues("after-death"));
+        assertTrue(CommandCompletions.healthValues("maximum").contains("20"));
+        assertTrue(CommandCompletions.healthValues("delay").contains("100"));
+        assertEquals(List.of("reset"), CommandCompletions.healthValues(""));
     }
 
     @Test void dataFolderNamesCompleteNewestFirst() throws Exception {

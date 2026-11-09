@@ -359,6 +359,20 @@
   font-size: 0.8125rem;
 }
 
+/* A server workspace with nothing opened from the catalog yet. */
+.animus-sidebar-empty {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.animus-sidebar-empty p {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
 .animus-tree {
   display: grid;
   gap: 0.75rem;

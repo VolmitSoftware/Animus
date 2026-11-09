@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.npc.NpcDefinition;
@@ -16,7 +17,7 @@ import java.util.Set;
 
 /**
  * The shop files on this server. A click binds a shop to the selection in one transaction, a right click opens it for
- * you, and sneak opens its settings. Offers are edited in the web editor.
+ * you, and sneak opens its settings. Offers are added with /animus shop stock or the web editor.
  */
 final class ShopBindScreen<P, S> extends ToolScreen<P, S> {
     static final int RELOAD = 46, CREATE = 47, SELECTION = 53;
@@ -34,6 +35,7 @@ final class ShopBindScreen<P, S> extends ToolScreen<P, S> {
     ShopFiles files() { return new ShopFiles(toolkit.npcs(), toolkit.documents()); }
 
     @Override String title() { return "Shops"; }
+    @Override String node() { return PermissionNodes.SHOPS; }
     @Override int rows() { return 6; }
 
     @Override void draw() {
@@ -58,7 +60,7 @@ final class ShopBindScreen<P, S> extends ToolScreen<P, S> {
             viewer.host().command(Optional.of(viewer.player()), RELOAD_COMMAND);
             reload();
         });
-        button(CREATE, "minecraft:writable_book", title("New shop"), lore(List.of("&7Asks for an id such as town:baker", "&7Writes an empty shop; add offers", "&7in the web editor"), any("type the id")),
+        button(CREATE, "minecraft:writable_book", title("New shop"), lore(List.of("&7Asks for an id such as town:baker", "&7Writes an empty shop; hold an item", "&7and /animus shop stock adds it"), any("type the id")),
                 (GuiModel.Click click) -> prompt("Shop id", "", (String id) -> ShopFiles.save(toolkit, viewer, (ToolkitFiles ignored) -> files().newShop(id.trim()), RELOAD_COMMAND, this::reload)));
         icon(SELECTION, "minecraft:name_tag", title(ToolkitFiles.count(selected.size()) + " selected"), List.of("&7" + names(selected, 6)), Optional.empty());
     }

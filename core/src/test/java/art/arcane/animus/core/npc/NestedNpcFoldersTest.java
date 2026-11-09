@@ -104,11 +104,14 @@ class NestedNpcFoldersTest {
         }
     }
 
-    @Test void aFolderDeeperThanEightIsRefused() throws Exception {
+    @Test void aFolderDeeperThanEightIsSkippedAndTheRestLoads() throws Exception {
         write("npcs/a/b/c/d/e/f/g/h/i/deep.json", definition("deep", "a"));
+        write("npcs/a/shallow.json", definition("shallow", "a"));
         try (DocumentStore store = new DocumentStore(root)) {
-            IOException refused = assertThrows(IOException.class, () -> new NpcRepository(store).loadForStartup());
-            assertTrue(refused.getMessage().contains("depth"), refused.getMessage());
+            NpcRepository repository = new NpcRepository(store);
+            repository.loadForStartup();
+            assertTrue(repository.find("shallow").isPresent());
+            assertTrue(repository.find("deep").isEmpty());
             assertThrows(IOException.class, () -> store.commit(List.of(new DocumentStore.Change("state/npc-definitions/last-valid/npcs/a/b/c/d/e/f/g/h/i/deep.json", "missing", "{}"))));
         }
     }

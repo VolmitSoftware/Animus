@@ -122,6 +122,19 @@ String dataFolderPrefix(Iterable<String> paths) {
   return best;
 }
 
+/// Why a picked folder or zip ([name], path to bytes) holds no Animus
+/// documents, and what to pick instead.
+String emptyPickProblem(String name, Map<String, Uint8List> files, {required bool zip}) {
+  const String modServers = 'or config/animus on a mod server.';
+  if (files.isEmpty) return zip ? '$name.zip is not a zip, or it is empty. Pick a zip of plugins/Animus.' : '$name is empty. Pick plugins/Animus, $modServers';
+  final List<List<String>> folders = <List<String>>[for (final String path in files.keys) path.split('/')..removeLast()];
+  final bool serverRoot = files.keys.any((String path) => path.split('/').last == 'server.properties') ||
+      folders.any((List<String> parts) => parts.indexOf('plugins') > 0);
+  if (serverRoot) return '$name looks like the server root. Pick plugins/Animus inside it, $modServers';
+  if (folders.any((List<String> parts) => parts.isNotEmpty && parts.first == 'plugins')) return '$name is the plugins folder. Pick the Animus folder inside it.';
+  return '$name has no npcs/ or other Animus folders. Pick plugins/Animus, $modServers';
+}
+
 /// Files from a zip, by `/`-separated path. Directories and entries that
 /// escape the archive root are skipped.
 Map<String, Uint8List> filesFromZip(Uint8List bytes) {

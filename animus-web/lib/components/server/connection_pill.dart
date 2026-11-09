@@ -44,15 +44,16 @@ String phaseLabel(ConnectionStatus status, {required bool hasToken}) {
 }
 
 /// Why the connection is not online and what to do, for the live bar, the
-/// server page and the sync page. Empty while online.
-String phaseHint(ConnectionStatus status, {required bool hasToken}) {
+/// server page and the sync page. Empty while online. [connectHere] says a
+/// Connect button sits beside the hint, so it need not point elsewhere.
+String phaseHint(ConnectionStatus status, {required bool hasToken, bool connectHere = false}) {
   if (status.online) return '';
   if (!hasToken && status.phase != ConnectionPhase.needsPairing) return transportCopy('no-token').text;
   final String? message = status.message;
   return switch (status.phase) {
     ConnectionPhase.reconnecting when status.retryAt != null =>
       '${message ?? transportCopy('dropped').cause} Next try at ${status.retryAt!.toLocal().toString().substring(11, 19)}.',
-    ConnectionPhase.offline => 'Not connected. Use Connect on the server page.',
+    ConnectionPhase.offline => connectHere ? 'Not connected.' : 'Not connected. Use Connect on the server page.',
     _ => message ?? '',
   };
 }

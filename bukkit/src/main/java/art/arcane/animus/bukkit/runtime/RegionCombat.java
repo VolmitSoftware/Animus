@@ -253,8 +253,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
             });
             files.execute(() -> {
                 try {
-                    HealthRecords.markDead(host.runtime.npcs(), npc).ifPresent((HealthRecords.Recorded done) ->
-                            warn("NPC " + done.id() + " died for good; /animus npc revive " + done.id() + " brings it back; tx " + done.transaction()));
+                    HealthRecords.markDead(host.runtime.npcs(), npc).ifPresent((HealthRecords.Recorded done) -> host.plugin.getLogger().info(done.deathNotice()));
                 } catch (java.io.IOException failure) { warn("Combat could not record the permadeath of " + npc + ": " + failure.getMessage()); }
             });
         } catch (IllegalStateException | RejectedExecutionException stopping) {

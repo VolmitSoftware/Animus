@@ -14,7 +14,10 @@ import java.util.UUID;
  * across restarts, and a revival clears it. Each is one ordinary transaction with a receipt. Runs on the file lane.
  */
 public final class HealthRecords {
-    public record Recorded(String id, String transaction) {}
+    public record Recorded(String id, String transaction) {
+        /** The log line for a permadeath, a normal game event, so platforms log it at INFO. */
+        public String deathNotice() { return "NPC " + id + " died for good; /animus npc revive " + id + " brings it back; tx " + transaction; }
+    }
 
     private HealthRecords() {}
 

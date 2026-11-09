@@ -19,6 +19,6 @@ public record ServerTriggerSettings(boolean enabled, int eventQueue, int eventsP
         bound("maximumAreas", maximumAreas, 0, 4096);
     }
     private static void bound(String field, int value, int minimum, int maximum) {
-        if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum);
+        if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum + ", not " + value);
     }
 }

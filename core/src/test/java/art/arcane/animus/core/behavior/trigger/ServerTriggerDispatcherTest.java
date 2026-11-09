@@ -123,6 +123,31 @@ class ServerTriggerDispatcherTest {
         assertEquals(3, started.size());
     }
 
+    @Test void aFullCooldownTableNeverForgetsAPlayerStillCoolingDown() {
+        dispatcher(new ServerTriggerSettings(true, 4096, 1024, 64, 256, 64, 128, 0, 20, 64, 256));
+        behavior("denizen:world/welcome", true, "[{\"id\":\"hello\",\"event\":\"player_chat\",\"cooldownTicks\":1000}]");
+        enable("denizen:world/welcome");
+        pump();
+        List<UUID> players = new ArrayList<>();
+        for (int i = 0; i < 4097; i++) players.add(UUID.randomUUID());
+        int starts = 0;
+        for (int from = 0; from < players.size(); from += 64) {
+            for (UUID player : players.subList(from, Math.min(from + 64, players.size()))) dispatcher.publish(ServerEvent.chat(player, "x"));
+            pump();
+            starts += started.size();
+            finishAll();
+            started.clear();
+        }
+        assertEquals(4096, starts, "A table full of live cooldowns refuses the next player instead of forgetting one");
+        dispatcher.publish(ServerEvent.chat(players.getFirst(), "again"));
+        pump();
+        assertEquals(List.of(), started, "The first player is still cooling down");
+        pump(1000);
+        dispatcher.publish(ServerEvent.chat(players.getLast(), "later"));
+        pump();
+        assertEquals(1, started.size(), "Expired cooldowns make room");
+    }
+
     @Test void overflowDropsAndCountsInsteadOfQueueing() {
         dispatcher(settings(2, 1, 1, 0, 64));
         behavior("denizen:world/welcome", true, "[{\"id\":\"hello\",\"event\":\"player_chat\"}]");

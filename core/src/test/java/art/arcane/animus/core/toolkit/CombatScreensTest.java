@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.combat.TargetCategory;
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.control.RideSettings;
 import art.arcane.animus.core.gui.FakeNpcRuntime;
 import art.arcane.animus.core.gui.GuiModel.Click;
@@ -63,7 +64,7 @@ class CombatScreensTest {
         store.commit(files);
         npcs = new NpcRepository(store);
         assertTrue(npcs.reload().isEmpty(), npcs.diagnostics().toString());
-        alex.permissions.add(Toolkit.ADMIN);
+        alex.permissions.add(PermissionNodes.ADMIN);
         alex.pose = new ScreenHost.Pose(Set.of("world"), 0, 64, 0, 65.62, 0, 0, false);
         alex.wand = true;
         FakeNpcRuntime<Player> living = new FakeNpcRuntime<>((UUID id) -> id.equals(alex.id) ? Optional.of(alex) : Optional.empty()) {
@@ -167,6 +168,21 @@ class CombatScreensTest {
         click("Back", Click.LEFT);
         click("Save", Click.LEFT);
         assertTrue(combat("guard").targets().players().isEmpty(), "a click on an entry removes it");
+    }
+
+    @Test void sneakingOnAPatternRowListsItsEntriesInsteadOfAddingTheHeldItem() {
+        select("guard");
+        alex.worn.put(EquipmentSlot.MAIN_HAND, new NpcItem("minecraft:emerald", 1, Optional.empty(), Optional.empty()));
+        open(CombatScreen::new);
+        click("Targets", Click.LEFT);
+        for (String row : List.of("Player name pattern", "NPC name pattern", "Mob name pattern")) {
+            click(row, Click.SHIFT_LEFT);
+            assertEquals(row, title(), row + " lists its entries");
+            click("Back", Click.LEFT);
+        }
+        assertFalse(lore("Save").contains("emerald"), lore("Save"));
+        click("Main-hand item", Click.SHIFT_LEFT);
+        assertTrue(lore("Save").contains("emerald"), "item rows still add the held item: " + lore("Save"));
     }
 
     @Test void sectionFieldsStepCycleAndSaveInOneTransaction() {

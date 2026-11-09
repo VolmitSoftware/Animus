@@ -125,6 +125,8 @@ class ViewerWatchRaceTest {
         final List<Runnable> ticks = new ArrayList<>();
         /** The waypoint indexes the host was told were reached, in order. */
         final List<Integer> reached = new ArrayList<>();
+        /** Lifecycle calls the host received, as "spawned id", "despawned id" or "died id", in order. */
+        final List<String> lifecycle = new ArrayList<>();
         MotionValidator.Sampler terrain;
         volatile boolean playersAway;
         /** What {@code resolveWorld} answers; every reference names itself by default. */
@@ -279,5 +281,10 @@ class ViewerWatchRaceTest {
         @Override public Object copy(Object item) { return item; }
         @Override public boolean interactionAllowed(Player player, UUID npc, Interaction action, double distance) { return true; }
         @Override public void waypointReached(UUID npc, String id, UUID route, int waypoint, WorldPosition at) { harness.reached.add(waypoint); }
+        @Override public void npcSpawned(UUID npc, String id, WorldPosition at) { harness.lifecycle.add("spawned " + id); }
+        @Override public void npcDespawned(UUID npc, String id) { harness.lifecycle.add("despawned " + id); }
+        @Override public void npcDied(UUID npc, String id, WorldPosition at, Optional<art.arcane.animus.core.behavior.trigger.TriggerEvent.Attacker> killer) {
+            harness.lifecycle.add("died " + id + killer.map((art.arcane.animus.core.behavior.trigger.TriggerEvent.Attacker who) -> " by " + who.kind()).orElse(""));
+        }
     }
 }

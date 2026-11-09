@@ -70,6 +70,17 @@ String describeChanges(List<DocumentChange> documents, Iterable<String> resource
   return 'change ${documents.length} documents';
 }
 
+/// A picked folder or zip that holds no Animus documents; nothing was saved.
+class NoDocumentsFound implements Exception {
+  const NoDocumentsFound(this.message);
+
+  /// What was picked and what to pick instead.
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 /// Document state for the open workspace. Connection state lives elsewhere.
 class EditorStore {
   EditorStore({
@@ -153,7 +164,30 @@ class EditorStore {
 
   /// True while a commit is queued or an edit is held only in memory: the
   /// page asks before it closes.
-  bool get hasPendingWork => _pending > 0 || _unsaved;
+  bool get hasPendingWork => _pending > 0 || _unsaved || _codeDrafts.isNotEmpty;
+
+  /// Code view text not yet applied to the draft, by `kind:id`, kept while
+  /// the user looks at other documents of the open workspace.
+  final Map<String, String> _codeDrafts = <String, String>{};
+
+  static String _draftKey(DocumentKind kind, String id) => '${kind.wireName}:$id';
+
+  String? codeDraft(DocumentKind kind, String id) => _codeDrafts[_draftKey(kind, id)];
+
+  bool hasCodeDraft(DocumentKind kind, String id) => _codeDrafts.containsKey(_draftKey(kind, id));
+
+  /// Keeps [text] as the document's unapplied Code draft, or drops it when
+  /// null. Listeners hear only when a draft starts or ends, not per key.
+  void setCodeDraft(DocumentKind kind, String id, String? text) {
+    final String key = _draftKey(kind, id);
+    final bool had = _codeDrafts.containsKey(key);
+    if (text == null) {
+      _codeDrafts.remove(key);
+    } else {
+      _codeDrafts[key] = text;
+    }
+    if (had != (text != null)) _changed();
+  }
 
   /// True when this tab holds the open workspace's lock. Only the owning tab
   /// should talk to a server for it (send change sets, resume them after a
@@ -262,9 +296,12 @@ class EditorStore {
     return restored;
   }
 
-  /// Imports a picked folder or zip as a new workspace and opens it.
-  Future<WorkspaceSnapshot> openFiles(String name, Map<String, Uint8List> files) async {
+  /// Imports a picked folder or zip as a new workspace and opens it. With
+  /// [requireDocuments], a pick without documents throws [NoDocumentsFound]
+  /// and saves nothing; [zip] says how it was picked, for that message.
+  Future<WorkspaceSnapshot> openFiles(String name, Map<String, Uint8List> files, {bool requireDocuments = false, bool zip = false}) async {
     final DataFolderResult result = openDataFolder(files, schemas);
+    if (requireDocuments && result.documents.isEmpty) throw NoDocumentsFound(emptyPickProblem(name, files, zip: zip));
     final WorkspaceSnapshot snapshot = WorkspaceSnapshot(
       id: _newId(),
       name: name,
@@ -277,6 +314,7 @@ class EditorStore {
     onWorkspaceCreated?.call();
     _workspace = snapshot;
     _ignored = result.ignored;
+    _codeDrafts.clear();
     _resetHistory();
     _problem = null;
     _unsaved = false;
@@ -299,6 +337,7 @@ class EditorStore {
     if (_workspace?.id != id) {
       _workspace = snapshot;
       _ignored = const <String>[];
+      _codeDrafts.clear();
       _resetHistory();
       _unsaved = false;
       await _claim(id);
@@ -317,6 +356,7 @@ class EditorStore {
     final WorkspaceSnapshot? snapshot = await repository.load(id);
     _workspace = snapshot;
     _ignored = const <String>[];
+    _codeDrafts.clear();
     _resetHistory();
     if (snapshot != null) await _loadHistory(id);
     _unsaved = false;
@@ -332,6 +372,7 @@ class EditorStore {
 
   void closeWorkspace() {
     _workspace = null;
+    _codeDrafts.clear();
     _resetHistory();
     _unsaved = false;
     _release();
@@ -453,6 +494,7 @@ class EditorStore {
       if (source == null) {
         if (index >= 0) {
           next.removeAt(index);
+          _codeDrafts.remove(_draftKey(change.kind, change.id));
           changed = true;
         }
         continue;
@@ -645,6 +687,7 @@ class EditorStore {
 
   void _workspaceDeletedElsewhere() {
     _workspace = null;
+    _codeDrafts.clear();
     _resetHistory();
     _unsaved = false;
     _release();

@@ -387,7 +387,7 @@ public final class CitizensImporter {
         Set<UUID> identities = new HashSet<>();
         Set<String> ids = new HashSet<>();
         Path active = store.resolve("npcs");
-        for (Path path : JsonDocumentTree.files(active, NpcPaths.TREE_DEPTH)) {
+        for (Path path : JsonDocumentTree.strictFiles(active, NpcPaths.TREE_DEPTH)) {
             NpcDefinition definition = NpcDefinition.read("npcs/" + active.relativize(path).toString().replace('\\', '/'), JsonDocuments.read(path));
             if (!identities.add(definition.uuid()) || !ids.add(definition.id())) throw new IOException("Existing NPC identity collision: " + path);
         }

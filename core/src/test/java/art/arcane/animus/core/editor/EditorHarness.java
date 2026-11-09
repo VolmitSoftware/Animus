@@ -62,7 +62,8 @@ final class EditorHarness implements AutoCloseable {
         final Map<String, Consumer<String>> leave = new LinkedHashMap<>();
         final List<EditorNotice> notices = new java.util.concurrent.CopyOnWriteArrayList<>();
         boolean online = true, previews = true, rejectFiles, commandGrants;
-        Admin admin = Admin.ADMIN;
+        Admin admin = Admin.ADMIN, commands = Admin.ADMIN;
+        List<String> rawTextBehaviors = List.of();
         List<String> activation = List.of(), reloadProblems = List.of();
         volatile EditorTerrain terrain;
 
@@ -91,7 +92,9 @@ final class EditorHarness implements AutoCloseable {
 
         @Override public boolean commandGrants() { return commandGrants; }
 
-        @Override public void admin(UUID player, Consumer<Admin> result) { result.accept(admin); }
+        @Override public void permission(UUID player, String node, Consumer<Admin> result) { result.accept(node.equals(EditorCommands.COMMANDS_PERMISSION) ? commands : admin); }
+
+        @Override public List<String> rawTextBehaviors() { return rawTextBehaviors; }
 
         @Override public CompletionStage<List<String>> activationProblems(NpcDefinition definition) { return CompletableFuture.completedFuture(activation); }
 

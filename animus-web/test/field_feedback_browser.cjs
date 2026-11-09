@@ -38,9 +38,9 @@ async function fadeOf(page, selector, open) {
   return page.evaluate(() => window.__fade);
 }
 
-/** Header diagnostics whose text matches [pattern]. */
+/** Header diagnostics whose JSON path (the item's title) or text matches [pattern]. */
 async function headerProblems(page, pattern) {
-  return (await page.locator('.animus-diagnostics li').allInnerTexts()).filter(text => pattern.test(text));
+  return (await page.locator('.animus-diagnostics li').evaluateAll(items => items.map(li => `${li.title} ${li.textContent}`))).filter(text => pattern.test(text));
 }
 
 /** Pending fields, help tips and toasts in the starter workspace. */
@@ -63,8 +63,8 @@ async function quietFeedback(page, label) {
   assert.deepEqual(await headerProblems(page, /arguments\.item/), [], `${label}: no header problem while Item waits to be filled`);
   assert.equal(await block.locator('.animus-gui-problem').count(), 0, `${label}: no problem at the step while Item waits`);
   await page.locator('h1').first().click();
-  await page.waitForFunction(() => [...document.querySelectorAll('.animus-diagnostics li')].some(li => /arguments\.item/.test(li.textContent)), null, {timeout: 2000});
-  assert.ok((await block.locator('.animus-gui-problem').allInnerTexts()).some(text => /item/.test(text)), `${label}: Item left empty shows its problem`);
+  await page.waitForFunction(() => [...document.querySelectorAll('.animus-diagnostics li')].some(li => /arguments\.item/.test(li.title)), null, {timeout: 2000});
+  assert.ok((await block.locator('.animus-gui-problem').allInnerTexts()).some(text => /item/i.test(text)), `${label}: Item left empty shows its problem`);
 
   // A conversation line added with Enter is pending until it is left empty.
   await page.goto(`${url}/#/workspace/${workspace}/new/conversation`);

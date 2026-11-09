@@ -184,6 +184,12 @@ void main() {
       expect(errors(repaired), isEmpty);
     });
 
+    test('should offer a missing UUID with a short label', () {
+      final JsonMap npc = newNpc(const NpcSeed(name: 'Baker', group: 'town'), uuid: newUuid(random))..remove('uuid');
+      final List<DocumentFix> fixes = fixesFor(validate(DocumentKind.npc, 'town/baker', npc), random: random);
+      expect(fixes.single.label, 'Add a new UUID');
+    });
+
     test('should clamp a number outside its bounds and set a constant', () {
       final JsonMap rig = <String, Object?>{...newRig('a:b'), 'schemaVersion': 2};
       final JsonMap animation = <String, Object?>{...newRigAnimation('a:b/c', 'a:b', rig), 'durationTicks': 5000};

@@ -6,11 +6,13 @@ import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.storage.NpcPaths;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.Palette;
+import art.arcane.animus.core.toolkit.Toolkit;
 import art.arcane.volmlib.util.director.help.DirectorMiniMenu;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -36,21 +38,40 @@ abstract class CommandGroup {
 
     /**
      * The NPC id a command names. It may be the bare id, the id with its folders ({@code world/town/smith}) or the file
-     * path ({@code npcs/world/town/smith.json}); {@link #SELECTED} is the player's selection. Empty after telling the
-     * actor why.
+     * path ({@code npcs/world/town/smith.json}); {@link #SELECTED} is the player's selection. An id no NPC has is refused
+     * here, the same way for every command. Empty after telling the actor why.
      */
     Optional<String> npc(CommandActor actor, String id) {
         if (id.indexOf('/') >= 0) return qualified(actor, id);
-        if (!id.equalsIgnoreCase(SELECTED)) return Optional.of(id);
+        if (!id.equalsIgnoreCase(SELECTED)) {
+            if (runtime().npcs().find(id).isPresent()) return Optional.of(id);
+            actor.tell(Palette.error(unknownNpc(id)));
+            return Optional.empty();
+        }
         if (actor.player().isEmpty()) { actor.tell(Palette.error("The console has no selection; give the NPC id")); return Optional.empty(); }
-        Optional<String> selected = living().selection(actor.player().get());
-        if (selected.isEmpty()) actor.tell(Palette.error("No NPC selected; /animus select <npc> or right-click one"));
-        return selected;
+        return selected(actor, selection(actor.player().get()));
+    }
+
+    /**
+     * The player's selected NPCs, in the order picked. The toolkit's selection, which the wand, its screens and
+     * {@code /animus select} all change, is the only one; a platform without the toolkit has the runtime's single pick.
+     */
+    List<String> selection(UUID player) {
+        Optional<Toolkit<?, ?>> toolkit = services == null ? Optional.empty() : Toolkit.of(services.shops().screens());
+        return toolkit.map((Toolkit<?, ?> found) -> found.selected(player)).orElseGet(() -> living().selection(player).map(List::of).orElse(List.of()));
+    }
+
+    /** What {@link #SELECTED} names: the one selected NPC. None, or several, is a refusal that says what to do. */
+    static Optional<String> selected(CommandActor actor, List<String> selection) {
+        if (selection.size() == 1) return Optional.of(selection.getFirst());
+        actor.tell(Palette.error(selection.isEmpty() ? "No NPC selected; /animus select <npc>, or click one with the wand (/animus tools wand)"
+                : selection.size() + " NPCs are selected; name one, or /animus select <npc> to keep only it"));
+        return Optional.empty();
     }
 
     private Optional<String> qualified(CommandActor actor, String reference) {
         Optional<String> id = located(runtime().npcs()::find, reference);
-        if (id.isEmpty()) actor.tell(Palette.error("No NPC at " + reference + "; /animus list shows ids, or give the bare id"));
+        if (id.isEmpty()) actor.tell(Palette.error(unknownNpc(reference) + ", or give the bare id"));
         return id;
     }
 
@@ -113,11 +134,14 @@ abstract class CommandGroup {
         boolean accepted = living.onOwner(id, () -> {
             String message;
             try { message = work.get(); }
-            catch (RuntimeException e) { message = label + ": " + reason(e); }
+            catch (RuntimeException e) { message = failed(label, reason(e)); }
             for (String line : message.split("\n")) reply(actor, line);
-        }, (String reason) -> reply(actor, label + ": " + reason));
-        if (!accepted) actor.tell(Palette.error(label + ": " + (living.available() ? inactive(id, runtime().npcs().find(id)) : living.status())));
+        }, (String reason) -> reply(actor, failed(label, reason)));
+        if (!accepted) actor.tell(failed(label, living.available() ? inactive(id, runtime().npcs().find(id)) : living.status()));
     }
+
+    /** A refusal from NPC work, in red. */
+    static String failed(String label, String reason) { return Palette.error(label + ": " + reason); }
 
     /**
      * Why an NPC cannot take live work: it does not exist, it is despawned, or it is spawned but not active because nobody
@@ -130,7 +154,7 @@ abstract class CommandGroup {
     }
 
     /** The refusal for an NPC id nothing matches. */
-    static String unknownNpc(String id) { return "Unknown NPC: " + id + "; /animus list shows ids"; }
+    static String unknownNpc(String id) { return "No NPC named " + id + "; /animus list shows ids"; }
 
     /** A failure's message, or its kind when it has none, so a reply never reads "null". */
     static String reason(Throwable failure) {

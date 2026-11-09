@@ -64,6 +64,21 @@ class _SyncPageState extends State<SyncPage> {
 
   static const String _pushId = 'animus-sync-push';
 
+  @override
+  void initState() {
+    super.initState();
+    final ServerProfile? server = _server;
+    if (server != null) _connectIfIdle(server.id);
+  }
+
+  /// Picking a server this browser holds a token for connects to it, as
+  /// its server page would.
+  void _connectIfIdle(String serverId) {
+    if (component.hub.hasToken(serverId) && component.hub.status(serverId).phase == ConnectionPhase.offline) {
+      component.hub.connect(serverId);
+    }
+  }
+
   ServerProfile? get _server {
     final List<ServerProfile> servers = component.hub.servers;
     if (servers.isEmpty) return null;
@@ -237,18 +252,22 @@ class _SyncPageState extends State<SyncPage> {
             value: server.id,
             options: <String>[for (final ServerProfile profile in component.hub.servers) profile.id],
             labels: <String, String>{for (final ServerProfile profile in component.hub.servers) profile.id: profile.name},
-            onChanged: (String? value) => setState(() {
-              _serverId = value;
-              _push = null;
-              _pull = null;
-              _catalog = null;
-            }),
+            onChanged: (String? value) {
+              setState(() {
+                _serverId = value;
+                _push = null;
+                _pull = null;
+                _catalog = null;
+              });
+              if (value != null) _connectIfIdle(value);
+            },
           ),
         )
       else
         dom.strong(<Widget>[Component.text(server.name)]),
       ConnectionPill(status: status, hasToken: token),
-      if (phaseHint(status, hasToken: token).isNotEmpty) dom.span(classes: 'animus-muted', <Widget>[Component.text(phaseHint(status, hasToken: token))]),
+      if (phaseHint(status, hasToken: token, connectHere: true).isNotEmpty)
+        dom.span(classes: 'animus-muted', <Widget>[Component.text(phaseHint(status, hasToken: token, connectHere: true))]),
       if (!status.online && token && status.phase != ConnectionPhase.connecting)
         Button.secondary(label: 'Connect', size: ButtonSize.small, onPressed: () => component.hub.connect(server.id)),
     ]);
@@ -324,7 +343,7 @@ class _SyncPageState extends State<SyncPage> {
           ]),
           if (plan.where(SyncState.added).isNotEmpty)
             dom.fieldset(classes: 'animus-sync-group', <Widget>[
-              const dom.legend(<Widget>[Component.text('New on the server')]),
+              const dom.legend(<Widget>[Component.text('Not on the server yet')]),
               for (final PushEntry entry in plan.where(SyncState.added))
                 dom.div(classes: 'animus-sync-entry', <Widget>[
                   ArcaneCheckbox(

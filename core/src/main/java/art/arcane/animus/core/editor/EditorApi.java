@@ -55,8 +55,11 @@ import java.util.function.Supplier;
  */
 public final class EditorApi implements EditorRequestHandler {
     public static final int PROTOCOL = 1;
-    /** How long a token keeps working while the server cannot tell whether its admin still holds {@code animus.admin}. */
+    /** How long a token keeps working while the server cannot tell whether its admin still holds {@code animus.editor.pair}. */
     public static final Duration UNCONFIRMED_ADMIN = Duration.ofDays(7);
+    private static final String PAIR = art.arcane.animus.core.command.PermissionNodes.EDITOR_PAIR;
+    private static final String COMMANDS_REMOVED = EditorCommands.COMMANDS_PERMISSION + " removed, apply:commands dropped",
+            COMMANDS_UNCONFIRMED = EditorCommands.COMMANDS_PERMISSION + " unconfirmed, apply:commands dropped";
     private static final Map<String, String> CORS = Map.of("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS",
             "Access-Control-Allow-Headers", "Authorization, Content-Type, X-Animus-Counter, If-None-Match", "Access-Control-Expose-Headers", "ETag", "Access-Control-Max-Age", "600",
             "Access-Control-Allow-Private-Network", "true", "Vary", "Origin");
@@ -610,7 +613,7 @@ public final class EditorApi implements EditorRequestHandler {
         set.documents().forEach((EditorMessages.Change change) -> kinds.add(change.kind()));
         scopes(token, kinds, set.documents().stream().filter((EditorMessages.Change change) -> change.kind() == DocumentKind.NPC)
                 .flatMap((EditorMessages.Change change) -> java.util.stream.Stream.concat(java.util.stream.Stream.of(change.id()), change.from().stream())).toList());
-        EditorCommandGuard.requireForChanges(token, set.documents(), EditorCommandGuard.privileged(parts.host().capabilities()));
+        EditorCommandGuard.requireForChanges(token, set.documents(), EditorCommandGuard.Rules.of(parts.host()));
         String requestHash = EditorTokens.sha256(body.toString());
         parts.changes().queued(set.idempotencyKey());
         try {
@@ -675,7 +678,7 @@ public final class EditorApi implements EditorRequestHandler {
             return files(token, () -> {
                 try {
                     EditorChanges.Outcome outcome = parts.changes().undo(changeId, key, token.id(), EditorCommandGuard.forUndo(token,
-                            (Set<DocumentKind> kinds, List<String> ids) -> scopes(token, kinds, ids), EditorCommandGuard.privileged(parts.host().capabilities())));
+                            (Set<DocumentKind> kinds, List<String> ids) -> scopes(token, kinds, ids), EditorCommandGuard.Rules.of(parts.host())));
                     published(outcome, token, EditorNotifySettings.Kind.ROLLBACK, "undid");
                     audit("undo", Optional.of(token.id()), token.admin(), request, List.of(changeId), outcome.body().get("status").getAsString());
                     return EditorResponse.json(outcome.status(), outcome.body());
@@ -972,30 +975,50 @@ public final class EditorApi implements EditorRequestHandler {
     }
 
     /**
-     * Revokes tokens whose issuing player lost {@code animus.admin}, or whose admin went unconfirmed for {@link #UNCONFIRMED_ADMIN}.
-     * The answer arrives on the player's owner thread; recording it writes files, so it moves to the file lane. A full lane
+     * Revokes tokens whose issuing player lost {@code animus.editor.pair} (which {@code animus.admin} grants), or whose admin went unconfirmed for {@link #UNCONFIRMED_ADMIN}.
+     * A token with {@code apply:commands} also needs {@link EditorCommands#COMMANDS_PERMISSION}: losing it, or leaving it
+     * unconfirmed as long, drops only that scope. A token counts as confirmed only when every node it needs was confirmed. The
+     * answers arrive on the player's owner thread; recording them writes files, so it moves to the file lane. A full lane
      * retries next minute.
      */
     public void recheckAdmins() {
         for (EditorTokens.Token token : parts.tokens().list()) {
-            token.admin().ifPresent((UUID admin) -> parts.host().admin(admin, (EditorHost.Admin status) -> {
-                boolean stale = status == EditorHost.Admin.UNKNOWN && !token.adminChecked().plus(UNCONFIRMED_ADMIN).isAfter(parts.clock().instant());
+            token.admin().ifPresent((UUID admin) -> parts.host().permission(admin, PAIR, (EditorHost.Admin status) -> {
+                boolean stale = !token.adminChecked().plus(UNCONFIRMED_ADMIN).isAfter(parts.clock().instant());
                 if (status == EditorHost.Admin.UNKNOWN && !stale) return;
-                String cause = stale ? "after " + UNCONFIRMED_ADMIN.toDays() + " days without confirming animus.admin" : "after losing animus.admin";
-                try {
-                    parts.host().files().execute(() -> {
-                        try {
-                            if (status == EditorHost.Admin.ADMIN) parts.tokens().confirmAdmin(token.id());
-                            else if (!revoke(token.id(), "token-revoked", cause).isEmpty())
-                                parts.audit().record(new EditorAudit.Entry("revoke", Optional.of(token.id()), Optional.of(admin), "server", "admin-check", List.of(),
-                                        stale ? "animus.admin unconfirmed" : "animus.admin removed"));
-                        } catch (IOException failure) {
-                            System.getLogger("Animus").log(System.Logger.Level.WARNING, "Editor admin check failed: " + failure.getMessage());
-                        }
+                if (status != EditorHost.Admin.ADMIN) {
+                    String cause = status == EditorHost.Admin.UNKNOWN ? "after " + UNCONFIRMED_ADMIN.toDays() + " days without confirming " + PAIR : "after losing " + PAIR;
+                    String reason = PAIR + (status == EditorHost.Admin.UNKNOWN ? " unconfirmed" : " removed");
+                    onFiles(() -> {
+                        if (!revoke(token.id(), "token-revoked", cause).isEmpty())
+                            parts.audit().record(new EditorAudit.Entry("revoke", Optional.of(token.id()), Optional.of(admin), "server", "admin-check", List.of(), reason));
                     });
-                } catch (RejectedExecutionException full) { /* The next minute retries. */ }
+                    return;
+                }
+                if (!token.has(EditorScope.APPLY_COMMANDS)) { onFiles(() -> parts.tokens().confirmAdmin(token.id())); return; }
+                parts.host().permission(admin, EditorCommands.COMMANDS_PERMISSION, (EditorHost.Admin commands) -> {
+                    if (commands == EditorHost.Admin.UNKNOWN && !stale) return;
+                    onFiles(() -> {
+                        if (commands != EditorHost.Admin.ADMIN && parts.tokens().dropScope(token.id(), EditorScope.APPLY_COMMANDS))
+                            parts.audit().record(new EditorAudit.Entry("scope-dropped", Optional.of(token.id()), Optional.of(admin), "server", "admin-check",
+                                    List.of(), commands == EditorHost.Admin.UNKNOWN ? COMMANDS_UNCONFIRMED : COMMANDS_REMOVED));
+                        parts.tokens().confirmAdmin(token.id());
+                    });
+                });
             }));
         }
+    }
+
+    @FunctionalInterface private interface TokenWork { void run() throws IOException; }
+
+    /** Token bookkeeping on the file lane; a full lane leaves it for the next minute's check. */
+    private void onFiles(TokenWork work) {
+        try {
+            parts.host().files().execute(() -> {
+                try { work.run(); }
+                catch (IOException failure) { System.getLogger("Animus").log(System.Logger.Level.WARNING, "Editor admin check failed: " + failure.getMessage()); }
+            });
+        } catch (RejectedExecutionException full) { /* The next minute retries. */ }
     }
 
     /** Ends every stream and preview at shutdown. */

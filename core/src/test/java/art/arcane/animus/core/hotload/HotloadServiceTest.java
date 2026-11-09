@@ -39,6 +39,7 @@ class HotloadServiceTest {
     private final List<String> lines = new CopyOnWriteArrayList<>();
     private final List<Boolean> dings = new CopyOnWriteArrayList<>();
     private final List<String> refreshed = new ArrayList<>();
+    private final List<String> logged = new CopyOnWriteArrayList<>(), warned = new CopyOnWriteArrayList<>();
 
     @BeforeEach void start() throws Exception {
         runtime = new AnimusRuntime(RuntimeEnvironment.bukkit("26.3", root));
@@ -47,7 +48,7 @@ class HotloadServiceTest {
         runtime.catalogs(new RuntimeCatalogs(new RuntimeCatalogs.Parts(runtime, () -> refreshed.add("npcs"), () -> null,
                 () -> { refreshed.add("shops"); return Completed.now(); }, () -> { refreshed.add("holograms"); return Completed.now(); }, (String line) -> {})));
         hotload = new HotloadService(new HotloadService.Parts(runtime, files, Runnable::run, new FakeNpcRuntime<Object>((java.util.UUID id) -> Optional.empty()),
-                (List<String> sent, boolean sound) -> { lines.addAll(sent); dings.add(sound); }, () -> refreshed.add("screens"), (String line) -> {}));
+                (List<String> sent, boolean sound) -> { lines.addAll(sent); dings.add(sound); }, () -> refreshed.add("screens"), logged::add, warned::add));
         hotload.listen();
         hotload.cycle();
     }
@@ -102,7 +103,7 @@ class HotloadServiceTest {
         hotload.close();
         hotload = new HotloadService(new HotloadService.Parts(runtime, runtime.fileExecutor((Runnable task, art.arcane.animus.core.extension.MutationLane.EngineTaskEvent event, Throwable failure) -> {}),
                 Runnable::run, new FakeNpcRuntime<Object>((java.util.UUID id) -> Optional.empty()) { @Override public boolean switchesLive() { return false; } },
-                (List<String> sent, boolean sound) -> lines.addAll(sent), () -> {}, (String line) -> {}));
+                (List<String> sent, boolean sound) -> lines.addAll(sent), () -> {}, (String line) -> {}, (String line) -> {}));
         hotload.listen();
         hotload.cycle();
         Path config = root.resolve("config.toml");
@@ -117,10 +118,32 @@ class HotloadServiceTest {
         Files.writeString(config, Files.readString(config).replace("viewDistance = 48", "viewDistance = \"far\""));
         settle();
         assertEquals(48, runtime.npcSettings().viewDistance());
-        assertEquals(List.of("[Animus]: Hotload refused [config.toml] npcs: viewDistance must be an integer [kept the last valid version]"), shown());
+        assertEquals(1, shown().size(), shown().toString());
+        assertTrue(shown().getFirst().matches("\\[Animus]: Hotload refused \\[config.toml] line \\d+: npcs: viewDistance must be an integer \\[kept the last valid version]"), shown().getFirst());
+        assertTrue(warned.stream().anyMatch((String line) -> line.startsWith("Hotload refused config.toml: line ")), warned.toString());
+        assertTrue(logged.stream().noneMatch((String line) -> line.contains("refused")), "a refusal is a warning: " + logged);
         lines.clear();
         quiet();
         assertTrue(lines.isEmpty(), "a refused edit is reported once");
+    }
+
+    @Test void anUnknownConfigKeyIsIgnoredWithAWarningThatNamesTheLineAndTheNearestKey() throws Exception {
+        Path config = root.resolve("config.toml");
+        Files.writeString(config, Files.readString(config).replace("viewDistance = 48", "viewDistance = 40\nviewDistence = 10"));
+        settle(() -> runtime.npcSettings().viewDistance() == 40, "the valid key applying");
+        assertTrue(warned.stream().anyMatch((String line) -> line.matches("config\\.toml line \\d+: viewDistence is not a setting in \\[npcs]; it is ignored; did you mean viewDistance\\?")),
+                warned.toString());
+    }
+
+    @Test void manyFilesInOnePollAreLoggedAsOneSummaryLine() throws Exception {
+        for (int index = 0; index < HotloadService.LISTED_FILES + 2; index++) {
+            Path file = root.resolve("npcs/town/guard" + index + ".json");
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, NPC.replace("\"guard\"", "\"guard" + index + "\"").replace("123456789abc", "123456789a" + (10 + index)));
+        }
+        settle(() -> runtime.npcs().all().size() == HotloadService.LISTED_FILES + 2, "every NPC loading");
+        settle(() -> logged.stream().anyMatch((String line) -> line.startsWith("Hotloaded " + (HotloadService.LISTED_FILES + 2) + " files, first ")), "the summary line");
+        assertTrue(logged.stream().noneMatch((String line) -> line.startsWith("Hotloaded npcs/")), logged.toString());
     }
 
     @Test void soundCanBeTurnedOff() throws Exception {
@@ -292,7 +315,7 @@ class HotloadServiceTest {
                     if (sent.stream().noneMatch((String line) -> line.contains("behaviors/town/greeter.json"))) return;
                     atNotice.add(behaviors.statusLines().getFirst());
                     behaviors.run(console, "test", "town:greeter");
-                }, () -> {}, (String line) -> {}));
+                }, () -> {}, (String line) -> {}, (String line) -> {}));
         hotload.listen();
         hotload.cycle();
         try {

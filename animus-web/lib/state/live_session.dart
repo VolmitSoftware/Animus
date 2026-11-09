@@ -133,6 +133,18 @@ class LiveSession {
   /// What is running now, for the UI to disable buttons and say so.
   String? busy;
   final List<LiveNotice> log = <LiveNotice>[];
+
+  /// The newest notice when the user last moved to another page.
+  LiveNotice? _seen;
+
+  /// The newest notice while it is news: from when it arrives until the
+  /// user moves to another page ([markLogSeen]); the log keeps it after.
+  LiveNotice? get freshNotice => log.isEmpty || identical(log.last, _seen) ? null : log.last;
+
+  void markLogSeen() {
+    if (log.isNotEmpty) _seen = log.last;
+  }
+
   ConnectionPhase _lastPhase = ConnectionPhase.offline;
 
   Stream<LiveNotice> get notices => _notices.stream;

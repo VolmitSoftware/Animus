@@ -20,8 +20,8 @@ public interface BehaviorInvoker {
     boolean available(Capabilities.Key capability,Capabilities.Kind kind);
     /** Identity-aware admission hint for capabilities granted per behavior; actual invocation rechecks authority. */
     default boolean available(Capabilities.Key capability,Capabilities.Kind kind,String behavior){return available(capability,kind);}
-    /** Whether text this behavior interpolates into the capability's arguments must stay in {@link ArgumentTemplate#SAFE_TEXT}. */
-    default boolean strictText(Capabilities.Key capability,String behavior){return false;}
+    /** How text this behavior interpolates into the capability's arguments is written. */
+    default ArgumentTemplate.Holes holes(Capabilities.Key capability,String behavior){return ArgumentTemplate.Holes.RAW;}
     Call<String> action(Invocation invocation);
     Call<Boolean> condition(Invocation invocation);
 }

@@ -17,9 +17,11 @@ final class FakeRegionFlags implements RegionFlags {
     private final Map<String, Boolean> regions = new HashMap<>();
     final List<Query> queries = new ArrayList<>();
     RuntimeException failure;
+    private final java.util.Set<UUID> bypassing = new java.util.HashSet<>();
 
     FakeRegionFlags set(double x, double z, Flag flag, State state) { states.put(key(x, z, flag), state); return this; }
     FakeRegionFlags build(double x, double z, UUID player, boolean allowed) { builds.put(x + "," + z + "," + player, allowed); return this; }
+    FakeRegionFlags bypassing(UUID player) { bypassing.add(player); return this; }
     FakeRegionFlags region(String name, double x, double z, boolean inside) { regions.put(name + "@" + (int) Math.floor(x) + "," + (int) Math.floor(z), inside); return this; }
 
     @Override public State state(WorldPosition at, UUID player, Flag... flags) {
@@ -47,6 +49,12 @@ final class FakeRegionFlags implements RegionFlags {
         queries.add(new Query("region", at, null, List.of()));
         if (failure != null) throw failure;
         return Optional.ofNullable(regions.get(region + "@" + (int) Math.floor(at.point().x()) + "," + (int) Math.floor(at.point().z())));
+    }
+
+    @Override public boolean bypass(WorldPosition at, UUID player) {
+        queries.add(new Query("bypass", at, player, List.of()));
+        if (failure != null) throw failure;
+        return bypassing.contains(player);
     }
 
     private static String key(double x, double z, Flag flag) { return (int) Math.floor(x) + "," + (int) Math.floor(z) + "," + flag; }

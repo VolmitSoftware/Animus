@@ -11,6 +11,7 @@ import art.arcane.animus.core.extension.ModuleHooks;
 import art.arcane.animus.api.ImportConverters;
 import art.arcane.animus.core.behavior.schema.NpcSchemaGenerator;
 import art.arcane.animus.core.npc.*;
+import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.runtime.SkinDocuments;
 import art.arcane.animus.core.storage.*;
 import art.arcane.animus.core.text.ChatLine;
@@ -88,7 +89,7 @@ public final class Administration {
 
     public Inspection inspect(String id) throws IOException {
         NpcRepository.Draft draft = runtime.npcs().draft(id);
-        NpcDefinition effective = runtime.npcs().find(id).orElseThrow(() -> new IOException("Unknown NPC: " + id + "; /animus list shows ids"));
+        NpcDefinition effective = runtime.npcs().find(id).orElseThrow(() -> new IOException("No NPC named " + id + "; /animus list shows ids"));
         List<String> provenance = effective.groups().isEmpty() ? List.of() : runtime.npcs().provenance(id).entrySet().stream()
                 .map((Map.Entry<String, String> entry) -> entry.getKey() + " from " + entry.getValue()).toList();
         return new Inspection(effective, draft.document().toString(), effective.json().toString(), provenance,
@@ -100,33 +101,94 @@ public final class Administration {
         return create(id, type, world, x, y, z, group, name, Optional.empty());
     }
 
-    /** Saves a new dormant NPC; {@code owner} is the player who made it, written as {@code owner} and editable afterwards. */
+    /** Saves a new dormant NPC facing south; {@code owner} is the player who made it, written as {@code owner} and editable afterwards. */
     public String create(String id, String type, String world, double x, double y, double z, String group, String name, Optional<UUID> owner) throws IOException {
-        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) throw new IOException("Coordinates must be numbers, such as x=0 y=64 z=0");
+        Creation creation = creation(id, type, world, new art.arcane.animus.core.virtual.Vec3(x, y, z), 0, group, name, owner, false);
+        return "Created dormant " + creation.definition().id() + "; tx " + runtime.npcs().apply(creation.draft());
+    }
+
+    /** A new NPC's checked definition and the draft that writes it. */
+    public record Creation(NpcDefinition definition, NpcRepository.Draft draft) {}
+
+    /**
+     * The file a new NPC gets, not yet written: at {@code point} facing {@code yaw} with pitch 0, spawned or dormant.
+     * Refused when another NPC in any folder already has the id.
+     */
+    public Creation creation(String id, String type, String world, art.arcane.animus.core.virtual.Vec3 point, float yaw, String group, String name,
+                             Optional<UUID> owner, boolean spawned) throws IOException {
+        if (!Double.isFinite(point.x()) || !Double.isFinite(point.y()) || !Double.isFinite(point.z())) throw new IOException("Coordinates must be numbers, such as x=0 y=64 z=0");
+        Optional<String> body = bodyProblem(type);
+        if (body.isPresent()) throw new IOException(body.get().substring("$.type: ".length()));
+        taken(id);
         JsonObject object = new JsonObject();
         object.addProperty("schemaVersion", 1); object.addProperty("revision", 1);
         object.addProperty("uuid", UUID.randomUUID().toString()); object.addProperty("id", id);
-        object.addProperty("type", type); object.addProperty("group", group);
+        object.addProperty("type", art.arcane.animus.core.platform.MinecraftIds.normalize(type)); object.addProperty("group", group);
         object.addProperty("name", name);
-        object.addProperty("spawned", false);
+        object.addProperty("spawned", spawned);
         owner.ifPresent((UUID player) -> object.addProperty("owner", player.toString()));
-        JsonObject position = new JsonObject(); position.addProperty("world", world);
-        position.addProperty("x", x); position.addProperty("y", y); position.addProperty("z", z);
-        position.addProperty("yaw", 0); position.addProperty("pitch", 0); object.add("position", position);
+        object.add("position", position(world, point, yaw));
         NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(object));
-        String tx = runtime.npcs().apply(new NpcRepository.Draft(definition.path(), "missing", 0, object));
-        return "Created dormant " + definition.id() + "; tx " + tx;
+        return new Creation(definition, new NpcRepository.Draft(definition.path(), "missing", 0, object));
     }
 
-    /** Merges the top-level fields of a JSON object into the definition; see {@link #merge}. */
+    /**
+     * Why an NPC of this body type could never be shown: Animus presents only the bodies in {@link BodyRules#TYPES}, and
+     * any other type would be saved and then refused at spawn.
+     */
+    public static Optional<String> bodyProblem(String type) {
+        if (BodyRules.TYPES.contains(art.arcane.animus.core.platform.MinecraftIds.normalize(type))) return Optional.empty();
+        return Optional.of("$.type: " + type + " cannot be shown; the bodies Animus shows are " + String.join(", ", new TreeSet<>(BodyRules.TYPES)));
+    }
+
+    /** Refuses an id another NPC already has, in any folder, with the toolkit's wording. */
+    private void taken(String id) throws IOException {
+        if (runtime.npcs().stored().stream().anyMatch((NpcDefinition existing) -> existing.id().equals(id)))
+            throw new IOException("An NPC named " + id + " already exists; /animus inspect " + id + " shows it, or pick another id");
+    }
+
+    private static JsonObject position(String world, art.arcane.animus.core.virtual.Vec3 point, float yaw) {
+        JsonObject position = new JsonObject();
+        position.addProperty("world", world);
+        position.addProperty("x", point.x()); position.addProperty("y", point.y()); position.addProperty("z", point.z());
+        position.addProperty("yaw", Math.round(yaw * 100) / 100.0); position.addProperty("pitch", 0);
+        return position;
+    }
+
+    /** Sets the display name; colour codes are kept. */
+    public String rename(String id, String name) throws IOException {
+        NpcRepository.Draft draft = runtime.npcs().draft(id);
+        JsonObject document = draft.document();
+        document.addProperty("name", name);
+        NpcDefinition.parse(JsonDocuments.write(document));
+        return "Renamed " + id + " to " + name + "; tx " + runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
+    }
+
+    /** Saves a new position, in any world, facing {@code yaw} with pitch 0. */
+    public String move(String id, art.arcane.animus.core.virtual.WorldPosition at, float yaw) throws IOException {
+        NpcRepository.Draft draft = runtime.npcs().draft(id);
+        JsonObject document = draft.document();
+        document.add("position", position(at.world(), at.point(), yaw));
+        NpcDefinition.parse(JsonDocuments.write(document));
+        String tx = runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
+        return "Moved " + id + " to " + at.world() + " " + art.arcane.animus.core.command.Coordinates.shown(at.point()) + "; tx " + tx;
+    }
+
+    /** Merges a JSON object into the definition as {@link #merge} does; the reply names what changed. */
     public String edit(String id, String patch) throws IOException {
         NpcRepository.Draft draft = runtime.npcs().draft(id);
         JsonObject edited = draft.document();
-        JsonObject fields = JsonDocuments.object(patch);
+        JsonObject fields = patch(patch);
         Optional<String> problem = patchProblem(runtime.documents(), fields);
         if (problem.isPresent()) throw new IOException(problem.get());
-        merge(edited, fields);
-        return "Saved " + id + "; tx " + runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), edited));
+        List<String> changes = merge(edited, fields);
+        return "Saved " + id + ": " + describe(changes) + "; tx " + runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), edited));
+    }
+
+    /** An edit's JSON object; text that is not one is refused in plain words, without the parser's own message. */
+    public static JsonObject patch(String text) throws IOException {
+        try { return JsonDocuments.object(text); }
+        catch (IOException | RuntimeException unreadable) { throw new IOException("The patch is not a JSON object; write it like {\"name\": \"Captain\"}, with double quotes"); }
     }
 
     /** Top-level fields an edit may set: the definition schema's, plus the importers' {@code migration}. */
@@ -145,6 +207,11 @@ public final class Administration {
     public static Optional<String> patchProblem(DocumentStore documents, JsonObject patch) {
         for (Map.Entry<String, JsonElement> entry : patch.entrySet())
             if (!entry.getValue().isJsonNull() && !FIELDS.contains(entry.getKey())) return Optional.of("$." + entry.getKey() + ": unknown field");
+        JsonElement type = patch.get("type");
+        if (type != null && type.isJsonPrimitive()) {
+            Optional<String> body = bodyProblem(type.getAsString());
+            if (body.isPresent()) return body;
+        }
         JsonElement skin = patch.get("skin");
         if (skin != null && skin.isJsonPrimitive() && skin.getAsJsonPrimitive().isString() && skin.getAsString().matches("[a-f0-9]{64}")) {
             try { SkinDocuments.read(documents, skin.getAsString()); }
@@ -154,14 +221,55 @@ public final class Administration {
     }
 
     /**
-     * Puts each top-level field of {@code patch} into {@code document}; a null value removes the field, so one edit can
-     * change the body type and drop the skin or pose the new body cannot show.
+     * Applies {@code patch} to {@code document} as a JSON merge patch (RFC 7386): an object merges into an object field by
+     * field, a null removes the field, and any other value replaces it whole, arrays included. So editing one module keeps
+     * the others, and one edit can change the body type and drop the skin or pose the new body cannot show. Returns each
+     * changed path in order, as {@code set a.b} or {@code removed a.b}; values that were already so are left out.
      */
-    public static void merge(JsonObject document, JsonObject patch) {
+    public static List<String> merge(JsonObject document, JsonObject patch) {
+        List<String> changes = new ArrayList<>();
+        merge(document, patch, "", changes);
+        return changes;
+    }
+
+    private static void merge(JsonObject document, JsonObject patch, String prefix, List<String> changes) {
         for (Map.Entry<String, JsonElement> entry : patch.entrySet()) {
-            if (entry.getValue().isJsonNull()) document.remove(entry.getKey());
-            else document.add(entry.getKey(), entry.getValue());
+            String key = entry.getKey(), path = prefix + key;
+            JsonElement value = entry.getValue(), current = document.get(key);
+            if (value.isJsonNull()) {
+                if (document.remove(key) != null) changes.add("removed " + path);
+            } else if (value.isJsonObject() && current != null && current.isJsonObject()) merge(current.getAsJsonObject(), value.getAsJsonObject(), path + ".", changes);
+            else {
+                JsonElement next = value.isJsonObject() ? stripped(value.getAsJsonObject()) : value;
+                if (next.equals(current)) continue;
+                document.add(key, next);
+                changes.add("set " + path);
+            }
         }
+    }
+
+    /** A new object field as the patch gives it, without the nulls that would remove fields inside it. */
+    private static JsonObject stripped(JsonObject patch) {
+        JsonObject result = new JsonObject();
+        for (Map.Entry<String, JsonElement> entry : patch.entrySet()) {
+            if (entry.getValue().isJsonNull()) continue;
+            result.add(entry.getKey(), entry.getValue().isJsonObject() ? stripped(entry.getValue().getAsJsonObject()) : entry.getValue());
+        }
+        return result;
+    }
+
+    private static final int DESCRIBED = 6;
+
+    /** {@code set name, modules.x.range; removed skin}, the first {@link #DESCRIBED} paths and how many more, or {@code no change}. */
+    public static String describe(List<String> changes) {
+        if (changes.isEmpty()) return "no change";
+        List<String> shown = changes.subList(0, Math.min(DESCRIBED, changes.size()));
+        List<String> set = new ArrayList<>(), removed = new ArrayList<>();
+        for (String change : shown) (change.startsWith("set ") ? set : removed).add(change.substring(change.indexOf(' ') + 1));
+        List<String> parts = new ArrayList<>();
+        if (!set.isEmpty()) parts.add("set " + String.join(", ", set));
+        if (!removed.isEmpty()) parts.add("removed " + String.join(", ", removed));
+        return String.join("; ", parts) + (changes.size() > DESCRIBED ? " (+" + (changes.size() - DESCRIBED) + " more)" : "");
     }
 
     /**
@@ -187,6 +295,7 @@ public final class Administration {
     }
 
     public String duplicate(String id, String copy) throws IOException {
+        taken(copy);
         JsonObject object = runtime.npcs().draft(id).document();
         object.addProperty("id", copy); object.addProperty("uuid", UUID.randomUUID().toString());
         object.addProperty("revision", 1); object.addProperty("spawned", false); object.remove("migration");
@@ -278,6 +387,7 @@ public final class Administration {
     }
 
     public List<String> rollback(String transaction) throws IOException {
+        undoable(transaction);
         String tx = runtime.documents().rollback(transaction);
         // Rebuild after an explicit undo, which intentionally restores older revisions.
         List<String> errors = runtime.npcs().reloadAfterRollback();
@@ -286,6 +396,25 @@ public final class Administration {
         List<String> lines = new ArrayList<>(List.of(Palette.success("Rolled back " + ChatLine.shortId(transaction) + "; tx " + tx)));
         lines.addAll(notes);
         return lines;
+    }
+
+    /**
+     * Refuses a rollback that cannot apply, in words: every file is already back as it was, or a later change wrote one
+     * of its files since. Either would otherwise answer as a file conflict that a reload does not fix.
+     */
+    private void undoable(String transaction) throws IOException {
+        DocumentStore documents = runtime.documents();
+        String full = documents.transaction(transaction);
+        List<DocumentStore.Change> inverse = documents.inverse(full);
+        boolean undone = true;
+        String later = null;
+        for (DocumentStore.Change change : inverse) {
+            String hash = JsonDocuments.hash(documents.read(change.path()));
+            if (!hash.equals(JsonDocuments.hash(change.content()))) undone = false;
+            if (later == null && !hash.equals(change.expectedHash())) later = change.path();
+        }
+        if (undone) throw new IOException("Transaction " + ChatLine.shortId(full) + " is already rolled back; nothing changed");
+        if (later != null) throw new IOException("Cannot roll back " + ChatLine.shortId(full) + ": " + later + " changed after it; roll back the later change first");
     }
 
     /**

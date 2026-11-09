@@ -79,3 +79,34 @@ Map<String, String> parseWorldMappings(String text) {
   }
   return worlds;
 }
+
+/// Each converted NPC's name by its Citizens id, read from the staged definitions.
+Map<String, String> citizensNames(CitizensPreview preview) {
+  final Map<String, String> names = <String, String>{};
+  for (final MapEntry<String, String> file in preview.files.entries) {
+    if (!file.key.startsWith('npcs/') || !file.key.endsWith('.json')) continue;
+    final Object? json = jsonDecode(file.value);
+    if (json is! Map<String, Object?>) continue;
+    final Object? id = json['id'];
+    final Object? name = json['name'];
+    if (id is String && id.startsWith('citizens-') && name is String) names[id.substring('citizens-'.length)] = name;
+  }
+  return names;
+}
+
+final RegExp _npcWarning = RegExp(r'^citizens-(\d+): (.*)$');
+final RegExp _pointer = RegExp(r'^/[^\s:]*: ');
+
+/// A converter warning in an admin's words: "NPC #3 (Baker): ..." in place
+/// of `citizens-3: /traits/...: ...`. Warnings about the whole save stay as
+/// written. The converter's own text stays as it is for the report files.
+String plainWarning(String warning, Map<String, String> names) {
+  final RegExpMatch? match = _npcWarning.firstMatch(warning);
+  if (match == null) return warning;
+  final String key = match.group(1)!;
+  String text = match.group(2)!.replaceFirst(_pointer, '');
+  text = text.replaceFirstMapped(RegExp(r'^1 points (.*) were '), (Match one) => '1 point ${one[1]} was ');
+  if (text.isNotEmpty) text = '${text[0].toUpperCase()}${text.substring(1)}';
+  final String? name = names[key];
+  return 'NPC #$key${name == null ? '' : ' ($name)'}: $text';
+}

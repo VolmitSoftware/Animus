@@ -87,7 +87,7 @@ async function run(browser, viewport, theme) {
 
   // An item id in an action argument: fuzzy rows, Escape, Ctrl+Space, and
   // an unknown id underlined with its reason.
-  const item = editor.getByLabel('item', {exact: true});
+  const item = editor.getByLabel('Item', {exact: true});
   await retype(item, 'dsw');
   list = await listOf(page, item, `${where} item`, phone);
   assert.equal((await list.getByRole('option').first().locator('.animus-suggest-label').textContent()), 'diamond_sword');
@@ -149,7 +149,7 @@ async function run(browser, viewport, theme) {
   }
 
   // A MiniMessage colour in say text, with a swatch.
-  const say = editor.getByLabel('text', {exact: true});
+  const say = editor.getByLabel('Text', {exact: true});
   await say.focus();
   await say.press('End');
   await say.pressSequentially(' <re');

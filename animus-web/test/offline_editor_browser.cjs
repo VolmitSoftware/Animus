@@ -339,7 +339,7 @@ async function run(browser, viewport, label, skinFile) {
   await go(page, `#/workspace/${encodeURIComponent(workspace)}/sync`);
   await page.locator('.animus-pill[data-phase="online"]').waitFor();
   await page.getByRole('button', {name: /^Compare with/}).click();
-  await page.getByRole('group', {name: 'New on the server'}).or(page.getByText('New on the server')).first().waitFor();
+  await page.getByRole('group', {name: 'Not on the server yet'}).or(page.getByText('Not on the server yet')).first().waitFor();
   await page.getByText('Different on the server', {exact: true}).waitFor();
   await page.getByRole('radio', {name: 'Replace it with mine'}).click();
   const pushCount = Number((await page.getByRole('button', {name: /^Push \d+ documents?$/}).textContent()).match(/\d+/)[0]);

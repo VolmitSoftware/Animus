@@ -86,8 +86,10 @@ public final class BuildService<P, I> implements AutoCloseable {
         I stack(Optional<String> item);
         Optional<Held> held(P player);
         void takeHeld(P player, int count);
-        /** Regionized servers: hands items back to the player, dropping what does not fit at their feet. */
-        default void give(P player, String item, long count) { throw new UnsupportedOperationException("Only regionized servers hand donations back"); }
+        /** Regionized servers: takes the whole held stack out of the main hand and returns it as it was, damage and components included. */
+        default I removeHeld(P player) { throw new UnsupportedOperationException("Only regionized servers take the held stack whole"); }
+        /** Regionized servers: hands {@code count} of that exact stack back, dropping what does not fit at the player's feet. */
+        default void giveBack(P player, I stack, int count) { throw new UnsupportedOperationException("Only regionized servers hand donations back"); }
         void tell(P player, String message);
     }
 
@@ -366,16 +368,16 @@ public final class BuildService<P, I> implements AutoCloseable {
     /**
      * {@code donate} from a command, on the player's own owner. A single-owner server answers at once. On a regionized
      * server the held stack is taken first and handed to the build's owner, which keeps what the build still needs; the
-     * rest goes back to the player on their own region, so no item is ever counted twice.
+     * rest of that same stack goes back to the player on their own region, so no item is ever counted twice or rebuilt.
      */
     public void donateHeld(String reference, UUID player, Consumer<String> reply) {
         if (regions == null) { reply.accept(donate(reference, player)); return; }
         requireAvailable();
         P online = living.players().owned(player).orElseThrow(() -> new IllegalStateException("Only an online player can donate"));
         Platform.Held held = platform.held(online).orElseThrow(() -> new IllegalArgumentException("Hold the items to donate in your main hand"));
-        platform.takeHeld(online, held.count());
+        I stack = platform.removeHeld(online);
         Consumer<String> giveBack = (String message) -> {
-            if (!living.players().deliver(player, (P back) -> { platform.give(back, held.item(), held.count()); reply.accept(message); }))
+            if (!living.players().deliver(player, (P back) -> { platform.giveBack(back, stack, held.count()); reply.accept(message); }))
                 log.accept("Cannot hand " + held.count() + " " + held.item() + " back to player " + player + ", who left: " + message);
         };
         boolean queued = command(() -> {
@@ -387,7 +389,7 @@ public final class BuildService<P, I> implements AutoCloseable {
             long rest = held.count() - taken;
             String message = taken == 0 ? "Build " + session.id() + " does not need " + held.item() : "Donated " + taken + " " + held.item() + " to build " + session.id();
             if (rest <= 0) { living.players().deliver(player, (P back) -> reply.accept(message)); return; }
-            if (!living.players().deliver(player, (P back) -> { platform.give(back, held.item(), rest); reply.accept(message); }))
+            if (!living.players().deliver(player, (P back) -> { platform.giveBack(back, stack, (int) rest); reply.accept(message); }))
                 log.accept("Cannot hand " + rest + " " + held.item() + " back to player " + player + ", who left");
         }, (String refused) -> giveBack.accept(Palette.error("Build: " + refused)));
         if (!queued) giveBack.accept(Palette.error("Build commands busy; try again in a moment"));

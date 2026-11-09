@@ -66,6 +66,20 @@ class DocumentStoreTest {
             assertEquals("{\"external\":true}", store.read("npcs/test/a.json"));
         }
     }
+    @Test void aRefusedRollbackNamesTheLaterTransactionOrTheHandEdit() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            String first = store.commit(List.of(new DocumentStore.Change("npcs/test/a.json", "missing", "{\"n\":1}")));
+            String second = store.commit(List.of(new DocumentStore.Change("npcs/test/a.json", store.hash("npcs/test/a.json"), "{\"n\":2}")));
+            IOException later = assertThrows(IOException.class, () -> store.rollback(first));
+            assertEquals("Conflict: npcs/test/a.json was changed again by the later transaction " + second.substring(0, 8)
+                    + "; roll that one back first with /animus rollback " + second.substring(0, 8), later.getMessage());
+            store.rollback(second);
+            Files.writeString(root.resolve("npcs/test/a.json"), "{\"n\":3}");
+            IOException hand = assertThrows(IOException.class, () -> store.rollback(first));
+            assertEquals("Conflict: npcs/test/a.json was edited after this transaction; fix the file or /animus reload, then roll back again", hand.getMessage());
+        }
+    }
+
     @Test void recoveryConflictsLeaveEveryDocumentUntouched() throws Exception {
         String pending = """
             {"id":"12345678-1234-1234-1234-123456789abc","entries":[

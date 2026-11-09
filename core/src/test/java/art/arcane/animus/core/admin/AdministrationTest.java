@@ -80,6 +80,98 @@ class AdministrationTest {
             assertEquals("black", json.getAsJsonObject("horse").get("color").getAsString());
         }
     }
+    @Test void anEditMergesNestedObjectsAndSaysWhatChanged() throws Exception {
+        try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            List.of(admin.create("guard", "minecraft:player", "world", 1, 64, 2, "town", "Guard"));
+            admin.edit("guard", "{\"modules\":{\"animus:look-close\":{\"range\":6},\"animus:shop\":{\"shop\":\"town:bakery\"}}}");
+            String reply = admin.edit("guard", "{\"name\":\"Captain\",\"modules\":{\"animus:look-close\":{\"range\":8}}}");
+            com.google.gson.JsonObject modules = runtime.npcs().find("guard").orElseThrow().json().getAsJsonObject("modules");
+            assertEquals("town:bakery", modules.getAsJsonObject("animus:shop").get("shop").getAsString(), "editing one module keeps the others");
+            assertEquals(8, modules.getAsJsonObject("animus:look-close").get("range").getAsInt());
+            assertTrue(reply.startsWith("Saved guard: set name, modules.animus:look-close.range; tx "), reply);
+            String removed = admin.edit("guard", "{\"modules\":{\"animus:shop\":null}}");
+            assertTrue(removed.startsWith("Saved guard: removed modules.animus:shop; tx "), removed);
+            assertFalse(runtime.npcs().find("guard").orElseThrow().json().getAsJsonObject("modules").has("animus:shop"));
+            assertTrue(runtime.npcs().find("guard").orElseThrow().json().getAsJsonObject("modules").has("animus:look-close"));
+        }
+    }
+    @Test void mergeFollowsJsonMergePatch() throws Exception {
+        com.google.gson.JsonObject document = com.google.gson.JsonParser.parseString("{\"a\":{\"b\":1,\"c\":[1,2]},\"d\":\"x\",\"e\":5}").getAsJsonObject();
+        List<String> changes = Administration.merge(document, com.google.gson.JsonParser.parseString("{\"a\":{\"b\":1,\"c\":[3]},\"d\":{\"f\":null,\"g\":2},\"e\":null,\"h\":null}").getAsJsonObject());
+        assertEquals(com.google.gson.JsonParser.parseString("{\"a\":{\"b\":1,\"c\":[3]},\"d\":{\"g\":2}}"), document);
+        assertEquals(List.of("set a.c", "set d", "removed e"), changes, "unchanged values and absent removals are not reported");
+        assertEquals("set a.c, d; removed e", Administration.describe(changes));
+        assertEquals("no change", Administration.describe(List.of()));
+    }
+    @Test void aDuplicateIdOnCreateOrCloneSaysTheNpcExists() throws Exception {
+        try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            List.of(admin.create("bob", "minecraft:player", "world", 1, 64, 2, "", "Bob"));
+            List.of(admin.create("smith", "minecraft:player", "world", 1, 64, 2, "town", "Smith"));
+            String exists = "An NPC named bob already exists; /animus inspect bob shows it, or pick another id";
+            assertEquals(exists, assertThrows(IOException.class, () -> admin.create("bob", "minecraft:player", "world", 1, 64, 2, "", "Bob")).getMessage());
+            assertEquals(exists, assertThrows(IOException.class, () -> admin.create("bob", "minecraft:player", "world", 1, 64, 2, "elsewhere", "Bob")).getMessage());
+            assertEquals(exists, assertThrows(IOException.class, () -> admin.duplicate("smith", "bob")).getMessage());
+        }
+    }
+    @Test void aNewNpcCanSpawnFacingTheCreatorsWay() throws Exception {
+        try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            Administration.Creation creation = admin.creation("bob", "minecraft:player", "world", new art.arcane.animus.core.virtual.Vec3(1.5, 64, -2.25), 91.256f, "", "Bob", Optional.empty(), true);
+            assertTrue(creation.definition().spawned());
+            com.google.gson.JsonObject position = creation.draft().document().getAsJsonObject("position");
+            assertEquals(91.26, position.get("yaw").getAsDouble(), 1e-6);
+            assertEquals(-2.25, position.get("z").getAsDouble());
+            runtime.npcs().apply(creation.draft());
+            assertTrue(runtime.npcs().find("bob").orElseThrow().spawned());
+        }
+    }
+    @Test void renameAndMoveRewriteTheDefinition() throws Exception {
+        try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            List.of(admin.create("bob", "minecraft:player", "world", 1, 64, 2, "", "Bob"));
+            assertTrue(admin.rename("bob", "&6Bob the Baker").startsWith("Renamed bob to &6Bob the Baker; tx "));
+            assertEquals("&6Bob the Baker", runtime.npcs().find("bob").orElseThrow().name());
+            String moved = admin.move("bob", new art.arcane.animus.core.virtual.WorldPosition("world_nether", new art.arcane.animus.core.virtual.Vec3(10.5, 70, -3)), -45f);
+            assertTrue(moved.startsWith("Moved bob to world_nether 10.5 70 -3; tx "), moved);
+            com.google.gson.JsonObject position = runtime.npcs().find("bob").orElseThrow().json().getAsJsonObject("position");
+            assertEquals("world_nether", position.get("world").getAsString());
+            assertEquals(-45, position.get("yaw").getAsDouble());
+            assertEquals(0, position.get("pitch").getAsDouble());
+        }
+    }
+    @Test void aBodyAnimusCannotShowIsRefusedAtCreateAndEdit() throws Exception {
+        try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            String bodies = "minecraft:armadillo, minecraft:armor_stand, minecraft:ender_dragon, minecraft:frog, minecraft:horse, minecraft:llama, minecraft:player, minecraft:turtle";
+            assertEquals("villager cannot be shown; the bodies Animus shows are " + bodies,
+                    assertThrows(IOException.class, () -> admin.create("v", "villager", "world", 1, 64, 2, "", "V")).getMessage());
+            List.of(admin.create("steed", "llama", "world", 1, 64, 2, "", "Steed"));
+            assertEquals("minecraft:llama", runtime.npcs().find("steed").orElseThrow().json().get("type").getAsString(), "a bare type is saved namespaced");
+            assertEquals("$.type: minecraft:zombie cannot be shown; the bodies Animus shows are " + bodies,
+                    assertThrows(IOException.class, () -> admin.edit("steed", "{\"type\":\"minecraft:zombie\"}")).getMessage());
+        }
+    }
+    @Test void plainRepliesForBadJsonUnknownIdsAndRepeatedRollbacks() throws Exception {
+        try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            List.of(admin.create("guard", "minecraft:player", "world", 1, 64, 2, "", "Guard"));
+            assertEquals("The patch is not a JSON object; write it like {\"name\": \"Captain\"}, with double quotes",
+                    assertThrows(IOException.class, () -> admin.edit("guard", "{bad json")).getMessage());
+            assertEquals("No NPC named ghost; /animus list shows ids", assertThrows(IOException.class, () -> admin.edit("ghost", "{}")).getMessage());
+            String saved = admin.edit("guard", "{\"name\":\"Captain\"}");
+            String tx = saved.substring(saved.lastIndexOf(' ') + 1);
+            admin.rollback(tx);
+            assertEquals("Transaction " + art.arcane.animus.core.text.ChatLine.shortId(tx) + " is already rolled back; nothing changed",
+                    assertThrows(IOException.class, () -> admin.rollback(tx)).getMessage());
+            String first = admin.edit("guard", "{\"name\":\"One\"}");
+            admin.edit("guard", "{\"name\":\"Two\"}");
+            String early = first.substring(first.lastIndexOf(' ') + 1);
+            assertEquals("Cannot roll back " + art.arcane.animus.core.text.ChatLine.shortId(early) + ": npcs/guard.json changed after it; roll back the later change first",
+                    assertThrows(IOException.class, () -> admin.rollback(early)).getMessage());
+        }
+    }
     @Test void aRefusedTypeChangeSaysHowToDropWhatTheNewBodyCannotShow() {
         com.google.gson.JsonObject retype = com.google.gson.JsonParser.parseString("{\"type\":\"minecraft:horse\"}").getAsJsonObject();
         assertEquals("Cannot save steed: $.pose: sitting is available only for minecraft:player bodies. Set a field to null in the same edit to remove it, such as {\"type\":\"minecraft:horse\",\"pose\":null}",

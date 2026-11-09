@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:command/reward_command",
+  "server": true,
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:command",
+      "arguments": {
+        "command": null
+      },
+      "templates": {
+        "/command": "give {{ player.name }} gold_ingot 1"
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "command",
+      "event": "command",
+      "name": "reward",
+      "routine": "main"
+    }
+  ]
+}

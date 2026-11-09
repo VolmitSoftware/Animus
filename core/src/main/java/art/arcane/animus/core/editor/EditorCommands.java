@@ -22,7 +22,7 @@ import java.util.function.Supplier;
  */
 public final class EditorCommands {
     /** Lets a player pair {@code apply:commands}; the console always may. */
-    public static final String COMMANDS_PERMISSION = "animus.editor.commands";
+    public static final String COMMANDS_PERMISSION = art.arcane.animus.core.command.PermissionNodes.EDITOR_COMMANDS;
     private final Supplier<EditorService> service;
     private final Executor files;
 
@@ -109,6 +109,23 @@ public final class EditorCommands {
                 actor.reply(() -> reply.forEach(actor::rich));
             });
         } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
+    }
+
+    /**
+     * Why an in-game {@code import citizens accept} may not accept the {@code commands} category, or empty when it may. Accepting
+     * it lets imported behaviors run console commands, so it needs {@link #COMMANDS_PERMISSION} as the editor's
+     * {@code apply:commands} does; the console may always.
+     */
+    public static Optional<String> acceptRefusal(CommandActor actor, List<String> categories) {
+        boolean commands = categories.stream().anyMatch((String category) -> category.strip().equalsIgnoreCase(art.arcane.animus.core.migration.CitizensDropIn.COMMANDS));
+        if (!commands || actor.player().isEmpty() || actor.permitted(COMMANDS_PERMISSION)) return Optional.empty();
+        return Optional.of("Accepting commands lets imported behaviors run console commands; it needs " + COMMANDS_PERMISSION + " or the console");
+    }
+
+    /** Releasing a held imported behavior that runs console commands needs {@link #COMMANDS_PERMISSION} in game; the console may always. */
+    public static Optional<String> releaseRefusal(CommandActor actor, boolean runsCommands) {
+        if (!runsCommands || actor.player().isEmpty() || actor.permitted(COMMANDS_PERMISSION)) return Optional.empty();
+        return Optional.of("This behavior runs console commands; releasing it needs " + COMMANDS_PERMISSION + " or the console");
     }
 
     /** Reads the pairing options; a blank option keeps its default. */

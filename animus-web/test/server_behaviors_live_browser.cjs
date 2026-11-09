@@ -4,14 +4,13 @@
 // and read the stored file back from the fake server, with no console
 // errors and no sideways scrolling.
 //
-// The fake server needs a data folder that holds server-behaviors.json and
-// a behavior with "server": true, for example ../schema/fixtures/export plus
-// behaviors/town/welcome.json (a copy of
+// The fake server loads test/fixtures/server_behaviors_live:
+// ../schema/fixtures/export plus behaviors/town/welcome.json (a copy of
 // ../schema/fixtures/documents/behavior/server-welcome.json) and a
 // server-behaviors.json with an empty list.
 //
 //   python3 tool/serve_site.py --port <web port>
-//   dart run tool/fake_server.dart --port=<fake port> --origin=http://127.0.0.1:<web port> --data=<that folder>
+//   dart run tool/fake_server.dart --port=<fake port> --origin=http://127.0.0.1:<web port> --data=test/fixtures/server_behaviors_live
 //   PLAYWRIGHT_MODULE=/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright \
 //     ANIMUS_WEB_URL=http://127.0.0.1:<web port> ANIMUS_FAKE_URL=http://127.0.0.1:<fake port> node test/server_behaviors_live_browser.cjs
 const assert = require('node:assert/strict');

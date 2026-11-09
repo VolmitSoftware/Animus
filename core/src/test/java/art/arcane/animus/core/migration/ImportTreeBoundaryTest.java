@@ -35,7 +35,7 @@ class ImportTreeBoundaryTest {
             var preview = preview(store);
             Files.createDirectories(store.resolve("npcs/a/b/c/d/e/f/g/h/i/j"));
             IOException error = assertThrows(IOException.class, () -> new CitizensImporter().apply(store, preview.id()));
-            assertTrue(error.getMessage().contains("depth limit"));
+            assertTrue(error.getMessage().contains("nested deeper than"), error.getMessage());
             assertUnapplied(store, preview);
             Files.delete(store.resolve("npcs/a/b/c/d/e/f/g/h/i/j"));
             assertNotEquals("already-applied", new CitizensImporter().apply(store, preview.id()));
@@ -52,7 +52,7 @@ class ImportTreeBoundaryTest {
             for (Path target : new Path[]{external, root.resolve("missing")}) {
                 Files.createSymbolicLink(link, target);
                 IOException error = assertThrows(IOException.class, () -> new CitizensImporter().apply(store, preview.id()));
-                assertTrue(error.getMessage().contains("symlinks"));
+                assertTrue(error.getMessage().contains("symbolic links"), error.getMessage());
                 assertUnapplied(store, preview);
                 Files.delete(link);
             }

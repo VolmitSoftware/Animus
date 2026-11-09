@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.recording.Playback;
@@ -34,6 +35,7 @@ final class RecordingScreen<P, S> extends ToolScreen<P, S> {
     static <P, S> RecordingFiles files(Toolkit<P, S> toolkit) { return new RecordingFiles(toolkit.npcs(), toolkit.documents()); }
 
     @Override String title() { return "Recordings"; }
+    @Override String node() { return PermissionNodes.RECORD; }
     @Override int rows() { return 6; }
 
     @Override void draw() {

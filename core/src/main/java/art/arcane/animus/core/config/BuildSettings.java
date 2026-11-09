@@ -20,6 +20,6 @@ public record BuildSettings(boolean enabled, int maximumBuilds, int maximumTeam,
     }
 
     private static void require(String field, int value, int minimum, int maximum) {
-        if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum);
+        if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum + ", not " + value);
     }
 }

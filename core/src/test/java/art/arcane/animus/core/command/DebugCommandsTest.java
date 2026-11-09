@@ -116,7 +116,7 @@ class DebugCommandsTest {
         assertTrue(text.contains("active"), text);
         assertTrue(text.contains("50.0%"), text);
         assertTrue(text.contains("rig_bones: 30"), text);
-        assertTrue(String.join("\n", run(new Actor(null), "debug", "npc", "ghost")).contains("Unknown NPC"));
+        assertTrue(String.join("\n", run(new Actor(null), "debug", "npc", "ghost")).contains("No NPC named ghost"));
     }
 
     @Test void watchTogglesForPlayersOnlyAndPublishesLines() {

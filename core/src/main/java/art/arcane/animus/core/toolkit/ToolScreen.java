@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.Screen;
 import art.arcane.animus.core.gui.ScreenFrame;
@@ -50,6 +51,12 @@ abstract class ToolScreen<P, S> implements Screen {
     abstract int rows();
     abstract void draw();
 
+    /**
+     * The permission node every click on this screen needs, checked again on each click. A screen that only opens from
+     * another screen keeps {@code animus.tools}; the screen that opened it already checked its own node.
+     */
+    String node() { return PermissionNodes.TOOLS; }
+
     /** The toolkit edits text, so it shows placeholders as written. */
     @Override public final boolean fillsPlaceholders() { return false; }
 
@@ -65,19 +72,27 @@ abstract class ToolScreen<P, S> implements Screen {
     @Override public final void click(int slot, GuiModel.Click click) {
         if (slot != armed) armed = -1;
         Handler handler = handlers.get(slot);
-        if (handler != null) handler.click(click);
+        if (handler != null && toolkit.allows(viewer.player(), node())) handler.click(click);
     }
+
+    /** Opens {@code next} over this screen when the player holds its node. */
+    void push(ToolScreen<P, S> next) { if (toolkit.allows(viewer.player(), next.node())) viewer.push(next); }
+
+    /** Whether the player holds {@code node}, for a button whose action needs more than this screen's node. */
+    boolean allows(String node) { return toolkit.allows(viewer.player(), node); }
 
     /**
      * A button that asks twice when it destroys something or touches more than {@link #BULK} NPCs: the first click arms
      * it and the lore turns red, the second click on the same button runs it, any other click disarms it. A button
-     * that needs no confirmation runs at once.
+     * that needs no confirmation runs at once. An armed button that acts on files or players rather than NPCs passes
+     * {@code affected} 0, and its red line repeats {@code detail}, which then says what it does.
      */
     void guarded(int slot, String icon, String name, String detail, int affected, boolean destructive, Runnable run) {
         boolean asks = destructive || affected > BULK;
         boolean ready = asks && armed == slot;
         String shown = ready ? "&cClick again to " + name.toLowerCase(java.util.Locale.ROOT) : name;
-        List<String> lines = ready ? List.of("&c" + ToolkitFiles.count(affected) + " affected", "&7Any other click cancels") : List.of("&7" + detail, asks ? "&7Asks once more" : "&7Right away");
+        String effect = affected == 0 ? detail : ToolkitFiles.count(affected) + " affected";
+        List<String> lines = ready ? List.of("&c" + effect, "&7Any other click cancels") : List.of("&7" + detail, asks ? "&7Asks once more" : "&7Right away");
         button(slot, icon, title(shown), lore(lines, any(ready ? "do it" : asks ? "arm it" : name.toLowerCase(java.util.Locale.ROOT))), (GuiModel.Click click) -> {
             if (asks && armed != slot) { armed = slot; return; }
             armed = -1;

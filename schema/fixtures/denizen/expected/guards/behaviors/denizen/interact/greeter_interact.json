@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:interact/greeter_interact",
+  "entry": "s0-click",
+  "routines": {
+    "s0-click": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "Hello {{ player.name }}."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "warp vip",
+            "as": "player"
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "routine": "s0-click"
+    }
+  ]
+}

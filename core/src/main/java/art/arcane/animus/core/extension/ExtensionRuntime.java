@@ -72,6 +72,7 @@ public final class ExtensionRuntime implements AutoCloseable {
         this.initializationObserver = Objects.requireNonNull(initializationObserver);
         host = new ModuleHost(platform, definitions, settings.maximumInvocations(),
                 Duration.ofMillis(settings.invocationTimeoutMillis()), Duration.ofMillis(settings.deliveryBudgetMillis()));
+        host.connectReports(report);
         HostBehaviorInvoker hostInvoker = new HostBehaviorInvoker(host, this::privilegedGranted, this::rawTextGranted);
         behaviorInvoker = new BehaviorInvoker() {
             @Override public boolean available(Capabilities.Key key, Capabilities.Kind kind) {
@@ -279,6 +280,8 @@ public final class ExtensionRuntime implements AutoCloseable {
     /** Connect the engine-wide registry platform adapters wrap, before start. */
     public void connectHooks(ModuleHooks hooks) { host.connectHooks(hooks); }
     public long droppedInteractionNotices() { return host.droppedNotices(); }
+    /** Resumes a suspended module now; see {@link ModuleHost#resume(String)}. */
+    public Outcome<ModuleHost.ModuleStatus> resume(String id) { return host.resume(id); }
     /**
      * Platform owner bridge for an accepted NPC interaction; quick and nonblocking. Subscribing modules receive it
      * as bounded module work. Ignored until modules are ready.

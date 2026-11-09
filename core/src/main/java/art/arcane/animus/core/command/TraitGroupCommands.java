@@ -22,13 +22,15 @@ import java.util.function.Predicate;
  * {@code /animus groups}: trait groups and the NPCs that list them. Assign and unassign edit every matching NPC file as one
  * transaction with one rollback receipt, refused whole if any result is invalid.
  */
-@Director(name = "groups", description = "List trait groups and assign them to NPCs")
+@Director(name = "groups", aliases = "group", description = "List trait groups and assign them to NPCs")
+@AnimusPermission(PermissionNodes.NPC_EDIT)
 final class TraitGroupCommands extends CommandGroup {
     static final String SELECTORS = "Give exactly one of folder=<folder>, tag=<tag> or ids=a,b (@selected for your selection)";
 
     TraitGroupCommands(CommandServices services) { super(services); }
 
     @Director(description = "List trait groups with their members and problems")
+    @Positional("page")
     void list(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
         CommandActor actor = actor();
         NpcRepository repository = runtime().npcs();
@@ -49,6 +51,7 @@ final class TraitGroupCommands extends CommandGroup {
     }
 
     @Director(description = "List the NPCs that use a group; click one to inspect it")
+    @Positional("page")
     void members(@Param(name = "group", description = "The trait group id") String group,
                  @Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
         CommandActor actor = actor();

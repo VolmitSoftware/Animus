@@ -218,6 +218,7 @@ class EditorHotloadTest {
         int port = 0;
         try (FakeAgent agent = new FakeAgent()) {
             start(config(listener(port).replace("relayEnabled = false", "relayEnabled = true\nrelayUrl = \"" + agent.url() + "\"")));
+            service.pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
             await(() -> agent.accepted() == 1, "the relay connection");
             EditorListener before = service.listener().orElseThrow();
             EditorApi api = service.api().orElseThrow();
@@ -228,6 +229,23 @@ class EditorHotloadTest {
             assertSame(api, service.api().orElseThrow());
             assertEquals(1, agent.accepted(), "the relay was not reconnected");
             assertFalse(agent.closed(0), "the relay connection stayed open");
+        }
+    }
+
+    @Test
+    void theRelayDialsOutOnlyOnceSomeonePairs() throws Exception {
+        try (FakeAgent agent = new FakeAgent()) {
+            start(config(listener(0).replace("relayEnabled = false", "relayEnabled = true\nrelayUrl = \"" + agent.url() + "\"")));
+            assertTrue(service.status().getFirst().contains(" | relay waits for the first pairing | "), service.status().getFirst());
+            assertTrue(service.reach().endsWith("relay after pairing"), service.reach());
+            assertEquals(0, agent.accepted(), "a server nobody paired opens no connection");
+            service.pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
+            await(() -> agent.accepted() == 1, "the relay connecting for the pairing");
+            assertFalse(token().isEmpty());
+            service.close();
+            service = new EditorService(runtime, harness.host, log::add, log::add);
+            service.start();
+            await(() -> agent.accepted() == 2, "a paired server connecting at start");
         }
     }
 

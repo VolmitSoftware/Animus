@@ -10,7 +10,8 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 /** {@code /animus record}: performance capture, the recording ghost and previews of saved recordings. */
-@Director(name = "record", description = "Record a player's performance for NPC playback")
+@Director(name = "record", aliases = "records", description = "Record a player's performance for NPC playback")
+@AnimusPermission(PermissionNodes.RECORD)
 final class RecordCommands {
     private final Supplier<RecordingControl> recordings;
 
@@ -33,6 +34,7 @@ final class RecordCommands {
     void cancel() { recordings().cancel(actor()); }
 
     @Director(description = "Show running recordings and previews")
+    @Positional("page")
     void status(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
         CommandActor actor = actor();
         List<String> rows = recordings().status(actor);
@@ -40,6 +42,7 @@ final class RecordCommands {
     }
 
     @Director(description = "Show or hide the ghost that replays your last moves while you record", origin = DirectorOrigin.PLAYER)
+    @Positional("enabled")
     void ghost(@Param(name = "enabled", defaultValue = DiagnosticCommands.TOGGLE, description = "on, off or toggle") String enabled) {
         CommandActor actor = actor();
         Optional<Optional<Boolean>> chosen = DiagnosticCommands.enabled(enabled);

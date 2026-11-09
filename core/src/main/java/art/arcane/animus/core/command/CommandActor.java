@@ -12,7 +12,8 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 /** Whoever issued an Animus command: a player or the console. Read and answer only on the actor's own owner. */
 public interface CommandActor {
     /** The reply when the shared file lane refuses work. */
-    String BUSY = "File queue full; try again in a moment";
+    /** Shown when more edits wait than [files] maximumOperations allows; scripts should pause briefly and send the command again. */
+    String BUSY = "File queue full ([files] maximumOperations edits are waiting); wait a moment and send it again";
     boolean permitted(String node);
     /** One reply line in the Animus look; plain text gets the {@code [Animus]} prefix. */
     void tell(String message);

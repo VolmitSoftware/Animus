@@ -7,7 +7,8 @@ import java.util.UUID;
 /**
  * Another plugin's placeholders, such as PlaceholderAPI's {@code %player_name%}, filled for one viewing player. Animus
  * fills its own {@code {player_name}} and {@code {{ }}} holes first; these are filled last, just before the text is
- * coloured and sent, so a placeholder's own colour codes still render. Call on the viewer's owner thread.
+ * coloured and sent, so a placeholder's own colour codes still render. Text a hole adds goes through {@link #escape}
+ * first, so only placeholders the author wrote are filled. Call on the viewer's owner thread.
  */
 public interface Placeholders {
     Placeholders NONE = new Placeholders() {
@@ -23,6 +24,15 @@ public interface Placeholders {
 
     /** {@code [placeholders] refreshTicks}: how often shown nameplates are filled again; 0 only when shown or changed. */
     default int refreshTicks() { return 0; }
+
+    /** Built-in capabilities whose text is filled for each viewer before it is shown. */
+    java.util.Set<String> FILLED_CAPABILITIES = java.util.Set.of("animus:say", "animus:choices", "animus:message", "animus:title", "animus:actionbar");
+
+    /**
+     * Text that came from a player or from state, made unable to name a placeholder: each {@code %} becomes the full width
+     * {@code \uFF05}, which looks alike and which placeholder plugins do not read.
+     */
+    static String escape(String text) { return text.indexOf('%') < 0 ? text : text.replace('%', '\uFF05'); }
 
     /** Whether the text holds a {@code %...%} pair, the only text worth handing to the placeholder plugin. */
     static boolean marked(String text) {

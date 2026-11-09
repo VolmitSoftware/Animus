@@ -236,6 +236,8 @@ class ServerConnection {
     while (_running) {
       ErrorCopy? problem;
       bool wasOnline = false;
+      int tried = 0;
+      int unanswered = 0;
       for (final (ConnectionPath path, String url) in _order()) {
         if (!_running) break;
         _emit(ConnectionStatus(ConnectionPhase.connecting, path: path, attempt: attempt, hello: _hello));
@@ -247,8 +249,12 @@ class ServerConnection {
           await _lost!.future;
           break;
         }
+        tried++;
+        if (_noAnswer.any((String code) => identical(result, transportCopy(code)))) unanswered++;
         problem = result;
       }
+      // Both paths silent points at the server, not at either path.
+      if (tried > 1 && unanswered == tried) problem = transportCopy('no-answer');
       if (!firstRound.isCompleted) firstRound.complete();
       if (!_running) break;
       // Lost while online: fail over at once, the other path first.
@@ -263,6 +269,9 @@ class ServerConnection {
     }
     _running = false;
   }
+
+  /// Path failures that mean nothing answered at all.
+  static const List<String> _noAnswer = <String>['unreachable', 'timeout', 'relay-unreachable', 'server-offline'];
 
   /// Paths to try: after a loss, the other path first.
   List<(ConnectionPath, String)> _order() {

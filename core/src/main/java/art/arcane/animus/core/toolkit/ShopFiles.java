@@ -10,6 +10,7 @@ import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.shop.ShopBinding;
 import art.arcane.animus.core.shop.ShopDocument;
+import art.arcane.animus.core.shop.ShopOffers;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.text.ChatLine;
@@ -138,24 +139,14 @@ final class ShopFiles {
         return "Unbound " + shop + " from " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
     }
 
-    /** Writes {@code shops/<namespace>/<path>.json} with one empty page, ready to fill in the web editor. */
+    /** Writes {@code shops/<namespace>/<path>.json} with one empty page, ready to stock with /animus shop stock or the web editor. */
     String newShop(String id) throws IOException {
         String path = path(DocumentKind.SHOP, id);
         if (store.read(path) != null) throw new IOException(path + " already exists");
-        JsonObject document = new JsonObject();
-        document.addProperty("schemaVersion", ShopDocument.SCHEMA_VERSION);
-        document.addProperty("revision", 1);
-        document.addProperty("id", id);
-        JsonArray pages = new JsonArray();
-        JsonObject page = new JsonObject();
-        page.addProperty("name", "Main");
-        page.addProperty("rows", 3);
-        pages.add(page);
-        document.add("pages", pages);
-        String text = JsonDocuments.write(document);
+        String text = JsonDocuments.write(ShopOffers.empty(id));
         List<String> problems = ShopDocument.parse(id, text).problems();
         if (!problems.isEmpty()) throw new IOException(problems.getFirst());
-        return "Created " + path + "; add offers in the web editor; tx " + store.commit(List.of(new DocumentStore.Change(path, "missing", text)));
+        return "Created " + path + "; hold an item and /animus shop stock " + id + " price=<n> adds it; tx " + store.commit(List.of(new DocumentStore.Change(path, "missing", text)));
     }
 
     /** Deletes the shop file; refused while an NPC or trait group binds it. */

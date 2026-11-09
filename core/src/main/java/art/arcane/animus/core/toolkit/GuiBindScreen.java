@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.editor.DocumentKind;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
@@ -40,6 +41,7 @@ final class GuiBindScreen<P, S> extends ToolScreen<P, S> {
     ShopFiles files() { return new ShopFiles(toolkit.npcs(), toolkit.documents()); }
 
     @Override String title() { return "GUIs: " + tab(kind); }
+    @Override String node() { return PermissionNodes.GUI; }
     @Override int rows() { return 6; }
 
     @Override void draw() {

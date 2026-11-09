@@ -60,7 +60,7 @@ async function run(browser, viewport, theme) {
   await noSideways(page, `${label} form`);
 
   // Top-level fields.
-  const duration = form.getByLabel('durationTicks', {exact: true});
+  const duration = form.getByLabel('Duration ticks', {exact: true});
   await duration.fill('12');
   await duration.blur();
   const loop = form.locator('#animus-field--loop');
@@ -68,7 +68,7 @@ async function run(browser, viewport, theme) {
   await waitForValue(loop, 'loop');
 
   // A track edits as a nested form: its bone is a text field.
-  const bones = form.getByLabel('bone', {exact: true});
+  const bones = form.getByLabel('Bone', {exact: true});
   assert.ok(await bones.count() >= 1, `${label}: track fields render as a form`);
   await bones.first().fill('jaw');
   await bones.first().blur();

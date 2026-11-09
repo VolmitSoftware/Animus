@@ -17,9 +17,9 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
+import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
 import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
@@ -32,14 +32,16 @@ import java.util.function.Supplier;
 public final class RuntimeEditorHost<P> implements EditorHost {
     /**
      * What the platform passes in. Applied changes reload through the runtime's {@link AnimusRuntime#catalogs()}; {@code terrain}
-     * may be null. {@code offlineAdmin} answers for a player who is not online, from the server's operator list and permission
-     * plugin where it can; it runs on the asking thread, never the server thread, and answers {@code UNKNOWN} when it cannot tell.
+     * may be null. {@code permitted} checks a node for an online player on their owner. {@code offlinePermission} answers for a
+     * player who is not online, from the server's operator list and permission plugin where it can; it runs on the asking
+     * thread, never the server thread, and answers {@code UNKNOWN} when it cannot tell.
      */
     public record Parts<P>(AnimusRuntime runtime, Executor files, NpcRuntime<P, ?> living, ExtensionRuntime extensions, String platform, String serverName, Supplier<Map<String, Feature>> features,
-                           Supplier<Lookups> lookups, Predicate<P> admin, EditorNoticeChannel notices, Consumer<String> log, EditorTerrain terrain, Function<UUID, Admin> offlineAdmin) {
+                           Supplier<Lookups> lookups, BiPredicate<P, String> permitted, EditorNoticeChannel notices, Consumer<String> log, EditorTerrain terrain,
+                           BiFunction<UUID, String, Admin> offlinePermission) {
         public Parts {
             Objects.requireNonNull(runtime); Objects.requireNonNull(files); Objects.requireNonNull(living); Objects.requireNonNull(lookups); Objects.requireNonNull(notices); Objects.requireNonNull(log);
-            Objects.requireNonNull(offlineAdmin);
+            Objects.requireNonNull(permitted); Objects.requireNonNull(offlinePermission);
         }
     }
 
@@ -74,11 +76,16 @@ public final class RuntimeEditorHost<P> implements EditorHost {
         } catch (IllegalStateException stopped) { return true; }
     }
 
-    @Override public void admin(UUID player, Consumer<Admin> result) {
-        boolean delivered = parts.living().players().deliver(player, (P online) -> result.accept(parts.admin().test(online) ? Admin.ADMIN : Admin.NOT_ADMIN));
+    @Override public List<String> rawTextBehaviors() {
+        try { return parts.runtime().behaviorSettings().actions().rawTextBehaviors(); }
+        catch (IllegalStateException stopped) { return List.of(); }
+    }
+
+    @Override public void permission(UUID player, String node, Consumer<Admin> result) {
+        boolean delivered = parts.living().players().deliver(player, (P online) -> result.accept(parts.permitted().test(online, node) ? Admin.ADMIN : Admin.NOT_ADMIN));
         if (delivered) return;
         Admin offline;
-        try { offline = parts.offlineAdmin().apply(player); }
+        try { offline = parts.offlinePermission().apply(player, node); }
         catch (RuntimeException failure) { offline = Admin.UNKNOWN; }
         result.accept(offline == null ? Admin.UNKNOWN : offline);
     }

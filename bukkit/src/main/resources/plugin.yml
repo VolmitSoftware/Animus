@@ -5,7 +5,7 @@ description: 'A Manager for all things NPC.'
 authors: [Volmit Software]
 api-version: '${apiVersion}'
 folia-supported: true
-softdepend: [WorldGuard, Vault, Gloss, React, PlaceholderAPI]
+softdepend: [WorldGuard, Vault, LuckPerms, Gloss, React, PlaceholderAPI]
 commands:
   ${projectId}:
     description: Manages virtual NPCs, definitions and staged Citizens imports.
@@ -28,7 +28,76 @@ permissions:
     description: Switch /animus debug mode, which logs every per-NPC route, spawn and packet diagnostic until restart.
     default: op
   animus.admin:
-    description: Manage NPCs, movement, combat, builds, modules, behaviors, imports, and backups.
+    description: Everything below, plus reload, rollback and the packet previews. Grants every animus management node.
+    default: op
+    children:
+      animus.npc.view: true
+      animus.npc.create: true
+      animus.npc.edit: true
+      animus.npc.delete: true
+      animus.npc.skin: true
+      animus.npc.move: true
+      animus.tools: true
+      animus.behaviors: true
+      animus.behaviors.state: true
+      animus.combat: true
+      animus.import: true
+      animus.editor.pair: true
+      animus.shops: true
+      animus.gui: true
+      animus.build: true
+      animus.record: true
+      animus.rigs: true
+  animus.npc.view:
+    description: List, inspect, select and validate NPCs.
+    default: op
+  animus.npc.create:
+    description: Create and clone NPCs.
+    default: op
+  animus.npc.edit:
+    description: Edit, spawn and despawn NPCs, their settings and trait groups.
+    default: op
+  animus.npc.delete:
+    description: Delete NPC files.
+    default: op
+  animus.npc.skin:
+    description: Set NPC skins, including from a player name with /animus npc skin.
+    default: op
+  animus.npc.move:
+    description: Move NPCs to you, teleport to them, send them along routes, and end NPC rides.
+    default: op
+  animus.tools:
+    description: Use /animus tools, the selection wand and /animus setup; each tool also needs its own node.
+    default: op
+  animus.behaviors:
+    description: Run, reload, trace and cancel behaviors, and call module actions.
+    default: op
+  animus.behaviors.state:
+    description: Read and delete stored behavior variables.
+    default: op
+  animus.combat:
+    description: Make NPCs fight, guard, target and attack players or mobs.
+    default: op
+  animus.import:
+    description: Import Citizens, Shopkeepers, dtlTraders and Gloss data, and roll a Citizens import back.
+    default: op
+  animus.editor.pair:
+    description: Pair the web editor and revoke its tokens. A paired editor can change NPCs, behaviors and GUIs.
+    default: op
+  animus.shops:
+    description: Open, list, reload and reset shops, and add offers with /animus shop stock.
+    default: op
+  animus.gui:
+    description: Open, reload and export chest GUIs, menus and holograms, and make them with /animus gui create and /animus hologram create.
+    default: op
+  animus.build:
+    description: Run NPC builds and their teams.
+    default: op
+  animus.record:
+    description: Record and preview player performances.
+    default: op
+  animus.rigs:
+    description: Load rigs, play animations and build the resource pack.
     default: op
   animus.hotload.notify:
     description: Hear the ding and see each change when a data file is hotloaded or refused.

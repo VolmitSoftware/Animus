@@ -4,6 +4,7 @@ import 'package:animus_editor/logic/gui/gui_json.dart';
 import 'package:animus_editor/logic/inspect/behavior_kept.dart';
 import 'package:animus_editor/logic/inspect/completion_catalog.dart';
 import 'package:animus_editor/logic/inspect/inspect_schemas.dart';
+import 'package:animus_editor/logic/inspect/schema_fields.dart';
 import 'package:animus_editor/logic/inspect/typed_values.dart';
 import 'package:animus_editor/logic/npc/dialogue_prompts.dart';
 import 'package:animus_editor/logic/npc/reference_options.dart';
@@ -223,6 +224,26 @@ void main() {
       final JsonMap renamed = renameKey(module, 'radius', 'range');
       expect(renamed.keys, <String>['enabled', 'range', 'names']);
       expect(removeEntry(putEntry(module, 'extra', ''), 'extra'), module);
+    });
+  });
+
+  group('capability choice labels', () {
+    CapabilitySpec spec({required bool available, String reason = 'available', bool privileged = false}) => CapabilitySpec(
+          id: 'example:glow',
+          kind: 'action',
+          description: '',
+          privileged: privileged,
+          available: available,
+          reason: reason,
+          arguments: const <FieldSpec>[],
+        );
+
+    test('should say offline only when the offline catalog is the reason', () {
+      expect(capabilityChoiceLabel(spec(available: true)), 'example:glow');
+      expect(capabilityChoiceLabel(spec(available: true, privileged: true)), 'example:glow (privileged)');
+      expect(capabilityChoiceLabel(spec(available: false, reason: 'platform-unavailable: offline validation has no server')), 'example:glow (unavailable offline)');
+      expect(capabilityChoiceLabel(spec(available: false, reason: 'platform-unavailable: needs Paper')), 'example:glow (not on this server)');
+      expect(capabilityChoiceLabel(spec(available: false, reason: 'platform-unavailable: needs Paper', privileged: true)), 'example:glow (not on this server; privileged)');
     });
   });
 }

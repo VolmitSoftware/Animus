@@ -2,13 +2,18 @@ package art.arcane.animus.core.command;
 
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.building.BuildCommands;
+import art.arcane.animus.core.editor.DocumentKind;
+import art.arcane.animus.core.gui.GuiDrafts;
 import art.arcane.animus.core.gui.HoloService;
 import art.arcane.animus.core.gui.exchange.GlossExchange;
 import art.arcane.animus.core.gui.exchange.GlossIds;
 import art.arcane.animus.core.text.Palette;
+import art.arcane.animus.core.virtual.WorldPosition;
 import art.arcane.volmlib.util.director.DirectorOrigin;
 import art.arcane.volmlib.util.director.annotations.Director;
 import art.arcane.volmlib.util.director.annotations.Param;
+import com.google.gson.JsonObject;
+import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,19 +25,16 @@ final class ServiceCommands {
 
     static Optional<String> given(String value) { return ContentCommands.given(value); }
 
-    @Director(name = "shop", description = "Open, reset and import NPC shops")
+    @Director(name = "shop", aliases = "shops", description = "Open, list and reset NPC shops")
+    @AnimusPermission(PermissionNodes.SHOPS)
     static final class Shop extends CommandGroup {
-        ShopImport imports;
-
-        Shop(CommandServices services) {
-            super(services);
-            imports = new ShopImport(services);
-        }
+        Shop(CommandServices services) { super(services); }
 
         @Director(description = "Show the shop catalog and economy")
         void status() { actor().tell(services.shops().status()); }
 
         @Director(description = "List the loaded shops")
+        @Positional("page")
         void list(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             List<String> rows = services.shops().rows();
             listing(actor(), "Shops (" + rows.size() + ")", "/" + BuildIdentity.ID + " shop list", rows, page, "No shops; save one under shops/, then /animus shop reload",
@@ -46,6 +48,15 @@ final class ServiceCommands {
             services.shops().open(actor(), shop, given(player), given(style));
         }
 
+        @Director(description = "Add the item in your hand to a shop: buy or sell at price=, or trade for your off hand", origin = DirectorOrigin.PLAYER)
+        @Positional({"price", "mode"})
+        void stock(@Param(name = "shop", description = "The shop id, such as town:baker; a new id makes the shop") String shop,
+                   @Param(name = "price", defaultValue = "", description = "What the offer costs or pays; buy and sell need it") String price,
+                   @Param(name = "mode", defaultValue = "buy", description = "buy (players buy it), sell (players sell it) or trade (for your off-hand item)") String mode,
+                   @Param(name = "page", defaultValue = "1", description = "The shop page, from 1") int page) {
+            services.shops().stock(actor(), shop, mode, given(price), page);
+        }
+
         @Director(description = "Reload shops and chest GUIs from disk")
         void reload() { services.shops().reloadCommand(actor()); }
 
@@ -56,13 +67,15 @@ final class ServiceCommands {
         }
 
         @Director(description = "List shop and chest GUI problems")
+        @Positional("page")
         void problems(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             List<String> rows = services.shops().problemRows();
             listing(actor(), "Shop and GUI problems (" + rows.size() + ")", "/" + BuildIdentity.ID + " shop problems", rows, page, "No shop or GUI problems");
         }
     }
 
-    @Director(name = "import", description = "Import dtlTraders and Shopkeepers shops")
+    /** {@code /animus import shops}. */
+    @Director(name = "shops", description = "Import dtlTraders and Shopkeepers shops")
     static final class ShopImport extends CommandGroup {
         ShopImport(CommandServices services) { super(services); }
 
@@ -78,14 +91,13 @@ final class ServiceCommands {
         }
     }
 
-    @Director(name = "gui", description = "Chest GUIs, display menus, holograms and the Gloss exchange")
+    @Director(name = "gui", aliases = "guis", description = "Chest GUIs, display menus, holograms and the export to Gloss")
+    @AnimusPermission(PermissionNodes.GUI)
     static final class Gui extends CommandGroup {
-        GuiImport imports;
         GuiExport exports;
 
         Gui(CommandServices services) {
             super(services);
-            imports = new GuiImport(services);
             exports = new GuiExport(services);
         }
 
@@ -95,6 +107,7 @@ final class ServiceCommands {
         void status() { guis().statusCommand(actor()); }
 
         @Director(description = "List chest GUIs, menus, holograms or animations")
+        @Positional({"kind", "page"})
         void list(@Param(name = "kind", defaultValue = "all", description = "all, inventory, menu, hologram or animation") HoloService.Listing kind,
                   @Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             List<String> rows = guis().rows(kind);
@@ -118,10 +131,20 @@ final class ServiceCommands {
             guis().closeMenu(actor(), given(player));
         }
 
+        @Director(description = "Make an empty chest GUI to fill in the toolkit or web editor")
+        @Positional({"rows", "title"})
+        void create(@Param(name = "id", description = "The new GUI id, such as town:board") String id,
+                    @Param(name = "rows", defaultValue = "3", description = "Rows of the chest window, 1 to 6") int rows,
+                    @Param(name = "title", defaultValue = "", description = "The window title; the id when left out") String title) {
+            CommandActor actor = actor();
+            created(this, actor, DocumentKind.INVENTORY, id, () -> GuiDrafts.inventory(title.isEmpty() ? id : title, rows));
+        }
+
         @Director(description = "Reload GUIs, shops, menus, holograms and animations")
         void reload() { guis().reloadAll(actor()); }
 
         @Director(description = "List GUI, menu and hologram problems")
+        @Positional("page")
         void problems(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             List<String> rows = guis().problemRows();
             listing(actor(), "GUI problems (" + rows.size() + ")", "/" + BuildIdentity.ID + " gui problems", rows, page, "No GUI problems");
@@ -133,12 +156,38 @@ final class ServiceCommands {
         }
     }
 
-    @Director(name = "import", description = "Bring Gloss documents into Animus")
+    @FunctionalInterface interface Draft { JsonObject build() throws IOException; }
+
+    /** Writes a new chest GUI or hologram file on the file lane, then reloads the GUI catalogs so it shows. */
+    static void created(CommandGroup group, CommandActor actor, DocumentKind kind, String id, Draft draft) {
+        group.files(actor, () -> List.of(Palette.success(GuiDrafts.create(group.runtime().documents(), kind, id, draft.build()))),
+                () -> group.services.guis().reloadAll(actor));
+    }
+
+    @Director(name = "hologram", aliases = "holograms", description = "Make holograms in game")
+    @AnimusPermission(PermissionNodes.GUI)
+    static final class Hologram extends CommandGroup {
+        Hologram(CommandServices services) { super(services); }
+
+        @Director(description = "Make a one-line hologram where you stand", origin = DirectorOrigin.PLAYER)
+        @Positional("text")
+        void create(@Param(name = "id", description = "The new hologram id, such as town:welcome") String id,
+                    @Param(name = "text", defaultValue = "", description = "Its text; & colour codes work; quote it to use spaces; the id when left out") String text) {
+            CommandActor actor = actor();
+            Optional<WorldPosition> at = actor.position();
+            if (at.isEmpty()) { actor.tell(Palette.error("Your position cannot be read right now; try again")); return; }
+            float yaw = actor.facing().map(Coordinates.Facing::yaw).orElse(0f);
+            created(this, actor, DocumentKind.HOLOGRAM, id, () -> GuiDrafts.hologram(at.get(), yaw, text.isEmpty() ? id : text));
+        }
+    }
+
+    /** {@code /animus import gloss}. */
+    @Director(name = "gloss", description = "Bring Gloss chest GUIs, menus, holograms and animations into Animus")
     static final class GuiImport extends CommandGroup {
         GuiImport(CommandServices services) { super(services); }
 
-        @Director(description = "Copy Gloss's live documents into Animus")
-        void gloss(@Param(name = "kind", description = "all, inventory, menu, hologram or animation") HoloService.Listing kind,
+        @Director(description = "Copy the documents of Gloss running on this server into Animus")
+        void live(@Param(name = "kind", description = "all, inventory, menu, hologram or animation") HoloService.Listing kind,
                    @Param(name = "document", defaultValue = "all", description = "One document id of that kind, or all") String id,
                    @Param(name = "namespace", defaultValue = GlossIds.DEFAULT_NAMESPACE, description = "The Animus namespace to write into") String namespace,
                    @Param(name = "replace", defaultValue = "false", description = "Overwrite documents that exist") boolean replace) {
@@ -174,7 +223,8 @@ final class ServiceCommands {
         }
     }
 
-    @Director(name = "build", description = "NPC builders: schematics, progress and teams")
+    @Director(name = "build", aliases = "builds", description = "NPC builders: schematics, progress and teams")
+    @AnimusPermission(PermissionNodes.BUILD)
     static final class Build extends CommandGroup {
         Team team;
 
@@ -189,6 +239,7 @@ final class ServiceCommands {
         void status(@Param(name = "build", defaultValue = "", description = "A build id or its NPC") String build) { builds().status(actor(), given(build)); }
 
         @Director(description = "List running and paused builds")
+        @Positional("page")
         void list(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             CommandActor actor = actor();
             builds().rows(actor, (List<String> rows) -> listing(actor, "Builds (" + rows.size() + ")", "/" + BuildIdentity.ID + " build list", rows, page,
@@ -196,6 +247,7 @@ final class ServiceCommands {
         }
 
         @Director(description = "List the schematics in the schematics folder")
+        @Positional("page")
         void schematics(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             CommandActor actor = actor();
             builds().schematicRows(actor, (List<String> rows) -> listing(actor, "Schematics (" + rows.size() + ")", "/" + BuildIdentity.ID + " build schematics", rows, page,
@@ -278,6 +330,7 @@ final class ServiceCommands {
     }
 
     @Director(name = "editor", description = "Pair and manage the web editor")
+    @AnimusPermission(PermissionNodes.EDITOR_PAIR)
     static final class Editor extends CommandGroup {
         Editor(CommandServices services) { super(services); }
 
@@ -293,6 +346,7 @@ final class ServiceCommands {
         }
 
         @Director(description = "List editor tokens")
+        @Positional("page")
         void tokens(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             CommandActor actor = actor();
             services.editor().tokens(actor).ifPresent((List<String> rows) ->

@@ -4,9 +4,10 @@ import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.bukkit.BukkitWorldLookup;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
 import art.arcane.animus.bukkit.navigation.BukkitDoors;
+import art.arcane.animus.bukkit.protection.RegionRideEntry;
+import art.arcane.animus.core.control.RideEntry;
 import art.arcane.animus.bukkit.navigation.BukkitTerrain;
 import art.arcane.animus.bukkit.navigation.TerrainChanges;
-import art.arcane.animus.bukkit.navigation.VirtualNpcWaypointEvent;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.navigation.DoorPassage;
@@ -16,6 +17,7 @@ import art.arcane.animus.core.presentation.BodyTransport;
 import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.core.runtime.RuntimeHost;
 import art.arcane.animus.core.virtual.Vec3;
+import art.arcane.animus.core.behavior.trigger.TriggerEvent;
 import art.arcane.animus.core.virtual.WorldPosition;
 import java.util.Collection;
 import java.util.List;
@@ -51,6 +53,7 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
     private final NativePacketAdapter.Scheduler replies;
     private final BukkitTerrain terrain;
     private DoorPassage.Doors doors = DoorPassage.NONE;
+    private RideEntry.Rule rideEntry = RideEntry.OPEN;
     private ChunkDelivery chunks;
     private PersistedNpcService<Player, ItemStack> service;
 
@@ -67,6 +70,7 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
             @Override public boolean owns(World world, int chunkX, int chunkZ) { return Bukkit.isPrimaryThread(); }
             @Override public void run(World world, int chunkX, int chunkZ, Runnable work) { if (plugin.isEnabled()) plugin.getServer().getScheduler().runTask(plugin, work); }
         });
+        host.rideEntry = RegionRideEntry.bind(plugin.getServer());
         host.service = new PersistedNpcService<>(host, runtime, io, settings);
         // Registered even while disabled: every handler checks availability, and a hotload may enable the runtime.
         plugin.getServer().getPluginManager().registerEvents(host, plugin);
@@ -126,6 +130,7 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
                 distance, FluidCollisionMode.NEVER, true) == null;
     }
     @Override public DoorPassage.Doors doors() { return doors; }
+    @Override public RideEntry.Rule rideEntry() { return rideEntry; }
     @Override public boolean solid(String world, int x, int y, int z) {
         World loaded = terrain.world(world);
         if (loaded == null || y < loaded.getMinHeight() || y >= loaded.getMaxHeight() || !loaded.isChunkLoaded(x >> 4, z >> 4)) return false;
@@ -144,7 +149,12 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
         return !event.isCancelled();
     }
     @Override public void waypointReached(UUID npc, String id, UUID route, int waypoint, WorldPosition at) {
-        plugin.getServer().getPluginManager().callEvent(new VirtualNpcWaypointEvent(npc, id, route, waypoint, at));
+        NpcEvents.waypoint(plugin.getServer(), npc, id, route, waypoint, at);
+    }
+    @Override public void npcSpawned(UUID npc, String id, WorldPosition at) { NpcEvents.spawned(plugin.getServer(), npc, id, at); }
+    @Override public void npcDespawned(UUID npc, String id) { NpcEvents.despawned(plugin.getServer(), npc, id); }
+    @Override public void npcDied(UUID npc, String id, WorldPosition at, Optional<TriggerEvent.Attacker> killer) {
+        NpcEvents.died(plugin.getServer(), npc, id, at, killer);
     }
 
     static WorldPosition position(Location location) {

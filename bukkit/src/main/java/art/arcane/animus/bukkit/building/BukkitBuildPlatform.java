@@ -141,16 +141,18 @@ public final class BukkitBuildPlatform implements BuildService.Platform<Player, 
         else stack.setAmount(left);
     }
 
+    @Override public ItemStack removeHeld(Player player) {
+        ItemStack held = player.getInventory().getItemInMainHand().clone();
+        player.getInventory().setItemInMainHand(new ItemStack(Material.AIR));
+        return held;
+    }
+
     /** On the player's own owner: into the inventory, and what does not fit drops at the player's feet. */
-    @Override public void give(Player player, String item, long count) {
-        Material material = Material.matchMaterial(item);
-        if (material == null || !material.isItem()) return;
-        for (long left = count; left > 0; ) {
-            int stack = (int) Math.min(left, material.getMaxStackSize());
-            left -= stack;
-            for (ItemStack over : player.getInventory().addItem(new ItemStack(material, stack)).values())
-                player.getWorld().dropItem(player.getLocation(), over);
-        }
+    @Override public void giveBack(Player player, ItemStack stack, int count) {
+        if (count <= 0 || stack.getType().isAir()) return;
+        ItemStack back = stack.clone();
+        back.setAmount(count);
+        for (ItemStack over : player.getInventory().addItem(back).values()) player.getWorld().dropItem(player.getLocation(), over);
     }
 
     @Override public void tell(Player player, String message) { player.sendMessage(RichText.colorize(message)); }

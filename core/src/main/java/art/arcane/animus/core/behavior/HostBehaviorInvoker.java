@@ -2,6 +2,7 @@ package art.arcane.animus.core.behavior;
 
 import art.arcane.animus.api.Capabilities;
 import art.arcane.animus.core.extension.ModuleHost;
+import art.arcane.animus.core.text.Placeholders;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
@@ -9,6 +10,7 @@ import java.util.function.Predicate;
 /**
  * Host handle adapter. Privileged authority comes only from the allow-list, keyed by the accepted program's identity, and
  * text interpolated into a privileged capability's arguments stays in the safe set unless the behavior has a raw text grant.
+ * Text interpolated into what players read cannot carry a placeholder.
  */
 public final class HostBehaviorInvoker implements BehaviorInvoker {
     private final ModuleHost host;
@@ -25,7 +27,10 @@ public final class HostBehaviorInvoker implements BehaviorInvoker {
     @Override public boolean available(Capabilities.Key key,Capabilities.Kind kind,String behavior){
         return host.capabilityAvailable(key,kind,false,privilegedGrants.test(behavior));
     }
-    @Override public boolean strictText(Capabilities.Key key,String behavior){return host.privileged(key)&&!rawTextGrants.test(behavior);}
+    @Override public ArgumentTemplate.Holes holes(Capabilities.Key key,String behavior){
+        if(host.privileged(key))return rawTextGrants.test(behavior)?ArgumentTemplate.Holes.RAW:ArgumentTemplate.Holes.SAFE;
+        return Placeholders.FILLED_CAPABILITIES.contains(key.toString())?ArgumentTemplate.Holes.PLAIN:ArgumentTemplate.Holes.RAW;
+    }
     @Override public Call<String> action(Invocation invocation){
         ModuleHost.InvocationHandle<String> handle=host.actionHandle(invocation.capability(),invocation.npc(),invocation.player(),invocation.argumentsJson(),
                 invocation.preview(),privilegedGrants.test(invocation.behavior()),invocation.sourceCurrent(),Optional.of(invocation.behavior()));

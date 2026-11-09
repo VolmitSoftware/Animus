@@ -27,10 +27,47 @@ class ApiContractTest {
         assertThrows(IllegalArgumentException.class,()->new Capabilities.Invocation(handle,Optional.empty(),"é".repeat(32769),false,()->false,Optional.empty()));
         assertThrows(IllegalArgumentException.class,()->new RevisionToken(0,"0".repeat(64)));
     }
-    @Test void minorVersionOneAddsHooksWithoutBreakingMajorOneModules(){
-        assertEquals(new Version(1,1,0),AnimusApi.API_VERSION);
+    @Test void minorVersionTwoKeepsMajorOneModulesRunning(){
+        assertEquals(new Version(1,2,0),AnimusApi.API_VERSION);
         assertEquals("animus-api-"+AnimusApi.API_VERSION+"-SNAPSHOT.jar",java.nio.file.Path.of(System.getProperty("apiJar")).getFileName().toString(),"Published artifact version follows the contract version");
         assertTrue(new ApiRange(1,1).accepts(AnimusApi.API_VERSION));
+    }
+    @Test void apiJarNamesAStableJavaModule()throws Exception{
+        try(var jar=new java.util.jar.JarFile(System.getProperty("apiJar"))){
+            assertEquals("art.arcane.animus.api",jar.getManifest().getMainAttributes().getValue("Automatic-Module-Name"));
+        }
+    }
+    @Test void apiRangeCanRequireAMinimumMinorVersion(){
+        ApiRange needsTwo=ApiRange.atLeast(new Version(1,2,0));
+        assertEquals(new ApiRange(1,1,2),needsTwo);
+        assertTrue(needsTwo.accepts(new Version(1,2,0)));assertTrue(needsTwo.accepts(new Version(1,9,3)));
+        assertFalse(needsTwo.accepts(new Version(1,1,4)));assertFalse(needsTwo.accepts(new Version(2,0,0)));
+        assertTrue(new ApiRange(1,2,1).accepts(new Version(2,0,0)),"The minimum minor binds only the minimum major");
+        assertEquals(0,new ApiRange(1,1).minimumMinor());
+        assertEquals("requires API 1.2 or newer within 1.x",needsTwo.describe());
+        assertEquals("requires API 1.x",new ApiRange(1,1).describe());
+        assertThrows(IllegalArgumentException.class,()->new ApiRange(1,1,-1));
+    }
+    /**
+     * Modules implement these interfaces, so a minor version may only add default methods to them. Adding an abstract
+     * method here is a major change: update this list only together with a major version.
+     */
+    @Test void moduleImplementedInterfacesGainOnlyDefaultMethods(){
+        Map<Class<?>,Set<String>> pinned=Map.of(
+                TrustedModule.class,Set.of("manifest","enable","disable"),
+                Capabilities.Action.class,Set.of("run"),
+                Capabilities.Condition.class,Set.of("test"),
+                Capabilities.Cancellation.class,Set.of("cancelled"),
+                InteractionNotice.Listener.class,Set.of("interacted"),
+                ImportConverters.Converter.class,Set.of("detect","convert"),
+                Integrations.Protection.class,Set.of("decide"),
+                Integrations.Economy.class,Set.of("has","withdraw","deposit","format"));
+        pinned.forEach((Class<?> type,Set<String> methods)->{
+            Set<String> abstractMethods=new TreeSet<>();
+            for(java.lang.reflect.Method method:type.getDeclaredMethods())
+                if(java.lang.reflect.Modifier.isAbstract(method.getModifiers()))abstractMethods.add(method.getName());
+            assertEquals(new TreeSet<>(methods),abstractMethods,type.getName()+" may only gain default methods in a minor version");
+        });
     }
     @Test void importAndIntegrationRecordsAreBoundedAndCopied(){
         List<String> warnings=new ArrayList<>(List.of("note"));

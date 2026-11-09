@@ -71,14 +71,14 @@ class PlayerAccessOwnerTest {
     void theEditorAdminRecheckFromItsTimerThreadAnswersOnTheOwner() throws IOException {
         ViewerWatchRaceTest.Harness harness = harness();
         RuntimeEditorHost<ViewerWatchRaceTest.Player> host = new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(harness.runtime, Runnable::run, harness.service, null,
-                "test", "", Map::of, () -> EditorHost.Lookups.NONE, (ViewerWatchRaceTest.Player player) -> false, new EditorNoticeChannel() {
+                "test", "", Map::of, () -> EditorHost.Lookups.NONE, (ViewerWatchRaceTest.Player player, String node) -> false, new EditorNoticeChannel() {
                     @Override public Optional<String> name(UUID player) { return Optional.empty(); }
                     @Override public void deliver(EditorNotice notice) {}
-                }, (String line) -> {}, null, (UUID offline) -> EditorHost.Admin.UNKNOWN));
+                }, (String line) -> {}, null, (UUID offline, String node) -> EditorHost.Admin.UNKNOWN));
         harness.ownerThread = false;
         List<EditorHost.Admin> answers = new ArrayList<>();
 
-        host.admin(harness.player.id(), answers::add);
+        host.permission(harness.player.id(), "animus.admin", answers::add);
         harness.runScheduled();
         assertEquals(List.of(EditorHost.Admin.NOT_ADMIN), answers);
     }
@@ -89,12 +89,12 @@ class PlayerAccessOwnerTest {
         UUID away = UUID.randomUUID();
         List<UUID> asked = new ArrayList<>();
         RuntimeEditorHost<ViewerWatchRaceTest.Player> host = new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(harness.runtime, Runnable::run, harness.service, null,
-                "test", "", Map::of, () -> EditorHost.Lookups.NONE, (ViewerWatchRaceTest.Player player) -> true, new EditorNoticeChannel() {
+                "test", "", Map::of, () -> EditorHost.Lookups.NONE, (ViewerWatchRaceTest.Player player, String node) -> true, new EditorNoticeChannel() {
                     @Override public Optional<String> name(UUID player) { return Optional.empty(); }
                     @Override public void deliver(EditorNotice notice) {}
-                }, (String line) -> {}, null, (UUID offline) -> { asked.add(offline); return EditorHost.Admin.NOT_ADMIN; }));
+                }, (String line) -> {}, null, (UUID offline, String node) -> { asked.add(offline); return EditorHost.Admin.NOT_ADMIN; }));
         List<EditorHost.Admin> answers = new ArrayList<>();
-        host.admin(away, answers::add);
+        host.permission(away, "animus.admin", answers::add);
         assertEquals(List.of(EditorHost.Admin.NOT_ADMIN), answers, "a de-opped admin is caught while offline");
         assertEquals(List.of(away), asked);
     }

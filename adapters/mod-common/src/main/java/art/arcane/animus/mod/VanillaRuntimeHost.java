@@ -124,15 +124,20 @@ final class VanillaRuntimeHost implements RuntimeHost<ServerPlayer, ItemStack> {
     @Override public boolean interactionAllowed(ServerPlayer player, UUID npc, Interaction action, double distance) { return interactions.allowed(player, npc, action); }
     @Override public void waypointReached(UUID npc, String id, UUID route, int waypoint, WorldPosition at) {}
 
-    /** {@code animus.status} is open; every other node needs an operator or a granted permission atom. */
+    /**
+     * {@code animus.status} is open; every other node needs an operator or a granted permission atom, and the
+     * {@code animus:admin} atom grants every node under it.
+     */
     static boolean permitted(PermissionSet permissions, String node) {
         if (ModPermissions.everyone(node)) return true;
-        Optional<String> atom = ModPermissions.atom(node);
-        if (atom.isPresent()) {
-            Identifier id = Identifier.tryParse(atom.get());
-            if (id != null && permissions.hasPermission(Permission.Atom.create(id))) return true;
-        }
+        if (art.arcane.animus.core.command.PermissionNodes.granted((String asked) -> atom(permissions, asked), node)) return true;
         return permissions.hasPermission(Permissions.COMMANDS_GAMEMASTER);
+    }
+
+    private static boolean atom(PermissionSet permissions, String node) {
+        Optional<String> atom = ModPermissions.atom(node);
+        Identifier id = atom.map(Identifier::tryParse).orElse(null);
+        return id != null && permissions.hasPermission(Permission.Atom.create(id));
     }
 
     /** A server item for a definition item, read like the text after {@code /give}; null after adding the field error. */

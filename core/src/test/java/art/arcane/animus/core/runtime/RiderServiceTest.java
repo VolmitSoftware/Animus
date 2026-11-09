@@ -1,6 +1,7 @@
 package art.arcane.animus.core.runtime;
 
 import art.arcane.animus.core.control.ControlInbox;
+import art.arcane.animus.core.control.RideEntry;
 import art.arcane.animus.core.control.RideSettings;
 import art.arcane.animus.core.navigation.BodyMobility;
 import art.arcane.animus.core.navigation.MotionValidator;
@@ -26,6 +27,7 @@ class RiderServiceTest {
     final List<String> events = new ArrayList<>();
     final List<ControlInbox> inboxes = new ArrayList<>();
     boolean online = true;
+    RideEntry.Rule entry = RideEntry.OPEN;
 
     @SuppressWarnings("unchecked")
     final RuntimeHost<Rider, Object> host = (RuntimeHost<Rider, Object>) Proxy.newProxyInstance(RuntimeHost.class.getClassLoader(), new Class<?>[]{RuntimeHost.class},
@@ -38,6 +40,7 @@ class RiderServiceTest {
                 case "position" -> new WorldPosition(WORLD, new Vec3(1.5, 61, 0.5));
                 case "yaw", "pitch" -> 0f;
                 case "collision" -> (MotionValidator.Sampler) (int x, int y, int z) -> y < 61 ? VoxelSnapshot.Cell.SOLID : VoxelSnapshot.Cell.AIR;
+                case "rideEntry" -> entry;
                 case "tell" -> { events.add("tell:" + arguments[1]); yield null; }
                 case "warn" -> { events.add("warn:" + arguments[0]); yield null; }
                 case "hashCode" -> System.identityHashCode(proxy);
@@ -75,7 +78,7 @@ class RiderServiceTest {
         @Override public double hullHeight() { return 3.2; }
         @Override public MovementProfile body() { return BodyMobility.forBody("minecraft:horse", hullWidth(), hullHeight()); }
         @Override public void claim() { events.add("claim"); }
-        @Override public void commit(Vec3 position, float yaw) {}
+        @Override public void commit(Vec3 position, float yaw) { state.move(new WorldPosition(WORLD, position)); }
         @Override public void released() { events.add("released"); }
     }
 
@@ -102,5 +105,27 @@ class RiderServiceTest {
         assertEquals(0, riders.count(), "an offline rider ends the ride");
         online = true;
         assertNull(riders.request(rider, horse), "a rejoined rider rides again");
+    }
+
+    @Test void aStepIntoABlockTheRiderMayNotEnterEndsTheRide() {
+        List<WorldPosition> asked = new ArrayList<>();
+        entry = (UUID player, WorldPosition to) -> { asked.add(to); return false; };
+        RiderService<Rider, Object> riders = new RiderService<>(host, presentation, null);
+        Horse horse = new Horse();
+        assertNull(riders.request(rider, horse));
+        Vec3 start = horse.snapshot().position().point();
+        // Ride steps run on a fixed real-time step, so poll until the ride ends instead of counting ticks.
+        long deadline = System.nanoTime() + 5_000_000_000L;
+        while (riders.riding(rider) && System.nanoTime() < deadline) {
+            inboxes.getLast().offer(new art.arcane.animus.core.control.ControlInput(true, false, false, false, false, false, true), System.nanoTime());
+            riders.tick();
+            java.util.concurrent.locks.LockSupport.parkNanos(10_000_000L);
+        }
+        assertFalse(riders.riding(rider), "the refused step ends the ride");
+        assertFalse(asked.isEmpty());
+        assertTrue(events.stream().anyMatch((String event) -> event.contains("Dismounted: region entry denied")), events.toString());
+        Vec3 end = horse.snapshot().position().point();
+        assertEquals(Math.floor(start.x()), Math.floor(end.x()));
+        assertEquals(Math.floor(start.z()), Math.floor(end.z()), "the body never enters the refused block");
     }
 }

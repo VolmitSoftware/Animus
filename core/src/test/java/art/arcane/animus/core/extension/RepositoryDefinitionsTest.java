@@ -151,4 +151,39 @@ class RepositoryDefinitionsTest {
             assertEquals("Command",repository.find("guard").orElseThrow().name());assertEquals(2,snapshot().token().revision());
         }finally{finish.countDown();}
     }
+    private static String npc(String uuid,String id,String group,boolean spawned){
+        return JSON.replace("12345678-1234-1234-1234-123456789abc",uuid).replace("\"id\":\"guard\"","\"id\":\""+id+"\"")
+                .replace("\"group\":\"town\"","\"group\":\""+group+"\"").replace("\"spawned\":false","\"spawned\":"+spawned);
+    }
+    @Test void resolveFindsAnNpcByIdAndReportsAMissingOne()throws Exception{
+        assertEquals(NPC,await(service.resolve("guard")).value().orElseThrow());
+        assertEquals(Outcome.Status.NOT_FOUND,await(service.resolve("nobody")).status());
+        assertEquals(Outcome.Status.INVALID,await(service.resolve("Not An Id")).status());
+        assertEquals(Outcome.Status.UNAVAILABLE,await(service.scoped(()->false).resolve("guard")).status());
+    }
+    @Test void npcsAtTheTopFolderOrInNestedFoldersHaveSnapshots()throws Exception{
+        store.commit(List.of(new DocumentStore.Change("npcs/hermit.json","missing",npc("22345678-1234-1234-1234-123456789abc","hermit","",false)),
+                new DocumentStore.Change("npcs/world/market/baker.json","missing",npc("32345678-1234-1234-1234-123456789abc","baker","world/market",true))));
+        assertTrue(repository.reload().isEmpty());
+        DefinitionSnapshot hermit=await(service.find(await(service.resolve("hermit")).value().orElseThrow())).value().orElseThrow();
+        assertEquals("",hermit.group());
+        assertEquals("world/market",await(service.find(await(service.resolve("baker")).value().orElseThrow())).value().orElseThrow().group());
+    }
+    @Test void listPagesNpcsInIdOrderAndFiltersByGroup()throws Exception{
+        List<DocumentStore.Change> changes=new ArrayList<>();
+        for(int i=0;i<DefinitionService.PAGE_SIZE+5;i++)changes.add(new DocumentStore.Change("npcs/crowd/extra-"+String.format("%03d",i)+".json","missing",
+                npc(String.format("00000000-0000-0000-0000-%012d",i),"extra-"+String.format("%03d",i),"crowd",i%2==0)));
+        store.commit(changes);assertTrue(repository.reload().isEmpty());
+        DefinitionService.Page first=await(service.list(Optional.empty(),1)).value().orElseThrow();
+        assertEquals(DefinitionService.PAGE_SIZE,first.npcs().size());assertEquals(2,first.pages());assertEquals(DefinitionService.PAGE_SIZE+6,first.total());
+        assertEquals("extra-000",first.npcs().getFirst().id());
+        assertTrue(first.npcs().getFirst().spawned());assertFalse(first.npcs().get(1).spawned());
+        DefinitionService.Page second=await(service.list(Optional.empty(),2)).value().orElseThrow();
+        assertEquals(6,second.npcs().size());assertEquals("guard",second.npcs().getLast().id());
+        DefinitionService.Page town=await(service.list(Optional.of("town"),1)).value().orElseThrow();
+        assertEquals(List.of(new DefinitionService.Summary(NPC,"guard","town",false)),town.npcs());
+        assertEquals(0,await(service.list(Optional.of("nowhere"),1)).value().orElseThrow().total());
+        assertEquals(Outcome.Status.INVALID,await(service.list(Optional.empty(),0)).status());
+        assertTrue(await(service.list(Optional.empty(),9)).value().orElseThrow().npcs().isEmpty());
+    }
 }

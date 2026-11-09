@@ -29,11 +29,11 @@ class SetupCommandsTest {
         assertEquals(SetupGuide.console(FRESH), sent);
     }
 
-    @Test void setupIsARootCommandForAdmins() {
+    @Test void setupIsARootCommandUnderTheToolsNode() {
         AnimusDirector real = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
         DirectorRuntimeNode setup = real.engine().getRoot().getChildren().stream().filter((DirectorRuntimeNode node) -> node.getDescriptor().getName().equals("setup")).findFirst().orElseThrow();
         assertTrue(setup.isInvocable(), "/animus setup runs without a subcommand");
-        assertEquals(AnimusDirector.ADMIN, AnimusDirector.permission(setup));
+        assertEquals(PermissionNodes.TOOLS, AnimusDirector.permission(setup));
     }
 
     private static CommandActor actor(UUID player, List<Object> sent) {

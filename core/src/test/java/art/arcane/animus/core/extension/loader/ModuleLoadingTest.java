@@ -38,7 +38,7 @@ class ModuleLoadingTest {
         d.addProperty("main","fixture."+id+".Module");d.add("exports",new JsonArray());return d;
     }
     private static String manifestExpression(ModuleManifest manifest){
-        return "new ModuleManifest(\""+manifest.id()+"\",new Version("+manifest.version().major()+","+manifest.version().minor()+","+manifest.version().patch()+"),new ApiRange("+manifest.api().minimumMajor()+","+manifest.api().maximumMajor()+"),Set.of("+String.join(",",manifest.platforms().stream().sorted().map(p->"Platform."+p).toList())+"),List.of("+String.join(",",manifest.dependencies().stream().map(d->"new ModuleManifest.Dependency(\""+d.id()+"\",new Version("+d.minimumInclusive().major()+","+d.minimumInclusive().minor()+","+d.minimumInclusive().patch()+"),new Version("+d.maximumExclusive().major()+","+d.maximumExclusive().minor()+","+d.maximumExclusive().patch()+"))").toList())+"))";
+        return "new ModuleManifest(\""+manifest.id()+"\",new Version("+manifest.version().major()+","+manifest.version().minor()+","+manifest.version().patch()+"),new ApiRange("+manifest.api().minimumMajor()+","+manifest.api().maximumMajor()+","+manifest.api().minimumMinor()+"),Set.of("+String.join(",",manifest.platforms().stream().sorted().map(p->"Platform."+p).toList())+"),List.of("+String.join(",",manifest.dependencies().stream().map(d->"new ModuleManifest.Dependency(\""+d.id()+"\",new Version("+d.minimumInclusive().major()+","+d.minimumInclusive().minor()+","+d.minimumInclusive().patch()+"),new Version("+d.maximumExclusive().major()+","+d.maximumExclusive().minor()+","+d.maximumExclusive().patch()+"))").toList())+"))";
     }
     private Path jar(Path directory,String file,JsonObject descriptor,String enable,String disable,Map<String,String> extra,List<Path> dependencies)throws Exception {
         Files.createDirectories(directory);String id=descriptor.get("id").getAsString();Path work=Files.createTempDirectory(temp,"compile-"),classes=Files.createDirectory(work.resolve("classes"));
@@ -83,6 +83,17 @@ class ModuleLoadingTest {
         JsonObject platform=descriptor("other");platform.getAsJsonArray("platforms").set(0,new JsonPrimitive("FABRIC"));jar(modules,"other.jar",platform,"","",Map.of(),List.of());jar(modules,"child","missing");
         var plan=ModuleDiscovery.discover(modules,Platform.PAPER);assertTrue(plan.order().isEmpty());for(String reason:List.of("duplicate-id","api-incompatible","platform-incompatible","dependency-unavailable"))assertTrue(reasons(plan).contains(reason));
         try(var runtime=new StartupModules(host(),plan)){runtime.start();}assertNull(System.getProperty("module.init.base"));assertNull(System.getProperty("module.init.bad"));
+    }
+    @Test void aModuleNeedingANewerMinorIsRefusedByName()throws Exception {
+        Path modules=temp.resolve("modules");
+        JsonObject newer=descriptor("bad");newer.getAsJsonObject("api").addProperty("minimumMinor",AnimusApi.API_VERSION.minor()+1);jar(modules,"bad.jar",newer,"","",Map.of(),List.of());
+        JsonObject current=descriptor("base");current.getAsJsonObject("api").addProperty("minimumMinor",AnimusApi.API_VERSION.minor());jar(modules,"base.jar",current,"","",Map.of(),List.of());
+        var plan=ModuleDiscovery.discover(modules,Platform.PAPER);
+        assertEquals(List.of("base"),plan.order());
+        assertTrue(reasons(plan).contains("api-incompatible: requires API 1."+(AnimusApi.API_VERSION.minor()+1)+" or newer within 1.x; this server has "+AnimusApi.API_VERSION),reasons(plan));
+        assertEquals(new ApiRange(1,1,AnimusApi.API_VERSION.minor()),ModuleDescriptor.parse(JSON.toJson(current)).manifest().api());
+        JsonObject negative=descriptor("other");negative.getAsJsonObject("api").addProperty("minimumMinor",-1);
+        assertThrows(java.io.IOException.class,()->ModuleDescriptor.parse(JSON.toJson(negative)));
     }
     @Test void cyclesAndTransitiveDependentsRejectButIndependentModuleStarts()throws Exception {
         Path modules=temp.resolve("modules");jar(modules,"alpha","beta");jar(modules,"beta","alpha");jar(modules,"leaf","alpha");jar(modules,"unrelated");

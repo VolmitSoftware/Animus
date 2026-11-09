@@ -1,6 +1,7 @@
 package art.arcane.animus.core.toolkit;
 
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.ScreenHost;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.navigation.WaypointSettings;
@@ -43,7 +44,6 @@ import java.util.function.Supplier;
  * @param <S> the platform's item stack
  */
 public final class Toolkit<P, S> implements AutoCloseable {
-    public static final String ADMIN = "animus.admin";
     /** The wand's item marker: a Bukkit persistent data key, and the same key in a mod item's custom data. */
     public static final String MARKER = "animus:tool", WAND = "wand";
     /** What the wand looks like; the marker, not the name, makes it a wand. */
@@ -77,7 +77,7 @@ public final class Toolkit<P, S> implements AutoCloseable {
     private static final class PlayerState {
         long ticks, clicked;
         UUID last;
-        boolean sneaking, touched;
+        boolean sneaking;
     }
 
     public enum Tool { PALETTE, MANAGE }
@@ -131,12 +131,14 @@ public final class Toolkit<P, S> implements AutoCloseable {
         return selection.of(player);
     }
 
-    /** A player who has not used the toolkit yet starts from the NPC they selected by command or click. */
-    private void seed(UUID player) {
-        PlayerState state = state(player);
-        if (state.touched) return;
-        state.touched = true;
-        if (selection.of(player).isEmpty()) living().selection(player).ifPresent((String id) -> selection.only(player, id));
+    /** From {@code /animus select}: the NPC becomes the player's whole selection, as a plain wand click makes it. */
+    public void selectOnly(UUID player, String id) { selection.only(player, id); }
+
+    /** Whether the player holds {@code node}; says which node is missing when not. Toolkit actions ask on every click. */
+    boolean allows(P player, String node) {
+        if (host().permitted(player, node)) return true;
+        say(player, ChatLine.error("No permission: " + node + "; ask an operator to grant it"));
+        return false;
     }
 
     private PlayerState state(UUID player) { return players.computeIfAbsent(player, (UUID ignored) -> new PlayerState()); }
@@ -154,7 +156,7 @@ public final class Toolkit<P, S> implements AutoCloseable {
      */
     public boolean interacted(P player, UUID npc, boolean attack, boolean sneaking) {
         ScreenHost<P, S> host = host();
-        if (!host.holdsWand(player) || !host.permitted(player, ADMIN)) return false;
+        if (!host.holdsWand(player) || !host.permitted(player, PermissionNodes.TOOLS)) return false;
         Optional<NpcRuntime.ActiveNpc> active = living().active(npc);
         if (active.isEmpty()) return false;
         UUID id = host.id(player);
@@ -168,7 +170,6 @@ public final class Toolkit<P, S> implements AutoCloseable {
         Picker picker = pickers.remove(id);
         if (picker != null) { picker.chosen().accept(target); return true; }
         if (!sneak) { only(player, target); return true; }
-        seed(id);
         boolean added;
         try { added = selection.toggle(id, target); }
         catch (IllegalStateException full) { bar(player, "&c" + full.getMessage()); return true; }
@@ -182,14 +183,14 @@ public final class Toolkit<P, S> implements AutoCloseable {
     void only(P player, String id) {
         UUID uuid = host().id(player);
         selection.only(uuid, id);
-        state(uuid).touched = true;
         primary(uuid, id);
         bar(player, "Selected " + id);
     }
 
+    /** The runtime's own pick follows the wand, for platforms that read it; commands read {@link #selected}. */
     private void primary(UUID player, String id) {
         try { living().select(player, id); }
-        catch (RuntimeException refused) { /* the multi-selection still holds it; @selected keeps its previous NPC */ }
+        catch (RuntimeException refused) { /* the runtime is full of viewers; the toolkit selection still holds it */ }
     }
 
     /** Every owner tick for a watched player: route capture on a sneak press, and the outline every {@link ToolkitOutline#PERIOD} ticks. */
@@ -235,7 +236,6 @@ public final class Toolkit<P, S> implements AutoCloseable {
     }
 
     void show(P player, Commands commands, ScreenFactory<P, S> factory) {
-        seed(host().id(player));
         parts.screens().open(player, Optional.empty(), (ScreenManager<P, S>.Viewer viewer) -> Optional.of(factory.create(this, viewer, commands)));
     }
 
@@ -296,14 +296,11 @@ public final class Toolkit<P, S> implements AutoCloseable {
         else say(player, ChatLine.error("This platform has no selection wand"));
     }
 
-    void clear(P player) {
-        UUID id = host().id(player);
-        selection.clear(id);
-        state(id).touched = true;
-    }
+    void clear(P player) { selection.clear(host().id(player)); }
 
     /** Starts a capture where the player stands, or adds the next point. */
     void point(P player) {
+        if (!allows(player, PermissionNodes.NPC_MOVE)) return;
         Optional<ScreenHost.Pose> pose = host().pose(player);
         if (pose.isEmpty()) return;
         WaypointCapture capture = captures.computeIfAbsent(host().id(player), (UUID ignored) -> new WaypointCapture(pose.get().worlds()));
@@ -352,6 +349,7 @@ public final class Toolkit<P, S> implements AutoCloseable {
 
     /** Spawns or despawns the NPCs; a spawn is checked on this owner first, as {@code /animus spawn} checks it. */
     void spawned(ScreenManager<P, S>.Viewer viewer, List<String> ids, boolean spawn) {
+        if (!allows(viewer.player(), PermissionNodes.NPC_EDIT)) return;
         later(viewer, (ToolkitFiles files) -> files.spawned(ids, spawn), (ToolkitFiles.Batch batch) -> {
             if (spawn) for (NpcDefinition candidate : batch.candidates()) {
                 List<String> errors = living().validateActivation(candidate);
@@ -372,16 +370,25 @@ public final class Toolkit<P, S> implements AutoCloseable {
         else say(player, ChatLine.error("Teleport to " + id + " was refused"));
     }
 
+    /** From a command: teleports the player beside the NPC, on the player's owner. False when the player is not online. */
+    public boolean visit(UUID player, String id) { return living().players().deliver(player, (P online) -> visit(online, id)); }
+
+    /** Moves an active NPC to {@code destination} at once, on its owner; an inactive NPC moves when its saved place is read again. */
+    public void relocate(String id, WorldPosition destination) {
+        relocator().ifPresent((Relocator relocator) -> living().onOwner(id, () -> relocator.relocate(id, destination), (String refused) -> {}));
+    }
+
     /** Moves the NPC to the player and saves the place. */
     void bring(ScreenManager<P, S>.Viewer viewer, String id) {
         P player = viewer.player();
+        if (!allows(player, PermissionNodes.NPC_MOVE)) return;
         Optional<ScreenHost.Pose> pose = host().pose(player);
         Optional<VirtualNpcState.Snapshot> state = npcs().find(id).flatMap((NpcDefinition definition) -> living().state(definition.uuid()));
         if (pose.isEmpty() || state.isEmpty()) { say(player, ChatLine.error(id + " is not active here")); return; }
         if (!pose.get().in(state.get().position().world())) { say(player, ChatLine.error(id + " is in another world")); return; }
         Vec3 at = new Vec3(pose.get().x(), pose.get().y(), pose.get().z());
         WorldPosition destination = new WorldPosition(state.get().position().world(), at);
-        relocator().ifPresent((Relocator relocator) -> living().onOwner(id, () -> relocator.relocate(id, destination), (String refused) -> {}));
+        relocate(id, destination);
         write(viewer, (ToolkitFiles files) -> files.position(id, at, pose.get().yaw(), 0));
     }
 
@@ -419,6 +426,7 @@ public final class Toolkit<P, S> implements AutoCloseable {
      */
     void create(ScreenManager<P, S>.Viewer viewer, String id, String type, boolean spawn) {
         P player = viewer.player();
+        if (!allows(player, PermissionNodes.NPC_CREATE)) return;
         Optional<ScreenHost.Pose> pose = host().pose(player);
         if (pose.isEmpty()) { say(player, ChatLine.error("Your position cannot be read right now; try again")); return; }
         String world = worldName(pose.get());
@@ -447,6 +455,7 @@ public final class Toolkit<P, S> implements AutoCloseable {
 
     /** Saves the player's own signed skin, labelled with their name, and puts it on the selection. */
     void mySkin(ScreenManager<P, S>.Viewer viewer, List<String> ids) {
+        if (!allows(viewer.player(), PermissionNodes.NPC_SKIN)) return;
         Optional<BodySkin> skin = skin(viewer.player());
         if (skin.isEmpty()) { say(viewer.player(), ChatLine.error("Your skin has no signature; offline-mode servers cannot copy it")); return; }
         String label = host().name(viewer.player());

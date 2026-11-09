@@ -1,5 +1,6 @@
 package art.arcane.animus.core.runtime;
 
+import art.arcane.animus.core.control.RideEntry;
 import art.arcane.animus.core.navigation.DoorPassage;
 import art.arcane.animus.core.navigation.TerrainReader;
 import art.arcane.animus.core.npc.NpcItem;
@@ -67,6 +68,8 @@ public interface RuntimeHost<P, I> extends TerrainReader {
     boolean clearSight(P player, Vec3 eye, Vec3 direction, double distance);
     /** Opens and closes real doors for NPCs whose movement opens doors, behind the platform's protection. */
     DoorPassage.Doors doors();
+    /** The region entry rule a ride asks for each new block, since a ride moves its rider with no movement event. */
+    default RideEntry.Rule rideEntry() { return RideEntry.OPEN; }
     /** The block is loaded, inside the world's height and solid. */
     boolean solid(String world, int x, int y, int z);
     /** A registered server entity uses this UUID, for diagnostics. */
@@ -82,4 +85,10 @@ public interface RuntimeHost<P, I> extends TerrainReader {
     boolean interactionAllowed(P player, UUID npc, Interaction action, double distance);
     /** An NPC reached a waypoint of a route. */
     void waypointReached(UUID npc, String id, UUID route, int waypoint, WorldPosition at);
+    /** The NPC became active, or came back after dying, where its spawn trigger fires. Owner thread. */
+    default void npcSpawned(UUID npc, String id, WorldPosition at) {}
+    /** An active NPC was removed, despawned or replaced by another UUID. Owner thread. */
+    default void npcDespawned(UUID npc, String id) {}
+    /** The NPC's health reached zero; {@code killer} dealt the blow when known. Owner thread. */
+    default void npcDied(UUID npc, String id, WorldPosition at, Optional<art.arcane.animus.core.behavior.trigger.TriggerEvent.Attacker> killer) {}
 }

@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
 import java.util.ArrayList;
@@ -22,6 +23,7 @@ final class RecordingDetailScreen<P, S> extends ToolScreen<P, S> {
     }
 
     @Override String title() { return "Recording " + id; }
+    @Override String node() { return PermissionNodes.RECORD; }
     @Override int rows() { return 6; }
 
     /** Reads the recording again; a rename shows under {@code next} once it succeeded. */

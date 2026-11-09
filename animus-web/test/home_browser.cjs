@@ -112,7 +112,7 @@ async function run(browser, viewport, label) {
   assert.match(await page.evaluate(() => document.activeElement.textContent), /Greeter/);
   await page.keyboard.press('Escape');
   await page.getByRole('link', {name: 'NPCs: examples/broken'}).click();
-  await page.locator('.animus-diagnostics').getByText('$.uuid').waitFor();
+  await page.locator('.animus-diagnostics').getByText('UUID is required').first().waitFor();
   // The document title is the page's h1, and its path wraps.
   await page.getByRole('heading', {level: 1, name: 'Broken'}).waitFor();
   // View tabs: one tab stop, arrows move and select.

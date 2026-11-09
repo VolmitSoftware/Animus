@@ -9,6 +9,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../config/docs_links.dart';
+import '../../logic/diagnostic_text.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/server_behaviors.dart';
 import '../../model/animus_document.dart';
@@ -41,7 +42,7 @@ class ServerBehaviorsEditor extends StatelessWidget {
         ),
       ]),
       for (final Diagnostic problem in diagnostics)
-        dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', attributes: const <String, String>{'role': 'note'}, <Widget>[Component.text('${problem.path}: ${problem.message}')]),
+        dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', attributes: <String, String>{'role': 'note', 'title': problem.path}, <Widget>[Component.text(diagnosticSentence(problem))]),
       if (listed.isEmpty)
         dom.p(classes: 'animus-muted', <Widget>[
           Component.text(addable.isEmpty

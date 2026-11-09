@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
@@ -27,6 +28,7 @@ final class CombatScreen<P, S> extends ToolScreen<P, S> {
     CombatScreen(Toolkit<P, S> toolkit, ScreenManager<P, S>.Viewer viewer, Toolkit.Commands commands) { super(toolkit, viewer, commands); }
 
     @Override String title() { return "Combat"; }
+    @Override String node() { return PermissionNodes.COMBAT; }
     @Override int rows() { return 6; }
 
     @Override void draw() {

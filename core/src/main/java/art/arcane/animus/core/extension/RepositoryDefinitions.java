@@ -33,12 +33,36 @@ public final class RepositoryDefinitions implements DefinitionGateway,AutoClosea
         try{repository.apply(draft.value().orElseThrow());return Outcome.ok(snapshot(lookup(edit.npc())));}
         catch(IOException failure){return failure(failure);}
     }});}
+    public CompletionStage<Outcome<NpcHandle>> resolve(String id){return resolve(id,()->true);}
+    private CompletionStage<Outcome<NpcHandle>> resolve(String id,BooleanSupplier gate){
+        if(id==null || !id.matches(art.arcane.animus.core.storage.NpcPaths.SEGMENT))return java.util.concurrent.CompletableFuture.completedFuture(Outcome.rejected(Outcome.Status.INVALID,"npc-id-invalid","NPC ids are 1-64 lowercase letters, digits, _ or -"));
+        return io.submit(()->{if(closed || !gate.getAsBoolean())return unavailable();
+            NpcDefinition definition=repository.snapshot().get(id);
+            return definition==null?Outcome.rejected(Outcome.Status.NOT_FOUND,"npc-missing","No NPC has id "+id):Outcome.ok(new NpcHandle(definition.uuid()));
+        });
+    }
+    public CompletionStage<Outcome<Page>> list(Optional<String> group,int page){return list(group,page,()->true);}
+    private CompletionStage<Outcome<Page>> list(Optional<String> group,int page,BooleanSupplier gate){
+        if(group==null || page<1 || group.isPresent() && !group.get().matches(art.arcane.animus.core.storage.NpcPaths.FOLDER))
+            return java.util.concurrent.CompletableFuture.completedFuture(Outcome.rejected(Outcome.Status.INVALID,"list-invalid","Pages start at 1 and a group is a folder below npcs/"));
+        return io.submit(()->{if(closed || !gate.getAsBoolean())return unavailable();
+            List<NpcDefinition> matching=repository.snapshot().values().stream().filter(definition->group.isEmpty() || definition.group().equals(group.get()))
+                    .sorted(Comparator.comparing(NpcDefinition::id)).toList();
+            int pages=Math.max(1,(matching.size()+PAGE_SIZE-1)/PAGE_SIZE);
+            int from=(int)Math.min((long)(page-1)*PAGE_SIZE,matching.size());
+            List<Summary> npcs=matching.subList(from,Math.min(from+PAGE_SIZE,matching.size())).stream()
+                    .map(definition->new Summary(new NpcHandle(definition.uuid()),definition.id(),definition.group(),definition.spawned())).toList();
+            return Outcome.ok(new Page(npcs,page,pages,matching.size()));
+        });
+    }
     @Override public DefinitionService scoped(BooleanSupplier available){
         Objects.requireNonNull(available);
         return new DefinitionService(){
             public CompletionStage<Outcome<DefinitionSnapshot>> find(NpcHandle npc){return RepositoryDefinitions.this.find(npc,available);}
             public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit){return RepositoryDefinitions.this.validate(edit,available);}
             public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit){return RepositoryDefinitions.this.apply(edit,available);}
+            public CompletionStage<Outcome<NpcHandle>> resolve(String id){return RepositoryDefinitions.this.resolve(id,available);}
+            public CompletionStage<Outcome<Page>> list(Optional<String> group,int page){return RepositoryDefinitions.this.list(group,page,available);}
         };
     }
     private static <T> Outcome<T> unavailable(){return Outcome.rejected(Outcome.Status.UNAVAILABLE,"definition-access-unavailable","Definition service or module scope is unavailable");}

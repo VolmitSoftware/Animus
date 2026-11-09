@@ -5,7 +5,8 @@
     {"name": "town-unbound", "folder": "town/Denizen"},
     {"name": "minimal", "folder": "minimal/Denizen"},
     {"name": "sentinel", "folder": "sentinel/Denizen"},
-    {"name": "events", "folder": "events/Denizen", "citizens": "events/saves.yml"}
+    {"name": "events", "folder": "events/Denizen", "citizens": "events/saves.yml"},
+    {"name": "guards", "folder": "guards/Denizen", "citizens": "guards/saves.yml"}
   ],
   "invalid": "invalid"
 }

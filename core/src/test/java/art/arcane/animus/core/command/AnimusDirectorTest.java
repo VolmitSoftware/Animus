@@ -24,7 +24,7 @@ class AnimusDirectorTest {
         final Set<String> nodes;
         final Optional<UUID> player;
         Actor(boolean player, String... nodes) { this.player = player ? Optional.of(UUID.randomUUID()) : Optional.empty(); this.nodes = Set.of(nodes); }
-        @Override public boolean permitted(String node) { return nodes.contains(node); }
+        @Override public boolean permitted(String node) { return PermissionNodes.granted(nodes::contains, node); }
         @Override public void tell(String message) { lines.add(RichText.plain(art.arcane.animus.core.text.Palette.reply(message))); }
         @Override public void plain(String line) { lines.add(RichText.plain(line)); }
         @Override public Optional<UUID> player() { return player; }
@@ -54,6 +54,15 @@ class AnimusDirectorTest {
         @Director(hidden = true) @AnimusPermission("") void secret(@Param(name = "token") String token) { calls.add("secret " + token); }
 
         @Director @AnimusPermission("probe.open") void open() { calls.add("open"); }
+
+        @Director @Positional({"setting", "value"})
+        void health(@Param(name = "npc") String npc, @Param(name = "setting", defaultValue = "") String setting, @Param(name = "value", defaultValue = "") String value) {
+            calls.add("health " + npc + " [" + setting + "] [" + value + "]");
+        }
+
+        @Director @Positional("page") void list(@Param(name = "page", defaultValue = "1") int page, @Param(name = "loud", defaultValue = "false") boolean loud) {
+            calls.add("list " + page + " " + loud);
+        }
     }
 
     @Director(name = "group")
@@ -81,7 +90,8 @@ class AnimusDirectorTest {
     @Test void strayWordsAndUnknownKeysFailWithTheUsageLine() {
         Actor admin = new Actor(false, AnimusDirector.ADMIN);
         run(admin, "spawn", "guard", "3.5");
-        assertTrue(admin.text().contains("Unexpected \"3.5\"; optional values are key=value"), admin.text());
+        assertTrue(admin.text().contains("Unexpected \"3.5\"; write speed=3.5"), admin.text());
+        assertFalse(admin.text().contains("page=2"), "the refusal names this command's own key: " + admin.text());
         assertTrue(admin.text().contains("Usage: /probe spawn <npc> [speed=2.0] [loud=false]"), admin.text());
         admin.lines.clear();
         run(admin, "spawn", "guard", "colour=red");
@@ -94,6 +104,38 @@ class AnimusDirectorTest {
         run(admin, "group", "run", "1", "two");
         assertTrue(admin.text().contains("Cannot convert \"two\""), admin.text());
         assertTrue(probe.calls.isEmpty(), "no refused command ran: " + probe.calls);
+    }
+
+    @Test void bareWordsFillTheOptionalValuesACommandNamesInOrder() {
+        Actor admin = new Actor(false, AnimusDirector.ADMIN);
+        run(admin, "health", "guard");
+        run(admin, "health", "guard", "killable");
+        run(admin, "health", "guard", "killable", "on");
+        run(admin, "health", "guard", "setting=maximum", "20");
+        run(admin, "health", "guard", "value=off", "regenerate");
+        run(admin, "list", "2");
+        run(admin, "list", "loud=true", "3");
+        assertEquals(List.of("health guard [] []", "health guard [killable] []", "health guard [killable] [on]", "health guard [maximum] [20]",
+                "health guard [regenerate] [off]", "list 2 false", "list 3 true"), probe.calls);
+        run(admin, "health", "guard", "killable", "on", "extra");
+        assertTrue(admin.text().contains("Unexpected \"extra\"; /probe health takes no more values"), admin.text());
+        admin.lines.clear();
+        run(admin, "list", "2", "true");
+        assertTrue(admin.text().contains("Unexpected \"true\"; write loud=true"), "an optional value outside the list still needs its key: " + admin.text());
+        assertEquals(7, probe.calls.size(), "no refused command ran");
+    }
+
+    @Test void completionOffersTheNextBareOptionalValue() {
+        AnimusDirector named = new AnimusDirector(probe, (String parameter, CommandActor actor, java.util.Map<String, String> given) -> switch (parameter) {
+            case "npc" -> List.of("guard");
+            case "setting" -> List.of("killable", "maximum");
+            case "value" -> given.containsKey("setting") ? List.of("value-for-" + given.get("setting")) : List.of("reset");
+            default -> List.of();
+        });
+        Actor admin = new Actor(false, AnimusDirector.ADMIN);
+        assertEquals(List.of("killable", "maximum", "setting=", "value="), named.complete(admin, new String[]{"health", "guard", ""}));
+        assertEquals(List.of("value-for-killable", "value="), named.complete(admin, new String[]{"health", "guard", "killable", ""}));
+        assertEquals(List.of("value=value-for-maximum"), named.complete(admin, new String[]{"health", "guard", "setting=maximum", "value="}));
     }
 
     @Test void quotedValuesAndJsonObjectsArriveWhole() {
@@ -121,7 +163,7 @@ class AnimusDirectorTest {
 
     @Test void completionOffersBareValuesOnlyForTheNextRequiredParameter() {
         Actor admin = new Actor(false, AnimusDirector.ADMIN);
-        assertEquals(List.of("create", "edit", "group", "spawn"), director.complete(admin, new String[]{""}), "open needs its own node");
+        assertEquals(List.of("create", "edit", "group", "health", "list", "spawn"), director.complete(admin, new String[]{""}), "open needs its own node");
         assertEquals(List.of("guard", "smith", "speed=", "loud="), director.complete(admin, new String[]{"spawn", ""}));
         assertEquals(List.of("speed=", "loud="), director.complete(admin, new String[]{"spawn", "guard", ""}), "no bare values once the required ones are given");
         assertEquals(List.of("loud=true", "loud=false"), director.complete(admin, new String[]{"spawn", "guard", "loud="}));
@@ -183,6 +225,25 @@ class AnimusDirectorTest {
         real.execute(admin, new String[]{"npc"});
         assertEquals("/animus npc", admin.pages.getLast().group().path(), "a group name still shows its help");
         assertTrue(admin.lines.isEmpty(), admin.text());
+    }
+
+    @Test void groupsAnswerToTheOtherNumberToo() {
+        AnimusDirector real = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
+        java.util.Map<String, String> spelled = java.util.Map.of("shops", "shop", "guis", "gui", "builds", "build", "records", "record", "behavior", "behaviors",
+                "module", "modules", "rig", "rigs", "group", "groups", "tool", "tools", "imports", "import");
+        spelled.forEach((String typed, String group) -> {
+            Actor admin = new Actor(true, AnimusDirector.ADMIN);
+            real.execute(admin, new String[]{typed});
+            assertEquals("/animus " + group, admin.pages.getLast().group().path(), typed);
+        });
+        Actor admin = new Actor(true, AnimusDirector.ADMIN);
+        real.execute(admin, new String[]{"import"});
+        assertEquals(List.of("apply", "citizens", "denizen", "gloss", "plan", "preview", "shops", "stage"), admin.entries(), "every import lives under /animus import");
+        real.execute(admin, new String[]{"shop"});
+        assertFalse(admin.entries().contains("import"));
+        real.execute(admin, new String[]{"gui"});
+        assertFalse(admin.entries().contains("import"));
+        assertTrue(admin.entries().contains("export"));
     }
 
     @Test void completionOffersNothingAfterAnUnknownWord() {

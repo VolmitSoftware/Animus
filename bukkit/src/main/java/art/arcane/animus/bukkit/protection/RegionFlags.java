@@ -13,7 +13,7 @@ import org.bukkit.plugin.Plugin;
  * A world is a UUID string or a world name.
  */
 public interface RegionFlags {
-    enum Flag { PVP, INVINCIBLE, DAMAGE_ANIMALS, MOB_DAMAGE, BUILD, BLOCK_PLACE, BLOCK_BREAK, CHEST_ACCESS, USE }
+    enum Flag { PVP, INVINCIBLE, DAMAGE_ANIMALS, MOB_DAMAGE, BUILD, BLOCK_PLACE, BLOCK_BREAK, CHEST_ACCESS, USE, ENTRY }
     enum State { ALLOW, DENY, UNSET }
 
     /** Combined state of the flags at the point, for the player with that id while online, otherwise for a non-member. */
@@ -24,6 +24,9 @@ public interface RegionFlags {
      * non-member when {@code player} is null.
      */
     boolean canBuild(WorldPosition at, UUID player, Flag flag);
+
+    /** Whether the online player bypasses WorldGuard's region rules in the point's world. */
+    boolean bypass(WorldPosition at, UUID player);
 
     /** Whether the point is inside the named region of its world; empty when that world has no such region. */
     Optional<Boolean> inRegion(String region, WorldPosition at);
@@ -55,6 +58,7 @@ public interface RegionFlags {
         RegionFlags refused = new RegionFlags() {
             @Override public State state(WorldPosition at, UUID player, Flag... flags) { throw new IllegalStateException(reason); }
             @Override public boolean canBuild(WorldPosition at, UUID player, Flag flag) { throw new IllegalStateException(reason); }
+            @Override public boolean bypass(WorldPosition at, UUID player) { throw new IllegalStateException(reason); }
             @Override public Optional<Boolean> inRegion(String region, WorldPosition at) { throw new IllegalStateException(reason); }
         };
         return new Binding(refused, Optional.of(reason));

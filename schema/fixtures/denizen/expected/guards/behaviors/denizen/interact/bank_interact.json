@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:interact/bank_interact",
+  "entry": "s0-click",
+  "routines": {
+    "s0-click": {
+      "type": "return"
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "routine": "s0-click"
+    }
+  ]
+}

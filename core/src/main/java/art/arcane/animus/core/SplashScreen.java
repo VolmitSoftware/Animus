@@ -65,17 +65,40 @@ public final class SplashScreen {
         }
     }
 
+    /**
+     * How the start went: {@code READY}, {@code DEGRADED} naming each subsystem that failed, or {@code FAILED} when the
+     * plugin did not start at all.
+     */
+    public record Startup(boolean started, List<String> failed) {
+        public static final Startup READY = new Startup(true, List.of());
+        public static final Startup FAILED = new Startup(false, List.of());
+
+        public Startup { failed = List.copyOf(failed); }
+
+        /** Started, with the subsystems that did not come up. */
+        public static Startup degraded(List<String> failed) { return new Startup(true, failed); }
+
+        public boolean ready() { return started && failed.isEmpty(); }
+
+        /** {@code READY}, {@code DEGRADED (behaviors, editor)} or {@code FAILED (the error is above)}. */
+        public String label() {
+            if (!started) return "FAILED (the error is above)";
+            return failed.isEmpty() ? "READY" : "DEGRADED (" + String.join(", ", failed) + ")";
+        }
+    }
+
     /** @param server server software and version, such as {@code Paper 26.3-12-abc1234} */
-    public record Details(String version, String server, boolean ready, int javaMajor, String date) {
+    public record Details(String version, String server, Startup startup, int javaMajor, String date) {
         public Details {
             Objects.requireNonNull(version, "version");
             Objects.requireNonNull(server, "server");
+            Objects.requireNonNull(startup, "startup");
             Objects.requireNonNull(date, "date");
         }
 
         /** This build's version, Java and today's date. */
-        public static Details current(String server, boolean ready) {
-            return new Details(BuildIdentity.VERSION, server, ready, SplashScreenSupport.javaMajorVersion(), SplashScreenSupport.startupDate());
+        public static Details current(String server, Startup startup) {
+            return new Details(BuildIdentity.VERSION, server, startup, SplashScreenSupport.javaMajorVersion(), SplashScreenSupport.startupDate());
         }
     }
 
@@ -91,7 +114,7 @@ public final class SplashScreen {
     public static List<String> lines(Details details, Colors colors) {
         String meta = colors.paint(META);
         String accent = colors.paint(ACCENT);
-        String status = colors.paint(details.ready() ? READY : DEGRADED) + (details.ready() ? "READY" : "DEGRADED");
+        String status = colors.paint(details.startup().ready() ? READY : DEGRADED) + colors.text(details.startup().label());
         List<String> column = List.of("",
                 accent + "   Animus, " + meta + TAGLINE + " " + colors.paint(TRAIN) + "[" + colors.text(SplashScreenSupport.releaseTrain(details.version())) + " RELEASE]",
                 meta + "   Version: " + accent + colors.text(details.version()),

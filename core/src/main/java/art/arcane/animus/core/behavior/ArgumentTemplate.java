@@ -18,6 +18,22 @@ public final class ArgumentTemplate {
      * spaces, so a value is one command word; no slash, quote, bracket, selector or control character.
      */
     public static final java.util.regex.Pattern SAFE_TEXT=java.util.regex.Pattern.compile("[\\p{L}\\p{N}_.:+-]*");
+    /**
+     * A player name that may be written into a console command: one word without quotes, brackets or selectors. Offline-mode
+     * servers accept names such as {@code @a}; Bedrock prefixes such as {@code .} and {@code *} pass.
+     */
+    public static boolean commandSafeName(String name){return name!=null&&name.matches("[\\p{L}\\p{N}_.*-]{1,32}");}
+    /**
+     * How interpolated text is written. {@code SAFE}: privileged capabilities, where it must match {@link #SAFE_TEXT}.
+     * {@code PLAIN}: text shown to players, where {@code %} becomes {@link art.arcane.animus.core.text.Placeholders#escape full width}
+     * so a player's words cannot carry a placeholder. {@code RAW}: as it is.
+     */
+    public enum Holes { RAW, SAFE, PLAIN;
+        String apply(String text,String field){
+            if(this==SAFE)requireSafe(text,field);
+            return this==PLAIN?art.arcane.animus.core.text.Placeholders.escape(text):text;
+        }
+    }
     public static final class Invalid extends IllegalArgumentException {
         private final String field;
         Invalid(String field,String message){super(message);this.field=field;}
@@ -111,9 +127,9 @@ public final class ArgumentTemplate {
      * Bounded valid UTF-8 object JSON suitable for schema validation before module admission. Expression failures throw
      * {@link BehaviorExpression.Failed}; a result outside the value bounds fails with code behavior-expression-type.
      */
-    public String resolve(Map<String,Value> variables,BehaviorExpression.Environment environment){return resolve(variables,environment,false);}
-    /** With {@code strict}, every interpolated string must match {@link #SAFE_TEXT}, or this fails with {@link Invalid}. */
-    public String resolve(Map<String,Value> variables,BehaviorExpression.Environment environment,boolean strict){
+    public String resolve(Map<String,Value> variables,BehaviorExpression.Environment environment){return resolve(variables,environment,Holes.RAW);}
+    /** Interpolated strings follow {@code holes}; under {@link Holes#SAFE} one outside {@link #SAFE_TEXT} fails with {@link Invalid}. */
+    public String resolve(Map<String,Value> variables,BehaviorExpression.Environment environment,Holes holes){
         Output output=new Output(field);
         for(Part part:parts){
             switch(part){
@@ -121,19 +137,17 @@ public final class ArgumentTemplate {
                 case Bound slot->{
                     Value value=variables.get(slot.variable());
                     if(value==null||slot.type()!=Type.ANY&&value.type()!=slot.type())throw new Invalid(slot.field(),"missing or mismatched runtime variable type");
-                    if(strict&&value.type()==Type.STRING)requireSafe((String)value.value(),slot.field());
-                    write(output,value);
+                    write(output,value,holes,slot.field());
                 }
                 case Computed slot->{
                     if(environment==null)throw new Invalid(slot.field(),"expressions need an execution");
                     Object result=slot.expression().evaluate(environment);Value value;
                     try{value=BehaviorValues.natural(result);}catch(IllegalArgumentException invalid){throw new BehaviorExpression.Failed("behavior-expression-type",slot.field(),"the result exceeds the value bounds");}
-                    if(strict&&value.type()==Type.STRING)requireSafe((String)value.value(),slot.field());
-                    write(output,value);
+                    write(output,value,holes,slot.field());
                 }
                 case Text slot->{
                     if(environment==null)throw new Invalid(slot.field(),"templates need an execution");
-                    String text=slot.template().evaluate(environment,strict);
+                    String text=slot.template().evaluate(environment,holes);
                     try{new Value(Type.STRING,text);}catch(IllegalArgumentException invalid){throw new BehaviorExpression.Failed("behavior-expression-type",slot.field(),"the text exceeds "+BehaviorValues.MAX_STRING_BYTES+" UTF-8 bytes");}
                     output.string(text);
                 }
@@ -144,11 +158,12 @@ public final class ArgumentTemplate {
     static void requireSafe(String text,String field){
         if(!SAFE_TEXT.matcher(text).matches())throw new Invalid(field,"interpolated text for a privileged capability may hold only letters, digits and _ . : + -; list the behavior in [behaviors.actions] rawTextBehaviors to allow more");
     }
-    private static void write(Output output,Value value){
+    private static void write(Output output,Value value,Holes holes,String field){
         switch(value.type()){
             case BOOLEAN,INTEGER,DECIMAL->output.raw(value.value().toString());
-            case STRING->output.string((String)value.value());
-            case LIST,MAP->output.raw(BehaviorValues.canonical(value));
+            case STRING->output.string(holes.apply((String)value.value(),field));
+            // A list or map is never safe text, and a percent sign means nothing to JSON, so the canonical form can be escaped whole.
+            case LIST,MAP->output.raw(holes==Holes.PLAIN?art.arcane.animus.core.text.Placeholders.escape(BehaviorValues.canonical(value)):BehaviorValues.canonical(value));
             case ANY->throw new IllegalStateException("Runtime values have concrete types");
         }
     }

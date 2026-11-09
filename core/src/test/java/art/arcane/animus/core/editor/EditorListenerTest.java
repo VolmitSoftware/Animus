@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -386,6 +387,39 @@ class EditorListenerTest {
                 assertTrue(System.nanoTime() - started < TimeUnit.SECONDS.toNanos(9), "within the head deadline");
             }
         }
+    }
+
+    @Test
+    void http_slowOpenBodyIsCutOff() throws Exception {
+        EditorSettings settings = settings(0, "", "");
+        try (EditorHarness harness = new EditorHarness(directory, settings);
+             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+            listener.start();
+            try (Socket client = new Socket("127.0.0.1", listener.port())) {
+                client.setSoTimeout(20_000);
+                OutputStream output = client.getOutputStream();
+                output.write(("POST /animus/v1/pair HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 4096\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+                long started = System.nanoTime();
+                boolean closed = false;
+                try {
+                    for (int index = 0; index < 60 && !closed; index++) {
+                        output.write(' ');
+                        output.flush();
+                        Thread.sleep(250);
+                    }
+                } catch (IOException reset) { closed = true; }
+                if (!closed) closed = client.getInputStream().read() < 0;
+                assertTrue(closed, "a body that trickles in without a token is dropped");
+                assertTrue(System.nanoTime() - started < TimeUnit.SECONDS.toNanos(9), "within the open body deadline");
+            }
+        }
+    }
+
+    @Test
+    void addresses_ipv6CountsByItsSlash64() throws Exception {
+        assertEquals(EditorListener.addressKey(java.net.InetAddress.getByName("2001:db8:1:2::1")), EditorListener.addressKey(java.net.InetAddress.getByName("2001:db8:1:2:ffff::9")));
+        assertNotEquals(EditorListener.addressKey(java.net.InetAddress.getByName("2001:db8:1:2::1")), EditorListener.addressKey(java.net.InetAddress.getByName("2001:db8:1:3::1")));
+        assertEquals("203.0.113.9", EditorListener.addressKey(java.net.InetAddress.getByName("203.0.113.9")));
     }
 
     @Test

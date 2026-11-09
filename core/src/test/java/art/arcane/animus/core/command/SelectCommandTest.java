@@ -31,11 +31,14 @@ class SelectCommandTest {
         @Override public void rich(ChatLine line) { rich.add(line); }
     }
 
+    private final List<String> toolkit = new ArrayList<>();
+
     @Test void withoutAnIdThePickedNpcIsSelectedAndGlows() {
         Picking living = new Picking(Optional.of("guard"));
         Player player = new Player();
-        AnimusCommandTree.select(player, living, "");
+        AnimusCommandTree.select(player, living, "", toolkit::add);
         assertEquals(List.of("guard"), living.selected);
+        assertEquals(List.of("guard"), toolkit, "the wand selection becomes the same NPC");
         assertEquals(List.of("guard " + SelectionPick.GLOW_TICKS), living.glowed);
         assertEquals("[Animus]: Selected guard", player.rich.getFirst().toString());
     }
@@ -43,7 +46,7 @@ class SelectCommandTest {
     @Test void aNamedNpcAlsoGlows() {
         Picking living = new Picking(Optional.empty());
         Player player = new Player();
-        AnimusCommandTree.select(player, living, "smith");
+        AnimusCommandTree.select(player, living, "smith", toolkit::add);
         assertEquals(List.of("smith"), living.selected);
         assertEquals(List.of("smith " + SelectionPick.GLOW_TICKS), living.glowed);
     }
@@ -51,15 +54,23 @@ class SelectCommandTest {
     @Test void nothingInRangeIsARefusal() {
         Picking living = new Picking(Optional.empty());
         Player player = new Player();
-        AnimusCommandTree.select(player, living, "");
-        assertTrue(living.selected.isEmpty() && living.glowed.isEmpty());
+        AnimusCommandTree.select(player, living, "", toolkit::add);
+        assertTrue(living.selected.isEmpty() && living.glowed.isEmpty() && toolkit.isEmpty());
         assertEquals("[Animus]: No NPC in view or within 16 blocks.", player.lines.getFirst());
     }
 
     @Test void theSelectionReplyNamesEveryWandPick() {
-        assertEquals("[Animus]: Selected 2 NPCs: baker, mayor", AnimusCommandTree.selection(List.of("baker", "mayor"), Optional.of("mayor")).orElseThrow().toString());
-        assertEquals("[Animus]: Selected mayor", AnimusCommandTree.selection(List.of(), Optional.of("mayor")).orElseThrow().toString());
-        assertEquals("[Animus]: Selected mayor", AnimusCommandTree.selection(List.of("mayor"), Optional.empty()).orElseThrow().toString());
-        assertTrue(AnimusCommandTree.selection(List.of(), Optional.empty()).isEmpty());
+        assertEquals("[Animus]: Selected 2 NPCs: baker, mayor", AnimusCommandTree.selection(List.of("baker", "mayor")).orElseThrow().toString());
+        assertEquals("[Animus]: Selected mayor", AnimusCommandTree.selection(List.of("mayor")).orElseThrow().toString());
+        assertTrue(AnimusCommandTree.selection(List.of()).isEmpty(), "a cleared wand selection shows nothing, not an older pick");
+    }
+
+    @Test void atSelectedIsTheOneSelectedNpcOrARefusal() {
+        Player player = new Player();
+        assertEquals(Optional.of("mayor"), CommandGroup.selected(player, List.of("mayor")));
+        assertEquals(Optional.empty(), CommandGroup.selected(player, List.of()));
+        assertEquals("[Animus]: No NPC selected; /animus select <npc>, or click one with the wand (/animus tools wand)", player.lines.getLast());
+        assertEquals(Optional.empty(), CommandGroup.selected(player, List.of("baker", "mayor", "smith")));
+        assertEquals("[Animus]: 3 NPCs are selected; name one, or /animus select <npc> to keep only it", player.lines.getLast());
     }
 }

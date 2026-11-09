@@ -536,7 +536,12 @@
 
 .animus-diagnostics-block {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
+}
+
+.animus-diagnostics-block > * {
+  min-width: 0;
 }
 
 .animus-fixes {
@@ -544,6 +549,16 @@
   flex-wrap: wrap;
   gap: 0.375rem;
   align-items: center;
+  min-width: 0;
+}
+
+/* A fix names the value it writes; a long one wraps inside its button. */
+#arcane-root .animus-fixes .arcane-button {
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: start;
 }
 
 /* Sync */

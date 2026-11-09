@@ -33,7 +33,7 @@ import java.util.function.Consumer;
 public final class EditorService implements AutoCloseable {
     private final AnimusRuntime runtime;
     private final EditorHost host;
-    private final Consumer<String> log;
+    private final Consumer<String> log, warn;
     private final Clock clock;
     private volatile EditorSettings settings;
     private volatile EditorRelaySettings relaySettings;
@@ -43,7 +43,7 @@ public final class EditorService implements AutoCloseable {
     private ScheduledExecutorService timers;
     private ScheduledFuture<?> frames;
     private String state = "not started", listenerProblem = "";
-    private boolean running;
+    private boolean running, starting;
     private final AtomicReference<PluginSettings> pending = new AtomicReference<>();
     private final ExecutorService restarts = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().name("Animus-editor-settings").factory());
     private final AutoCloseable settingsListener;
@@ -57,6 +57,7 @@ public final class EditorService implements AutoCloseable {
         this.runtime = Objects.requireNonNull(runtime);
         this.host = Objects.requireNonNull(host);
         this.log = Objects.requireNonNull(log);
+        this.warn = Objects.requireNonNull(warn);
         this.clock = Objects.requireNonNull(clock);
         taskFailures = new EditorTaskFailures(warn, clock, TASK_FAILURE_REPEAT);
         settingsListener = runtime.onSettings(this::hotloaded);
@@ -66,7 +67,9 @@ public final class EditorService implements AutoCloseable {
     public synchronized void start() throws IOException {
         if (api != null) throw new IllegalStateException("The editor service is already running");
         running = true;
-        open(runtime.editorSettings(), runtime.editorRelaySettings());
+        starting = true;
+        try { open(runtime.editorSettings(), runtime.editorRelaySettings()); }
+        finally { starting = false; }
     }
 
     private void open(EditorSettings editor, EditorRelaySettings relayNow) throws IOException {
@@ -119,12 +122,20 @@ public final class EditorService implements AutoCloseable {
         return timers.scheduleAtFixedRate(guard(events::tick), frameMillis, frameMillis, TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * Connects the relay client once someone paired, or is pairing, so a server nobody paired never dials out. The first
+     * {@code /animus editor pair} connects it; after that every start does while a token or a pairing exists.
+     */
     private void openRelay() {
-        if (!relaySettings.enabled()) return;
+        if (!relaySettings.enabled() || relay != null) return;
+        if (api.parts().tokens().list().isEmpty() && api.parts().tokens().pendingPairings() == 0) return;
         relay = new EditorRelayClient(relaySettings, api.parts().identity(), api);
         relay.start();
         log.accept("Editor relay connecting to " + relaySettings.url() + " as " + api.parts().identity().fingerprint());
     }
+
+    /** True while the relay is on in config.toml but waits for the first pairing before it connects. */
+    private boolean relayWaiting() { return relaySettings.enabled() && relay == null; }
 
     private void closeRelay() {
         if (relay != null) relay.close();
@@ -142,9 +153,14 @@ public final class EditorService implements AutoCloseable {
             log.accept("Editor " + started.describe());
         } catch (IOException | RuntimeException failure) {
             started.close();
-            listenerProblem = failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
+            String reason = failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
+            listenerProblem = failure instanceof java.net.BindException
+                    ? "cannot bind " + settings.listenAddress() + ":" + settings.port() + " (" + reason + "); set [editor] port to a free port or listenerEnabled = false"
+                    + (relaySettings.enabled() ? ". The relay still works" : "")
+                    : reason;
             state = "ready";
-            log.accept("Editor listener could not start: " + listenerProblem);
+            // At start the platform reports problem() once; a hotload has nobody else to say it.
+            if (!starting) warn.accept("Editor listener failed: " + listenerProblem);
         }
     }
 
@@ -207,9 +223,10 @@ public final class EditorService implements AutoCloseable {
             frames = scheduleFrames(api.parts().events(), editor.eventFramesPerSecond());
         }
         if (!currentRelay.equals(relayNow)) {
+            boolean wasConnected = relay != null;
             relay = null;
             openRelay();
-            if (!relayNow.enabled()) log.accept("Editor relay stopped by config.toml");
+            if (!relayNow.enabled() && wasConnected) log.accept("Editor relay stopped by config.toml");
         }
         if (EditorListener.rebind(current, editor) || listener == null && editor.listenerEnabled()) {
             closeListener();
@@ -245,6 +262,7 @@ public final class EditorService implements AutoCloseable {
         EditorTokens.Pairing pairing;
         try { pairing = active.parts().tokens().pair(grant); }
         catch (IllegalStateException full) { throw new IOException(full.getMessage()); }
+        synchronized (this) { if (running && api == active) openRelay(); }
         PairingCode code;
         try {
             code = new PairingCode(direct, relay, active.parts().identity().fingerprint(), active.parts().identity().serverKey(), pairing.tokenId(), pairing.secret(),
@@ -291,7 +309,8 @@ public final class EditorService implements AutoCloseable {
     public synchronized List<String> status() {
         if (api == null) return List.of("Editor " + state);
         EditorApi.Parts parts = api.parts();
-        String relayed = relay == null ? "relay off" : "relay " + relaySettings.url() + (relay.isRegistered() ? " registered" : " connecting");
+        String relayed = relay != null ? "relay " + relaySettings.url() + (relay.isRegistered() ? " registered" : " connecting")
+                : relayWaiting() ? "relay waits for the first pairing" : "relay off";
         String summary = "Editor " + state + " | " + (listener == null ? "listener off" : listener.describe()) + " | " + relayed + " | " + counts(parts)
                 + " | " + parts.events().open() + " streams | " + parts.previews().count() + " previews";
         String problem = problem();
@@ -303,7 +322,7 @@ public final class EditorService implements AutoCloseable {
         if (api == null) return "Editor " + state;
         String problem = problem();
         return "Editor " + state + " | " + (listener == null ? "listener off" : "listener :" + listener.port())
-                + " | relay " + (relay == null ? "off" : relay.isRegistered() ? "registered" : "connecting") + " | " + counts(api.parts())
+                + " | relay " + (relay != null ? relay.isRegistered() ? "registered" : "connecting" : relayWaiting() ? "waits for pairing" : "off") + " | " + counts(api.parts())
                 + (problem.isEmpty() ? "" : " | " + problem);
     }
 
@@ -316,15 +335,19 @@ public final class EditorService implements AutoCloseable {
     public synchronized String reach() {
         if (api == null) return "off";
         String port = listener == null ? "" : ":" + listener.port();
-        if (relay == null) return port.isEmpty() ? "unreachable" : port;
-        return port.isEmpty() ? "relay" : port + " + relay";
+        if (relay == null && !relayWaiting()) return port.isEmpty() ? "unreachable" : port;
+        String relayed = relay == null ? "relay after pairing" : "relay";
+        return port.isEmpty() ? relayed : port + " + " + relayed;
     }
+
+    /** The listener is on in config.toml but could not start. */
+    public synchronized boolean listenerFailed() { return api != null && listener == null && settings.listenerEnabled(); }
 
     /** What keeps the editor from working fully, or empty. */
     public synchronized String problem() {
         if (api == null) return "";
         if (listener == null && settings.listenerEnabled()) return "listener failed" + (listenerProblem.isEmpty() ? "" : ": " + listenerProblem);
-        if (listener == null && relay == null) return "no listener or relay; turn one on in [editor] " + DocsLink.CONNECTING.url();
+        if (listener == null && !relaySettings.enabled()) return "no listener or relay; turn one on in [editor] " + DocsLink.CONNECTING.url();
         return host.previews().isEmpty() ? "previews unavailable: " + host.previewsUnavailable() : "";
     }
 

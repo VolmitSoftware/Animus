@@ -18,6 +18,8 @@ tasks.named('shadowJar').configure {
     if (animus.projectGroup != 'art.arcane.animus') {
         relocate('art.arcane.animus', animus.projectGroup) {
             exclude('art.arcane.animus.api.**')
+            exclude('art.arcane.animus.bukkit.api.**')
+            exclude('art.arcane.animus.bukkit.event.**')
         }
     }
     relocate('art.arcane.volmlib', "${animus.projectGroup}.internal.volmlib")

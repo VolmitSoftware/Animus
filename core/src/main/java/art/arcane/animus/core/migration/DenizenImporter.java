@@ -55,6 +55,8 @@ public final class DenizenImporter {
         }
         public int flagsPreserved() { return report.getAsJsonObject("flags").get("preserved").getAsInt(); }
         public int preserved() { return report.getAsJsonArray("preserved").size(); }
+        /** Behaviors with a guard or stop that did not convert; accepting the review leaves them unbound and off. */
+        public int held() { return report.has("heldBehaviors") && report.get("heldBehaviors").isJsonObject() ? report.getAsJsonObject("heldBehaviors").size() : 0; }
     }
 
     public record Applied(String transaction, int behaviors, int states, int bound, List<String> problems) {
@@ -178,7 +180,7 @@ public final class DenizenImporter {
                 if (before != null) throw new IOException("Behavior collision: " + target + " already exists with other content");
             } else {
                 states++;
-                if (before != null) throw new IOException("Behavior state already stored at " + relative + "; purge the denizen flags and quests first with /animus behaviors state purge");
+                if (before != null) throw new IOException(stateConflict(relative));
             }
             changes.add(new DocumentStore.Change(target, "missing", content));
         }
@@ -215,6 +217,16 @@ public final class DenizenImporter {
         receipt.addProperty("transaction", transaction);
         changes.add(new DocumentStore.Change(receiptPath, "missing", JsonDocuments.write(receipt)));
         return new Applied(DefinitionBatch.commit(store, transaction, edited, expected, changes), behaviors, states, edited.size(), problems);
+    }
+
+    /** The commands that delete the {@code denizen} flags and quests an apply would otherwise overwrite. */
+    public static List<String> stateDeleteCommands() {
+        return List.of("/animus behaviors state delete behavior animus:flags/denizen", "/animus behaviors state delete behavior animus:quests/denizen");
+    }
+
+    /** Why an apply stops at state already stored for a subject, and the commands that clear it. */
+    public static String stateConflict(String relative) {
+        return "Behavior state already stored at " + relative + "; delete the denizen flags and quests first with " + String.join(" and ", stateDeleteCommands());
     }
 
     /** The report's server behaviors, which accepting the denizen review enables; empty for reports without the field. */

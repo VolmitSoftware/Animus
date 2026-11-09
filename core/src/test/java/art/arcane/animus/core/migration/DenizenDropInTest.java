@@ -31,8 +31,10 @@ class DenizenDropInTest {
         return new CitizensDropIn(store, npcs, new CitizensDropIn.Host(Optional.of(root.resolve("plugins")), () -> false, () -> false, denizen::get));
     }
 
-    private void leaveServerFolders() throws IOException {
-        Path fixtures = SharedFixtures.fixture("denizen/town");
+    private void leaveServerFolders() throws IOException { leaveServerFolders("town"); }
+
+    private void leaveServerFolders(String fixture) throws IOException {
+        Path fixtures = SharedFixtures.fixture("denizen/" + fixture);
         Files.createDirectories(root.resolve("plugins/Citizens"));
         Files.copy(fixtures.resolve("saves.yml"), root.resolve("plugins/Citizens/saves.yml"));
         Path source = fixtures.resolve("Denizen");
@@ -221,5 +223,46 @@ class DenizenDropInTest {
             assertNull(store.read("behaviors/denizen/interact/guard_quest.json"));
             assertFalse(npcs.all().isEmpty(), "the Citizens import stays applied");
         }
+    }
+
+    @Test void heldBehaviorsAreListedAndReleasedOnlyWhenConfirmed() throws Exception {
+        leaveServerFolders("guards");
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            CitizensDropIn flow = dropIn(store, npcs);
+            assertThrows(IOException.class, () -> flow.heldDenizen(), "nothing is held before an apply");
+            flow.preview("reject", Optional.empty(), Map.of(), false);
+            flow.applyStaged();
+            flow.acceptCategories(List.of("denizen"));
+            String held = joined(flow.heldDenizen());
+            assertTrue(held.contains("denizen:interact/bank_interact") && held.contains("guards.dsc:16 tag player.money has no Animus expression"), held);
+            assertTrue(held.contains("denizen:world/lobby_world"), held);
+            assertTrue(flow.denizenRunsCommands("denizen:interact/greeter_interact"));
+            assertFalse(flow.denizenRunsCommands("denizen:interact/bank_interact"), "its command line never runs, so it is not a command behavior");
+
+            String unconfirmed = joined(flow.releaseDenizen("denizen:interact/bank_interact", false));
+            assertTrue(unconfirmed.contains("/animus import denizen release denizen:interact/bank_interact confirm"), unconfirmed);
+            assertTrue(banker(npcs).behaviors().isEmpty(), "nothing changes before confirm");
+
+            String released = joined(flow.releaseDenizen("denizen:interact/bank_interact", true));
+            assertTrue(released.contains("Released denizen:interact/bank_interact on 1 NPCs; tx "), released);
+            assertEquals(List.of("denizen:interact/bank_interact"), banker(npcs).behaviors());
+            assertTrue(joined(flow.releaseDenizen("denizen:interact/bank_interact", true)).contains("already released"));
+            assertTrue(joined(flow.heldDenizen()).contains("denizen:interact/bank_interact (released)"));
+
+            flow.releaseDenizen("denizen:world/lobby_world", true);
+            assertTrue(store.read("server-behaviors.json").contains("denizen:world/lobby_world"));
+            IOException unknown = assertThrows(IOException.class, () -> flow.releaseDenizen("denizen:task/vip_check", true));
+            assertTrue(unknown.getMessage().contains("/animus import denizen held"), unknown.getMessage());
+
+            flow.rollbackApplied();
+            assertTrue(npcs.all().isEmpty());
+            String servers = store.read("server-behaviors.json");
+            assertTrue(servers == null || !servers.contains("denizen:world/lobby_world"), "rollback undoes every release");
+        }
+    }
+
+    private static NpcDefinition banker(NpcRepository npcs) {
+        return npcs.all().stream().filter((NpcDefinition npc) -> npc.id().equals("citizens-3")).findFirst().orElseThrow();
     }
 }

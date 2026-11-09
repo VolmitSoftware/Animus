@@ -30,12 +30,14 @@ public final class HotloadValidation {
      * @param kind the catalog the change reloads, empty for config and schematics
      * @param removedBehavior a behavior whose source file was deleted on purpose
      * @param npc the parsed NPC, which still needs its activation check on the server
+     * @param warnings what was accepted but ignored, such as an unknown config.toml key
      */
     public record Verdict(Optional<String> error, Optional<DocumentKind> kind, Optional<String> removedBehavior,
-                          Optional<PluginSettings> settings, Optional<NpcDefinition> npc) {
-        static Verdict refused(String error) { return new Verdict(Optional.of(error), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()); }
-        static Verdict reload(DocumentKind kind) { return new Verdict(Optional.empty(), Optional.of(kind), Optional.empty(), Optional.empty(), Optional.empty()); }
-        static final Verdict ACCEPTED = new Verdict(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+                          Optional<PluginSettings> settings, Optional<NpcDefinition> npc, List<String> warnings) {
+        public Verdict { warnings = List.copyOf(warnings); }
+        static Verdict refused(String error) { return new Verdict(Optional.of(error), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), List.of()); }
+        static Verdict reload(DocumentKind kind) { return new Verdict(Optional.empty(), Optional.of(kind), Optional.empty(), Optional.empty(), Optional.empty(), List.of()); }
+        static final Verdict ACCEPTED = new Verdict(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), List.of());
         public boolean valid() { return error.isEmpty(); }
     }
 
@@ -59,10 +61,12 @@ public final class HotloadValidation {
     private static Verdict config(HotloadEngine.Snapshot snapshot) {
         if (snapshot.deleted()) return Verdict.ACCEPTED;
         try {
-            PluginSettings settings = PluginSettings.parse(snapshot.content(), Path.of(HotloadTargets.CONFIG));
-            return new Verdict(Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(settings), Optional.empty());
+            List<String> warnings = new ArrayList<>();
+            PluginSettings settings = PluginSettings.parse(snapshot.content(), Path.of(HotloadTargets.CONFIG), warnings::add);
+            return new Verdict(Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(settings), Optional.empty(), warnings);
         } catch (IOException | RuntimeException invalid) {
-            return Verdict.refused(strip(String.valueOf(invalid.getMessage()), HotloadTargets.CONFIG + ": "));
+            String message = String.valueOf(invalid.getMessage());
+            return Verdict.refused(message.startsWith(HotloadTargets.CONFIG + " ") ? message.substring(HotloadTargets.CONFIG.length() + 1) : strip(message, HotloadTargets.CONFIG + ": "));
         }
     }
 
@@ -85,7 +89,7 @@ public final class HotloadValidation {
                 try { removed = Optional.of(BehaviorPath.idFor(path)); }
                 catch (IllegalArgumentException notBehavior) { /* Not a behavior source, so nothing was published from it. */ }
             }
-            return new Verdict(Optional.empty(), Optional.of(kind), removed, Optional.empty(), Optional.empty());
+            return new Verdict(Optional.empty(), Optional.of(kind), removed, Optional.empty(), Optional.empty(), List.of());
         }
         JsonObject source;
         try { source = JsonDocuments.object(snapshot.content()); }
@@ -105,7 +109,7 @@ public final class HotloadValidation {
         if (!errors.isEmpty()) return Verdict.refused(errors.getFirst() + (errors.size() > 1 ? " (and " + (errors.size() - 1) + " more)" : ""));
         if (kind != DocumentKind.NPC) return Verdict.reload(kind);
         try {
-            return new Verdict(Optional.empty(), Optional.of(kind), Optional.empty(), Optional.empty(), Optional.of(NpcDefinition.read(path, snapshot.content())));
+            return new Verdict(Optional.empty(), Optional.of(kind), Optional.empty(), Optional.empty(), Optional.of(NpcDefinition.read(path, snapshot.content())), List.of());
         } catch (IOException invalid) { return Verdict.refused(String.valueOf(invalid.getMessage())); }
     }
 

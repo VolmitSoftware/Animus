@@ -125,7 +125,7 @@ class DefinitionRecoveryTest {
         try (AnimusRuntime runtime = runtime()) {
             runtime.start();
             assertTrue(runtime.npcs().find("guard").isEmpty(), "a tampered recovery copy is never activated");
-            assertTrue(runtime.npcs().diagnostics().getFirst().contains("hash changed"), runtime.npcs().diagnostics().toString());
+            assertTrue(runtime.npcs().diagnostics().getFirst().contains("stored copy state/objects/"), runtime.npcs().diagnostics().toString());
         }
         assertEquals("{broken", Files.readString(root.resolve(PATH)));
     }

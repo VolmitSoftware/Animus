@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.FakeNpcRuntime;
 import art.arcane.animus.core.gui.GuiBinding;
 import art.arcane.animus.core.gui.GuiModel.Click;
@@ -61,7 +62,7 @@ class ToolkitShopScreensTest {
                 new DocumentStore.Change("gui/text-animations/town/blink.json", "missing", "{\"schemaVersion\":1,\"frames\":[\"a\",\"b\"]}")));
         npcs = new NpcRepository(store);
         assertTrue(npcs.reload().isEmpty());
-        alex.permissions.add(Toolkit.ADMIN);
+        alex.permissions.add(PermissionNodes.ADMIN);
         alex.pose = new ScreenHost.Pose(Set.of("world"), 0, 64, 0, 65.62, 0, 0, false);
         alex.wand = true;
         FakeNpcRuntime<Player> living = new FakeNpcRuntime<>((UUID id) -> id.equals(alex.id) ? Optional.of(alex) : Optional.empty()) {
@@ -179,6 +180,17 @@ class ToolkitShopScreensTest {
         assertEquals("animus shop open town:bakery", alex.commands.getLast());
     }
 
+    @Test void anArmedFileButtonSaysWhatItDoesInsteadOfANpcCount() {
+        toolkit.open(alex.id, commands, ShopBindScreen::new);
+        click("town:bakery", Click.SHIFT_LEFT);
+        click(ShopDetailScreen.RESET, Click.LEFT);
+        String reset = lore("Click again to reset stock");
+        assertTrue(reset.startsWith("Clears limits and stock for everyone"), reset);
+        assertFalse(reset.contains("NPCs affected"), reset);
+        click(ShopDetailScreen.DELETE, Click.LEFT);
+        assertTrue(lore("Click again to delete shop file").startsWith("Deletes the shop file; rollback restores it"), lore("Click again to delete shop file"));
+    }
+
     @Test void unbindAndDeleteRefusedWhileBound() throws IOException {
         selectBoth();
         toolkit.open(alex.id, commands, ShopBindScreen::new);
@@ -201,7 +213,7 @@ class ToolkitShopScreensTest {
 
     @Test void aNewShopIsTheSmallestValidDocument() throws IOException {
         toolkit.open(alex.id, commands, ShopBindScreen::new);
-        assertTrue(lore("New shop").contains("add offers") && lore("New shop").contains("web editor"), lore("New shop"));
+        assertTrue(lore("New shop").contains("/animus shop stock adds it"), lore("New shop"));
         click("New shop", Click.LEFT);
         assertEquals("Shop id", alex.prompt.label());
         MockScreenHost.answer(alex, Optional.of("town:smith"));
@@ -210,7 +222,7 @@ class ToolkitShopScreensTest {
         ShopDocument.Result parsed = ShopDocument.parse("town:smith", written);
         assertEquals(List.of(), parsed.problems());
         assertEquals(1, parsed.shop().orElseThrow().pages().size());
-        assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("Created shops/town/smith.json; add offers in the web editor; tx ")), alex.messages.toString());
+        assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("Created shops/town/smith.json; hold an item and /animus shop stock town:smith price=<n> adds it; tx ")), alex.messages.toString());
         assertEquals(List.of("animus shop reload"), host.console);
         assertFalse(alex.commands.contains("animus shop reload"), alex.commands.toString());
         assertTrue(lore("town:smith").contains("Offers 0"), lore("town:smith"));

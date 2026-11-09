@@ -171,7 +171,7 @@ public final class ImportApplications {
     private static Map<String,Existing> active(DocumentStore store,LoadBudget budget) throws IOException {
         Map<String,Existing> definitions=new LinkedHashMap<>();Set<String> ids=new HashSet<>();Set<UUID> uuids=new HashSet<>();
         Path directory=store.resolve("npcs");
-        for(Path path:JsonDocumentTree.files(directory,NpcPaths.TREE_DEPTH)) {
+        for(Path path:JsonDocumentTree.strictFiles(directory,NpcPaths.TREE_DEPTH)) {
             String raw=JsonDocuments.read(path);budget.charge(raw);
             NpcDefinition npc=NpcDefinition.read("npcs/"+directory.relativize(path).toString().replace('\\','/'),raw);
             if(!ids.add(npc.id()) || !uuids.add(npc.uuid()))throw new IOException("Existing NPC identity collision: "+path);

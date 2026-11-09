@@ -11,13 +11,17 @@ import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
  * Engine-wide registry of module integration hooks and import converters. Platform adapters wrap their own
  * protection and economy with it at startup, before modules enable; each call reads the current registration.
- * A provider whose module became unavailable fails closed: protection denies and money is refused.
+ * A provider whose module became unavailable fails closed: protection denies and money is refused. A protection
+ * action added after API 1.1 is the exception: a hook that throws on it, as an exhaustive switch built against 1.1
+ * does, allows it as engines before that action did, and the console is told once per module and action.
  */
 public final class ModuleHooks {
     /** The registering module, as its host sees it now. */
@@ -40,10 +44,19 @@ public final class ModuleHooks {
         public static final Staged NONE = new Staged(Optional.empty(), Optional.empty(), List.of());
     }
 
+    /** Actions engines did not ask about before API 1.2, mapped to the version that added them. */
+    private static final Map<Integrations.ProtectionAction, String> ADDED_ACTIONS = Map.of(Integrations.ProtectionAction.BLOCK_USE, "1.2");
+
+    private final Consumer<String> warnings;
+    private final Set<String> warned = ConcurrentHashMap.newKeySet();
     private volatile Hook<Integrations.Protection> protection;
     private volatile Hook<Integrations.Economy> economy;
     private final Map<String, Converter> converters = new LinkedHashMap<>();
     private final AtomicLong failures = new AtomicLong();
+
+    public ModuleHooks() { this((String warning) -> System.getLogger("Animus").log(System.Logger.Level.WARNING, warning)); }
+    /** {@code warnings} receives console lines; it must be quick and must not call back into hooks. */
+    public ModuleHooks(Consumer<String> warnings) { this.warnings = Objects.requireNonNull(warnings); }
 
     /** All or nothing: one provider per point and one converter per key. */
     public synchronized void commit(Owner owner, Staged staged) {
@@ -108,7 +121,14 @@ public final class ModuleHooks {
         Hook<Integrations.Protection> hook = protection;
         if (hook == null) return true;
         if (!hook.owner().available()) return false;
-        return call(hook.owner(), "protection", () -> hook.hook().decide(request), Integrations.Decision.DENY) == Integrations.Decision.ALLOW;
+        Integrations.Decision decision = call(hook.owner(), "protection", () -> hook.hook().decide(request), null);
+        if (decision != null) return decision == Integrations.Decision.ALLOW;
+        String added = ADDED_ACTIONS.get(request.action());
+        if (added == null) return false;
+        if (warned.add(hook.owner().id() + ":" + request.action()))
+            warnings.accept("Protection hook of module " + hook.owner().id() + " failed on " + request.action() + ", an action added in API " + added
+                    + "; allowing it as servers before " + added + " did. Update the module to give its switch a default branch.");
+        return true;
     }
 
     /** The platform's money provider while it has one; otherwise the module's. */

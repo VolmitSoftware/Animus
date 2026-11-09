@@ -13,6 +13,7 @@ void main() {
     ]);
     expect(settings.limits.maxFrameBytes, 1024 * 1024);
     expect(settings.limits.requestTimeout, const Duration(seconds: 10));
+    expect(settings.trustedProxyHops, 1, reason: 'Cloud Run adds one hop');
   });
 
   test('should read exact origins and limits from the environment', () {
@@ -27,8 +28,10 @@ void main() {
         'MAX_APP_CONNECTIONS_PER_ADDRESS': '5',
         'MAX_APPS_PER_ADDRESS_PER_SERVER': '2',
         'SIGN_IN_TIMEOUT_SECONDS': '45',
+        'TRUSTED_PROXY_HOPS': '0',
       },
     );
+    expect(settings.trustedProxyHops, 0);
     expect(settings.port, 9000);
     expect(settings.allowedAppOrigins, <String>[
       'https://animus-editor.web.app',

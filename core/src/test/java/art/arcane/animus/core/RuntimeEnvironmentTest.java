@@ -16,6 +16,21 @@ class RuntimeEnvironmentTest {
     @TempDir
     Path directory;
 
+    @org.junit.jupiter.api.Test
+    void aSymlinkedDataFolderResolvesOnceSoBehaviorsStillLoad() throws Exception {
+        Path volume = java.nio.file.Files.createDirectories(directory.resolve("volume/Animus"));
+        Path linked = java.nio.file.Files.createSymbolicLink(java.nio.file.Files.createDirectories(directory.resolve("plugins")).resolve("Animus"), volume);
+        Path resolved = RuntimeEnvironment.resolveDataDirectory(linked);
+        assertEquals(volume.toRealPath(), resolved);
+        java.nio.file.Files.createDirectories(resolved.resolve("behaviors"));
+        art.arcane.animus.core.behavior.catalog.BehaviorCatalog catalog = new art.arcane.animus.core.behavior.catalog.BehaviorCatalog(resolved,
+                art.arcane.animus.core.behavior.catalog.BehaviorCatalog.Limits.defaults(), request -> art.arcane.animus.core.behavior.catalog.BehaviorCatalog.Capability.present(),
+                art.arcane.animus.core.behavior.catalog.BehaviorCheckpoints.disabled());
+        assertEquals(0, catalog.snapshot().generation());
+        org.junit.jupiter.api.Assertions.assertTrue(java.nio.file.Files.isDirectory(RuntimeEnvironment.resolveDataDirectory(directory.resolve("plugins/fresh"))),
+                "a missing folder is created");
+    }
+
     @ParameterizedTest
     @CsvSource({
             "1.20.1-R0.1-SNAPSHOT,1.20.1",

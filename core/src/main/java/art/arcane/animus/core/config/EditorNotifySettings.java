@@ -7,7 +7,6 @@ import java.util.EnumMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * {@code [editor.notify]} in {@code config.toml}: what online players hear and see when the web editor changes the server.
@@ -38,7 +37,6 @@ public record EditorNotifySettings(boolean enabled, boolean chat, boolean action
         public boolean silent() { return id.isEmpty() || volume == 0; }
     }
 
-    private static final Set<String> FIELDS = Set.of("enabled", "chat", "actionBar", "console", "sounds");
     public static final EditorNotifySettings DEFAULT = new EditorNotifySettings(true, true, false, true, Map.of(
             Kind.APPLY, new Sound("minecraft:block.note_block.pling", 0.8, 1.6),
             Kind.ROLLBACK, new Sound("minecraft:block.note_block.pling", 0.8, 1.0),
@@ -60,7 +58,6 @@ public record EditorNotifySettings(boolean enabled, boolean chat, boolean action
 
     /** Reads {@code [editor.notify]}; missing keys and sound fields keep their defaults. */
     public static EditorNotifySettings parse(JsonObject table) {
-        for (String key : table.keySet()) if (!FIELDS.contains(key)) throw new IllegalArgumentException(key + " is not an editor notify setting");
         EditorNotifySettings d = DEFAULT;
         Map<Kind, Sound> sounds = new EnumMap<>(d.sounds);
         if (table.has("sounds")) {
@@ -102,7 +99,6 @@ public record EditorNotifySettings(boolean enabled, boolean chat, boolean action
     }
 
     private static Sound sound(JsonObject entry, String path, Sound fallback) {
-        for (String key : entry.keySet()) if (!Set.of("sound", "volume", "pitch").contains(key)) throw new IllegalArgumentException(path + key + " is not a sound setting");
         String id = fallback.id();
         if (entry.has("sound")) {
             JsonElement value = entry.get("sound");

@@ -36,6 +36,6 @@ public record RecordingSettings(boolean enabled, int sampleTicks, int maximumTic
     }
 
     private static void require(String field, int value, int minimum, int maximum) {
-        if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum);
+        if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum + ", not " + value);
     }
 }

@@ -18,6 +18,7 @@ import '../../logic/suggest/field_profile.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
+import '../../logic/diagnostic_text.dart';
 import '../../logic/help_text.dart';
 import '../info_tip.dart';
 import '../typing_pause.dart';
@@ -65,14 +66,11 @@ class _InspectRowState extends State<InspectRow> with TypingPause<InspectRow> {
       dom.div(classes: 'animus-gui-control', <Widget>[
         component.child,
         if (split.hint != null) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(split.hint!)]),
-        for (final Diagnostic problem in shown)
+        for (final Diagnostic problem in withoutRepeats(shown))
           dom.span(
             classes: 'animus-gui-problem is-${problem.severity.name}',
-            attributes: const <String, String>{'role': 'note'},
-            <Widget>[
-              dom.code(<Widget>[Component.text(problem.path)]),
-              Component.text(' ${problem.message}'),
-            ],
+            attributes: <String, String>{'role': 'note', 'title': problem.path},
+            <Widget>[Component.text(diagnosticSentence(problem))],
           ),
       ]),
     ]);
@@ -141,6 +139,7 @@ class InspectField extends StatelessWidget {
         suggestions: suggestions,
         schema: schema,
         profile: profile,
+        label: label,
       ),
     );
   }
@@ -158,8 +157,13 @@ class InspectControl extends StatelessWidget {
     this.schema,
     this.profile = FieldProfile.none,
     this.references,
+    this.label,
     super.key,
   });
+
+  /// The row's visible label, which screen readers hear for the control;
+  /// defaults to the key in words.
+  final String? label;
 
   final FieldSpec field;
   final Object? value;
@@ -187,6 +191,7 @@ class InspectControl extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Object? current = value;
+    final String name = label ?? humanizeKey(field.key);
     switch (field.kind) {
       case FieldKind.choice:
         final List<String> options = <String>[for (final FieldOption option in field.options) option.label];
@@ -209,7 +214,7 @@ class InspectControl extends StatelessWidget {
           return SuggestInput(
             id: controlId(path),
             value: current is String ? current : '',
-            label: field.key,
+            label: name,
             profile: profile,
             references: references,
             suggestions: <FieldOption>[...field.options, ...suggestions],
@@ -228,7 +233,7 @@ class InspectControl extends StatelessWidget {
       case FieldKind.boolean:
         if (current is bool || current == null) {
           return dom.div(classes: 'animus-row', <Widget>[
-            GuiSwitch(value: current == true, label: humanizeKey(field.key), onChanged: onChanged),
+            GuiSwitch(value: current == true, label: name, onChanged: onChanged),
             if (current != null && !field.required)
               Button.ghost(label: 'Unset', size: ButtonSize.small, onPressed: () => onChanged(null)),
           ]);
@@ -239,7 +244,7 @@ class InspectControl extends StatelessWidget {
             id: controlId(path),
             value: current as num?,
             integer: field.kind == FieldKind.integer,
-            label: field.key,
+            label: name,
             digits: field.digits,
             onChanged: onChanged,
           );
@@ -249,7 +254,7 @@ class InspectControl extends StatelessWidget {
           return SuggestInput(
             id: controlId(path),
             value: current as String? ?? '',
-            label: field.key,
+            label: name,
             profile: profile,
             references: references,
             suggestions: suggestions,

@@ -173,12 +173,12 @@ async function presets(page, tag) {
   };
   await openSection(/^wide/);
   const values = editor.getByRole('group', {name: 'Values of wide'});
-  await values.getByLabel('maxDistance', {exact: true}).fill('9');
+  await values.getByLabel('Max distance', {exact: true}).fill('9');
   await settle(page);
   await chooseAndWait(editor.getByLabel('Kind', {exact: true}), 'inventories');
   await openSection(/^Defaults for inventories/);
   const defaults = editor.getByRole('group', {name: 'Defaults for inventories'});
-  await defaults.getByLabel('title', {exact: true}).fill('&8Market');
+  await defaults.getByLabel('Title', {exact: true}).fill('&8Market');
   await settle(page);
   await shot(page, `${tag}-presets`);
   const json = await codeOf(page);

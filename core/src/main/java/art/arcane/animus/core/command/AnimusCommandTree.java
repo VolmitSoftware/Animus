@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
@@ -47,6 +48,7 @@ public final class AnimusCommandTree extends CommandGroup {
     RecordCommands record;
     ServiceCommands.Shop shop;
     ServiceCommands.Gui gui;
+    ServiceCommands.Hologram hologram;
     ServiceCommands.Build build;
     ServiceCommands.Editor editor;
     BehaviorTree.Behaviors behaviors;
@@ -69,6 +71,7 @@ public final class AnimusCommandTree extends CommandGroup {
         record = new RecordCommands(() -> services.recordings());
         shop = new ServiceCommands.Shop(services);
         gui = new ServiceCommands.Gui(services);
+        hologram = new ServiceCommands.Hologram(services);
         build = new ServiceCommands.Build(services);
         editor = new ServiceCommands.Editor(services);
         behaviors = new BehaviorTree.Behaviors(services);
@@ -80,13 +83,14 @@ public final class AnimusCommandTree extends CommandGroup {
     }
 
     @Director(description = "Show the first steps: import, create an NPC, set its skin, pair the web editor")
+    @AnimusPermission(PermissionNodes.TOOLS)
     void setup(@Param(name = "dismiss", defaultValue = "false", description = "Turn the join hint off for every admin") boolean dismiss) { setup.run(actor(), dismiss); }
 
     /** The engine for this tree, with completion values from the running services. */
     public AnimusDirector director() { return new AnimusDirector(this, this::values); }
 
-    /** Completion values by parameter name. */
-    Collection<String> values(String parameter, CommandActor actor) { return new CommandCompletions(this).values(parameter, actor); }
+    /** Completion values by parameter name; {@code given} holds the values already typed. */
+    Collection<String> values(String parameter, CommandActor actor, Map<String, String> given) { return new CommandCompletions(this).values(parameter, actor, given); }
 
     private Administration administration() { return new Administration(runtime()); }
 
@@ -124,6 +128,8 @@ public final class AnimusCommandTree extends CommandGroup {
     }
 
     @Director(description = "List saved NPCs; click an id to inspect it")
+    @AnimusPermission(PermissionNodes.NPC_VIEW)
+    @Positional("page")
     void list(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
         CommandActor actor = actor();
         Administration administration = administration();
@@ -136,7 +142,8 @@ public final class AnimusCommandTree extends CommandGroup {
         } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
-    @Director(description = "Save a new despawned NPC where you stand, or at x y z; ~ is relative to you")
+    @Director(description = "Save and spawn a new NPC where you stand, facing your way, or at x y z; ~ is relative to you")
+    @AnimusPermission(PermissionNodes.NPC_CREATE)
     void create(@Param(name = "id", description = "The new NPC id; its file is npcs/<folder>/<id>.json") String id,
                 @Param(name = "type", defaultValue = DEFAULT_TYPE, description = "The body type, such as minecraft:player") String type,
                 @Param(name = "name", defaultValue = "", description = "Its display name, the id when left out; quote it to use spaces") String name,
@@ -144,17 +151,26 @@ public final class AnimusCommandTree extends CommandGroup {
                 @Param(name = "world", defaultValue = "", description = "The world it stands in; yours when left out") String world,
                 @Param(name = "x", defaultValue = "", description = "X position: a number, ~ or ~N; yours when left out") String x,
                 @Param(name = "y", defaultValue = "", description = "Y position: a number, ~ or ~N; yours when left out") String y,
-                @Param(name = "z", defaultValue = "", description = "Z position: a number, ~ or ~N; yours when left out") String z) {
+                @Param(name = "z", defaultValue = "", description = "Z position: a number, ~ or ~N; yours when left out") String z,
+                @Param(name = "spawned", defaultValue = "true", description = "false saves it despawned") boolean spawned) {
         CommandActor actor = actor();
         Placement placement;
         try { placement = placement(actor, world, x, y, z); }
         catch (IllegalArgumentException missing) { actor.tell(Palette.error(missing.getMessage())); return; }
         String shown = name.isEmpty() ? id : name;
-        files(actor, () -> {
-            String line = administration().create(id, type, placement.world(), placement.point().x(), placement.point().y(), placement.point().z(), folder, shown, actor.player());
-            living().refresh();
-            return List.of(Palette.success(line + "; /" + BuildIdentity.ID + " spawn " + id + " shows it"));
-        });
+        float yaw = actor.facing().map(Coordinates.Facing::yaw).orElse(0f);
+        Administration administration = administration();
+        try {
+            services.files().execute(() -> {
+                Administration.Creation creation;
+                try { creation = administration.creation(id, type, placement.world(), placement.point(), yaw, folder, shown, actor.player(), spawned); }
+                catch (IOException | RuntimeException failure) { reply(actor, Palette.error(reason(failure))); return; }
+                String where = placement.world() + " " + Coordinates.shown(placement.point());
+                if (!stopping()) actor.reply(() -> commit(actor, creation.definition(), creation.draft(), PermissionNodes.NPC_CREATE, "create",
+                        (String tx) -> "Created " + id + " at " + where + (spawned ? "" : ", despawned") + "; tx " + tx
+                                + (spawned ? "; /" + BuildIdentity.ID + " npc skin " + id + " <player> sets its skin" : "; /" + BuildIdentity.ID + " spawn " + id + " shows it")));
+            });
+        } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
     static final String DEFAULT_TYPE = "minecraft:player";
@@ -173,6 +189,7 @@ public final class AnimusCommandTree extends CommandGroup {
     }
 
     @Director(description = "Show an NPC's definition and whether it is active")
+    @AnimusPermission(PermissionNodes.NPC_VIEW)
     void inspect(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
         CommandActor actor = actor();
         Administration administration = administration();
@@ -211,14 +228,16 @@ public final class AnimusCommandTree extends CommandGroup {
         actor.rich(ChatLine.reply(split < 0 ? runtime : runtime.substring(0, split)).details("Details", details));
     }
 
-    @Director(description = "Merge a JSON object into an NPC's definition")
+    @Director(description = "Merge a JSON object into an NPC's definition; null removes a field")
+    @AnimusPermission(PermissionNodes.NPC_EDIT)
     void edit(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
-              @Param(name = "patch", description = "A JSON object whose top-level fields replace the definition's; write patch={...} if it contains =") String patch) {
+              @Param(name = "patch", description = "A JSON merge patch: objects merge field by field, null removes; write patch={...} if it contains =") String patch) {
         CommandActor actor = actor();
         npc(actor, npc).ifPresent((String id) -> change(actor, id, Optional.of(patch)));
     }
 
     @Director(description = "Copy an NPC under a new id, despawned")
+    @AnimusPermission(PermissionNodes.NPC_CREATE)
     void clone(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
                @Param(name = "id", description = "The copy's id") String id) {
         CommandActor actor = actor();
@@ -230,24 +249,28 @@ public final class AnimusCommandTree extends CommandGroup {
     }
 
     @Director(description = "Delete an NPC's file; rollback restores it")
+    @AnimusPermission(PermissionNodes.NPC_DELETE)
     void delete(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
         CommandActor actor = actor();
         npc(actor, npc).ifPresent((String id) -> files(actor, () -> { String line = administration().delete(id); living().refresh(); return List.of(Palette.success(line)); }));
     }
 
     @Director(description = "Mark an NPC spawned after checking it can run here")
+    @AnimusPermission(PermissionNodes.NPC_EDIT)
     void spawn(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
         CommandActor actor = actor();
         npc(actor, npc).ifPresent((String id) -> change(actor, id, Optional.empty()));
     }
 
     @Director(description = "Mark an NPC despawned; its file stays")
+    @AnimusPermission(PermissionNodes.NPC_EDIT)
     void despawn(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
         CommandActor actor = actor();
         npc(actor, npc).ifPresent((String id) -> files(actor, () -> { String line = administration().spawned(id, false); living().refresh(); return List.of(Palette.success(line)); }));
     }
 
     @Director(description = "Check every definition file without loading it")
+    @AnimusPermission(PermissionNodes.NPC_VIEW)
     void validate() { CommandActor actor = actor(); files(actor, administration()::validate); }
 
     @Director(description = "Reload NPC definitions and rigs from disk")
@@ -273,38 +296,44 @@ public final class AnimusCommandTree extends CommandGroup {
     }
 
     @Director(description = "Select an NPC for the commands that take @selected; the one you look at, or the nearest, when left out", origin = DirectorOrigin.PLAYER)
+    @AnimusPermission(PermissionNodes.NPC_VIEW)
+    @Positional("npc")
     void select(@Param(name = "npc", defaultValue = "", description = "The NPC id; the one you look at, or the nearest within 16 blocks, when left out") String npc) {
-        select(actor(), living(), npc);
+        CommandActor actor = actor();
+        Optional<Toolkit<?, ?>> toolkit = Toolkit.of(services.shops().screens());
+        select(actor, living(), npc, (String id) -> toolkit.ifPresent((Toolkit<?, ?> found) -> found.selectOnly(actor.player().orElseThrow(), id)));
     }
 
-    /** Selects {@code npc}, or with none the NPC the player looks at or stands nearest, and makes it glow for that player briefly. */
-    static void select(CommandActor actor, NpcRuntime<?, ?> living, String npc) {
+    /**
+     * Selects {@code npc}, or with none the NPC the player looks at or stands nearest, and makes it glow for that player
+     * briefly. {@code chosen} makes it the toolkit's whole selection too, so the wand and {@code @selected} agree.
+     */
+    static void select(CommandActor actor, NpcRuntime<?, ?> living, String npc, java.util.function.Consumer<String> chosen) {
         UUID viewer = actor.player().orElseThrow();
-        Optional<String> chosen = npc.isEmpty() ? living.pick(viewer) : Optional.of(npc);
-        if (chosen.isEmpty()) { actor.tell(Palette.error(NOTHING_IN_VIEW)); return; }
-        try { living.select(viewer, chosen.get()); }
+        Optional<String> picked = npc.isEmpty() ? living.pick(viewer) : Optional.of(npc);
+        if (picked.isEmpty()) { actor.tell(Palette.error(NOTHING_IN_VIEW)); return; }
+        try { living.select(viewer, picked.get()); }
         catch (RuntimeException refused) { actor.tell(Palette.error(reason(refused) + "; /animus list shows ids")); return; }
-        living.highlight(viewer, chosen.get(), SelectionPick.GLOW_TICKS);
-        actor.rich(ChatLine.success("Selected ").copyable(chosen.get()));
+        chosen.accept(picked.get());
+        living.highlight(viewer, picked.get(), SelectionPick.GLOW_TICKS);
+        actor.rich(ChatLine.success("Selected ").copyable(picked.get()));
     }
 
     static final String NOTHING_IN_VIEW = "No NPC in view or within " + (int) SelectionPick.REACH + " blocks.";
 
     @Director(description = "Show your selected NPCs", origin = DirectorOrigin.PLAYER)
+    @AnimusPermission(PermissionNodes.NPC_VIEW)
     void selection() {
         CommandActor actor = actor();
-        UUID player = actor.player().orElseThrow();
-        List<String> picked = Toolkit.of(services.shops().screens()).map((Toolkit<?, ?> toolkit) -> toolkit.selected(player)).orElse(List.of());
-        Optional<ChatLine> reply = selection(picked, living().selection(player));
+        Optional<ChatLine> reply = selection(selection(actor.player().orElseThrow()));
         if (reply.isPresent()) actor.rich(reply.get());
-        else actor.tell("No NPC selected; /animus select <npc> or click one with the wand");
+        else actor.tell("No NPC selected; /animus select <npc>, or click one with the wand (/animus tools wand)");
     }
 
     private static final int SELECTION_SHOWN = 10;
 
-    /** Every NPC the wand picked, or the one {@code /animus select} chose when the wand picked none. */
-    static Optional<ChatLine> selection(List<String> picked, Optional<String> selected) {
-        List<String> all = picked.isEmpty() ? selected.map(List::of).orElse(List.of()) : picked;
+    /** Every selected NPC, the same list {@code @selected} reads. */
+    static Optional<ChatLine> selection(List<String> all) {
         if (all.isEmpty()) return Optional.empty();
         if (all.size() == 1) return Optional.of(ChatLine.reply("Selected ").copyable(all.getFirst()));
         ChatLine line = ChatLine.reply("Selected " + all.size() + " NPCs: ");
@@ -336,12 +365,13 @@ public final class AnimusCommandTree extends CommandGroup {
                 try {
                     NpcRepository.Draft before = runtime().npcs().draft(id);
                     JsonObject document = before.document();
-                    JsonObject fields = patch.isEmpty() ? null : JsonDocuments.object(patch.get());
+                    JsonObject fields = patch.isEmpty() ? null : Administration.patch(patch.get());
+                    List<String> changes = List.of();
                     if (fields == null) document.addProperty("spawned", true);
                     else {
                         Optional<String> problem = Administration.patchProblem(runtime().documents(), fields);
                         if (problem.isPresent()) { reply(actor, Palette.error("Cannot save " + id + ": " + problem.get())); return; }
-                        Administration.merge(document, fields);
+                        changes = Administration.merge(document, fields);
                     }
                     NpcDefinition candidate;
                     try { candidate = NpcDefinition.parse(JsonDocuments.write(document)); }
@@ -351,19 +381,27 @@ public final class AnimusCommandTree extends CommandGroup {
                         return;
                     }
                     NpcRepository.Draft draft = new NpcRepository.Draft(before.path(), before.expectedHash(), before.expectedRevision(), document);
-                    if (!stopping()) actor.reply(() -> commit(actor, candidate, draft, patch.isEmpty()));
+                    String changed = Administration.describe(changes);
+                    if (!stopping()) actor.reply(() -> {
+                        if (patch.isEmpty()) commit(actor, candidate, draft, PermissionNodes.NPC_EDIT, "spawn", (String tx) -> "Spawning " + id + "; tx " + tx + "; it becomes active once its chunk loads");
+                        else commit(actor, candidate, draft, PermissionNodes.NPC_EDIT, "save", (String tx) -> "Saved " + id + ": " + changed + "; tx " + tx);
+                    });
                 } catch (IOException | RuntimeException e) { reply(actor, Palette.error(reason(e))); }
             });
         } catch (RejectedExecutionException e) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
-    private void commit(CommandActor actor, NpcDefinition candidate, NpcRepository.Draft draft, boolean spawn) {
-        if (stopping() || !actor.permitted(AnimusDirector.ADMIN)) return;
+    /**
+     * On the actor's owner: refuses a spawned candidate this platform cannot run, then writes the draft with the revision it
+     * was read at. {@code node} is checked again here, {@code verb} names the refusal and {@code done} words the success.
+     */
+    private void commit(CommandActor actor, NpcDefinition candidate, NpcRepository.Draft draft, String node, String verb, java.util.function.Function<String, String> done) {
+        if (stopping() || !actor.permitted(node)) return;
         JsonElement spawned = draft.document().get("spawned");
         List<String> errors = spawned != null && spawned.isJsonPrimitive() && spawned.getAsBoolean() ? living().validateActivation(candidate) : List.of();
         if (!errors.isEmpty()) {
-            actor.rich(ChatLine.error((spawn ? "Cannot spawn " : "Cannot save ") + candidate.id() + ": " + errors.getFirst() + (errors.size() == 1 ? "" : " (+" + (errors.size() - 1) + " more)")
-                    + "; fix it with /animus edit " + candidate.id())
+            actor.rich(ChatLine.error("Cannot " + verb + " " + candidate.id() + ": " + errors.getFirst() + (errors.size() == 1 ? "" : " (+" + (errors.size() - 1) + " more)")
+                    + ("create".equals(verb) ? "; nothing was saved" : "; fix it with /animus edit " + candidate.id()))
                     .details("All", errors).docs(DocsLink.ACTIVATION));
             return;
         }
@@ -372,7 +410,7 @@ public final class AnimusCommandTree extends CommandGroup {
                 try {
                     String tx = runtime().npcs().apply(draft);
                     living().refresh();
-                    reply(actor, Palette.success((spawn ? "Spawning " : "Saved ") + candidate.id() + "; tx " + tx + (spawn ? "; it becomes active once its chunk loads" : "")));
+                    reply(actor, Palette.success(done.apply(tx)));
                 } catch (IOException | RuntimeException e) { reply(actor, Palette.error(reason(e))); }
             });
         } catch (RejectedExecutionException e) { actor.tell(Palette.error(CommandActor.BUSY + "; nothing was saved")); }

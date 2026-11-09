@@ -21,7 +21,8 @@ import org.junit.jupiter.api.Test;
 
 class CommandTreeHintsTest {
     private record Actor(Set<String> nodes) implements CommandActor {
-        @Override public boolean permitted(String node) { return nodes.contains(node); }
+        /** As plugin.yml children make it on a server: animus.admin also holds the nodes under it. */
+        @Override public boolean permitted(String node) { return art.arcane.animus.core.command.PermissionNodes.granted(nodes::contains, node); }
         @Override public void tell(String message) {}
         @Override public Optional<UUID> player() { return Optional.of(UUID.nameUUIDFromBytes(new byte[]{1})); }
         @Override public boolean reply(Runnable action) { action.run(); return true; }

@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.behavior.schema.NpcSchemaGenerator;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
@@ -52,6 +53,7 @@ final class PropertyScreen<P, S> extends ToolScreen<P, S> {
     }
 
     @Override String title() { return ValueScreen.clip("Edit " + ids().stream().findFirst().orElse("an NPC"), 32); }
+    @Override String node() { return PermissionNodes.NPC_EDIT; }
     @Override int rows() { return 6; }
 
     /** The ids of the NPCs this screen edits, as they are named now. */

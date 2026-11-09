@@ -71,6 +71,7 @@ const Map<String, ErrorCopy> transportErrorCopy = <String, ErrorCopy>{
   'server-offline': ErrorCopy('Server is not on the relay.', _checkServer),
   'server-left': ErrorCopy('Server left the relay.', _checkServer),
   'relay-unreachable': ErrorCopy('Relay did not answer.', 'Check your network.'),
+  'no-answer': ErrorCopy('Server did not answer on either path.', 'Check that it is running.'),
   'wrong-server': ErrorCopy('A different server answered, so nothing was sent.', 'Check the address, or pair again if the server was reinstalled.'),
   'no-path': ErrorCopy('Pairing code has no server address.', _pairAgain),
   'no-token': ErrorCopy('This tab has no token for this server.', _pairAgain),

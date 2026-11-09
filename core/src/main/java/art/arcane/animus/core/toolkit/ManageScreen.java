@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
 import java.util.List;
@@ -28,20 +29,25 @@ final class ManageScreen<P, S> extends ToolScreen<P, S> {
         if (selected.isEmpty()) return;
         action(SPAWN, "minecraft:lime_concrete", "Spawn", "Checks each NPC can run here first", () -> toolkit.spawned(viewer, selected, true));
         action(DESPAWN, "minecraft:gray_concrete", "Despawn", "Definitions stay", () -> toolkit.spawned(viewer, selected, false));
-        action(CLONE, "minecraft:paper", "Clone", "Dormant copies named <id>-copy", () -> toolkit.write(viewer, (ToolkitFiles files) -> files.copies(selected)));
+        action(CLONE, "minecraft:paper", "Clone", "Dormant copies named <id>-copy", () -> {
+            if (allows(PermissionNodes.NPC_CREATE)) toolkit.write(viewer, (ToolkitFiles files) -> files.copies(selected));
+        });
         guarded(DELETE, "minecraft:red_concrete", "Delete", "Rollback restores: " + names(selected, 4), selected.size(), true,
-                () -> toolkit.write(viewer, (ToolkitFiles files) -> files.delete(selected)));
+                () -> { if (allows(PermissionNodes.NPC_DELETE)) toolkit.write(viewer, (ToolkitFiles files) -> files.delete(selected)); });
         if (selected.size() == 1)
             action(TELEPORT, "minecraft:ender_pearl", "Teleport to it", "Takes you to " + selected.getFirst(), () -> toolkit.visit(viewer.player(), selected.getFirst()));
         action(INSPECT, "minecraft:spyglass", "Inspect", "Chat shows " + selected.getFirst(), () -> {
+            if (!allows(PermissionNodes.NPC_VIEW)) return;
             viewer.close();
             commands.inspect().accept(toolkit.actor(viewer.player()), selected.getFirst());
         });
         action(EDITOR, "minecraft:ender_eye", "Open in editor", "Sends a pairing link", () -> {
+            if (!allows(PermissionNodes.EDITOR_PAIR)) return;
             viewer.close();
             commands.pair().accept(toolkit.actor(viewer.player()));
         });
         action(REVIVE, "minecraft:totem_of_undying", "Revive", "Brings dead NPCs back at full health", () -> {
+            if (!allows(PermissionNodes.NPC_EDIT)) return;
             for (String id : selected) commands.revive().accept(toolkit.actor(viewer.player()), id);
         });
         screen(EDIT, "minecraft:writable_book", "Edit", () -> new PropertyScreen<>(toolkit, viewer, commands, selected));
@@ -61,6 +67,6 @@ final class ManageScreen<P, S> extends ToolScreen<P, S> {
     }
 
     private void screen(int slot, String icon, String name, Supplier<ToolScreen<P, S>> next) {
-        button(slot, icon, title(name), any("open"), (GuiModel.Click click) -> viewer.push(next.get()));
+        button(slot, icon, title(name), any("open"), (GuiModel.Click click) -> push(next.get()));
     }
 }

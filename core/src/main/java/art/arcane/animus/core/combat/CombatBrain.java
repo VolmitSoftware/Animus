@@ -916,9 +916,11 @@ final class CombatBrain {
         return 1;
     }
 
-    /** Brings a dead NPC back now at its next respawn point, or heals a living one fully. False when it cannot come back yet. */
+    /**
+     * Brings a dead NPC back now at its next respawn point, or heals a living one fully. False when it cannot come back
+     * yet; a permadeath still falling then stays pending, so it is recorded when the fall ends.
+     */
     boolean revive() {
-        permadeathAt = -1;
         Optional<VirtualNpcState.Snapshot> self = world.npc(npc);
         if (self.isEmpty()) return false;
         if (self.get().health() > 0) {
@@ -928,6 +930,7 @@ final class CombatBrain {
         }
         if (!deathHandled) die(self.get().position(), null);
         if (!respawn(engine.now())) return false;
+        permadeathAt = -1;
         engine.wake(this);
         return true;
     }

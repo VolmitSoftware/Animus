@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.inventory.Economy;
 import art.arcane.animus.core.inventory.ItemOps;
@@ -50,7 +51,7 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
     @Override public UUID id(Player player) { return player.id; }
     @Override public String name(Player player) { return player.name; }
     @Override public Object viewer(Player player, String property) { return player.facts.get(property); }
-    @Override public boolean permitted(Player player, String node) { return player.permissions.contains(node) || player.permissions.contains("*"); }
+    @Override public boolean permitted(Player player, String node) { return player.permissions.contains("*") || PermissionNodes.granted(player.permissions::contains, node); }
 
     @Override public Optional<Object> show(Player player, ScreenFrame frame, Object window) {
         if (unsupported.contains(frame.resolution())) return Optional.empty();

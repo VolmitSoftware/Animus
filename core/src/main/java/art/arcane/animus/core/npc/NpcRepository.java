@@ -249,7 +249,7 @@ public final class NpcRepository {
 
     public synchronized Draft draft(String id) throws IOException {
         NpcDefinition definition = stored.get(id);
-        if (definition == null) throw new IOException("Unknown NPC: " + id);
+        if (definition == null) throw new IOException("No NPC named " + id + "; /animus list shows ids");
         return new Draft(definition.path(), hashes.get(definition.path()), definition.revision(), definition.json());
     }
 

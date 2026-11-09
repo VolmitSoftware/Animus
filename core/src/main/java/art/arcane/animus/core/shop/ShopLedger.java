@@ -68,25 +68,70 @@ public final class ShopLedger {
         long current(long now) { return windowEnd != 0 && now >= windowEnd ? 0 : used; }
     }
     private record PlayerKey(String key, UUID player) {}
+    /** Units a purchase in progress holds against an entry's limits and stock; {@link #complete} or {@link #release} ends it. */
+    public record Reservation(String shop, String entry, Rules rules, UUID player, long units) {}
 
     private final Consumer<Change> sink;
     private final Map<PlayerKey, Counter> players = new HashMap<>();
     private final Map<String, Counter> globals = new HashMap<>();
     private final Map<String, Counter> stocks = new HashMap<>();
+    private final Map<PlayerKey, Long> heldPlayers = new HashMap<>();
+    private final Map<String, Long> heldGlobals = new HashMap<>(), heldStocks = new HashMap<>();
 
     public ShopLedger(Consumer<Change> sink) { this.sink = Objects.requireNonNull(sink); }
 
     public static String key(String shop, String entry) { return shop + "#" + entry; }
 
-    /** Units the player may take now: the smallest of what each declared limit and the stock allow. */
+    /** Units the player may take now: the smallest of what each declared limit and the stock allow, less what purchases in progress hold. */
     public synchronized long available(String shop, String entry, Rules rules, UUID player, Instant now) {
         String key = key(shop, entry);
         long millis = now.toEpochMilli();
         long available = Long.MAX_VALUE;
-        if (rules.limit().perPlayer() >= 0) available = Math.min(available, rules.limit().perPlayer() - read(players.get(new PlayerKey(key, player)), millis));
-        if (rules.limit().global() >= 0) available = Math.min(available, rules.limit().global() - read(globals.get(key), millis));
-        if (rules.stock().isPresent()) available = Math.min(available, rules.stock().get().maximum() - read(stocks.get(key), millis));
+        if (rules.limit().perPlayer() >= 0) {
+            PlayerKey counter = new PlayerKey(key, player);
+            available = Math.min(available, rules.limit().perPlayer() - read(players.get(counter), millis) - heldPlayers.getOrDefault(counter, 0L));
+        }
+        if (rules.limit().global() >= 0) available = Math.min(available, rules.limit().global() - read(globals.get(key), millis) - heldGlobals.getOrDefault(key, 0L));
+        if (rules.stock().isPresent()) available = Math.min(available, stockLeft(key, rules, millis));
         return Math.max(0, available);
+    }
+
+    /** Whether the stock, rather than a limit, is what leaves fewer than {@code units}. */
+    public synchronized boolean stockShort(String shop, String entry, Rules rules, long units, Instant now) {
+        return rules.stock().isPresent() && stockLeft(key(shop, entry), rules, now.toEpochMilli()) < units;
+    }
+
+    private long stockLeft(String key, Rules rules, long millis) {
+        return rules.stock().orElseThrow().maximum() - read(stocks.get(key), millis) - heldStocks.getOrDefault(key, 0L);
+    }
+
+    /**
+     * Holds {@code units} against every declared limit and the stock in one step, so purchases on other threads see them
+     * as taken; empty when they are not available.
+     */
+    public synchronized Optional<Reservation> reserve(String shop, String entry, Rules rules, UUID player, long units, Instant now) {
+        if (units <= 0) throw new IllegalArgumentException("units must be positive: " + units);
+        if (available(shop, entry, rules, player, now) < units) return Optional.empty();
+        Reservation reservation = new Reservation(shop, entry, rules, player, units);
+        hold(reservation, units);
+        return Optional.of(reservation);
+    }
+
+    /** Gives back what a purchase that did not complete held. */
+    public synchronized void release(Reservation reservation) { hold(reservation, -reservation.units()); }
+
+    /** Ends the hold and counts the {@code units} the purchase took. */
+    public synchronized void complete(Reservation reservation, long units, Instant now) {
+        release(reservation);
+        if (units > 0) record(reservation.shop(), reservation.entry(), reservation.rules(), reservation.player(), units, now);
+    }
+
+    private void hold(Reservation reservation, long delta) {
+        String key = key(reservation.shop(), reservation.entry());
+        java.util.function.BiFunction<Long, Long, Long> add = (Long held, Long change) -> held + change == 0 ? null : held + change;
+        if (reservation.rules().limit().perPlayer() >= 0) heldPlayers.merge(new PlayerKey(key, reservation.player()), delta, add);
+        if (reservation.rules().limit().global() >= 0) heldGlobals.merge(key, delta, add);
+        if (reservation.rules().stock().isPresent()) heldStocks.merge(key, delta, add);
     }
 
     public synchronized long usedBy(String shop, String entry, UUID player, Instant now) { return read(players.get(new PlayerKey(key(shop, entry), player)), now.toEpochMilli()); }

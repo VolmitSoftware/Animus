@@ -64,7 +64,7 @@ async function run(browser, width, height, label) {
   const position = main.locator('details[data-section="position"]');
   if (!(await position.evaluate((details) => details.open))) await position.locator(':scope > summary').click();
   await x.waitFor({state: 'visible'});
-  await main.getByLabel('name', {exact: true}).fill('Quick Name');
+  await main.getByLabel('Name', {exact: true}).fill('Quick Name');
   await x.fill('12.5');
   await page.locator('[data-testid="draft-count"]', {hasText: '1 changed draft'}).waitFor();
   await page.waitForTimeout(300);

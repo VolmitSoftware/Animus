@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:animus_relay/src/frame_guard.dart';
+import 'package:animus_relay/src/relay_address.dart';
 import 'package:animus_relay/src/relay_broker.dart';
 import 'package:animus_relay/src/relay_channel_sink.dart';
 import 'package:animus_relay/src/relay_frame.dart';
@@ -25,13 +26,15 @@ const List<String> defaultAllowedAppOrigins = <String>[
 ///
 /// Browser handshakes must carry an `Origin` equal to one of
 /// [allowedAppOrigins]. Server handshakes must carry none, since servers are not
-/// browsers.
+/// browsers. [trustedProxyHops] is how many proxies in front of the relay
+/// append to `X-Forwarded-For` (see [clientAddress]).
 Future<HttpServer> startRelayServer({
   required int port,
   String address = '0.0.0.0',
   RelayLimits limits = const RelayLimits(),
   Iterable<String> allowedAppOrigins = defaultAllowedAppOrigins,
   ChallengeVerifier? verifier,
+  int trustedProxyHops = 1,
 }) async {
   final RelayBroker broker = RelayBroker(limits: limits);
   final ChallengeVerifier challenges = verifier ?? ChallengeVerifier();
@@ -120,7 +123,7 @@ Future<HttpServer> startRelayServer({
     final String? origin = request.headers['origin'];
     if (path == 'agent') {
       if (origin != null) return _json(403, 'servers send no Origin');
-      final String address = clientAddress(request);
+      final String address = clientAddress(request, trustedProxyHops);
       if (agentConnections >= limits.maxAgents * 2 ||
           agentsByAddress[address] >= limits.maxAgentConnectionsPerAddress) {
         return _json(503, 'too many connections');
@@ -133,7 +136,7 @@ Future<HttpServer> startRelayServer({
       if (origin == null || !origins.contains(origin.toLowerCase())) {
         return _json(403, 'origin not allowed');
       }
-      final String address = clientAddress(request);
+      final String address = clientAddress(request, trustedProxyHops);
       if (appConnections >= limits.maxApps ||
           appsByAddress[address] >= limits.maxAppConnectionsPerAddress) {
         return _json(503, 'too many connections');
@@ -172,37 +175,37 @@ Response _json(int status, String message) => Response(
   headers: _jsonHeaders,
 );
 
-/// The caller's address: the last `X-Forwarded-For` entry, which Cloud Run's
-/// front end appends, else the socket peer. Earlier entries come from the
-/// client and are ignored. An entry that is not an IP address counts as
-/// missing.
-String clientAddress(Request request) {
-  final String? forwarded = request.headers['x-forwarded-for'];
-  if (forwarded != null) {
-    final InternetAddress? last = InternetAddress.tryParse(
-      forwarded.split(',').last.trim(),
-    );
-    if (last != null) return last.address;
-  }
+/// The caller's address. Behind [trustedProxyHops] proxies it is the
+/// `X-Forwarded-For` entry the outermost one appended (the last entry behind
+/// Cloud Run's single front end); earlier entries come from the client and are
+/// ignored. With no trusted proxy, or when that entry is missing or not an IP
+/// address, it is the socket peer.
+String clientAddress(Request request, int trustedProxyHops) {
+  final String? forwarded = forwardedAddress(
+    request.headers['x-forwarded-for'],
+    trustedProxyHops,
+  );
+  if (forwarded != null) return forwarded;
   final Object? info = request.context['shelf.io.connection_info'];
   return info is HttpConnectionInfo ? info.remoteAddress.address : 'unknown';
 }
 
-/// Open connections per address. Entries leave at zero, so the map holds
-/// only addresses with a live connection.
+/// Open connections per address, an IPv6 address counted by its `/64`.
+/// Entries leave at zero, so the map holds only addresses with a live
+/// connection.
 final class _AddressCounts {
   final Map<String, int> _counts = <String, int>{};
 
-  int operator [](String address) => _counts[address] ?? 0;
+  int operator [](String address) => _counts[addressKey(address)] ?? 0;
 
-  void add(String address) => _counts[address] = this[address] + 1;
+  void add(String address) => _counts[addressKey(address)] = this[address] + 1;
 
   void remove(String address) {
     final int left = this[address] - 1;
     if (left <= 0) {
-      _counts.remove(address);
+      _counts.remove(addressKey(address));
     } else {
-      _counts[address] = left;
+      _counts[addressKey(address)] = left;
     }
   }
 }

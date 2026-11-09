@@ -18,7 +18,8 @@ final class BehaviorTree {
         else work.accept(behaviors);
     }
 
-    @Director(name = "behaviors", description = "Load, run, trace and cancel behaviors")
+    @Director(name = "behaviors", aliases = "behavior", description = "Load, run, trace and cancel behaviors")
+    @AnimusPermission(PermissionNodes.BEHAVIORS)
     static final class Behaviors extends CommandGroup {
         State state;
 
@@ -31,6 +32,7 @@ final class BehaviorTree {
         void status() { with(services, (BehaviorCommands behaviors) -> behaviors.status(actor())); }
 
         @Director(description = "List behavior documents")
+        @Positional("page")
         void list(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             with(services, (BehaviorCommands behaviors) -> behaviors.list(actor(), page));
         }
@@ -47,6 +49,7 @@ final class BehaviorTree {
         void schema() { with(services, (BehaviorCommands behaviors) -> behaviors.schemaCommand(actor())); }
 
         @Director(description = "List behavior packs")
+        @Positional("page")
         void packs(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             with(services, (BehaviorCommands behaviors) -> behaviors.packs(actor(), page));
         }
@@ -64,6 +67,7 @@ final class BehaviorTree {
         }
 
         @Director(description = "Show an NPC's running and recent executions")
+        @Positional("page")
         void trace(@Param(name = "npc", description = "The NPC id or UUID, or @selected") String npc,
                    @Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             CommandActor actor = actor();
@@ -76,12 +80,14 @@ final class BehaviorTree {
         }
 
         @Director(description = "List trigger bindings and how often they fired")
+        @Positional("page")
         void triggers(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             with(services, (BehaviorCommands behaviors) -> behaviors.triggers(actor(), page));
         }
     }
 
     @Director(name = "state", description = "Stored behavior variables")
+    @AnimusPermission(PermissionNodes.BEHAVIOR_STATE)
     static final class State extends CommandGroup {
         Delete delete;
 

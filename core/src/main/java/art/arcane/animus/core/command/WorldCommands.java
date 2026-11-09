@@ -7,9 +7,12 @@ import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
 import art.arcane.volmlib.util.director.annotations.Director;
 import art.arcane.volmlib.util.director.annotations.Param;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /** {@code /animus navigation}, {@code ride} and {@code combat}: NPCs moving, carrying riders and fighting. */
@@ -26,6 +29,7 @@ final class WorldCommands {
     }
 
     @Director(name = "navigation", description = "Send NPCs somewhere, turn them, watch or stop their routes")
+    @AnimusPermission(PermissionNodes.NPC_MOVE)
     static final class Navigation extends CommandGroup {
         Navigation(CommandServices services) { super(services); }
 
@@ -92,6 +96,7 @@ final class WorldCommands {
     }
 
     @Director(name = "ride", description = "Watch or end NPC rides")
+    @AnimusPermission(PermissionNodes.NPC_MOVE)
     static final class Ride extends CommandGroup {
         Ride(CommandServices services) { super(services); }
 
@@ -111,47 +116,49 @@ final class WorldCommands {
     }
 
     @Director(name = "combat", description = "Make NPCs fight, guard, attack once or steer a mob")
+    @AnimusPermission(PermissionNodes.COMBAT)
     static final class Combat extends CommandGroup {
         Combat(CommandServices services) { super(services); }
 
         @Director(description = "Show combat on this server, or one NPC's fight")
+        @Positional("npc")
         void status(@Param(name = "npc", defaultValue = "", description = "One NPC id, or @selected") String npc) {
             CommandActor actor = actor();
             if (npc.isEmpty()) { combat(actor, services.combat()::status); return; }
-            run(actor, npc, CombatControl.Operation.STATUS, Optional.empty());
+            run(actor, npc, CombatControl.Operation.STATUS, Optional.empty(), "");
         }
 
         @Director(description = "Let an NPC fight")
-        void engage(@Param(name = "npc", description = "The NPC id, or @selected") String npc) { run(actor(), npc, CombatControl.Operation.ENGAGE, Optional.empty()); }
+        void engage(@Param(name = "npc", description = "The NPC id, or @selected") String npc) { run(actor(), npc, CombatControl.Operation.ENGAGE, Optional.empty(), ""); }
 
         @Director(description = "Stop an NPC fighting")
-        void disengage(@Param(name = "npc", description = "The NPC id, or @selected") String npc) { run(actor(), npc, CombatControl.Operation.DISENGAGE, Optional.empty()); }
+        void disengage(@Param(name = "npc", description = "The NPC id, or @selected") String npc) { run(actor(), npc, CombatControl.Operation.DISENGAGE, Optional.empty(), ""); }
 
         @Director(description = "Hand an NPC back to its own combat rules")
-        void release(@Param(name = "npc", description = "The NPC id, or @selected") String npc) { run(actor(), npc, CombatControl.Operation.RELEASE, Optional.empty()); }
+        void release(@Param(name = "npc", description = "The NPC id, or @selected") String npc) { run(actor(), npc, CombatControl.Operation.RELEASE, Optional.empty(), ""); }
 
         @Director(description = "Set an NPC's target")
         void target(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
-                    @Param(name = "target", description = "The target's UUID") UUID target) {
-            run(actor(), npc, CombatControl.Operation.TARGET, Optional.of(target));
+                    @Param(name = "target", description = TARGET) String target) {
+            CommandActor actor = actor();
+            entity(actor, target).ifPresent((UUID found) -> run(actor, npc, CombatControl.Operation.TARGET, Optional.of(found), target));
         }
 
         @Director(description = "Make an NPC guard a player or NPC, or stop with stop")
         void guard(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
-                   @Param(name = "charge", description = "The guarded player's or NPC's UUID, or stop") String charge) {
+                   @Param(name = "charge", description = "The guarded player's name, an NPC id, @me, a UUID, or stop") String charge) {
             CommandActor actor = actor();
-            Optional<UUID> guarded;
-            try { guarded = charge.equalsIgnoreCase(STOP) ? Optional.empty() : Optional.of(UUID.fromString(charge)); }
-            catch (IllegalArgumentException invalid) { actor.tell(Palette.error("Combat: charge is a UUID or stop; tab completion lists nearby ones")); return; }
-            run(actor, npc, CombatControl.Operation.GUARD, guarded);
+            if (charge.equalsIgnoreCase(STOP)) { run(actor, npc, CombatControl.Operation.GUARD, Optional.empty(), charge); return; }
+            entity(actor, charge).ifPresent((UUID found) -> run(actor, npc, CombatControl.Operation.GUARD, Optional.of(found), charge));
         }
 
         @Director(description = "Make an NPC hit a living entity once")
         void attack(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
-                    @Param(name = "target", description = "The target's UUID") UUID target,
+                    @Param(name = "target", description = TARGET) String target,
                     @Param(name = "damage", defaultValue = "1", description = "Damage dealt") double damage) {
             CommandActor actor = actor();
-            npc(actor, npc).ifPresent((String id) -> combat(actor, () -> services.combat().attack(id, target, damage)));
+            entity(actor, target).ifPresent((UUID found) -> npc(actor, npc).ifPresent((String id) ->
+                    combat(actor, () -> Targets.named(services.combat().attack(id, found, damage), found, shown(actor, found, target)))));
         }
 
         @Director(description = "Lend a mob to an NPC's control, or stop with stop")
@@ -164,13 +171,61 @@ final class WorldCommands {
             npc(actor, npc).ifPresent((String id) -> combat(actor, () -> lent.isEmpty() ? services.combat().releaseMobs(id) : services.combat().control(id, lent.get())));
         }
 
-        /** Runs the operation; a reply that names the player who sent it by UUID says {@code you} instead. */
-        private void run(CommandActor actor, String npc, CombatControl.Operation operation, Optional<UUID> target) {
-            Optional<String> self = target.filter((UUID who) -> actor.player().map(who::equals).orElse(false)).map((UUID who) -> ChatLine.shortId(who.toString()));
+        private static final String TARGET = "A player's name, an NPC id, @me, @selected, or an entity's UUID";
+
+        /** The entity a word names, as {@link Targets} reads it; {@code @selected} is the selected NPC. Empty after telling the actor why. */
+        private Optional<UUID> entity(CommandActor actor, String word) {
+            Optional<String> npc = word.equalsIgnoreCase(SELECTED) ? npc(actor, word) : Optional.of(word);
+            if (npc.isEmpty()) return Optional.empty();
+            Optional<UUID> found = new Targets(actor.player(), services.shops()::playerNamed,
+                    (String id) -> runtime().npcs().find(id).map(art.arcane.animus.core.npc.NpcDefinition::uuid)).resolve(npc.get());
+            if (found.isEmpty()) actor.tell(Palette.error("Combat: no online player or NPC named " + word + "; give a player name, an NPC id or a UUID"));
+            return found;
+        }
+
+        /** How a reply names the target: {@code you} for the sender, else the word typed, unless that was a raw UUID. */
+        private static String shown(CommandActor actor, UUID target, String typed) {
+            if (actor.player().map(target::equals).orElse(false)) return "you";
+            try { UUID.fromString(typed); return ChatLine.shortId(target.toString()); }
+            catch (IllegalArgumentException named) { return typed; }
+        }
+
+        /** Runs the operation; a reply that names the target by UUID names it as typed, or says {@code you} for the sender. */
+        private void run(CommandActor actor, String npc, CombatControl.Operation operation, Optional<UUID> target, String typed) {
             npc(actor, npc).ifPresent((String id) -> combat(actor, () -> {
                 String reply = services.combat().npc(id, operation, target);
-                return self.map((String shown) -> reply.replace(" " + shown, " you")).orElse(reply);
+                return target.map((UUID found) -> Targets.named(reply, found, shown(actor, found, typed))).orElse(reply);
             }));
+        }
+    }
+
+    /**
+     * What a combat command's player or NPC word means: {@code @me} is the sender, then a UUID, an online player's
+     * exact name, then an NPC id. A player name wins over an NPC id spelled the same, as Sentinel's guard reads it.
+     */
+    record Targets(Optional<UUID> self, Function<String, Optional<UUID>> players, Function<String, Optional<UUID>> npcs) {
+        static final String ME = "@me";
+
+        Optional<UUID> resolve(String word) {
+            if (word.equalsIgnoreCase(ME)) return self;
+            try { return Optional.of(UUID.fromString(word)); }
+            catch (IllegalArgumentException named) { return players.apply(word).or(() -> npcs.apply(word)); }
+        }
+
+        /** The reply with the target's UUID, whole or short, replaced by how the sender named it. */
+        static String named(String reply, UUID target, String shown) {
+            return reply.replace(target.toString(), shown).replace(ChatLine.shortId(target.toString()), shown);
+        }
+
+        /** Completion: {@code stop} where it ends the command, {@code @me} for a player, names, NPC ids, then nearby entities by UUID. */
+        static List<String> offered(boolean stop, boolean player, List<String> players, List<String> npcs, List<UUID> nearby) {
+            List<String> offered = new ArrayList<>();
+            if (stop) offered.add(STOP);
+            if (player) offered.add(ME);
+            offered.addAll(players);
+            offered.addAll(npcs);
+            nearby.forEach((UUID id) -> offered.add(id.toString()));
+            return offered;
         }
     }
 }

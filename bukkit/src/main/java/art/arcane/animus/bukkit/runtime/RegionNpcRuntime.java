@@ -22,6 +22,8 @@ import art.arcane.animus.core.runtime.ViewerPreviews;
 
 import art.arcane.animus.bukkit.folia.FoliaRegions;
 import art.arcane.animus.bukkit.navigation.BukkitDoors;
+import art.arcane.animus.bukkit.protection.RegionRideEntry;
+import art.arcane.animus.core.control.RideEntry;
 import art.arcane.animus.bukkit.navigation.BukkitNavigationBridge;
 import art.arcane.animus.bukkit.navigation.TerrainChanges;
 import art.arcane.animus.core.navigation.BlockPos;
@@ -38,6 +40,7 @@ import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.mount.MountRelations;
 import art.arcane.animus.core.virtual.ChunkPosition;
 import art.arcane.animus.core.virtual.SpatialNpcIndex;
+import art.arcane.animus.core.virtual.VirtualNpcState;
 import art.arcane.animus.core.virtual.WorldPosition;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -104,6 +107,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     final FoliaRegions regions;
     /** Doors change on the region that owns their chunk; a door left behind in another region is closed by its owner. */
     final BukkitDoors doors;
+    /** WorldGuard's entry flag for each block a ride steps into; riding fires no movement event for region plugins to see. */
+    final RideEntry.Rule rideEntry;
     final RegionBudget budget;
     private final RegionPickup<Live> live;
     private final AutoCloseable settingsSubscription;
@@ -168,6 +173,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
             @Override public boolean owns(World world, int chunkX, int chunkZ) { return regions.owns(world, chunkX, chunkZ, chunkX, chunkZ); }
             @Override public void run(World world, int chunkX, int chunkZ, Runnable work) { regions.execute(new ChunkPosition(world.getUID().toString(), chunkX, chunkZ), work); }
         });
+        rideEntry = RegionRideEntry.bind(plugin.getServer());
         previews = new ViewerPreviews(io, runtime.documents());
         Live initial = new Live(Objects.requireNonNull(settings),
                 runtime.isRunning() ? runtime.navigationSettings() : NavigationSettings.DEFAULT,
@@ -449,11 +455,15 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         return Optional.of(new ActiveNpc(actor.id, view.name(), view.snapshot()));
     }
     Player onlinePlayer(UUID id) { return online.get(id); }
-    void damaged(UUID npc, double amount, boolean died, Optional<TriggerEvent.Attacker> attacker) {
+    /** On the NPC's region owner: damage and death triggers, and the death event when health reached zero. */
+    void damaged(UUID npc, String id, double amount, VirtualNpcState.Snapshot after, Optional<TriggerEvent.Attacker> attacker) {
+        boolean died = after.health() == 0;
         TriggerDispatcher dispatcher = triggers;
-        if (dispatcher == null) return;
-        dispatcher.publish(new TriggerEvent.Damage(npc, amount, attacker));
-        if (died) { dispatcher.publish(new TriggerEvent.Death(npc, attacker)); dispatcher.dead(npc); }
+        if (dispatcher != null) {
+            dispatcher.publish(new TriggerEvent.Damage(npc, amount, attacker));
+            if (died) { dispatcher.publish(new TriggerEvent.Death(npc, attacker)); dispatcher.dead(npc); }
+        }
+        if (died) NpcEvents.died(plugin.getServer(), npc, id, after.position(), attacker);
     }
     @Override public Optional<ActiveNpc> active(UUID npc) {
         RegionActor actor = available() ? byUuid.get(npc) : null;
@@ -542,7 +552,12 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         }
     }
     void releaseRead() { reads.decrementAndGet(); }
-    void activated(UUID npc) { TriggerDispatcher dispatcher = triggers; if (dispatcher != null) dispatcher.activated(npc); }
+    /** On the NPC's region owner: it became active or came back after dying. */
+    void activated(UUID npc, String id, WorldPosition at) {
+        TriggerDispatcher dispatcher = triggers;
+        if (dispatcher != null) dispatcher.activated(npc);
+        NpcEvents.spawned(plugin.getServer(), npc, id, at);
+    }
     void waypoint(UUID npc, int waypoint) { TriggerDispatcher dispatcher = triggers; if (dispatcher != null) dispatcher.publish(new TriggerEvent.Waypoint(npc, waypoint)); }
     /** On the NPC's region owner. */
     void animationEvent(UUID npc, art.arcane.animus.core.rig.RigPlayback.Fired fired) {
@@ -576,8 +591,10 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         if (actor.replaced || closed) return;
         // A newer definition may have arrived while the owner retired the old one; the control tick checks again.
         if (actor.desired.spec() != null) { rechecks.add(actor.id); return; }
+        if (!actor.announced) return;
         TriggerDispatcher dispatcher = triggers;
-        if (actor.announced && dispatcher != null) dispatcher.deactivated(actor.uuid);
+        if (dispatcher != null) dispatcher.deactivated(actor.uuid);
+        NpcEvents.despawned(plugin.getServer(), actor.uuid, actor.id);
     }
     private static void join(Map<ChunkPosition, Set<RegionActor>> map, ChunkPosition chunk, RegionActor actor) {
         map.compute(chunk, (key, set) -> { Set<RegionActor> bucket = set == null ? ConcurrentHashMap.newKeySet() : set; bucket.add(actor); return bucket; });

@@ -28,7 +28,7 @@ final class HealthSetting {
 
     /** The NPC's health module as stored, or one setting of it. */
     static String show(NpcRepository repository, String id, String setting) throws IOException {
-        NpcDefinition definition = repository.find(id).orElseThrow(() -> new IOException("Unknown NPC: " + id));
+        NpcDefinition definition = repository.find(id).orElseThrow(() -> new IOException(CommandGroup.unknownNpc(id)));
         JsonObject modules = definition.json().getAsJsonObject("modules");
         JsonElement health = modules == null ? null : modules.get(HealthSettings.MODULE);
         if (health == null || !health.isJsonObject()) return id + ": not killable (no " + HealthSettings.MODULE + " module)";
@@ -68,6 +68,20 @@ final class HealthSetting {
         return id + ": " + setting + (reset ? " reset" : " = " + parsed) + "; tx " + transaction;
     }
 
+    /** The values a setting takes, for completion: on and off, a few numbers, or the after-death choices; none for an unknown setting. */
+    static List<String> values(String setting) {
+        Field field = FIELDS.get(setting.toLowerCase(Locale.ROOT));
+        if (field == null) return List.of();
+        return switch (field.kind()) {
+            case FLAG -> List.of("on", "off");
+            case NUMBER -> List.of("10", "20", "40", "100");
+            case TICKS -> List.of("20", "100", "200", "600");
+            case AFTER_DEATH -> AFTER_DEATH;
+        };
+    }
+
+    private static final List<String> AFTER_DEATH = List.of("respawn", "permadeath", "delete");
+
     private static Field field(String setting) {
         Field field = FIELDS.get(setting.toLowerCase(Locale.ROOT));
         if (field == null) throw new IllegalArgumentException("setting must be one of " + String.join(", ", NAMES));
@@ -91,7 +105,7 @@ final class HealthSetting {
                 catch (NumberFormatException invalid) { throw new IllegalArgumentException("value must be a whole number of ticks"); }
             }
             case AFTER_DEATH -> {
-                if (!List.of("respawn", "permadeath", "delete").contains(text)) throw new IllegalArgumentException("value must be respawn, permadeath or delete");
+                if (!AFTER_DEATH.contains(text)) throw new IllegalArgumentException("value must be respawn, permadeath or delete");
                 yield new JsonPrimitive(text);
             }
         };

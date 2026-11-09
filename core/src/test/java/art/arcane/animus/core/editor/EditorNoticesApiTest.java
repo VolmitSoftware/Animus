@@ -1,6 +1,7 @@
 package art.arcane.animus.core.editor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import art.arcane.animus.core.config.EditorNotifySettings;
@@ -138,7 +139,7 @@ class EditorNoticesApiTest {
         harness.host.admin = EditorHost.Admin.NOT_ADMIN;
         harness.api.recheckAdmins();
         harness.lane.submit(() -> {}).get(5, java.util.concurrent.TimeUnit.SECONDS);
-        assertEquals(List.of("[Animus]: Brian's editor was revoked after losing animus.admin"), harness.flushNotices());
+        assertEquals(List.of("[Animus]: Brian's editor was revoked after losing animus.editor.pair"), harness.flushNotices());
     }
 
     @Test
@@ -159,7 +160,7 @@ class EditorNoticesApiTest {
         harness.clock.advance(java.time.Duration.ofDays(2));
         recheck();
         assertTrue(harness.api.parts().tokens().find(id).isEmpty(), "seven days without a confirmation revokes");
-        assertEquals(List.of("[Animus]: Brian's editor was revoked after 7 days without confirming animus.admin"), harness.flushNotices());
+        assertEquals(List.of("[Animus]: Brian's editor was revoked after 7 days without confirming animus.editor.pair"), harness.flushNotices());
         EditorTokens reloaded = new EditorTokens(harness.store, harness.clock);
         assertTrue(reloaded.find(id).isEmpty());
     }
@@ -171,6 +172,37 @@ class EditorNoticesApiTest {
         harness.clock.advance(java.time.Duration.ofDays(5));
         recheck();
         assertEquals(harness.clock.instant(), new EditorTokens(harness.store, harness.clock).find(id).orElseThrow().adminChecked());
+    }
+
+    @Test
+    void recheck_lostCommandsPermissionDropsOnlyTheCommandsScope() throws Exception {
+        java.util.List<EditorScope> scopes = new java.util.ArrayList<>(EditorScope.DEFAULT_PAIRING);
+        scopes.add(EditorScope.APPLY_COMMANDS);
+        String token = harness.token(EditorHarness.grant(scopes));
+        String id = token.substring(4, token.indexOf('.'));
+        harness.host.commands = EditorHost.Admin.NOT_ADMIN;
+        recheck();
+        EditorTokens.Token kept = harness.api.parts().tokens().find(id).orElseThrow();
+        assertFalse(kept.has(EditorScope.APPLY_COMMANDS), "the commands scope goes with the permission");
+        assertTrue(kept.has(EditorScope.APPLY_BEHAVIORS), "the rest of the token keeps working");
+        assertFalse(new EditorTokens(harness.store, harness.clock).find(id).orElseThrow().has(EditorScope.APPLY_COMMANDS), "the drop is saved");
+    }
+
+    @Test
+    void recheck_unconfirmedCommandsPermissionDropsTheScopeAfterSevenDays() throws Exception {
+        java.util.List<EditorScope> scopes = new java.util.ArrayList<>(EditorScope.DEFAULT_PAIRING);
+        scopes.add(EditorScope.APPLY_COMMANDS);
+        String token = harness.token(EditorHarness.grant(scopes));
+        String id = token.substring(4, token.indexOf('.'));
+        harness.host.commands = EditorHost.Admin.UNKNOWN;
+        harness.clock.advance(java.time.Duration.ofDays(6));
+        recheck();
+        assertTrue(harness.api.parts().tokens().find(id).orElseThrow().has(EditorScope.APPLY_COMMANDS));
+        harness.clock.advance(java.time.Duration.ofDays(2));
+        recheck();
+        EditorTokens.Token kept = harness.api.parts().tokens().find(id).orElseThrow();
+        assertFalse(kept.has(EditorScope.APPLY_COMMANDS), "seven days without confirming the commands permission drops the scope");
+        assertTrue(kept.has(EditorScope.READ));
     }
 
     private void recheck() throws Exception {

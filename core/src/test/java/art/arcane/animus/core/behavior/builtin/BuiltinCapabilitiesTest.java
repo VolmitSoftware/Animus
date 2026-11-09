@@ -686,6 +686,23 @@ class BuiltinCapabilitiesTest {
         assertEquals(1, platform.calls.size());
     }
 
+    @Test void interpolatedTextCannotCarryPlaceholdersIntoSpeech() throws Exception {
+        start();
+        BehaviorProgram templated = program("{\"type\":\"action\",\"capability\":\"animus:say\",\"arguments\":{\"text\":null},\"templates\":{\"/text\":\"Hi %player_name%, you said {{ '%server_secret%' }}\"}}");
+        BehaviorEngine.Report ran = run(templated, false, behavior -> false);
+        assertEquals(BehaviorEngine.State.COMPLETED, ran.state(), ran.toString());
+        assertEquals(List.of("say:true:0.0:Hi %player_name%, you said \uFF05server_secret\uFF05"), platform.calls,
+                "the author's placeholder stays; the interpolated one cannot reach the placeholder plugin");
+    }
+
+    @Test void rawCommandTextKeepsItsPercentSigns() throws Exception {
+        start(Platform.PAPER, 5000, grants(List.of("town:greeter"), List.of()));
+        BehaviorProgram templated = program("{\"type\":\"action\",\"capability\":\"animus:command\",\"arguments\":{\"command\":null},\"templates\":{\"/command\":\"say {{ '50%' }}\"}}");
+        BehaviorEngine.Report ran = run(templated, false, builtins::commandAllowed, "town:greeter"::equals);
+        assertEquals(BehaviorEngine.State.COMPLETED, ran.state(), ran.toString());
+        assertEquals(List.of("command:CONSOLE:say 50%"), platform.calls, "a raw text grant keeps the percent sign");
+    }
+
     @Test void consoleCommandRefusesAPlayerNameOutsideTheSafeSet() throws Exception {
         start(Platform.PAPER, 5000, grants(List.of("town:greeter"), List.of()));
         platform.playerName = Optional.of("Al ex");

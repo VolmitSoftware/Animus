@@ -6,8 +6,9 @@ import java.util.*;
 /**
  * Named extension points the engine calls itself. Unlike capabilities, a hook runs synchronously on the platform
  * owner thread that needs the answer, so it must be quick, nonblocking and thread-safe. One module may provide each
- * point. A throw, a null answer or an unavailable provider denies (protection) or refuses payment (economy); a call
- * longer than the module invocation deadline suspends the module. @since 1.1
+ * point. A throw, a null answer or an unavailable provider denies (protection) or refuses payment (economy). Calls that
+ * run past the module invocation deadline several times within a minute suspend the module for a cool-off that grows
+ * with each suspension; an administrator can resume it sooner. @since 1.1
  */
 public final class Integrations {
     private Integrations() {}
@@ -17,7 +18,12 @@ public final class Integrations {
     }
 
     public enum Decision { ALLOW, DENY }
-    /** Combat actions, NPC build block changes and an NPC opening a door, fence gate or trapdoor on its route ({@code BLOCK_USE}). */
+    /**
+     * Combat actions, NPC build block changes and an NPC opening a door, fence gate or trapdoor on its route
+     * ({@code BLOCK_USE}, @since 1.2). A minor version can add constants, so a hook's {@code switch} needs a
+     * {@code default} branch. A hook that throws on {@code BLOCK_USE} is treated as allowing it, as engines before 1.2
+     * did not ask.
+     */
     public enum ProtectionAction { NPC_ATTACK, PLAYER_ATTACK, MOB_ATTACK, MOB_CONTROL, BLOCK_PLACE, BLOCK_BREAK, BLOCK_USE }
     public enum PartyKind { PLAYER, MOB, NPC }
     public record Party(PartyKind kind,UUID uuid) {public Party {Objects.requireNonNull(kind);Objects.requireNonNull(uuid);}}

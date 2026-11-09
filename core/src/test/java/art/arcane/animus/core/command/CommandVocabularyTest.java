@@ -62,7 +62,7 @@ class CommandVocabularyTest {
 
     @Test void anNpcThatCannotTakeLiveWorkSaysWhyAndWhatToDo() throws IOException {
         NpcDefinition despawned = definition(false), spawned = definition(true);
-        assertEquals("Unknown NPC: ghost; /animus list shows ids", CommandGroup.inactive("ghost", Optional.empty()));
+        assertEquals("No NPC named ghost; /animus list shows ids", CommandGroup.inactive("ghost", Optional.empty()));
         assertEquals("guard is despawned; /animus spawn guard first", CommandGroup.inactive("guard", Optional.of(despawned)));
         assertEquals("guard is spawned but not active; it becomes active when its chunk loads or a player comes near", CommandGroup.inactive("guard", Optional.of(spawned)));
     }
@@ -129,9 +129,9 @@ class CommandVocabularyTest {
 
     @Test void createTakesOnlyTheIdAndOffersKeyedDefaults() {
         AnimusDirector director = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
-        AnimusDirectorTest.Actor admin = new AnimusDirectorTest.Actor(true, AnimusDirector.ADMIN);
+        AnimusDirectorTest.Actor admin = new AnimusDirectorTest.Actor(true, AnimusDirector.ADMIN, PermissionNodes.NPC_CREATE);
         List<String> keys = director.complete(admin, new String[]{"create", "guard", ""});
-        assertEquals(List.of("type=", "name=", "folder=", "world=", "x=", "y=", "z="), keys);
+        assertEquals(List.of("type=", "name=", "folder=", "world=", "x=", "y=", "z=", "spawned="), keys);
         assertFalse(director.complete(admin, new String[]{""}).contains("navigate"), "navigate moved into navigation");
     }
 

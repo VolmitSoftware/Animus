@@ -42,7 +42,10 @@ class _PairPageState extends State<PairPage> {
   PairingPayload? _payload;
   String? _invalid;
   String? _problem;
-  bool _remember = false;
+  /// On by default: the token is scoped, revocable from the server and ends
+  /// with the pairing (tokenDays, 7 by default), and a tab-only token makes
+  /// every new tab ask for a fresh code.
+  bool _remember = true;
   bool _busy = false;
   String _client = 'Animus Editor';
 
@@ -153,6 +156,11 @@ class _PairPageState extends State<PairPage> {
                   child: Component.text('Remember this browser'),
                 ),
               ]),
+            ]),
+            dom.p(classes: 'animus-muted animus-pair-remember-note', attributes: const <String, String>{'data-testid': 'pair-remember-note'}, <Widget>[
+              Component.text(_remember
+                  ? 'On: every tab of this browser stays paired until the pairing expires or you Forget the server. Turn it off on a shared computer.'
+                  : 'Off: this tab only. A new tab, or this one after it closes, needs a new code from /animus editor pair.'),
             ]),
             dom.div(classes: 'animus-row', <Widget>[
               Button.primary(label: _busy ? 'Pairing' : 'Pair', size: ButtonSize.small, loading: _busy, disabled: _busy, onPressed: _pair),

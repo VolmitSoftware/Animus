@@ -6,6 +6,6 @@ pluginManagement {
 }
 
 rootProject.name = 'Animus'
-include(':animus-api', ':core', ':bukkit', ':converter')
+include(':animus-api', ':animus-bukkit-api', ':core', ':bukkit', ':converter')
 ext.animusRoot = settingsDir
 apply from: 'gradle/volmlib.settings.gradle'

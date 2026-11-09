@@ -386,9 +386,16 @@ class EditorApiTest {
         assertEquals("unknown", valid("change-status-response", harness.send("GET", "/v1/changes/key-0000000000000009", token, null)).get("status").getAsString());
     }
 
+    /** A shop that trades changes only with apply:commands. */
+    private String shopEditor() throws Exception {
+        List<EditorScope> scopes = new java.util.ArrayList<>(EditorScope.DEFAULT_PAIRING);
+        scopes.add(EditorScope.APPLY_COMMANDS);
+        return harness.token(EditorHarness.grant(scopes));
+    }
+
     @Test
     void apply_staleBase_isConflictWithServerVersionAndAllOrNothing() throws Exception {
-        String token = harness.token();
+        String token = shopEditor();
         JsonObject stale = greeter();
         assertEquals(200, harness.send("POST", "/v1/changes", token, set("key-0000000000000001", change("npc", "examples/greeter", stale, renamed(stale, "First")))).status());
         String shopBefore = harness.read("shops/shop/bakery.json");
@@ -417,7 +424,7 @@ class EditorApiTest {
 
     @Test
     void apply_createAndDelete_thenUndoRestores() throws Exception {
-        String token = harness.token();
+        String token = shopEditor();
         JsonObject created = greeter().getAsJsonObject("source").deepCopy();
         created.addProperty("id", "host");
         created.addProperty("uuid", "11111111-2222-3333-4444-555555555555");

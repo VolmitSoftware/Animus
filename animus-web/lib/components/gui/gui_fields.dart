@@ -19,6 +19,7 @@ import '../../mc/npc/mc_text.dart';
 import '../../logic/select/select_model.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
+import '../../logic/diagnostic_text.dart';
 import '../../logic/help_text.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../info_tip.dart';
@@ -85,14 +86,11 @@ class _GuiRowState extends State<GuiRow> with TypingPause<GuiRow> {
       dom.div(classes: 'animus-gui-control', <Widget>[
         component.child,
         if (split.hint != null) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(split.hint!)]),
-        for (final Diagnostic problem in shown)
+        for (final Diagnostic problem in withoutRepeats(shown))
           dom.span(
             classes: 'animus-gui-problem is-${problem.severity.name}',
-            attributes: const <String, String>{'role': 'note'},
-            <Widget>[
-              dom.code(<Widget>[Component.text(problem.path)]),
-              Component.text(' ${problem.message}'),
-            ],
+            attributes: <String, String>{'role': 'note', 'title': problem.path},
+            <Widget>[Component.text(diagnosticSentence(problem))],
           ),
       ]),
     ]);

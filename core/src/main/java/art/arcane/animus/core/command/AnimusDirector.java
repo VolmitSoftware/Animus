@@ -23,27 +23,30 @@ import art.arcane.volmlib.util.localization.TextKey;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiFunction;
 
 /**
- * Runs {@code /animus} through VolmLib's Director, the same on every platform. Bare words bind only to required
- * parameters; optional ones are {@code key=value}. Unknown keys and leftover words fail with the command's usage.
+ * Runs {@code /animus} through VolmLib's Director, the same on every platform. Bare words bind to required parameters,
+ * then to the optional ones a command lists in {@link Positional}; any other optional one is {@code key=value}. Unknown
+ * keys and leftover words fail with the command's usage and the key to write.
  * Commands carry their node in {@link AnimusPermission}; help and completion show only what the actor may run.
  * Call {@link #execute} and {@link #complete} on the actor's owner; commands read the actor with {@link #actor()}.
  */
 public final class AnimusDirector {
     /** Every node without its own {@link AnimusPermission} needs this one. */
-    public static final String ADMIN = "animus.admin";
+    public static final String ADMIN = PermissionNodes.ADMIN;
     /** Help in Animus's pinks on grey. */
     public static final DirectorMiniMenu.Theme THEME = new DirectorMiniMenu.Theme("#FF5FA8", "#E0408C", "#E0408C", "#555555", "#AAAAAA", "#FF5FA8", "#FFB3D6", "#777777");
     private static final TextKey UNEXPECTED = TextKey.of(DirectorRuntimeMessages.UNEXPECTED_ARGUMENT.id(),
-            "Unexpected \"{argument}\"; optional values are key=value, such as page=2");
+            "Unexpected \"{argument}\"; optional values are key=value");
     /** Director's English, with Animus's own example for an unkeyed optional value and no Java type on a missing argument. */
     public static final DirectorTextResolver TEXT = (TextKey key, MessageArgs arguments) -> {
         String text = DirectorTextResolver.ENGLISH.resolve(key.id().equals(UNEXPECTED.id()) ? UNEXPECTED : key, arguments);
@@ -54,19 +57,27 @@ public final class AnimusDirector {
     private static final ThreadLocal<CommandActor> CURRENT = new ThreadLocal<>();
     private final String label;
     private final DirectorRuntimeEngine engine;
-    private final BiFunction<String, CommandActor, Collection<String>> values;
+    private final Completer values;
+
+    /** Completion values for a parameter name, such as NPC ids for {@code npc}; {@code given} holds the values already typed, by name. */
+    @FunctionalInterface public interface Completer { Collection<String> values(String parameter, CommandActor actor, Map<String, String> given); }
 
     /**
      * @param root   the {@code @Director} root command object
-     * @param values completion values for a parameter name, such as NPC ids for {@code npc}
+     * @param values completion values for a parameter name
      */
-    public AnimusDirector(Object root, BiFunction<String, CommandActor, Collection<String>> values) {
+    public AnimusDirector(Object root, Completer values) {
         this.values = Objects.requireNonNull(values);
         engine = DirectorEngineFactory.create(Objects.requireNonNull(root), DirectorEngineOptions.builder()
                 .dispatcher((DirectorExecutionMode mode, Runnable task) -> task.run())
                 .textResolver(TEXT)
                 .build());
         label = engine.getRoot().getDescriptor().getName();
+    }
+
+    /** As {@link #AnimusDirector(Object, Completer)}, for values that do not depend on what else was typed. */
+    public AnimusDirector(Object root, BiFunction<String, CommandActor, Collection<String>> values) {
+        this(root, (String parameter, CommandActor actor, Map<String, String> given) -> values.apply(parameter, actor));
     }
 
     public DirectorRuntimeEngine engine() { return engine; }
@@ -107,7 +118,7 @@ public final class AnimusDirector {
         if (!route.invocable()) return unknown(actor, route.node() == null ? engine.getRoot() : route.node(), String.join(" ", tokens));
         DirectorRuntimeNode node = route.node();
         List<String> words = new ArrayList<>(tokens.subList(0, tokens.size() - route.remainingArgs().size()));
-        words.addAll(coordinates(node, route.remainingArgs()));
+        words.addAll(positional(node, coordinates(node, route.remainingArgs())));
         DirectorInvocation invocation = DirectorInvocation.pretokenized(sender, label, words);
         for (DirectorRuntimeNode gate = node; gate != null; gate = gate.getParent())
             if (!gate.getDescriptor().getOrigin().validFor(actor.player().isPresent())) {
@@ -117,6 +128,12 @@ public final class AnimusDirector {
             }
         if (!allowed(actor, node)) { actor.tell(Palette.error(refused(node))); return false; }
         boolean hidden = hidden(node);
+        Optional<String> stray = stray(node, words.subList(words.size() - route.remainingArgs().size(), words.size()));
+        if (stray.isPresent()) {
+            actor.tell(Palette.error(hidden ? ChoiceCommands.NOT_AVAILABLE : stray.get()));
+            if (!hidden) actor.rich(ChatLine.of(Palette.PREFIX + "&7Usage: &f" + usage(node)).docs(DocsLink.ARGUMENTS));
+            return false;
+        }
         sender.quiet = hidden;
         CommandActor previous = CURRENT.get();
         CURRENT.set(actor);
@@ -182,6 +199,58 @@ public final class AnimusDirector {
         return out;
     }
 
+    /**
+     * After a command's required values, bare words fill the optional parameters its {@link Positional} lists, in that
+     * order, skipping any already given by key: {@code select guard} reads as {@code select npc=guard}.
+     */
+    static List<String> positional(DirectorRuntimeNode node, List<String> words) {
+        List<DirectorRuntimeParameter> open = open(node, keyed(node, words));
+        if (open.isEmpty()) return words;
+        long required = required(node, keyed(node, words)).size();
+        List<String> out = new ArrayList<>(words);
+        int bare = 0, next = 0;
+        for (int index = 0; index < out.size() && next < open.size(); index++) {
+            if (!bare(node, out.get(index)) || bare++ < required) continue;
+            out.set(index, open.get(next++).getDescriptor().getName() + "=" + out.get(index));
+        }
+        return out;
+    }
+
+    /** The optional parameters {@link Positional} lists that {@code keyed} does not give yet, in order. */
+    private static List<DirectorRuntimeParameter> open(DirectorRuntimeNode node, Set<DirectorRuntimeParameter> keyed) {
+        Positional positional = node.getMethod() == null ? null : node.getMethod().getAnnotation(Positional.class);
+        if (positional == null) return List.of();
+        List<DirectorRuntimeParameter> open = new ArrayList<>();
+        for (String name : positional.value()) {
+            DirectorRuntimeParameter parameter = parameter(node, name);
+            if (parameter != null && !keyed.contains(parameter)) open.add(parameter);
+        }
+        return open;
+    }
+
+    /**
+     * The refusal for the first bare word no parameter takes, naming the key to write it with, such as
+     * {@code Unexpected "1.5"; write value=1.5}, or that the command takes nothing more.
+     */
+    static Optional<String> stray(DirectorRuntimeNode node, List<String> words) {
+        Set<DirectorRuntimeParameter> keyed = keyed(node, words);
+        long required = required(node, keyed).size();
+        int bare = 0;
+        for (String word : words) {
+            if (!bare(node, word) || bare++ < required) continue;
+            Optional<DirectorRuntimeParameter> free = node.getParameters().stream().filter((DirectorRuntimeParameter parameter) -> !parameter.getDescriptor().isRequired()
+                    && !parameter.getDescriptor().isContextual() && !keyed.contains(parameter)).findFirst();
+            return Optional.of("Unexpected \"" + word + "\"; " + free.map((DirectorRuntimeParameter parameter) -> "write " + parameter.getDescriptor().getName() + "=" + word)
+                    .orElse(node.path() + " takes no more values"));
+        }
+        return Optional.empty();
+    }
+
+    /** A word that gives no key: not {@code key=value} for this command, nor anything else shaped like a key Director refuses. */
+    private static boolean bare(DirectorRuntimeNode node, String word) { return keyed(node, word) == null && !KEY.matcher(word).matches(); }
+
+    private static final java.util.regex.Pattern KEY = java.util.regex.Pattern.compile("[A-Za-z][A-Za-z0-9_-]*=.*", java.util.regex.Pattern.DOTALL);
+
     /** {@code /animus path <required> [optional=default]}; an empty default reads {@code [key=]}. */
     public static String usage(DirectorRuntimeNode node) {
         StringBuilder usage = new StringBuilder(node.path());
@@ -232,19 +301,24 @@ public final class AnimusDirector {
     }
 
     private List<String> parameters(CommandActor actor, DirectorRuntimeNode node, List<String> before, String current) {
-        Set<DirectorRuntimeParameter> keyed = keyed(node, before);
-        List<String> bare = before.stream().filter((String word) -> keyed(node, word) == null).toList();
+        List<String> typed = positional(node, before);
+        Set<DirectorRuntimeParameter> keyed = keyed(node, typed);
+        List<String> bare = typed.stream().filter((String word) -> keyed(node, word) == null).toList();
         List<DirectorRuntimeParameter> required = required(node, keyed);
+        Map<String, String> given = given(node, typed, required);
         int equals = current.indexOf('=');
         if (equals > 0) {
             DirectorRuntimeParameter parameter = parameter(node, current.substring(0, equals));
             if (parameter == null || parameter.getDescriptor().isContextual()) return List.of();
             String key = current.substring(0, equals + 1), prefix = current.substring(equals + 1);
-            return values(actor, parameter).stream().filter((String value) -> starts(value, prefix)).limit(SUGGESTIONS).map((String value) -> key + value).toList();
+            return values(actor, parameter, given).stream().filter((String value) -> starts(value, prefix)).limit(SUGGESTIONS).map((String value) -> key + value).toList();
         }
         List<String> suggestions = new ArrayList<>();
+        List<DirectorRuntimeParameter> open = open(node, keyed);
         if (bare.size() < required.size())
-            values(actor, required.get(bare.size())).stream().filter((String value) -> starts(value, current)).limit(SUGGESTIONS).forEach(suggestions::add);
+            values(actor, required.get(bare.size()), given).stream().filter((String value) -> starts(value, current)).limit(SUGGESTIONS).forEach(suggestions::add);
+        else if (!open.isEmpty())
+            values(actor, open.getFirst(), given).stream().filter((String value) -> starts(value, current)).limit(SUGGESTIONS).forEach(suggestions::add);
         else suggestions.addAll(positions(actor, node, keyed, bare.subList(required.size(), bare.size()), current));
         for (DirectorRuntimeParameter parameter : node.getParameters()) {
             DirectorParameterDescriptor descriptor = parameter.getDescriptor();
@@ -252,6 +326,18 @@ public final class AnimusDirector {
                 suggestions.add(descriptor.getName() + "=");
         }
         return suggestions;
+    }
+
+    /** The values already typed, by parameter name: keyed ones, and bare ones in the order the required parameters take them. */
+    private static Map<String, String> given(DirectorRuntimeNode node, List<String> typed, List<DirectorRuntimeParameter> required) {
+        Map<String, String> given = new LinkedHashMap<>();
+        int bare = 0;
+        for (String word : typed) {
+            DirectorRuntimeParameter parameter = keyed(node, word);
+            if (parameter != null) given.put(parameter.getDescriptor().getName(), word.substring(word.indexOf('=') + 1));
+            else if (bare < required.size()) given.put(required.get(bare++).getDescriptor().getName(), word);
+        }
+        return given;
     }
 
     /**
@@ -292,12 +378,12 @@ public final class AnimusDirector {
                 && !parameter.getDescriptor().isContextual() && !keyed.contains(parameter)).toList();
     }
 
-    private List<String> values(CommandActor actor, DirectorRuntimeParameter parameter) {
+    private List<String> values(CommandActor actor, DirectorRuntimeParameter parameter, Map<String, String> given) {
         Class<?> type = parameter.getDescriptor().getType();
         if (type.isEnum()) return java.util.Arrays.stream(type.getEnumConstants()).map((Object constant) -> ((Enum<?>) constant).name().toLowerCase(Locale.ROOT)).toList();
         if (type == boolean.class || type == Boolean.class) return List.of("true", "false");
         try {
-            Collection<String> known = values.apply(parameter.getDescriptor().getName(), actor);
+            Collection<String> known = values.values(parameter.getDescriptor().getName(), actor, given);
             return known == null ? List.of() : known.stream().filter(Objects::nonNull).sorted(String.CASE_INSENSITIVE_ORDER).toList();
         } catch (RuntimeException unavailable) { return List.of(); }
     }
@@ -328,6 +414,7 @@ public final class AnimusDirector {
         return ADMIN;
     }
 
+    /** Whether the actor may run the node: its own {@link AnimusPermission}, else the nearest group's, else {@link #ADMIN}. */
     public static boolean allowed(CommandActor actor, DirectorRuntimeNode node) {
         String permission = permission(node);
         return permission.isEmpty() || actor.permitted(permission);

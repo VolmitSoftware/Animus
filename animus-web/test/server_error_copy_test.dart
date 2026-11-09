@@ -1,4 +1,6 @@
+import 'package:animus_editor/components/server/connection_pill.dart';
 import 'package:animus_editor/services/server/error_copy.dart';
+import 'package:animus_editor/services/server/server_connection.dart';
 import 'package:test/test.dart';
 
 import 'fixtures.dart';
@@ -60,5 +62,11 @@ void main() {
     for (final MapEntry<String, ErrorCopy> entry in transportErrorCopy.entries) {
       _sound(entry.key, entry.value);
     }
+  });
+
+  test('should keep the offline hint short where a Connect button sits beside it', () {
+    const ConnectionStatus offline = ConnectionStatus(ConnectionPhase.offline);
+    expect(phaseHint(offline, hasToken: true), 'Not connected. Use Connect on the server page.');
+    expect(phaseHint(offline, hasToken: true, connectHere: true), 'Not connected.');
   });
 }

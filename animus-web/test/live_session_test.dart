@@ -225,6 +225,14 @@ void main() {
     expect(store.document(DocumentKind.npc, 'town/guard')!.path, 'npcs/town/guard.json');
   });
 
+  test('should show the newest notice as fresh until the user moves on', () async {
+    await session.openDocuments(session.catalog);
+    expect(session.freshNotice?.message, 'Opened 2 documents from the server.');
+    session.markLogSeen();
+    expect(session.freshNotice, isNull);
+    expect(session.log.last.message, 'Opened 2 documents from the server.', reason: 'the log keeps it');
+  });
+
   test('should open the skin document an NPC names once, quietly, with its server base', () async {
     final String hash = 'ab' * 32;
     final Map<String, Object?> skin = <String, Object?>{'signature': 'sig', 'skinName': 'x' * 36, 'textureRaw': 'e30='};

@@ -82,6 +82,9 @@ class EditorShell extends StatefulWidget {
 
 class _EditorShellState extends State<EditorShell> {
   bool _busy = false;
+
+  /// Why the last folder or zip opened nothing, shown on home.
+  String? _openProblem;
   bool _compact = false;
   bool _drawerOpen = false;
   bool _paletteOpen = false;
@@ -125,6 +128,8 @@ class _EditorShellState extends State<EditorShell> {
     super.didUpdateWidget(oldComponent);
     // Moving to another screen (or leaving the workspace) closes the drawer.
     if (_drawerOpen && (component.store.workspace == null || oldComponent.route != component.route)) _setDrawer(false);
+    // The live bar's last notice was news on the page it came from.
+    if (oldComponent.route != component.route) oldComponent.session?.markLogSeen();
   }
 
   /// The page-wide shortcuts ([shortcutGroups]). Keys typed into a text
@@ -247,22 +252,27 @@ class _EditorShellState extends State<EditorShell> {
     if (label != null) ArcaneSonner.info('Redid: $label');
   }
 
-  Future<void> _open(Future<PickedFiles?> Function() pick) async {
-    setState(() => _busy = true);
+  Future<void> _open(Future<PickedFiles?> Function() pick, {required bool zip}) async {
+    setState(() {
+      _busy = true;
+      _openProblem = null;
+    });
     try {
       final PickedFiles? picked = await pick();
       if (picked == null) return;
-      final WorkspaceSnapshot snapshot = await component.store.openFiles(picked.name, picked.files);
+      final WorkspaceSnapshot snapshot = await component.store.openFiles(picked.name, picked.files, requireDocuments: true, zip: zip);
       final int invalid = snapshot.documents.where((AnimusDocument document) => !document.valid).length;
-      if (snapshot.documents.isEmpty) {
-        ArcaneSonner.warning('No Animus documents in ${picked.name}. Pick plugins/Animus or a zip of it.');
-      } else if (invalid > 0) {
+      if (invalid > 0) {
         ArcaneSonner.warning('Opened ${snapshot.documents.length} documents; $invalid need repair.');
       } else {
         ArcaneSonner.success('Opened ${snapshot.documents.length} documents.');
       }
       component.onNavigate(WorkspaceRoute(snapshot.id));
       focusMainHeading();
+    } on NoDocumentsFound catch (refused) {
+      // Nothing was saved; home says why beside the open buttons.
+      if (mounted) setState(() => _openProblem = refused.message);
+      if (component.route is! HomeRoute) ArcaneSonner.error(refused.message);
     } on Object catch (failure) {
       ArcaneSonner.error('Could not open the files ($failure). Pick plugins/Animus or a complete zip of it.');
     } finally {
@@ -396,8 +406,8 @@ class _EditorShellState extends State<EditorShell> {
     return TopbarActions(
       onPalette: _openPalette,
       onToggleTheme: component.onToggleTheme,
-      onOpenFolder: idle ? () => _open(pickDirectory) : null,
-      onOpenZip: idle ? () => _open(pickZip) : null,
+      onOpenFolder: idle ? () => _open(pickDirectory, zip: false) : null,
+      onOpenZip: idle ? () => _open(pickZip, zip: true) : null,
       onUndo: workspace != null && store.canUndo ? _undo : null,
       onRedo: workspace != null && store.canRedo ? _redo : null,
       onImportBbmodel: workspace != null && idle ? () => _importBbmodel(workspace) : null,
@@ -525,8 +535,8 @@ class _EditorShellState extends State<EditorShell> {
       PaletteCommand('Workspaces', 'All workspaces', () => component.onNavigate(const HomeRoute()), keywords: const <String>['home']),
       PaletteCommand('App', 'Keyboard shortcuts', _openSheet, hint: '?', keywords: const <String>['keys', 'help', 'hotkeys']),
       PaletteCommand('App', dark ? 'Use light theme' : 'Use dark theme', component.onToggleTheme, keywords: const <String>['theme', 'dark', 'light']),
-      PaletteCommand('App', 'Open data folder', () => _open(pickDirectory)),
-      PaletteCommand('App', 'Open zip', () => _open(pickZip)),
+      PaletteCommand('App', 'Open data folder', () => _open(pickDirectory, zip: false)),
+      PaletteCommand('App', 'Open zip', () => _open(pickZip, zip: true)),
       PaletteCommand('App', converterTitle, () => component.onNavigate(const CitizensRoute()), keywords: const <String>['citizens', 'shopkeepers', 'denizen', 'convert']),
     ];
   }
@@ -535,8 +545,9 @@ class _EditorShellState extends State<EditorShell> {
         store: store,
         hub: component.hub,
         busy: _busy,
-        onOpenFolder: () => _open(pickDirectory),
-        onOpenZip: () => _open(pickZip),
+        openProblem: _openProblem,
+        onOpenFolder: () => _open(pickDirectory, zip: false),
+        onOpenZip: () => _open(pickZip, zip: true),
         onNavigate: component.onNavigate,
       );
 
@@ -561,6 +572,7 @@ class _EditorShellState extends State<EditorShell> {
         open: _drawerOpen,
         onClose: _closeDrawer,
         session: component.session,
+        hasCodeDraft: component.store.hasCodeDraft,
       ),
       dom.main_(id: mainId, classes: 'animus-main', attributes: const <String, String>{'tabindex': '-1'}, <Widget>[
         if (_glossPending != null) _glossConfirm(_glossPending!),
@@ -577,6 +589,8 @@ class _EditorShellState extends State<EditorShell> {
             view: selected.view,
             onView: (ViewMode view) => component.onNavigate(selected.withView(view)),
             onSource: (String source) => component.store.editSource(document.kind, document.id, source),
+            codeDraft: component.store.codeDraft(document.kind, document.id),
+            onCodeDraft: (String? text) => component.store.setCodeDraft(document.kind, document.id, text),
             onJson: (JsonUpdate update, {String? coalesce}) => component.store.commit(
                   documents: <DocumentChange>[DocumentChange.update(document.kind, document.id, update)],
                   coalesce: coalesce == null ? null : '${document.kind.wireName}:${document.id}:$coalesce',

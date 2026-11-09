@@ -82,11 +82,35 @@ class NpcCommandsTest {
         }
     }
 
+    @Test void npcOwnerFailuresAnswerInRed() {
+        assertEquals(art.arcane.animus.core.text.Palette.error("Revive: guard is despawned"), CommandGroup.failed("Revive", "guard is despawned"));
+    }
+
     @Test void theAttributeCommandCompletesAttributeIds() {
         AnimusCommandTree tree = new AnimusCommandTree(null);
-        assertTrue(tree.values("attribute", new AnimusDirectorTest.Actor(false, AnimusDirector.ADMIN)).contains("scale"));
-        assertTrue(tree.values("attribute", new AnimusDirectorTest.Actor(false, AnimusDirector.ADMIN)).contains("movement_speed"));
+        assertTrue(tree.values("attribute", new AnimusDirectorTest.Actor(false, AnimusDirector.ADMIN), java.util.Map.of()).contains("scale"));
+        assertTrue(tree.values("attribute", new AnimusDirectorTest.Actor(false, AnimusDirector.ADMIN), java.util.Map.of()).contains("movement_speed"));
     }
 
     private static JsonObject attributes(NpcRepository repository) throws IOException { return repository.draft("guard").document().getAsJsonObject("attributes"); }
+    @Test void aSkinByNameIsSavedAndWornAndOnlyPlayerBodiesTakeOne() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            store.commit(List.of(new DocumentStore.Change("npcs/town/guard.json", "missing", GUARD.replace(",\"groups\":[\"giants\"]", "")),
+                    new DocumentStore.Change("npcs/town/cow.json", "missing", GUARD.replace(",\"groups\":[\"giants\"]", "").replace("guard", "cow")
+                            .replace("minecraft:player", "minecraft:cow").replace("12345678-1234-1234-1234-123456789abc", "22345678-1234-1234-1234-123456789abc"))));
+            NpcRepository repository = new NpcRepository(store);
+            assertTrue(repository.reload().isEmpty());
+            assertEquals(java.util.Optional.of("cow is a minecraft:cow; skins show on minecraft:player bodies only"), NpcCommands.skinProblem(repository, "cow", "Notch"));
+            assertEquals(java.util.Optional.of("'no such' is not a Minecraft name (1-16 letters, digits or _)"), NpcCommands.skinProblem(repository, "guard", "no such"));
+            assertEquals(java.util.Optional.of("No NPC named ghost; /animus list shows ids"), NpcCommands.skinProblem(repository, "ghost", "Notch"));
+            assertEquals(java.util.Optional.empty(), NpcCommands.skinProblem(repository, "guard", "reset"));
+            String texture = java.util.Base64.getEncoder().encodeToString("{\"textures\":{}}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            art.arcane.animus.core.toolkit.SkinFiles skins = new art.arcane.animus.core.toolkit.SkinFiles(repository, store);
+            String worn = skins.wear(new art.arcane.animus.core.presentation.BodySkin(texture, "c2ln"), "Notch", List.of("guard"));
+            String hash = repository.find("guard").orElseThrow().json().get("skin").getAsString();
+            assertTrue(worn.startsWith("Saved Notch's skin as skins/" + hash.substring(0, 12) + "; Skin Notch " + hash + " on guard; tx "), worn);
+            assertTrue(skins.remove(List.of("guard")).startsWith("Skin removed on guard; tx "));
+            assertFalse(repository.find("guard").orElseThrow().json().has("skin"));
+        }
+    }
 }

@@ -328,6 +328,18 @@
   min-width: 0;
 }
 
+/* The shop's chest window is a picture of what players get: on a phone it
+   shrinks to fit all nine columns instead of scrolling. */
+.animus-shop-chest {
+  container-type: inline-size;
+}
+
+@media (max-width: 520px) {
+  .animus-shop-chest .animus-chest-screen {
+    --animus-slot: clamp(1.5rem, calc((100cqi - 2.5rem) / 9), 2.75rem);
+  }
+}
+
 .animus-shop-previews > p {
   margin: 0;
 }

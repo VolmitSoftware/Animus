@@ -135,6 +135,12 @@ async function folderAction(page, name) {
   return actions;
 }
 
+/** On a phone the filters, folders and tags wait behind Filters; shows them. */
+async function showFilters(page) {
+  const toggle = page.getByRole('region', {name: 'NPC browser'}).getByRole('button', {name: 'Filters'});
+  if (await toggle.isVisible() && (await toggle.getAttribute('aria-expanded')) === 'false') await toggle.click();
+}
+
 async function focusedFolder(page) {
   return page.evaluate(() => document.activeElement?.getAttribute('data-folder'));
 }
@@ -159,6 +165,13 @@ async function local(browser, viewport, tag, theme) {
   await browserPanel.waitFor();
   const all = ['crier', 'harbor/dockhand', 'harbor/ferryman', 'town/baker', 'town/guard-north', 'town/guard-south', 'town/market/fishmonger', 'town/market/stalls/cartwright', 'wild/golem-keeper'];
   await waitRows(page, all);
+  if (phone) {
+    // The list comes first; folders and tags wait behind Filters.
+    assert.equal(await page.locator('.animus-npc-folders').isVisible(), false, `${tag}: folders fold away on a phone`);
+    const firstRow = await page.locator('.animus-npc-row[data-npc]').first().boundingBox();
+    assert.ok(firstRow.y < viewport.height, `${tag}: the first NPC row is on the first screen (y ${Math.round(firstRow.y)})`);
+  }
+  await showFilters(page);
   await shot(page, `${tag}-01-browser`);
   await noSidewaysScroll(page, `${tag} browser`);
   await search(page, 'guard');
@@ -477,7 +490,7 @@ async function local(browser, viewport, tag, theme) {
   await settle(page);
   const identity = await part(inspector, 'identity');
   await identity.getByLabel('Owner UUID').fill('Steve');
-  await identity.locator('.animus-gui-problem', {hasText: '$.owner'}).first().waitFor();
+  await identity.locator('.animus-gui-problem[title="$.owner"]').first().waitFor();
   await identity.getByLabel('Owner UUID').fill('0f6a3b8e-6a55-4b1e-9d8a-1f2e3d4c5b6a');
   await settle(page);
 
@@ -503,12 +516,12 @@ async function local(browser, viewport, tag, theme) {
   const reach = combat.getByLabel('melee.reach', {exact: true});
   await reach.fill('9');
   await reach.blur();
-  await combat.getByText(/melee\.reach/).first().waitFor();
-  await page.locator('.animus-diagnostics li', {hasText: 'melee.reach'}).first().waitFor();
+  await combat.locator('.animus-gui-problem[title*="melee.reach"]').first().waitFor();
+  await page.locator('.animus-diagnostics li[title*="melee.reach"]').first().waitFor();
   await shot(page, `${tag}-09-combat-invalid`);
   await reach.fill('4.5');
   await reach.blur();
-  await page.waitForFunction(() => ![...document.querySelectorAll('.animus-diagnostics li')].some((item) => item.textContent.includes('melee.reach')));
+  await page.waitForFunction(() => ![...document.querySelectorAll('.animus-diagnostics li')].some((item) => item.title.includes('melee.reach')));
   json = await codeOf(page);
   assert.equal(json.modules['animus:combat'].melee.reach, 4.5);
   assert.equal(json.modules['animus:combat'].melee.damage, 5, 'other combat fields survive');
@@ -528,7 +541,7 @@ async function local(browser, viewport, tag, theme) {
   await head.fill('netherite_helmet');
   await head.blur();
   await settle(page);
-  assert.equal(await page.locator('.animus-diagnostics li', {hasText: 'equipment.head'}).count(), 0, `${tag}: a bare item id validates`);
+  assert.equal(await page.locator('.animus-diagnostics li[title*="equipment.head"]').count(), 0, `${tag}: a bare item id validates`);
   await choose(look.locator('#animus-skin-pick'), skinHash);
   await settle(page);
   json = await codeOf(page);
@@ -659,6 +672,7 @@ async function serverFolders(browser, viewport, tag, theme) {
   await page.waitForFunction(() => decodeURIComponent(location.hash).includes('/npc/'));
   await (await sidebar(page)).locator('.animus-tree-browse').click();
   await waitRows(page, ['town/baker', 'town/market/fishmonger', 'town/market/stalls/cartwright']);
+  await showFilters(page);
   const before = await serverDocuments();
   await folderItem(page, 'town/market').click();
   const actions = await folderAction(page, 'Rename');

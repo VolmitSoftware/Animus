@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.combat.HealthSettings;
 import art.arcane.animus.core.combat.TargetCategory;
@@ -45,6 +46,7 @@ final class TargetRulesScreen<P, S> extends ToolScreen<P, S> {
     }
 
     @Override String title() { return CombatFields.label(list); }
+    @Override String node() { return PermissionNodes.COMBAT; }
     @Override int rows() { return 6; }
 
     /** The rows this list allows: ignores have no chat words, nested scans or fight events. */
@@ -140,11 +142,13 @@ final class TargetRulesScreen<P, S> extends ToolScreen<P, S> {
     }
 
     private void entry(Rule rule, GuiModel.Click click) {
-        if (right(click) || click == GuiModel.Click.SHIFT_RIGHT || sneak(click) && rule.path().size() == 1 && !rule.path().getFirst().equals("npcs")) {
+        // Sneaking picks an NPC on the NPC list and adds the held item on item rows; every other row lists its entries.
+        boolean npcs = rule.path().getFirst().equals("npcs"), items = rule.path().getFirst().equals("items");
+        if (right(click) || click == GuiModel.Click.SHIFT_RIGHT || sneak(click) && !npcs && !items) {
             viewer.push(new Entries<>(toolkit, viewer, commands, this, rule));
             return;
         }
-        if (sneak(click) && rule.path().getFirst().equals("npcs")) { pick(rule.label(), (String npc) -> add(rule, npc)); return; }
+        if (sneak(click) && npcs) { pick(rule.label(), (String npc) -> add(rule, npc)); return; }
         if (sneak(click)) {
             Optional<NpcItem> held = toolkit.host().worn(viewer.player(), EquipmentSlot.MAIN_HAND);
             if (held.isEmpty()) { toolkit.say(viewer.player(), ChatLine.error("Hold the item in your main hand first")); return; }

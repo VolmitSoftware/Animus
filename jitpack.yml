@@ -1,4 +1,4 @@
 jdk:
   - openjdk25
 install:
-  - ./gradlew --no-daemon :animus-api:publishToMavenLocal -PuseLocalVolmLib=false
+  - ./gradlew --no-daemon :animus-api:publishToMavenLocal :animus-bukkit-api:publishToMavenLocal -PuseLocalVolmLib=false

@@ -44,6 +44,7 @@ final class DiagnosticCommands {
         void summary() { services.debug().summary(actor()); }
 
         @Director(description = "Packets by kind, or one viewer's traffic")
+        @Positional("viewer")
         void network(@Param(name = "viewer", defaultValue = "", description = "One viewer with recorded traffic, by name or UUID") String viewer) {
             services.debug().network(actor(), ContentCommands.given(viewer));
         }
@@ -59,6 +60,7 @@ final class DiagnosticCommands {
 
         @Director(description = "Log every per-NPC diagnostic until the server restarts, or stop")
         @AnimusPermission(MODE_PERMISSION)
+        @Positional("enabled")
         void mode(@Param(name = "enabled", defaultValue = TOGGLE, description = "on, off or toggle") String enabled) {
             CommandActor actor = actor();
             AnimusLog log = AnimusLog.shared();

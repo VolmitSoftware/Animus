@@ -95,5 +95,16 @@ void main() {
     final AnimusDocument mismatch = validateSource(const DocumentLocation(DocumentKind.shop, 'shop:bakery'), 'shops/shop/bakery.json', moved, schemas);
     expect(mismatch.diagnostics.map((Diagnostic d) => d.code), <String>['id-mismatch']);
   });
-}
 
+  test('should say why a pick holds no Animus documents', () {
+    Uint8List none() => Uint8List(0);
+    expect(emptyPickProblem('bad', const <String, Uint8List>{}, zip: true), 'bad.zip is not a zip, or it is empty. Pick a zip of plugins/Animus.');
+    expect(emptyPickProblem('stuff', const <String, Uint8List>{}, zip: false), 'stuff is empty. Pick plugins/Animus, or config/animus on a mod server.');
+    expect(emptyPickProblem('server', <String, Uint8List>{'server/server.properties': none(), 'server/plugins/Other/a.yml': none()}, zip: false),
+        'server looks like the server root. Pick plugins/Animus inside it, or config/animus on a mod server.');
+    expect(emptyPickProblem('plugins', <String, Uint8List>{'plugins/Other/a.yml': none(), 'plugins/Animus/config.toml': none()}, zip: false),
+        'plugins is the plugins folder. Pick the Animus folder inside it.');
+    expect(emptyPickProblem('stuff', <String, Uint8List>{'stuff/readme.txt': none()}, zip: false),
+        'stuff has no npcs/ or other Animus folders. Pick plugins/Animus, or config/animus on a mod server.');
+  });
+}

@@ -36,7 +36,6 @@ import art.arcane.animus.core.navigation.IdleFall;
 import art.arcane.animus.core.navigation.FallTracker;
 import art.arcane.animus.bukkit.navigation.LiveMovementProbe;
 import art.arcane.animus.core.navigation.NavigationPlan;
-import art.arcane.animus.bukkit.navigation.VirtualNpcWaypointEvent;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcAttributes;
@@ -321,7 +320,7 @@ final class RegionActor implements RegionOwner.Body {
         if (woken && desired != applied && desired.spec() != null) reconfigure(desired);
         host.anchor(this, anchored, anchor()); anchored = anchor();
         if (state.snapshot().active()) host.index.upsert(state.snapshot());
-        if (woken && !announced) { announced = true; host.activated(uuid); }
+        if (woken && !announced) { announced = true; host.activated(uuid, id, state.snapshot().position()); }
         if (woken && route == null && performance.run == null && routeReady() && !waypoints.complete()) beginLeg(waypoints.start(state.snapshot().position().point()));
         if (performance.run != null) {
             // The cursor came along; the new owner walks to the pose at the cursor from where the body stands, then plays on.
@@ -587,7 +586,7 @@ final class RegionActor implements RegionOwner.Body {
         // A body still lying where it fell is replaced by a fresh one, standing at full health.
         dyingUntil = 0;
         appearance++;
-        host.activated(uuid);
+        host.activated(uuid, id, state.snapshot().position());
         publish(true);
         return true;
     }
@@ -600,7 +599,7 @@ final class RegionActor implements RegionOwner.Body {
         if (!after.active() || moved) stopRoute("cancelled by combat lifecycle/position change");
         if (moved) pose++;
         if (after.health() < before.health()) {
-            host.damaged(uuid, before.health() - after.health(), after.health() == 0, attacker);
+            host.damaged(uuid, id, before.health() - after.health(), after, attacker);
             if (after.health() == 0) { deaths++; dyingUntil = turns + DYING_TURNS; }
             else hurts++;
         }
@@ -1132,7 +1131,7 @@ final class RegionActor implements RegionOwner.Body {
         if (current.recording != null) { route = null; performance.arrived(current.recording); return; }
         WaypointProgress progress = waypoints;
         route = null; routeStatus(current, "arrived", ""); arrivals++;
-        host.plugin.getServer().getPluginManager().callEvent(new VirtualNpcWaypointEvent(uuid, id, current.id, current.waypoint, state.snapshot().position()));
+        NpcEvents.waypoint(host.plugin.getServer(), uuid, id, current.id, current.waypoint, state.snapshot().position());
         host.waypoint(uuid, current.waypoint);
         if (progress == null) { finishWatch(); return; }
         if (!navigable() || route != null || waypoints != progress) return;
@@ -1209,7 +1208,7 @@ final class RegionActor implements RegionOwner.Body {
         if (leg == null) return;
         arrivals++;
         navigationStatus = "arrived; route=" + routeId + "; waypoint=" + leg.arrival() + "; recording step";
-        host.plugin.getServer().getPluginManager().callEvent(new VirtualNpcWaypointEvent(uuid, id, routeId, leg.arrival(), state.snapshot().position()));
+        NpcEvents.waypoint(host.plugin.getServer(), uuid, id, routeId, leg.arrival(), state.snapshot().position());
         host.waypoint(uuid, leg.arrival());
         if (progress == null) { finishWatch(); return; }
         if (!navigable() || route != null || waypoints != progress || !progress.current(leg)) return;

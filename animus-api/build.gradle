@@ -7,8 +7,9 @@ apply from: '../gradle/java.gradle'
 // API coordinates and Java identity remain stable when the plugin's custom group changes.
 // The version follows AnimusApi.API_VERSION; core's ApiContractTest keeps them equal.
 group = 'art.arcane.animus'
-version = '1.1.0-SNAPSHOT'
+version = '1.2.0-SNAPSHOT'
 java { withSourcesJar(); withJavadocJar() }
+tasks.named('jar', Jar).configure { manifest { attributes('Automatic-Module-Name': 'art.arcane.animus.api') } }
 if (rootProject.projectDir != animusRoot) {
     layout.buildDirectory.set(rootProject.layout.buildDirectory.dir('animus-api'))
 }
@@ -33,3 +34,48 @@ publishing {
         }
     }
 }
+
+// Binary compatibility with the last published API tag. The baseline is compiled from the tag's own sources, so the
+// check needs the tag in the local clone (git fetch --tags). japicmp counts added enum constants and added default
+// methods as compatible, which is the minor-version rule: 1.2 adds Integrations.ProtectionAction.BLOCK_USE on purpose.
+// Abstract methods on interfaces modules implement are pinned by core's ApiContractTest instead.
+String apiBaseline = 'api-1.1.0'
+configurations { japicmp { canBeConsumed = false; canBeResolved = true } }
+dependencies { japicmp('com.github.siom79.japicmp:japicmp:0.23.1') }
+Provider<Directory> baselineRoot = layout.buildDirectory.dir("api-baseline/${apiBaseline}")
+TaskProvider<Exec> baselineSources = tasks.register('apiBaselineSources', Exec) {
+    description = "Exports the ${apiBaseline} API sources from git."
+    File archive = baselineRoot.get().file('sources.zip').asFile
+    outputs.file(archive)
+    workingDir(animusRoot)
+    commandLine('git', 'archive', '--format=zip', '-o', archive.absolutePath, apiBaseline, 'animus-api/src/main/java')
+    doFirst { archive.parentFile.mkdirs() }
+}
+TaskProvider<Sync> baselineUnpacked = tasks.register('apiBaselineUnpack', Sync) {
+    dependsOn(baselineSources)
+    from({ zipTree(baselineRoot.get().file('sources.zip')) })
+    include('**/*.java')
+    into(baselineRoot.map { Directory root -> root.dir('unpacked') })
+}
+TaskProvider<JavaCompile> baselineClasses = tasks.register('compileApiBaseline', JavaCompile) {
+    source(baselineUnpacked)
+    classpath = files()
+    destinationDirectory.set(baselineRoot.map { Directory root -> root.dir('classes') })
+    javaCompiler.set(javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(25) })
+}
+TaskProvider<Jar> baselineJar = tasks.register('apiBaselineJar', Jar) {
+    from(baselineClasses)
+    destinationDirectory.set(baselineRoot)
+    archiveFileName.set('animus-api-baseline.jar')
+}
+TaskProvider<JavaExec> compatibility = tasks.register('apiCompatibility', JavaExec) {
+    group = 'verification'
+    description = "Fails when the API breaks binary compatibility with ${apiBaseline}."
+    TaskProvider<Jar> current = tasks.named('jar', Jar)
+    inputs.files(baselineJar, current)
+    classpath = configurations.japicmp
+    mainClass.set('japicmp.JApiCmp')
+    argumentProviders.add({ ['--old', baselineJar.get().archiveFile.get().asFile.absolutePath, '--new', current.get().archiveFile.get().asFile.absolutePath,
+        '--only-incompatible', '--error-on-binary-incompatibility'] } as CommandLineArgumentProvider)
+}
+tasks.named('check').configure { dependsOn(compatibility) }

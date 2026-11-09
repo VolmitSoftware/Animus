@@ -406,20 +406,28 @@ public final class ServerTriggerDispatcher {
         int cooldown = binding.trigger.cooldownTicks().orElse(binding.trigger.spec() instanceof TriggerBinding.Timer ? 0 : settings.defaultCooldownTicks());
         long last = player.isPresent() ? stat.players.getOrDefault(player.get(), -1L) : stat.lastAdmitted;
         if (cooldown > 0 && last >= 0 && tick - last < cooldown) { suppress(binding); return; }
+        if (cooldown > 0 && player.isPresent() && last < 0 && !room(stat, cooldown)) { suppress(binding); return; }
         if (queue.size() >= settings.eventQueue()) { drop(binding, DropReason.EVENT_QUEUE); return; }
         if (stat.queued >= settings.queuePerTrigger()) { drop(binding, DropReason.TRIGGER_QUEUE); return; }
         queue.addLast(new Pending(binding, player, event, tick));
         queuedCount = queue.size(); stat.queued = stat.queued + 1;
-        if (cooldown > 0 && player.isPresent()) remember(stat, player.get(), cooldown);
+        if (cooldown > 0 && player.isPresent()) remember(stat, player.get());
         else stat.lastAdmitted = tick;
     }
-    private void remember(Stats stat, UUID player, int cooldown) {
+    /** Re-inserting keeps the table in admission order, so the expired entries are always at its head. */
+    private void remember(Stats stat, UUID player) {
         stat.players.remove(player);
         stat.players.put(player, tick);
-        if (stat.players.size() <= TRACKED_PLAYERS) return;
-        stat.players.values().removeIf(admitted -> tick - admitted >= cooldown);
-        Iterator<UUID> eldest = stat.players.keySet().iterator();
-        while (stat.players.size() > TRACKED_PLAYERS && eldest.hasNext()) { eldest.next(); eldest.remove(); }
+    }
+    /**
+     * Whether a player new to the table fits: expired entries go first, from the head; a table still full of live
+     * cooldowns refuses the newcomer rather than forget a player who is still cooling down.
+     */
+    private boolean room(Stats stat, int cooldown) {
+        if (stat.players.size() < TRACKED_PLAYERS) return true;
+        Iterator<Long> eldest = stat.players.values().iterator();
+        while (eldest.hasNext() && tick - eldest.next() >= cooldown) eldest.remove();
+        return stat.players.size() < TRACKED_PLAYERS;
     }
     private void suppress(Binding binding) { binding.stats.suppressed = binding.stats.suppressed + 1; suppressed.increment(); }
     private void drop(Binding binding, DropReason reason) { binding.stats.dropped = binding.stats.dropped + 1; drops.get(reason).increment(); }

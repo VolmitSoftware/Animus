@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 6,
-  "importId": "fd766b6cdec751ae5974924a10f287358bc77848c12c8678d81c344427992591",
+  "converterVersion": 7,
+  "importId": "43763ef8bb734c644dfa1df0cd85fb1f7cfc534fc17c844f02405a6ca81b5ab8",
   "notice": "Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.",
   "sources": {
     "scripts/broken.dsc": "ed429b9bba7215abe689fb88c25d060937970fdf6b4c75311ad50e5ae0200fd9",
@@ -453,6 +453,7 @@
     "denizen:world-npc/sneak_story_starter": "complete",
     "denizen:world/lantern_world": "partial"
   },
+  "heldBehaviors": {},
   "commandBehaviors": [
     "denizen:interact/guard_quest"
   ],

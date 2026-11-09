@@ -118,7 +118,11 @@ final class DenizenCommands {
                         preserveItems(scope, items, index + 1, "never runs: after determine");
                         return steps;
                     }
-                    if (passive) { converter.outcome(scope, item, "command", "determine", false, "determine passively sets a value and goes on; a routine returns only by ending"); continue; }
+                    if (passive) {
+                        converter.outcome(scope, item, "command", "determine", false, "determine passively sets a value and goes on; a routine returns only by ending");
+                        hold(scope, item);
+                        continue;
+                    }
                     steps.addAll(determine(item, command, scope));
                     preserveItems(scope, items, index + 1, "never runs: after determine");
                     return steps;
@@ -126,33 +130,104 @@ final class DenizenCommands {
                 case "if", "choose" -> {
                     int end = index + 1;
                     if (command.name().equals("if")) while (end < items.size() && DenizenArgs.command(items.get(end).text()).name().equals("else")) end++;
-                    steps.addAll(chain(items, index, end, scope));
+                    Optional<List<JsonObject>> chained = chain(items, index, end, scope);
+                    if (chained.isPresent()) steps.addAll(chained.get());
+                    else if (held(scope, item, items.subList(index, end))) return close(scope, items, end, steps);
                     index = end - 1;
                 }
-                case "else" -> preserveTree(scope, item, "else without a matching if");
+                case "else" -> {
+                    preserveTree(scope, item, "else without a matching if");
+                    if (held(scope, item, List.of(item))) return close(scope, items, index + 1, steps);
+                }
                 case "ratelimit" -> {
-                    if (item.children().isPresent()) { preserveTree(scope, item, "no Animus equivalent for the ratelimit block"); continue; }
-                    Converted converted = ratelimit(item, command, scope);
-                    converter.outcome(scope, item, "command", "ratelimit", converted.reason().isEmpty(), converted.reason());
-                    steps.addAll(converted.steps());
+                    if (item.children().isPresent()) preserveTree(scope, item, "no Animus equivalent for the ratelimit block");
+                    else {
+                        Converted converted = ratelimit(item, command, scope);
+                        converter.outcome(scope, item, "command", "ratelimit", converted.reason().isEmpty(), converted.reason());
+                        if (converted.reason().isEmpty()) { steps.addAll(converted.steps()); continue; }
+                    }
+                    hold(scope, item);
+                    return close(scope, items, index + 1, steps);
                 }
                 case "repeat", "foreach", "while" -> {
-                    if (item.children().isEmpty()) steps.addAll(control(item, command, scope));
-                    else steps.addAll(loop(item, command, scope));
+                    Optional<List<JsonObject>> converted = item.children().isEmpty() ? control(item, command, scope) : loop(item, command, scope);
+                    if (converted.isPresent()) steps.addAll(converted.get());
+                    else if (held(scope, item, List.of(item))) return close(scope, items, index + 1, steps);
                 }
                 default -> {
                     if (item.children().isPresent()) {
                         preserveTree(scope, item, "no Animus equivalent for the " + command.name() + " block");
+                        if (stops(item.children().get().items(), Set.of())) { hold(scope, item); return close(scope, items, index + 1, steps); }
                         continue;
                     }
                     Pending pending = new Pending();
                     Converted converted = simple(command, scope, pending);
                     converter.outcome(scope, item, "command", command.name(), converted.reason().isEmpty(), converted.reason());
-                    if (converted.reason().isEmpty()) { steps.addAll(pending.steps); steps.addAll(converted.steps()); }
+                    if (converted.reason().isEmpty()) {
+                        steps.addAll(pending.steps);
+                        steps.addAll(converted.steps());
+                        if (scope.record && command.name().equals("execute") && command.args().stream().anyMatch((Arg arg) -> arg.is("as_op")))
+                            converter.issue(scope.container.file() + ":" + item.line() + ": execute as_op runs as the player without operator rights; the command fails where it needs them");
+                        continue;
+                    }
+                    if (GUARDS.contains(command.name())) hold(scope, item);
+                    if (stops(List.of(item), Set.of())) return close(scope, items, index + 1, steps);
                 }
             }
         }
         return steps;
+    }
+
+    /** Commands that limit or end a run; when one does not convert, the behavior is held back from binding. */
+    private static final Set<String> GUARDS = Set.of("stop", "determine", "queue", "inject", "ratelimit", "cooldown");
+
+    /** Records a guard or stop that did not convert, which holds its behavior back from binding until an admin reviews it. */
+    private static void hold(Scope scope, Item item) { scope.doc.held.add(scope.container.file() + ":" + item.line()); }
+
+    /** Holds the behavior for a kept control block; true when the block may end the script, so the routine must end too. */
+    private static boolean held(Scope scope, Item item, List<Item> trees) {
+        hold(scope, item);
+        return stops(trees, Set.of());
+    }
+
+    /**
+     * Fails closed after a kept line that may end the script: the routine returns there, as if the guard had stopped
+     * it, and every later line is kept, so nothing a guard protected runs unchecked.
+     */
+    private List<JsonObject> close(Scope scope, List<Item> items, int from, List<JsonObject> steps) {
+        steps.add(plain("return"));
+        preserveItems(scope, items, from, "never runs: after a line that did not convert and may stop the script; the routine ends there");
+        return steps;
+    }
+
+    /**
+     * Whether running these lines may end the script or the loop around them: a {@code stop}, a {@code determine}
+     * that is not passive, a {@code queue} command, an {@code inject} (its task may stop), a {@code ratelimit}, or a
+     * loop's stop or next that no loop inside these lines takes. {@code loops} are the loop kinds already inside.
+     */
+    static boolean stops(List<Item> items, Set<String> loops) {
+        for (Item item : items) {
+            Command command = DenizenArgs.command(item.text());
+            String name = command.name();
+            switch (name) {
+                case "stop", "queue", "inject", "ratelimit" -> { return true; }
+                case "determine" -> {
+                    boolean passive = false;
+                    for (Arg arg : command.args()) if (arg.is("passively")) passive = true;
+                    if (!passive) return true;
+                }
+                case "foreach", "repeat", "while" -> {
+                    if (item.children().isEmpty()) { if (!loops.contains(name)) return true; continue; }
+                    Set<String> inner = new java.util.HashSet<>(loops);
+                    inner.add(name);
+                    if (stops(item.children().get().items(), inner)) return true;
+                    continue;
+                }
+                default -> { }
+            }
+            if (item.children().isPresent() && stops(item.children().get().items(), loops)) return true;
+        }
+        return false;
     }
 
     void preserveTree(Scope scope, Item item, String reason) {
@@ -248,12 +323,14 @@ final class DenizenCommands {
     private List<JsonObject> determine(Item item, Command command, Scope scope) {
         JsonObject node = plain("return");
         if (!List.of("task", "procedure").contains(scope.container.type())) {
+            hold(scope, item);
             converter.outcome(scope, item, "command", "determine", false, scope.cancellable
                     ? "only a top-level determine cancelled after plain guards and rate limits cancels the event in Animus; this one is not reached that way; the routine still ends here"
                     : "determine changes the event's outcome, and Animus cannot cancel or change this event; the routine still ends here");
             return List.of(node);
         }
         if (command.args().size() > 1) {
+            hold(scope, item);
             converter.outcome(scope, item, "command", "determine", false, "determine takes one value");
             return List.of(node);
         }
@@ -261,6 +338,7 @@ final class DenizenCommands {
         if (command.args().size() == 1) {
             Result<JsonElement> value = expressions.operand(raw(command.args().getFirst()), scope, pending);
             if (value.failed()) {
+                hold(scope, item);
                 converter.outcome(scope, item, "command", "determine", false, value.reason());
                 return List.of(node);
             }
@@ -275,7 +353,7 @@ final class DenizenCommands {
     // ---- Chains ----
 
     /** An if/else-if/else chain or a choose block as nested condition nodes. */
-    private List<JsonObject> chain(List<Item> items, int start, int end, Scope scope) {
+    private Optional<List<JsonObject>> chain(List<Item> items, int start, int end, Scope scope) {
         Item head = items.get(start);
         Command command = DenizenArgs.command(head.text());
         List<Cond> conditions = new ArrayList<>();
@@ -327,7 +405,7 @@ final class DenizenCommands {
         if (reason != null || conditions.isEmpty()) {
             String why = reason == null ? "nothing to choose between" : reason;
             for (int index = start; index < end; index++) preserveTree(scope, items.get(index), why);
-            return List.of();
+            return Optional.empty();
         }
         for (int index = start; index < end; index++) converter.outcome(scope, items.get(index), "command", DenizenArgs.command(items.get(index).text()).name(), true, "");
         if (command.name().equals("choose")) for (Item option : head.children().get().items()) converter.outcome(scope, option, "command", DenizenArgs.command(option.text()).name(), true, "");
@@ -337,7 +415,7 @@ final class DenizenCommands {
         for (int index = conditions.size() - 1; index >= 0; index--) tail = Optional.of(DenizenExpressions.build(conditions.get(index), blocks.get(index), tail));
         List<JsonObject> steps = new ArrayList<>(pending.steps);
         steps.add(tail.orElseThrow());
-        return steps;
+        return Optional.of(steps);
     }
 
     /** The value a choose compares: a variable as it is, anything else read once into a temporary. */
@@ -368,7 +446,7 @@ final class DenizenCommands {
         return false;
     }
 
-    private List<JsonObject> loop(Item item, Command command, Scope scope) {
+    private Optional<List<JsonObject>> loop(Item item, Command command, Scope scope) {
         Pending pending = new Pending();
         String kind = command.name();
         TreeMap<String, String> definitions = new TreeMap<>(scope.definitions);
@@ -456,7 +534,7 @@ final class DenizenCommands {
                 node.addProperty("maximum", 1024);
             }
         }
-        if (reason != null) { preserveTree(scope, item, reason); return List.of(); }
+        if (reason != null) { preserveTree(scope, item, reason); return Optional.empty(); }
         converter.outcome(scope, item, "command", kind, true, "");
         List<String> loops = new ArrayList<>(scope.loops);
         loops.add(kind);
@@ -464,7 +542,7 @@ final class DenizenCommands {
         node.add("body", DenizenConverter.sequence(block(item.children().get().items(), 0, inner)));
         List<JsonObject> steps = new ArrayList<>(pending.steps);
         steps.add(node);
-        return steps;
+        return Optional.of(steps);
     }
 
     /** A literal list such as {@code a|b|c}, items with tags allowed. */
@@ -480,15 +558,15 @@ final class DenizenCommands {
     }
 
     /** {@code foreach stop}, {@code repeat next} and so on: break or continue the innermost loop of that kind. */
-    private List<JsonObject> control(Item item, Command command, Scope scope) {
+    private Optional<List<JsonObject>> control(Item item, Command command, Scope scope) {
         String reason = null;
         String word = command.args().size() == 1 ? command.args().getFirst().value().toLowerCase(Locale.ROOT) : "";
         if (!word.equals("stop") && !word.equals("next")) reason = command.name() + " without a block or stop/next";
         else if (scope.loops.isEmpty()) reason = command.name() + " " + word + " outside a converted loop";
         else if (!scope.loops.getLast().equals(command.name())) reason = command.name() + " " + word + " would end an outer loop; Animus breaks only the innermost";
-        if (reason != null) { preserveTree(scope, item, reason); return List.of(); }
+        if (reason != null) { preserveTree(scope, item, reason); return Optional.empty(); }
         converter.outcome(scope, item, "command", command.name(), true, "");
-        return List.of(plain(word.equals("stop") ? "break" : "continue"));
+        return Optional.of(List.of(plain(word.equals("stop") ? "break" : "continue")));
     }
 
     // ---- Commands ----
@@ -927,6 +1005,11 @@ final class DenizenCommands {
             task = converter.containers.get(name.get().toLowerCase(Locale.ROOT));
         }
         if (task == null) return Converted.kept("no script named " + name.orElse(""));
+        if (command.name().equals("inject") && task.type().equals("task")) {
+            Optional<Node> injected = task.body().get(path.map((String value) -> value.toLowerCase(Locale.ROOT)).orElse("script"));
+            if (injected.isPresent() && injected.get() instanceof Sequence lines && stops(lines.items(), Set.of()))
+                return Converted.kept("inject runs " + task.name() + " inside this script, so a stop there ends this script too; an Animus call ends only the task");
+        }
         return callTask(task, path, save, positional, named, scope, pending);
     }
 
@@ -1018,8 +1101,9 @@ final class DenizenCommands {
         String as = null;
         List<String> words = new ArrayList<>();
         for (Arg arg : command.args()) {
-            if (arg.is("as_server") || arg.is("as_op")) { as = "console"; continue; }
-            if (arg.is("as_player")) { as = "player"; continue; }
+            if (arg.is("as_server")) { as = "console"; continue; }
+            // as_op lends the player operator rights for the line; Animus never does, so it runs as the plain player.
+            if (arg.is("as_player") || arg.is("as_op")) { as = "player"; continue; }
             if (arg.is("as_npc")) return Converted.kept("commands run as the NPC have no Animus equivalent");
             if (arg.is("silent")) continue;
             words.add(raw(arg));

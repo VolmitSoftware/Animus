@@ -23,13 +23,6 @@ public record EditorSettings(boolean enabled, String editorUrl, boolean listener
                              int concurrentRequestsPerToken, int requestsPerSecond, int pairAttemptsPerMinute, int openConnections,
                              int eventFramesPerSecond, int previewsPerServer, int npcsPerPreview, int previewMinutes, int idempotencyHours, int terrainRadius,
                              EditorNotifySettings notices) {
-    public static final List<String> FIELDS = List.of("enabled", "editorUrl", "listenerEnabled", "listenAddress", "port", "advertisedUrl",
-            "tlsCertificate", "tlsPrivateKey", "allowedOrigins", "tokenDays", "auditDays", "requestBodyBytes",
-            "importBodyBytes", "changeSetDocuments", "concurrentRequestsPerToken", "requestsPerSecond", "pairAttemptsPerMinute", "openConnections",
-            "eventFramesPerSecond", "previewsPerServer", "npcsPerPreview", "previewMinutes", "idempotencyHours", "terrainRadius", "notify");
-    /** The relay client's keys share the table and are read by {@link EditorRelaySettings}. */
-    public static final List<String> RELAY_FIELDS = List.of("relayEnabled", "relayUrl", "relayReconnectMinSeconds", "relayReconnectMaxSeconds", "relayFrameBytes",
-            "relayConcurrentRequests");
     private static final Set<String> LOOPBACK = Set.of("127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1");
     public static final EditorSettings DEFAULT = new EditorSettings(true, "https://animus-editor.web.app", true, "127.0.0.1", 9797, "", "", "",
             List.of("https://animus-editor.web.app", "https://animus-editor.firebaseapp.com"),
@@ -69,8 +62,8 @@ public record EditorSettings(boolean enabled, String editorUrl, boolean listener
 
     public boolean tls() { return !tlsCertificate.isEmpty(); }
 
+    /** Reads the table; the relay keys that share it are read by {@link EditorRelaySettings}, and unknown keys were dropped with a warning before. */
     public static EditorSettings parse(JsonObject table) {
-        for (String key : table.keySet()) if (!FIELDS.contains(key) && !RELAY_FIELDS.contains(key)) throw new IllegalArgumentException(key + " is not an editor setting");
         EditorSettings d = DEFAULT;
         return new EditorSettings(bool(table, "enabled", d.enabled), text(table, "editorUrl", d.editorUrl), bool(table, "listenerEnabled", d.listenerEnabled),
                 text(table, "listenAddress", d.listenAddress), integer(table, "port", d.port), text(table, "advertisedUrl", d.advertisedUrl),
@@ -144,7 +137,7 @@ public record EditorSettings(boolean enabled, String editorUrl, boolean listener
     }
 
     private static void require(String field, int value, int minimum, int maximum) {
-        if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum);
+        if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum + ", not " + value);
     }
 
     private static boolean bool(JsonObject table, String key, boolean fallback) {

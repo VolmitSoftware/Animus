@@ -101,7 +101,9 @@ public final class DocumentStore implements AutoCloseable {
         ensureOpen();
         if (!namespace.matches("[a-z][a-z0-9-]{0,40}") || !hash.matches("[a-f0-9]{64}")) throw new IOException("Invalid generated object reference");
         String content = read("state/objects/" + namespace + "/" + hash + ".json");
-        if (content == null || !JsonDocuments.hash(content).equals(hash)) throw new IOException("Generated object is missing or its hash changed");
+        if (content == null || !JsonDocuments.hash(content).equals(hash))
+            throw new IOException("the stored copy state/objects/" + namespace + "/" + hash + ".json is " + (content == null ? "missing" : "damaged")
+                    + "; saving the file again (or touching it) writes a new copy");
         return content;
     }
 
@@ -208,7 +210,41 @@ public final class DocumentStore implements AutoCloseable {
     }
 
     /** Undoes a committed transaction, named by its id or a unique prefix of at least four characters. */
-    public synchronized String rollback(String transaction) throws IOException { return commit(inverse(transaction(transaction))); }
+    public synchronized String rollback(String transaction) throws IOException {
+        String id = transaction(transaction);
+        List<Change> inverse = inverse(id);
+        for (Change change : inverse) {
+            if (JsonDocuments.hash(read(change.path())).equals(change.expectedHash())) continue;
+            Optional<String> later = laterTransaction(id, change.path(), JsonDocuments.hash(read(change.path())));
+            if (later.isPresent())
+                throw new IOException("Conflict: " + change.path() + " was changed again by the later transaction " + later.get().substring(0, 8)
+                        + "; roll that one back first with /animus rollback " + later.get().substring(0, 8));
+            throw new IOException("Conflict: " + change.path() + " was edited after this transaction; fix the file or /animus reload, then roll back again");
+        }
+        return commit(inverse);
+    }
+
+    /** The later transaction whose result {@code path} still holds ({@code current} is its hash), so a refused rollback can name it. */
+    private Optional<String> laterTransaction(String transaction, String path, String current) throws IOException {
+        Path backups = resolve("backups");
+        java.time.Instant since = Files.getLastModifiedTime(resolve("backups/" + transaction + ".json"), LinkOption.NOFOLLOW_LINKS).toInstant();
+        String newest = null;
+        java.time.Instant newestTime = since;
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(backups, "*.json")) {
+            for (Path file : files) {
+                String name = file.getFileName().toString(), id = name.substring(0, name.length() - ".json".length());
+                if (!id.matches("[a-f0-9-]{36}") || id.equals(transaction)) continue;
+                java.time.Instant written = Files.getLastModifiedTime(file, LinkOption.NOFOLLOW_LINKS).toInstant();
+                if (written.isBefore(since) || newest != null && !written.isAfter(newestTime)) continue;
+                try {
+                    for (Change undo : inverse(id))
+                        if (undo.path().equals(path) && undo.expectedHash().equals(current)) { newest = id; newestTime = written; }
+                }
+                catch (IOException | RuntimeException unreadable) { /* A receipt that cannot be read names nothing. */ }
+            }
+        }
+        return Optional.ofNullable(newest);
+    }
 
     /** The full id of the committed transaction whose id is or starts with {@code prefix}. */
     public synchronized String transaction(String prefix) throws IOException {
@@ -290,9 +326,10 @@ public final class DocumentStore implements AutoCloseable {
         for (int index = keep; index < receipts.size(); index++) {
             Receipt receipt = receipts.get(index);
             if (pinned.contains(receipt.id()) || !receipt.written().isBefore(cutoff)) continue;
-            delete(resolve("backups/" + receipt.id() + ".json"));
+            discard(resolve("backups/" + receipt.id() + ".json"));
             removed++;
         }
+        if (removed > 0) syncDirectory(backups);
         return new Rotation(removed, removed == 0 ? 0 : collectTransactionObjects(backups));
     }
 
@@ -323,10 +360,11 @@ public final class DocumentStore implements AutoCloseable {
             for (Path file : files) {
                 String name = file.getFileName().toString();
                 if (!name.matches("[a-f0-9]{64}\\.json") || referenced.contains(name.substring(0, 64))) continue;
-                delete(file);
+                discard(file);
                 removed++;
             }
         }
+        if (removed > 0) syncDirectory(objects);
         return removed;
     }
 
@@ -357,15 +395,18 @@ public final class DocumentStore implements AutoCloseable {
         int removed = 0;
         for (Path objects : pruned) {
             if (!Files.isDirectory(objects, LinkOption.NOFOLLOW_LINKS)) continue;
+            boolean synced = true;
             try (DirectoryStream<Path> files = Files.newDirectoryStream(objects, "*.json")) {
                 for (Path file : files) {
                     String name = file.getFileName().toString();
                     if (!name.matches("[a-f0-9]{64}\\.json") || referenced.contains(name.substring(0, 64)) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)
                             || !Files.getLastModifiedTime(file, LinkOption.NOFOLLOW_LINKS).toInstant().isBefore(cutoff)) continue;
-                    delete(file);
+                    discard(file);
                     removed++;
+                    synced = false;
                 }
             }
+            if (!synced) syncDirectory(objects);
         }
         return removed;
     }
@@ -519,12 +560,20 @@ public final class DocumentStore implements AutoCloseable {
     }
 
     private static void delete(Path target) throws IOException {
+        if (discard(target)) syncDirectory(target.getParent());
+    }
+
+    /**
+     * Deletes without flushing the directory, for pruning many files where one flush at the end is enough: a pruned file
+     * that comes back after a crash is only pruned again.
+     */
+    private static boolean discard(Path target) throws IOException {
         WriteNotices.written(target, null);
         boolean deleted;
         try { deleted = Files.deleteIfExists(target); }
         catch (IOException | RuntimeException failure) { WriteNotices.touched(target); throw failure; }
         WriteNotices.written(target, null);
-        if (deleted) syncDirectory(target.getParent());
+        return deleted;
     }
 
     /** Persist each newly created directory entry before a journal can reference files beneath it. */

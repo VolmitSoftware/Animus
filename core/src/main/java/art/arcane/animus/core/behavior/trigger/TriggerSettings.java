@@ -34,7 +34,7 @@ public record TriggerSettings(boolean enabled, int eventQueue, int eventsPerTick
         bound("playerCooldownTicks", playerCooldownTicks, 0, 72000);
     }
     private static void bound(String field, int value, int minimum, int maximum) {
-        if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum);
+        if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum + ", not " + value);
     }
     public ProximityTracker.Limits proximityLimits() {
         return new ProximityTracker.Limits(proximityIntervalTicks, proximityViewersPerTick, proximityCandidates, proximityTrackedPerViewer);

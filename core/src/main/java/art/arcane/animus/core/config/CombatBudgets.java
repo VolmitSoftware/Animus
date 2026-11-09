@@ -38,6 +38,6 @@ public record CombatBudgets(boolean enabled, int maximumNpcs, int brainsPerTick,
 
     private static void require(String field, int value, int minimum, int maximum) {
         if (value < minimum || value > maximum)
-            throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum);
+            throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum + ", not " + value);
     }
 }

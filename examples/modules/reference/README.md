@@ -5,8 +5,9 @@ This external example compiles against **only `animus-api` and Java 25**. It dec
 On an API 1.1 engine it also shows the 1.1 additions:
 
 - An interaction listener counts accepted, non-preview clicks per NPC on the bounded module worker.
-- The `reference:interactions` action returns that NPC's count and the number of protection checks seen.
-- A protection hook counts every combat and build protection check and allows it. The server's own protection still decides, because both must allow. Only one module can provide protection, so remove this example before installing a real protection module.
+- The `reference:interactions` action returns that NPC's count.
+
+It registers no protection or economy hook. Only one module can provide each, so an example that claimed one would stop a real protection or economy module from enabling. The Java modules API page shows how to register them.
 
 It checks `AnimusApi.API_VERSION.minor()` first, so on a 1.0 engine it registers only the greeting.
 

@@ -45,6 +45,10 @@ class NpcBrowser extends StatefulWidget {
 }
 
 class _NpcBrowserState extends State<NpcBrowser> {
+  /// Workspaces whose filters, folders and tags were shown on a phone, so
+  /// they stay shown for this page.
+  static final Set<String> _filtersShown = <String>{};
+
   String _search = '';
   final Set<String> _selected = <String>{};
   String _tag = '';
@@ -141,8 +145,9 @@ class _NpcBrowserState extends State<NpcBrowser> {
         if (_selected.contains(entry.key)) entry,
     ];
     final bool allShown = shown.isNotEmpty && shown.every((NpcEntry entry) => _selected.contains(entry.key));
+    final bool filtersShown = _filtersShown.contains(component.workspace.id);
     return dom.section(
-      classes: 'animus-panel animus-npc-browser',
+      classes: 'animus-panel animus-npc-browser${filtersShown ? '' : ' is-filters-folded'}',
       attributes: const <String, String>{'aria-label': 'NPC browser'},
       <Widget>[
         dom.header(classes: 'animus-npc-browser-head', <Widget>[
@@ -159,6 +164,15 @@ class _NpcBrowserState extends State<NpcBrowser> {
               onChanged: _typeSearch,
             ),
             if (_search.isNotEmpty) Button.ghost(label: 'Clear search', size: ButtonSize.small, onPressed: () => _setSearch('')),
+            // On a phone the filters, folders and tags wait behind this, so the list comes first.
+            dom.span(classes: 'animus-npc-filter-fold', <Widget>[
+              Button.ghost(
+                label: 'Filters',
+                size: ButtonSize.small,
+                attributes: <String, String>{'aria-expanded': '$filtersShown', 'aria-controls': 'animus-npc-filters animus-npc-folders'},
+                onPressed: () => setState(() => filtersShown ? _filtersShown.remove(component.workspace.id) : _filtersShown.add(component.workspace.id)),
+              ),
+            ]),
           ]),
         ]),
         _filters(all),
@@ -201,6 +215,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
     }
 
     return dom.div(
+      id: 'animus-npc-filters',
       classes: 'animus-npc-filters',
       attributes: const <String, String>{'role': 'group', 'aria-label': 'Filters'},
       <Widget>[
@@ -249,6 +264,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
   Widget _folders(List<NpcEntry> all) {
     final List<(String, int)> tags = npcTags(all);
     return dom.nav(
+      id: 'animus-npc-folders',
       classes: 'animus-npc-folders',
       attributes: const <String, String>{'aria-label': 'Folders and tags'},
       <Widget>[

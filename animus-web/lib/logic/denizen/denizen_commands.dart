@@ -342,6 +342,7 @@ class _Commands {
           }
           if (passive) {
             converter.outcome(scope, item, 'command', 'determine', false, 'determine passively sets a value and goes on; a routine returns only by ending');
+            _hold(scope, item);
             continue;
           }
           steps.addAll(determine(item, command, scope));
@@ -355,29 +356,45 @@ class _Commands {
               end++;
             }
           }
-          steps.addAll(chain(items, index, end, scope));
+          final List<JObject>? chained = chain(items, index, end, scope);
+          if (chained != null) {
+            steps.addAll(chained);
+          } else if (_held(scope, item, items.sublist(index, end))) {
+            return close(scope, items, end, steps);
+          }
           index = end - 1;
         case 'else':
           preserveTree(scope, item, 'else without a matching if');
+          if (_held(scope, item, <DenizenItem>[item])) return close(scope, items, index + 1, steps);
         case 'ratelimit':
           if (item.children != null) {
             preserveTree(scope, item, 'no Animus equivalent for the ratelimit block');
-            continue;
+          } else {
+            final _Converted converted = ratelimit(item, command, scope);
+            converter.outcome(scope, item, 'command', 'ratelimit', converted.reason.isEmpty, converted.reason);
+            if (converted.reason.isEmpty) {
+              steps.addAll(converted.steps);
+              continue;
+            }
           }
-          final _Converted converted = ratelimit(item, command, scope);
-          converter.outcome(scope, item, 'command', 'ratelimit', converted.reason.isEmpty, converted.reason);
-          steps.addAll(converted.steps);
+          _hold(scope, item);
+          return close(scope, items, index + 1, steps);
         case 'repeat':
         case 'foreach':
         case 'while':
-          if (item.children == null) {
-            steps.addAll(control(item, command, scope));
-          } else {
-            steps.addAll(loop(item, command, scope));
+          final List<JObject>? converted = item.children == null ? control(item, command, scope) : loop(item, command, scope);
+          if (converted != null) {
+            steps.addAll(converted);
+          } else if (_held(scope, item, <DenizenItem>[item])) {
+            return close(scope, items, index + 1, steps);
           }
         default:
           if (item.children != null) {
             preserveTree(scope, item, 'no Animus equivalent for the ${command.name} block');
+            if (_stops(item.children!.items, const <String>{})) {
+              _hold(scope, item);
+              return close(scope, items, index + 1, steps);
+            }
             continue;
           }
           final _Pending pending = _Pending();
@@ -387,10 +404,67 @@ class _Commands {
             steps
               ..addAll(pending.steps)
               ..addAll(converted.steps);
+            if (scope.record && command.name == 'execute' && command.args.any((DenizenArg arg) => arg.isWord('as_op'))) {
+              converter.issue('${scope.container.file}:${item.line}: execute as_op runs as the player without operator rights; the command fails where it needs them');
+            }
+            continue;
           }
+          if (_guards.contains(command.name)) _hold(scope, item);
+          if (_stops(<DenizenItem>[item], const <String>{})) return close(scope, items, index + 1, steps);
       }
     }
     return steps;
+  }
+
+  /// Commands that limit or end a run; when one does not convert, the behavior is held back from binding.
+  static const Set<String> _guards = <String>{'stop', 'determine', 'queue', 'inject', 'ratelimit', 'cooldown'};
+
+  /// Records a guard or stop that did not convert, which holds its behavior back from binding until an admin reviews it.
+  static void _hold(_Scope scope, DenizenItem item) => scope.doc.held.add('${scope.container.file}:${item.line}');
+
+  /// Holds the behavior for a kept control block; true when the block may end the script, so the routine must end too.
+  static bool _held(_Scope scope, DenizenItem item, List<DenizenItem> trees) {
+    _hold(scope, item);
+    return _stops(trees, const <String>{});
+  }
+
+  /// Fails closed after a kept line that may end the script: the routine returns there, as if the guard had stopped it,
+  /// and every later line is kept, so nothing a guard protected runs unchecked.
+  List<JObject> close(_Scope scope, List<DenizenItem> items, int from, List<JObject> steps) {
+    steps.add(_plain('return'));
+    preserveItems(scope, items, from, 'never runs: after a line that did not convert and may stop the script; the routine ends there');
+    return steps;
+  }
+
+  /// Whether running these lines may end the script or the loop around them: a `stop`, a `determine` that is not
+  /// passive, a `queue` command, an `inject` (its task may stop), a `ratelimit`, or a loop's stop or next that no loop
+  /// inside these lines takes. [loops] are the loop kinds already inside.
+  static bool _stops(List<DenizenItem> items, Set<String> loops) {
+    for (final DenizenItem item in items) {
+      final DenizenCommand command = denizenCommand(item.text);
+      final String name = command.name;
+      switch (name) {
+        case 'stop':
+        case 'queue':
+        case 'inject':
+        case 'ratelimit':
+          return true;
+        case 'determine':
+          if (!command.args.any((DenizenArg arg) => arg.isWord('passively'))) return true;
+        case 'foreach':
+        case 'repeat':
+        case 'while':
+          if (item.children == null) {
+            if (!loops.contains(name)) return true;
+            continue;
+          }
+          if (_stops(item.children!.items, <String>{...loops, name})) return true;
+          continue;
+        default:
+      }
+      if (item.children != null && _stops(item.children!.items, loops)) return true;
+    }
+    return false;
   }
 
   void preserveTree(_Scope scope, DenizenItem item, String reason) {
@@ -494,6 +568,7 @@ class _Commands {
   List<JObject> determine(DenizenItem item, DenizenCommand command, _Scope scope) {
     final JObject node = _plain('return');
     if (!<String>['task', 'procedure'].contains(scope.container.type)) {
+      _hold(scope, item);
       converter.outcome(
           scope,
           item,
@@ -506,6 +581,7 @@ class _Commands {
       return <JObject>[node];
     }
     if (command.args.length > 1) {
+      _hold(scope, item);
       converter.outcome(scope, item, 'command', 'determine', false, 'determine takes one value');
       return <JObject>[node];
     }
@@ -513,6 +589,7 @@ class _Commands {
     if (command.args.length == 1) {
       final _Result<JElement> value = expressions.operand(_raw(command.args.first), scope, pending);
       if (value.failed) {
+        _hold(scope, item);
         converter.outcome(scope, item, 'command', 'determine', false, value.reason!);
         return <JObject>[node];
       }
@@ -525,7 +602,7 @@ class _Commands {
   // ---- Chains ----
 
   /// An if/else-if/else chain or a choose block as nested condition nodes.
-  List<JObject> chain(List<DenizenItem> items, int start, int end, _Scope scope) {
+  List<JObject>? chain(List<DenizenItem> items, int start, int end, _Scope scope) {
     final DenizenItem head = items[start];
     final DenizenCommand command = denizenCommand(head.text);
     final List<_Cond> conditions = <_Cond>[];
@@ -606,7 +683,7 @@ class _Commands {
       for (int index = start; index < end; index++) {
         preserveTree(scope, items[index], why);
       }
-      return <JObject>[];
+      return null;
     }
     for (int index = start; index < end; index++) {
       converter.outcome(scope, items[index], 'command', denizenCommand(items[index].text).name, true, '');
@@ -641,7 +718,7 @@ class _Commands {
 
   // ---- Loops ----
 
-  List<JObject> loop(DenizenItem item, DenizenCommand command, _Scope scope) {
+  List<JObject>? loop(DenizenItem item, DenizenCommand command, _Scope scope) {
     final _Pending pending = _Pending();
     final String kind = command.name;
     final SplayTreeMap<String, String> definitions = SplayTreeMap<String, String>.of(scope.definitions);
@@ -768,7 +845,7 @@ class _Commands {
     }
     if (reason != null) {
       preserveTree(scope, item, reason);
-      return <JObject>[];
+      return null;
     }
     converter.outcome(scope, item, 'command', kind, true, '');
     final List<String> loops = <String>[...scope.loops, kind];
@@ -790,7 +867,7 @@ class _Commands {
   }
 
   /// `foreach stop`, `repeat next` and so on: break or continue the innermost loop of that kind.
-  List<JObject> control(DenizenItem item, DenizenCommand command, _Scope scope) {
+  List<JObject>? control(DenizenItem item, DenizenCommand command, _Scope scope) {
     String? reason;
     final String word = command.args.length == 1 ? command.args.first.value.toLowerCase() : '';
     if (word != 'stop' && word != 'next') {
@@ -802,7 +879,7 @@ class _Commands {
     }
     if (reason != null) {
       preserveTree(scope, item, reason);
-      return <JObject>[];
+      return null;
     }
     converter.outcome(scope, item, 'command', command.name, true, '');
     return <JObject>[_plain(word == 'stop' ? 'break' : 'continue')];
@@ -1267,6 +1344,12 @@ class _Commands {
       task = converter.containers[name.toLowerCase()];
     }
     if (task == null) return _Converted.kept('no script named ${name ?? ''}');
+    if (command.name == 'inject' && task.type == 'task') {
+      final DenizenNode? injected = task.body.get(path?.toLowerCase() ?? 'script');
+      if (injected is DenizenSequence && _stops(injected.items, const <String>{})) {
+        return _Converted.kept('inject runs ${task.name} inside this script, so a stop there ends this script too; an Animus call ends only the task');
+      }
+    }
     return callTask(task, path, save, positional, named, scope, pending);
   }
 
@@ -1368,11 +1451,12 @@ class _Commands {
     String? as;
     final List<String> words = <String>[];
     for (final DenizenArg arg in command.args) {
-      if (arg.isWord('as_server') || arg.isWord('as_op')) {
+      if (arg.isWord('as_server')) {
         as = 'console';
         continue;
       }
-      if (arg.isWord('as_player')) {
+      // as_op lends the player operator rights for the line; Animus never does, so it runs as the plain player.
+      if (arg.isWord('as_player') || arg.isWord('as_op')) {
         as = 'player';
         continue;
       }

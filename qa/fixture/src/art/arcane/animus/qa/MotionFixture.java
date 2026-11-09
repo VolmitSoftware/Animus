@@ -1,6 +1,6 @@
 package art.arcane.animus.qa;
 
-import art.arcane.animus.bukkit.navigation.VirtualNpcWaypointEvent;
+import art.arcane.animus.bukkit.event.VirtualNpcWaypointEvent;
 import java.util.*;
 import org.bukkit.*;
 import org.bukkit.entity.Player;
@@ -128,8 +128,8 @@ final class MotionFixture implements Listener, AutoCloseable {
         observer.arrivals++;
         Player owner = plugin.getServer().getPlayer(observer.owner);
         if (owner == null || !owner.isOnline()) return;
-        var point = event.getPosition().point();
-        owner.sendMessage("QA waypoint npc=" + event.getNpcId() + " name=" + event.getNpcName() + " route=" + event.getRouteId()
+        var point = event.getPosition();
+        owner.sendMessage("QA waypoint npc=" + event.getNpcId() + " name=" + event.getNpcKey() + " route=" + event.getRouteId()
                 + " waypoint=" + event.getWaypoint() + " x=" + point.x() + " y=" + point.y() + " z=" + point.z()
                 + " world-registered=0 arrivals=" + observer.arrivals + " fixture-tick=" + tick);
     }

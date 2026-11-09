@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
 import com.google.gson.JsonElement;
@@ -28,6 +29,7 @@ final class ModuleScreen<P, S> extends ValueScreen<P, S> {
     }
 
     @Override String title() { return clip(label, 32); }
+    @Override String node() { return PermissionNodes.NPC_EDIT; }
 
     /** The slot of the n-th module's switch; its Edit button sits right below. */
     static int toggle(int index) { return WIDTH + (index / WIDTH) * 2 * WIDTH + index % WIDTH; }

@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -42,7 +43,7 @@ import java.util.UUID;
  * accepts them.
  */
 final class DenizenConverter {
-    static final int CONVERTER_VERSION = 6;
+    static final int CONVERTER_VERSION = 7;
     /** The author a converted book gets when its Denizen author is blank. */
     static final String BLANK_BOOK_AUTHOR = "Server";
     static final String NAMESPACE = "denizen";
@@ -83,6 +84,8 @@ final class DenizenConverter {
         int temporaries, loops;
         /** The longest {@code cooldown} an interact script's steps set, in ticks: per player, and {@code global} for everyone. */
         long playerCooldown = -1, globalCooldown = -1;
+        /** Sources ({@code file:line}) of guards and stops that did not convert; any one holds the behavior back from binding. */
+        final LinkedHashSet<String> held = new LinkedHashSet<>();
 
         Doc(boolean server) { this.server = server; }
     }
@@ -134,6 +137,8 @@ final class DenizenConverter {
     private final List<Npc> npcs = new ArrayList<>();
     private final TreeMap<String, String> guis = new TreeMap<>();
     private final TreeSet<String> serverBehaviors = new TreeSet<>();
+    /** Behaviors with a guard or stop that did not convert, and those lines; never bound or enabled by the import. */
+    private final TreeMap<String, Doc> heldBehaviors = new TreeMap<>();
     /** World behaviors of NPC events, bound to every NPC. */
     private final TreeSet<String> clickBehaviors = new TreeSet<>();
     /** Literal values scripts and NPC data give each flag, by {@code scope:name}; filled on first use. */
@@ -186,6 +191,7 @@ final class DenizenConverter {
 
         TreeMap<String, String> files = new TreeMap<>();
         TreeMap<String, List<String>> bindings = new TreeMap<>();
+        TreeMap<String, List<String>> heldNpcs = new TreeMap<>();
         JsonObject behaviorStatus = new JsonObject();
         TreeMap<String, String> documents = new TreeMap<>();
         // Values come first: other scripts read data, give items and books and open inventories by name.
@@ -233,6 +239,8 @@ final class DenizenConverter {
             }
             for (String click : clickBehaviors) if (documents.containsKey(click) && !bound.contains(click)) bound.add(click);
             for (String problem : npc.problems()) issues.add(npc.id() + ": " + problem);
+            for (String behavior : bound) if (heldBehaviors.containsKey(behavior)) heldNpcs.computeIfAbsent(behavior, (String ignored) -> new ArrayList<>()).add(npc.id());
+            bound.removeIf(heldBehaviors::containsKey);
             if (!bound.isEmpty()) bindings.put(npc.id(), bound);
         }
         for (Map.Entry<String, String> document : documents.entrySet()) files.put("behaviors/" + document.getKey().replace(':', '/') + ".json", document.getValue());
@@ -297,8 +305,23 @@ final class DenizenConverter {
         JsonObject npcUuids = new JsonObject();
         for (Npc npc : npcs) if (bindings.containsKey(npc.id())) npcUuids.addProperty(npc.id(), npc.uuid());
         report.add("npcUuids", npcUuids);
-        for (Map.Entry<String, String> document : documents.entrySet()) behaviorStatus.addProperty(document.getKey(), partial(document.getKey()) ? "partial" : "complete");
+        for (Map.Entry<String, String> document : documents.entrySet())
+            behaviorStatus.addProperty(document.getKey(), heldBehaviors.containsKey(document.getKey()) ? "held" : partial(document.getKey()) ? "partial" : "complete");
         report.add("behaviorStatus", behaviorStatus);
+        JsonObject heldReport = new JsonObject();
+        for (Map.Entry<String, Doc> held : heldBehaviors.entrySet()) {
+            if (!documents.containsKey(held.getKey())) continue;
+            JsonObject entry = new JsonObject();
+            if (held.getValue().server) entry.addProperty("server", true);
+            JsonArray lines = new JsonArray();
+            for (String line : held.getValue().held) lines.add(line);
+            entry.add("lines", lines);
+            JsonArray heldOn = new JsonArray();
+            for (String npc : heldNpcs.getOrDefault(held.getKey(), List.of())) heldOn.add(npc);
+            entry.add("npcs", heldOn);
+            heldReport.add(held.getKey(), entry);
+        }
+        report.add("heldBehaviors", heldReport);
         JsonArray commandBehaviors = new JsonArray();
         for (Map.Entry<String, String> document : documents.entrySet()) if (document.getValue().contains("\"animus:command\"")) commandBehaviors.add(document.getKey());
         report.add("commandBehaviors", commandBehaviors);
@@ -527,6 +550,8 @@ final class DenizenConverter {
     }
 
     // ---- Outcomes ----
+
+    void issue(String text) { issues.add(text); }
 
     void outcome(Scope scope, Item item, String kind, String name, boolean converted, String reason) {
         if (!scope.record) return;
@@ -1210,14 +1235,22 @@ final class DenizenConverter {
             }
             if (!list.isEmpty()) trigger.add("aliases", list);
         }
+        Doc doc = new Doc(true);
         for (String field : List.of("permission", "description", "usage")) {
             Optional<String> value = container.body().text(field);
+            Optional<Node> node = container.body().get(field);
+            // A permission the trigger cannot carry would open the command to everyone, so the command is held instead.
+            if (field.equals("permission") && node.isPresent() && (value.isEmpty() || value.get().isBlank() || value.get().length() > 256)) {
+                issues.add(container.file() + ":" + node.get().line() + ": command permission is not 1-256 characters of text; the command is held until it is fixed");
+                record(container, node.get().line(), "event", field, field, false, "command permission is not 1-256 characters of text");
+                doc.held.add(container.file() + ":" + node.get().line());
+                continue;
+            }
             if (value.isEmpty() || value.get().isBlank()) continue;
             if (value.get().length() > 256) { issues.add(container.file() + ":" + container.line() + ": command " + field + " is longer than 256 characters and is not used"); continue; }
             trigger.addProperty(field, value.get().trim());
         }
         trigger.addProperty("routine", "main");
-        Doc doc = new Doc(true);
         doc.routines.put("main", new JsonObject());
         Scope scope = Scope.of(doc, true, container, Optional.empty(), -1, DenizenEvents.commandContext());
         doc.routines.put("main", sequence(commands.block(sequence.items(), 0, scope)));
@@ -1504,7 +1537,8 @@ final class DenizenConverter {
             return false;
         }
         documents.put(id, text);
-        if (doc.server) serverBehaviors.add(id);
+        if (!doc.held.isEmpty()) heldBehaviors.put(id, doc);
+        else if (doc.server) serverBehaviors.add(id);
         return true;
     }
 

@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.behavior.conversation.ConversationDocument;
 import art.arcane.animus.core.behavior.conversation.ConversationDocument.Choices;
 import art.arcane.animus.core.behavior.conversation.ConversationDocument.Line;
@@ -39,6 +40,8 @@ final class ConversationScreen<P, S> extends ToolScreen<P, S> {
         working = loaded.conversation();
         block = working.entry;
     }
+
+    @Override String node() { return PermissionNodes.BEHAVIORS; }
 
     /** The behavior id on its entry block; any other block adds its name, or shows only the block when both do not fit. */
     @Override String title() {

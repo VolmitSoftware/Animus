@@ -20,13 +20,19 @@ public record NpcRuntimeSettings(boolean enabled, int viewDistance, int maximumV
                                  int simulationPerTick, int queuePerViewer, int degradedIntervalTicks) {
     public static final NpcRuntimeSettings DEFAULT = new NpcRuntimeSettings(true, 48, 64, 256, 64, 512, 8, 32, 512, 24, 4);
     public NpcRuntimeSettings {
-        if (viewDistance < 8 || viewDistance > 256 || maximumVisible < 1 || maximumVisible > 128
-                || maximumViewers < 1 || maximumViewers > 1024 || updatesPerTick < 1 || updatesPerTick > 64
-                || packetsPerTick < 1 || packetsPerTick > 1024 || pendingSpawnsPerViewer < 1 || pendingSpawnsPerViewer > 64
-                || lookUpdatesPerTick < 1 || lookUpdatesPerTick > 1024 || simulationPerTick < 16 || simulationPerTick > 65536
-                || queuePerViewer < 4 || queuePerViewer > BodyRules.MAX_OPERATIONS || degradedIntervalTicks < 1 || degradedIntervalTicks > 40)
-            throw new IllegalArgumentException("NPC budgets require viewDistance=8..256, maximumVisible=1..128, maximumViewers=1..1024, updatesPerTick=1..64, "
-                    + "packetsPerTick=1..1024, pendingSpawnsPerViewer=1..64, lookUpdatesPerTick=1..1024, simulationPerTick=16..65536, "
-                    + "queuePerViewer=4.." + BodyRules.MAX_OPERATIONS + ", degradedIntervalTicks=1..40");
+        require("viewDistance", viewDistance, 8, 256);
+        require("maximumVisible", maximumVisible, 1, 128);
+        require("maximumViewers", maximumViewers, 1, 1024);
+        require("updatesPerTick", updatesPerTick, 1, 64);
+        require("packetsPerTick", packetsPerTick, 1, 1024);
+        require("pendingSpawnsPerViewer", pendingSpawnsPerViewer, 1, 64);
+        require("lookUpdatesPerTick", lookUpdatesPerTick, 1, 1024);
+        require("simulationPerTick", simulationPerTick, 16, 65536);
+        require("queuePerViewer", queuePerViewer, 4, BodyRules.MAX_OPERATIONS);
+        require("degradedIntervalTicks", degradedIntervalTicks, 1, 40);
+    }
+
+    private static void require(String field, int value, int minimum, int maximum) {
+        if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum + ", not " + value);
     }
 }

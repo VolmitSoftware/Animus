@@ -47,6 +47,19 @@ class CapabilitySpec {
   String get note => <String>[if (!available) reason, if (privileged) 'privileged'].join('; ');
 }
 
+/// The reason the embedded catalog gives every capability it cannot check.
+const String offlineCatalogReason = 'platform-unavailable: offline validation has no server';
+
+/// A capability as a picker option: its id, then whether it is unavailable
+/// (offline, or not on this server) and privileged.
+String capabilityChoiceLabel(CapabilitySpec spec) {
+  final List<String> notes = <String>[
+    if (!spec.available) spec.reason == offlineCatalogReason ? 'unavailable offline' : 'not on this server',
+    if (spec.privileged) 'privileged',
+  ];
+  return notes.isEmpty ? spec.id : '${spec.id} (${notes.join('; ')})';
+}
+
 /// One trigger event and its fields.
 class TriggerSpec {
   const TriggerSpec({

@@ -2,6 +2,7 @@
 /// web editor (`/app`).
 library;
 
+export 'src/relay_address.dart';
 export 'src/relay_broker.dart';
 export 'src/relay_channel_sink.dart';
 export 'src/relay_frame.dart';

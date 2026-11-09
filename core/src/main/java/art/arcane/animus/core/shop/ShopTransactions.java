@@ -83,28 +83,32 @@ public final class ShopTransactions<S> {
                 units = held;
             }
         }
-        ShopLedger.Rules rules = ShopLedger.Rules.of(entry);
-        if (rules.any()) {
-            long allowed = ledger.available(shop, entry.id(), rules, buyer.id(), now);
-            if (allowed < units) {
-                boolean stockBinds = entry.stock().isPresent()
-                        && entry.stock().get().maximum() - ledger.stockUsed(shop, entry.id(), now) < units;
-                return Outcome.of(stockBinds ? Status.OUT_OF_STOCK : Status.LIMIT_REACHED);
-            }
-        }
         BigDecimal price = scaled(entry.price(now), units, entry.type() == ShopDocument.Type.BUY || entry.type() == ShopDocument.Type.SELL ? base : 1);
         boolean money = price.signum() > 0;
-        if (money && economy.unavailable().isPresent()) return new Outcome(Status.ECONOMY_UNAVAILABLE, 0, price, economy.unavailable());
-        Outcome outcome = switch (entry.type()) {
-            case BUY -> buy(prepared, buyer, inventory, units, price, money);
-            case SELL -> sell(prepared, buyer, inventory, units, price, money, rule);
-            case TRADE -> stock.isPresent() ? stocked(prepared, buyer, inventory, InventoryTransaction.begin(stock.get(), items), rule)
-                    : trade(prepared, buyer, inventory, price, money, rule);
-            case COMMAND -> command(buyer, inventory, price, money);
-            case STATIC -> Outcome.of(Status.NOT_TRADABLE);
-        };
-        if (outcome.done() && rules.any()) ledger.record(shop, entry.id(), rules, buyer.id(), outcome.units(), now);
-        return outcome;
+        ShopLedger.Rules rules = ShopLedger.Rules.of(entry);
+        Optional<ShopLedger.Reservation> reserved = Optional.empty();
+        if (rules.any()) {
+            // Held before anything moves, so buyers on other region threads cannot both take the last units.
+            reserved = ledger.reserve(shop, entry.id(), rules, buyer.id(), units, now);
+            if (reserved.isEmpty()) return Outcome.of(ledger.stockShort(shop, entry.id(), rules, units, now) ? Status.OUT_OF_STOCK : Status.LIMIT_REACHED);
+        }
+        Outcome outcome = Outcome.of(Status.FAILED);
+        try {
+            outcome = money && economy.unavailable().isPresent() ? new Outcome(Status.ECONOMY_UNAVAILABLE, 0, price, economy.unavailable()) : switch (entry.type()) {
+                case BUY -> buy(prepared, buyer, inventory, units, price, money);
+                case SELL -> sell(prepared, buyer, inventory, units, price, money, rule);
+                case TRADE -> stock.isPresent() ? stocked(prepared, buyer, inventory, InventoryTransaction.begin(stock.get(), items), rule)
+                        : trade(prepared, buyer, inventory, price, money, rule);
+                case COMMAND -> command(buyer, inventory, price, money);
+                case STATIC -> Outcome.of(Status.NOT_TRADABLE);
+            };
+            return outcome;
+        } finally {
+            if (reserved.isPresent()) {
+                if (outcome.done()) ledger.complete(reserved.get(), outcome.units(), now);
+                else ledger.release(reserved.get());
+            }
+        }
     }
 
     /** The price of {@code units} when {@code price} is for {@code per} items. */

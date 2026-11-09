@@ -159,6 +159,17 @@ public final class EditorTokens {
         save();
     }
 
+    /** Takes one scope away from a token, keeping the rest; false when the token is gone or never had it. */
+    public synchronized boolean dropScope(String tokenId, EditorScope scope) throws IOException {
+        Token token = tokens.get(tokenId);
+        if (token == null || !token.has(scope)) return false;
+        List<EditorScope> kept = token.scopes().stream().filter((EditorScope held) -> held != scope).toList();
+        tokens.put(tokenId, new Token(token.id(), token.hash(), token.label(), token.admin(), kept, token.groups(), token.created(), token.expires(),
+                token.lastUsed(), token.counter(), token.client(), token.adminChecked()));
+        save();
+        return true;
+    }
+
     /** Revokes one token, or every token for {@code all}. Returns the revoked ids. */
     public synchronized List<String> revoke(String idOrAll) throws IOException {
         List<String> ids = idOrAll.equals("all") ? new ArrayList<>(tokens.keySet()) : tokens.containsKey(idOrAll) ? List.of(idOrAll) : List.of();

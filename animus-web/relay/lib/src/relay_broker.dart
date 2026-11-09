@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 
+import 'package:animus_relay/src/relay_address.dart';
 import 'package:animus_relay/src/relay_frame.dart';
 import 'package:animus_relay/src/relay_limits.dart';
 import 'package:animus_relay/src/relay_sink.dart';
@@ -80,7 +81,14 @@ final class RelayBroker {
     final Set<_App> subscribers = _appsByServer[fingerprint] ?? <_App>{};
     if (_apps.length >= limits.maxApps ||
         subscribers.length >= limits.maxAppsPerServer ||
-        subscribers.where((_App app) => app.address == address).length >=
+        subscribers
+                .where(
+                  (_App app) =>
+                      app.address != null &&
+                      address != null &&
+                      addressKey(app.address!) == addressKey(address),
+                )
+                .length >=
             limits.maxAppsPerAddressPerServer) {
       return RelayErrorCode.capacity;
     }

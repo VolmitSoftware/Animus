@@ -24,7 +24,7 @@ part 'denizen_commands.dart';
 part 'denizen_events.dart';
 part 'denizen_expressions.dart';
 
-const int denizenConverterVersion = 6;
+const int denizenConverterVersion = 7;
 
 /// The author a converted book gets when its Denizen author is blank.
 const String _blankBookAuthor = 'Server';
@@ -224,6 +224,9 @@ class _Doc {
   /// The longest `cooldown` an interact script's steps set, in ticks: per player, and `global` for everyone.
   int playerCooldown = -1;
   int globalCooldown = -1;
+
+  /// Sources (`file:line`) of guards and stops that did not convert; any one holds the behavior back from binding.
+  final Set<String> held = <String>{};
 }
 
 /// Where the commands being converted come from and what they may read.
@@ -444,6 +447,9 @@ class _Converter {
   final SplayTreeMap<String, String> guis = SplayTreeMap<String, String>();
   final SplayTreeSet<String> serverBehaviors = SplayTreeSet<String>();
 
+  /// Behaviors with a guard or stop that did not convert, and those lines; never bound or enabled by the import.
+  final SplayTreeMap<String, _Doc> heldBehaviors = SplayTreeMap<String, _Doc>();
+
   /// World behaviors of NPC events, bound to every NPC.
   final SplayTreeSet<String> clickBehaviors = SplayTreeSet<String>();
 
@@ -504,6 +510,7 @@ class _Converter {
 
     final SplayTreeMap<String, String> files = SplayTreeMap<String, String>();
     final SplayTreeMap<String, List<String>> bindings = SplayTreeMap<String, List<String>>();
+    final SplayTreeMap<String, List<String>> heldNpcs = SplayTreeMap<String, List<String>>();
     final JObject behaviorStatus = JObject();
     final SplayTreeMap<String, String> documents = SplayTreeMap<String, String>();
     // Values come first: other scripts read data, give items and books and open inventories by name.
@@ -573,6 +580,10 @@ class _Converter {
       for (final String problem in npc.problems) {
         issues.add('${npc.id}: $problem');
       }
+      for (final String behavior in bound) {
+        if (heldBehaviors.containsKey(behavior)) heldNpcs.putIfAbsent(behavior, () => <String>[]).add(npc.id);
+      }
+      bound.removeWhere(heldBehaviors.containsKey);
       if (bound.isNotEmpty) bindings[npc.id] = bound;
     }
     for (final MapEntry<String, String> document in documents.entries) {
@@ -654,9 +665,20 @@ class _Converter {
     }
     report.add('npcUuids', npcUuids);
     for (final String document in documents.keys) {
-      behaviorStatus.addString(document, partial(document) ? 'partial' : 'complete');
+      behaviorStatus.addString(document, heldBehaviors.containsKey(document) ? 'held' : partial(document) ? 'partial' : 'complete');
     }
     report.add('behaviorStatus', behaviorStatus);
+    final JObject heldReport = JObject();
+    for (final MapEntry<String, _Doc> held in heldBehaviors.entries) {
+      if (!documents.containsKey(held.key)) continue;
+      final JObject entry = JObject();
+      if (held.value.server) entry.addBool('server', true);
+      entry
+        ..add('lines', JArray(<JElement>[for (final String line in held.value.held) JString(line)]))
+        ..add('npcs', JArray(<JElement>[for (final String npc in heldNpcs[held.key] ?? const <String>[]) JString(npc)]));
+      heldReport.add(held.key, entry);
+    }
+    report.add('heldBehaviors', heldReport);
     report.add(
         'commandBehaviors',
         JArray(<JElement>[
@@ -889,6 +911,8 @@ class _Converter {
   }
 
   // ---- Outcomes ----
+
+  void issue(String text) => issues.add(text);
 
   void outcome(_Scope scope, DenizenItem item, String kind, String name, bool converted, String reason) {
     if (!scope.record) return;
@@ -1659,8 +1683,17 @@ class _Converter {
       }
       if (list.isNotEmpty) trigger.add('aliases', list);
     }
+    final _Doc doc = _Doc(true);
     for (final String field in <String>['permission', 'description', 'usage']) {
       final String? value = container.body.text(field);
+      final DenizenNode? node = container.body.get(field);
+      // A permission the trigger cannot carry would open the command to everyone, so the command is held instead.
+      if (field == 'permission' && node != null && (value == null || javaIsBlank(value) || value.length > 256)) {
+        issues.add('${container.file}:${node.line}: command permission is not 1-256 characters of text; the command is held until it is fixed');
+        record(container, node.line, 'event', field, field, false, 'command permission is not 1-256 characters of text');
+        doc.held.add('${container.file}:${node.line}');
+        continue;
+      }
       if (value == null || javaIsBlank(value)) continue;
       if (value.length > 256) {
         issues.add('${container.file}:${container.line}: command $field is longer than 256 characters and is not used');
@@ -1669,7 +1702,6 @@ class _Converter {
       trigger.addString(field, javaTrim(value));
     }
     trigger.addString('routine', 'main');
-    final _Doc doc = _Doc(true);
     doc.routines['main'] = JObject();
     final _Scope scope = _Scope.of(doc, true, container, null, -1, _commandContext());
     doc.routines['main'] = _sequence(commands.block(script.items, 0, scope));
@@ -2002,7 +2034,11 @@ class _Converter {
       return false;
     }
     documents[id] = text;
-    if (doc.server) serverBehaviors.add(id);
+    if (doc.held.isNotEmpty) {
+      heldBehaviors[id] = doc;
+    } else if (doc.server) {
+      serverBehaviors.add(id);
+    }
     return true;
   }
 

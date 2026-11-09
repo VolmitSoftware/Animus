@@ -139,6 +139,62 @@ class ShopTransactionsTest {
         assertEquals(Status.OUT_OF_STOCK, transactions.perform("town:baker", prepare(shop), buyer(new MockInventory(), Set.of()), false).status());
     }
 
+    /** Withdraws like the mock, but the first withdrawal waits until the test lets it go. */
+    private static final class SlowEconomy implements Economy {
+        final MockEconomy money = new MockEconomy();
+        final java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1), release = new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        volatile boolean refuseFirst;
+        @Override public Optional<String> unavailable() { return Optional.empty(); }
+        @Override public boolean has(UUID player, BigDecimal amount) { return money.has(player, amount); }
+        @Override public boolean withdraw(UUID player, BigDecimal amount) {
+            if (calls.getAndIncrement() == 0) {
+                entered.countDown();
+                try { if (!release.await(5, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("never released"); }
+                catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+                if (refuseFirst) return false;
+            }
+            synchronized (money) { return money.withdraw(player, amount); }
+        }
+        @Override public boolean deposit(UUID player, BigDecimal amount) { synchronized (money) { return money.deposit(player, amount); } }
+        @Override public String format(BigDecimal amount) { return amount.toPlainString(); }
+    }
+
+    private static final UUID BLAKE = UUID.fromString("00000000-0000-0000-0000-00000000000b");
+    private static final String LAST_LOAF = "{\"id\":\"bread\",\"type\":\"buy\",\"item\":{\"id\":\"minecraft:bread\",\"count\":4},\"price\":1,\"stock\":{\"maximum\":4}}";
+
+    @Test void twoBuyersOnDifferentThreadsCannotBothTakeTheLastStock() throws Exception {
+        SlowEconomy slow = new SlowEconomy();
+        slow.money.give(ALEX, "10").give(BLAKE, "10");
+        ShopTransactions<Stack> transactions = transactions(slow);
+        ShopDocument shop = shop("buy", LAST_LOAF);
+        java.util.concurrent.CompletableFuture<Status> first = java.util.concurrent.CompletableFuture.supplyAsync(() ->
+                transactions.perform("town:baker", prepare(shop), buyer(new MockInventory(), Set.of()), false).status());
+        assertTrue(slow.entered.await(5, java.util.concurrent.TimeUnit.SECONDS));
+        java.util.concurrent.CompletableFuture<Status> second = java.util.concurrent.CompletableFuture.supplyAsync(() -> transactions.perform("town:baker", prepare(shop),
+                new ShopTransactions.Buyer<>(BLAKE, (String node) -> false, new MockInventory(), dropped::add), false).status());
+        Status late = second.get(5, java.util.concurrent.TimeUnit.SECONDS);
+        slow.release.countDown();
+        assertEquals(Status.DONE, first.get(5, java.util.concurrent.TimeUnit.SECONDS));
+        assertEquals(Status.OUT_OF_STOCK, late, "the stock the first buyer holds is not sold again");
+        assertEquals(4, ledger.stockUsed("town:baker", "bread", NOW));
+    }
+
+    @Test void aFailedPaymentGivesTheReservedStockBack() throws Exception {
+        SlowEconomy slow = new SlowEconomy();
+        slow.refuseFirst = true;
+        slow.money.give(ALEX, "10");
+        ShopTransactions<Stack> transactions = transactions(slow);
+        ShopDocument shop = shop("buy", LAST_LOAF);
+        java.util.concurrent.CompletableFuture<Status> first = java.util.concurrent.CompletableFuture.supplyAsync(() ->
+                transactions.perform("town:baker", prepare(shop), buyer(new MockInventory(), Set.of()), false).status());
+        assertTrue(slow.entered.await(5, java.util.concurrent.TimeUnit.SECONDS));
+        slow.release.countDown();
+        assertEquals(Status.INSUFFICIENT_FUNDS, first.get(5, java.util.concurrent.TimeUnit.SECONDS));
+        assertEquals(Status.DONE, transactions.perform("town:baker", prepare(shop), buyer(new MockInventory(), Set.of()), false).status());
+        assertEquals(4, ledger.stockUsed("town:baker", "bread", NOW));
+    }
+
     @Test void aGivingFailureRefundsThePayment() {
         economy.give(ALEX, "20");
         MockInventory inventory = new MockInventory() {

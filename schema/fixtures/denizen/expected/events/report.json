@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 6,
-  "importId": "f36236122363147d67f059cf51d80ec6fead4b48a6d580f293ef85f1b24c2375",
+  "converterVersion": 7,
+  "importId": "f9b9552d61734ae547090842d85aacc5b542e499d03256552efeed8e53bd43ee",
   "notice": "Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.",
   "sources": {
     "scripts/events.dsc": "53524fbb9ceff17a581c6c2205fadc4456b9c5871152a955e56d5969aed806d8",
@@ -390,18 +390,32 @@
     "denizen:world-npc/combat": "partial",
     "denizen:world-npc/npc_keys": "complete",
     "denizen:world/archery": "partial",
-    "denizen:world/areas": "partial",
+    "denizen:world/areas": "held",
     "denizen:world/blocks": "partial",
-    "denizen:world/combat": "partial",
+    "denizen:world/combat": "held",
     "denizen:world/inventories": "complete",
     "denizen:world/items": "complete"
+  },
+  "heldBehaviors": {
+    "denizen:world/areas": {
+      "server": true,
+      "lines": [
+        "events.dsc:14"
+      ],
+      "npcs": []
+    },
+    "denizen:world/combat": {
+      "server": true,
+      "lines": [
+        "events.dsc:88"
+      ],
+      "npcs": []
+    }
   },
   "commandBehaviors": [],
   "serverBehaviors": [
     "denizen:world/archery",
-    "denizen:world/areas",
     "denizen:world/blocks",
-    "denizen:world/combat",
     "denizen:world/inventories",
     "denizen:world/items"
   ],

@@ -6,7 +6,7 @@ ROOT=Path(__file__).resolve().parents[2]
 HERE=Path(__file__).resolve().parent
 sha=lambda path:hashlib.sha256(path.read_bytes()).hexdigest()
 p=argparse.ArgumentParser(description=__doc__)
-p.add_argument('--api-jar',type=Path,default=ROOT/'animus-api/build/libs/animus-api-1.1.0-SNAPSHOT.jar')
+p.add_argument('--api-jar',type=Path,default=ROOT/'animus-api/build/libs/animus-api-1.2.0-SNAPSHOT.jar')
 p.add_argument('--module-fixtures',type=Path,required=True)
 p.add_argument('--java-home',type=Path,default=Path('/opt/homebrew/opt/openjdk@25'))
 a=p.parse_args();api=a.api_jar.resolve();build=a.module_fixtures.resolve();receipt=json.loads((build/'build.json').read_text())

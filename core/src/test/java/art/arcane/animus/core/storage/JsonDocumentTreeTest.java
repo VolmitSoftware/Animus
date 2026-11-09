@@ -43,25 +43,31 @@ class JsonDocumentTreeTest {
         assertTrue(failure.getMessage().contains("document limit"));
     }
 
-    @Test void deepNonJsonContentCannotBypassTheDepthLimit() throws Exception {
-        Path nested = Files.createDirectories(root.resolve("one/two"));
-        assertEquals(List.of(), JsonDocumentTree.files(root, 10, 10, 2));
-        Files.writeString(nested.resolve("not-json.txt"), "bounded even without a JSON extension");
-        IOException failure = assertThrows(IOException.class, () -> JsonDocumentTree.files(root, 10, 10, 2));
-        assertTrue(failure.getMessage().contains("depth limit"));
+    @Test void anythingNestedTooDeepIsSkippedAndNamedWhileTheRestLoads() throws Exception {
+        Path shallow = Files.writeString(root.resolve("guard.json"), "{}");
+        Path nested = Files.createDirectories(root.resolve("one/two/three/four"));
+        Files.writeString(nested.resolve("deep.json"), "{}");
+        Files.writeString(root.resolve("one/two/not-json.txt"), "bounded even without a JSON extension");
+        java.util.List<String> skipped = new java.util.ArrayList<>();
+        assertEquals(List.of(shallow), JsonDocumentTree.files(root, 100, 10, 2, skipped::add));
+        assertEquals(List.of("Skipped " + root.resolve("one/two/not-json.txt") + ": nested deeper than 2 folders; move it higher up",
+                "Skipped " + root.resolve("one/two/three") + ": nested deeper than 2 folders; move it higher up"), skipped.stream().sorted().toList());
     }
 
-    @Test void symlinksAreRejectedWithoutFollowingTheirTargets() throws Exception {
+    @Test void symlinksInsideAreSkippedWithoutFollowingTheirTargets() throws Exception {
         Path target = Files.createDirectory(root.resolve("target"));
+        Files.writeString(target.resolve("outside.json"), "{}");
         Path linkedRoot = Files.createSymbolicLink(root.resolve("linked-root"), target);
-        assertThrows(IOException.class, () -> JsonDocumentTree.files(linkedRoot));
+        assertThrows(IOException.class, () -> JsonDocumentTree.files(linkedRoot), "the root itself must be a real folder");
         Path scan = Files.createDirectory(root.resolve("scan"));
+        Path real = Files.writeString(scan.resolve("real.json"), "{}");
         Files.createSymbolicLink(scan.resolve("directory-link"), target);
-        IOException failure = assertThrows(IOException.class, () -> JsonDocumentTree.files(scan));
-        assertTrue(failure.getMessage().contains("symlinks"));
-        Files.delete(scan.resolve("directory-link"));
-        Files.createSymbolicLink(scan.resolve("dangling.txt"), root.resolve("absent-target"));
-        assertThrows(IOException.class, () -> JsonDocumentTree.files(scan));
+        Files.createSymbolicLink(scan.resolve("file-link.json"), target.resolve("outside.json"));
+        Files.createSymbolicLink(scan.resolve("dangling.json"), root.resolve("absent-target"));
+        java.util.List<String> skipped = new java.util.ArrayList<>();
+        assertEquals(List.of(real), JsonDocumentTree.files(scan, 100, 10, 8, skipped::add));
+        assertEquals(3, skipped.size(), skipped.toString());
+        assertTrue(skipped.stream().allMatch((String line) -> line.endsWith(": symbolic links are not read; replace it with the real file or folder")), skipped.toString());
     }
 
     @Test void aFileOrDanglingRootCannotBeMistakenForAnEmptyDefinitionDirectory() throws Exception {

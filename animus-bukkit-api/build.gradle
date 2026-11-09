@@ -1,0 +1,38 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+ext.animusRoot = projectDir.parentFile
+apply from: '../gradle/java.gradle'
+// Bukkit plugins compile against this to listen to Animus NPC events and look up NPCs. It shares the API version
+// and coordinates group with animus-api; the Animus plugin jar ships these classes under their own package names.
+group = 'art.arcane.animus'
+evaluationDependsOn(':animus-api')
+version = project(':animus-api').version
+java { withSourcesJar(); withJavadocJar() }
+tasks.named('jar', Jar).configure { manifest { attributes('Automatic-Module-Name': 'art.arcane.animus.bukkit.api') } }
+repositories {
+    maven { url = uri('https://hub.spigotmc.org/nexus/content/repositories/snapshots/') }
+}
+dependencies {
+    compileOnly('org.spigotmc:spigot-api:26.1.2-R0.1-SNAPSHOT')
+}
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            artifactId = 'animus-bukkit-api'
+            from(components.java)
+            pom {
+                name = 'Animus Bukkit API'
+                description = 'NPC lookup service and NPC events for Bukkit plugins that work with Animus.'
+                url = 'https://github.com/VolmitSoftware/Animus'
+                licenses {
+                    license {
+                        name = 'GNU General Public License v3.0'
+                        url = 'https://github.com/VolmitSoftware/Animus/blob/master/LICENSE'
+                    }
+                }
+            }
+        }
+    }
+}

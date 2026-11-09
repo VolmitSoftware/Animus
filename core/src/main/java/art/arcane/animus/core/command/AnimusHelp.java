@@ -25,23 +25,23 @@ public final class AnimusHelp {
     record Topic(String title, DocsLink docs, List<String> names) {}
 
     static final List<Topic> TOPICS = List.of(
+            new Topic("Tools", DocsLink.TOOLS, List.of("setup", "tools")),
             new Topic("NPCs", DocsLink.COMMANDS, List.of("status", "list", "create", "inspect", "edit", "clone", "delete", "spawn", "despawn",
                     "select", "selection", "validate", "reload", "rollback", "npc")),
             new Topic("Movement", DocsLink.MOVEMENT, List.of("navigation", "ride")),
             new Topic("Combat", DocsLink.COMBAT, List.of("combat")),
             new Topic("Content", DocsLink.CONTENT, List.of("modules", "rigs", "pack", "import", "record")),
-            new Topic("Services", DocsLink.SERVICES, List.of("shop", "gui", "build", "editor")),
+            new Topic("Services", DocsLink.SERVICES, List.of("shop", "gui", "hologram", "build", "editor")),
             new Topic("Behaviors", DocsLink.BEHAVIORS, List.of("behaviors")),
             new Topic("Groups", DocsLink.GROUPS, List.of("groups")),
-            new Topic("Diagnostics", DocsLink.DIAGNOSTICS, List.of("debug", "proof")),
-            new Topic("Tools", DocsLink.TOOLS, List.of("tools", "setup")));
+            new Topic("Diagnostics", DocsLink.DIAGNOSTICS, List.of("debug", "proof")));
 
     /** Verbs in the order a group lists them: reading first, then doing, then undoing; unlisted verbs follow A-Z. */
     private static final List<String> VERBS = List.of("status", "list", "inspect", "members", "summary", "capabilities", "problems", "packs", "triggers",
             "trace", "schematics", "tokens", "performance", "network", "npc", "watch", "mode", "go", "look", "create", "start", "run", "play", "open", "menu",
             "preview", "stage", "apply", "plan", "review", "accept", "engage", "disengage", "target", "guard", "attack", "mob", "release", "assign", "unassign",
             "action", "condition", "spawn", "move", "path", "mount", "control", "folia", "pause", "resume", "survey", "donate", "team", "ghost", "pair",
-            "revoke", "validate", "schema", "reload", "build", "gloss", "file", "import", "export", "citizens", "close", "stop", "cancel", "clear", "reset",
+            "revoke", "validate", "schema", "reload", "build", "citizens", "shops", "gloss", "live", "file", "import", "export", "close", "stop", "cancel", "clear", "reset",
             "rollback", "delete", "state", "behavior", "player", "relationship", "all", "confirm");
 
     /** A topic heading with the entries under it; a group's own page has one section without a heading. */
@@ -80,13 +80,13 @@ public final class AnimusHelp {
         return new Page(group, sections, Math.max(0, index));
     }
 
-    /** The root topic a node sits under. */
+    /** The root topic a node sits under; NPCs for one no topic lists. */
     static Topic topic(DirectorRuntimeNode node) {
         DirectorRuntimeNode top = node;
         while (top.getParent() != null && top.getParent().getParent() != null) top = top.getParent();
         String name = top.getDescriptor().getName();
         for (Topic topic : TOPICS) if (topic.names().contains(name)) return topic;
-        return TOPICS.getFirst();
+        return TOPICS.get(1);
     }
 
     private static List<DirectorRuntimeNode> sorted(List<DirectorRuntimeNode> nodes) {

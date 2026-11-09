@@ -56,8 +56,6 @@ class EditorNotifySettingsTest {
 
     @Test
     void shouldRefuseUnknownKeysAndBadValuesNamingTheField() throws IOException {
-        assertRefused("[editor.notify]\nding = true\n", "editor: notify: ding is not an editor notify setting");
-        assertRefused("[editor.notify.sounds.party]\nsound = \"x\"\n", "editor: notify: sounds: party is not an editor event");
         assertRefused("[editor.notify.sounds.apply]\nvolume = 9\n", "editor: notify: sounds.apply.volume must be within 0..2");
         assertRefused("[editor.notify.sounds.apply]\npitch = 0.1\n", "editor: notify: sounds.apply.pitch must be within 0.5..2");
         assertRefused("[editor.notify.sounds.apply]\nsound = \"Not A Sound\"\n", "editor: notify: sounds.apply.sound must be a sound id");

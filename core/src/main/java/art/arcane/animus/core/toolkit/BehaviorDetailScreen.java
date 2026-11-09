@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.text.ChatLine;
@@ -22,6 +23,7 @@ final class BehaviorDetailScreen<P, S> extends ToolScreen<P, S> {
     }
 
     @Override String title() { return behavior.id(); }
+    @Override String node() { return PermissionNodes.BEHAVIORS; }
     @Override int rows() { return 6; }
 
     @Override void draw() {

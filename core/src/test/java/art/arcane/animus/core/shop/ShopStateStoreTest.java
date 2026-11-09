@@ -52,6 +52,39 @@ class ShopStateStoreTest {
         }
     }
 
+    @Test void aDamagedLedgerIsSetAsideAndShopsStartEmpty() throws Exception {
+        try (ShopStateStore store = open(new ArrayList<>())) {
+            store.ledger().record("town:baker", "bread", LIMIT, ALEX, 6, Instant.now());
+        }
+        Path ledger = folder.resolve("state/ledger.json");
+        Files.writeString(ledger, "{\"imports\": [\"a\"], \"counters\": [ broken");
+        try (ShopStateStore store = open(new ArrayList<>())) {
+            assertEquals(10, store.ledger().available("town:baker", "bread", LIMIT, ALEX, Instant.now()), "the counters start empty");
+            assertTrue(store.problem().contains("ledger.json were damaged"), store.problem());
+            assertFalse(Files.exists(ledger) && Files.readString(ledger).contains("broken"), "the damaged file is not read again");
+            try (java.util.stream.Stream<Path> files = Files.list(folder.resolve("state"))) {
+                assertEquals(1, files.filter((Path file) -> file.getFileName().toString().startsWith("ledger.json.bad-")).count());
+            }
+            store.ledger().record("town:baker", "bread", LIMIT, ALEX, 1, Instant.now());
+        }
+        try (ShopStateStore store = open(new ArrayList<>())) {
+            assertEquals("", store.problem(), "the next start reads the clean ledger");
+            assertEquals(9, store.ledger().available("town:baker", "bread", LIMIT, ALEX, Instant.now()));
+        }
+    }
+
+    @Test void aDamagedJournalLineIsSkippedAndTheJournalCopied() throws Exception {
+        ShopStateStore crashed = open(new ArrayList<>());
+        crashed.ledger().record("town:baker", "bread", LIMIT, ALEX, 2, Instant.now());
+        crashed.flush();
+        Path journal = folder.resolve("state/ledger.journal");
+        Files.writeString(journal, "not json\n" + Files.readString(journal));
+        try (ShopStateStore store = open(new ArrayList<>())) {
+            assertEquals(8, store.ledger().available("town:baker", "bread", LIMIT, ALEX, Instant.now()), "the readable lines still apply");
+            assertTrue(store.problem().contains("ledger.journal were damaged (line 1"), store.problem());
+        }
+    }
+
     @Test void aTornLastJournalLineIsIgnoredWithAWarning() throws Exception {
         ShopStateStore crashed = open(new ArrayList<>());
         crashed.ledger().record("town:baker", "bread", LIMIT, ALEX, 2, Instant.now());

@@ -106,6 +106,9 @@ class _CitizensScreenState extends State<CitizensScreen> {
   Uint8List? _bytes;
   String _worlds = '';
   CitizensReview? _review;
+
+  /// The converted NPCs' names by Citizens id, for the warnings.
+  Map<String, String> _names = const <String, String>{};
   String? _error;
   bool _busy = false;
   (String, Uint8List)? _shopSave;
@@ -300,7 +303,10 @@ class _CitizensScreenState extends State<CitizensScreen> {
       final CitizensPreview preview = convertCitizens(decodeSaves(bytes), parseWorldMappings(_worlds));
       final CitizensReview review = CitizensReview.of(preview);
       _citizensResult = jsonEncode(review.aggregate()).toJS;
-      setState(() => _review = review);
+      setState(() {
+        _review = review;
+        _names = citizensNames(preview);
+      });
     } on CitizensImportException catch (failure) {
       _citizensResult = jsonEncode(<String, Object?>{'error': failure.message}).toJS;
       setState(() => _error = conversionProblem('Citizens saves.yml', failure.message));
@@ -404,7 +410,8 @@ class _CitizensScreenState extends State<CitizensScreen> {
       _shopkeepersPanel(),
       _tradersPanel(),
       _denizenPanel(),
-      if (component.store != null && component.onNavigate != null && (review != null || _shops != null || _denizenPreview != null)) _nextPanel(),
+      // Without a Citizens review the next steps follow the converted shops or scripts.
+      if (review == null && _canOpen) _nextPanel(null),
       ServerImportPanel(
         hub: component.hub,
         uploads: _uploads,
@@ -414,7 +421,11 @@ class _CitizensScreenState extends State<CitizensScreen> {
     ]);
   }
 
-  Widget _nextPanel() => dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Next steps', 'data-testid': 'citizens-next'}, <Widget>[
+  bool get _canOpen => component.store != null && component.onNavigate != null && (_review != null || _shops != null || _denizenPreview != null);
+
+  /// Open as workspace and Send to server, with the bundle download when a
+  /// Citizens save was converted ([review]).
+  Widget _nextPanel(CitizensReview? review) => dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Next steps', 'data-testid': 'citizens-next'}, <Widget>[
         const dom.h2(<Widget>[
           InfoTip(
             tip: 'Open the converted NPCs, shops, GUIs and behaviors as a workspace in this browser to review and edit them, then send them to a paired server.',
@@ -438,7 +449,10 @@ class _CitizensScreenState extends State<CitizensScreen> {
             disabled: _busy || _opening,
             onPressed: () => _openWorkspace(send: true),
           ),
+          if (review != null)
+            Button.secondary(label: 'Download data-folder bundle', icon: ArcaneIcon.download(), size: ButtonSize.small, onPressed: () => _download(review)),
         ]),
+        if (review != null) const dom.p(classes: 'animus-muted', <Widget>[Component.text('With the bundle: $_unzipNext')]),
       ]);
 
   Map<String, String> get _worldMap {
@@ -527,7 +541,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
           (preview.flagsPreserved, 'flags kept, not run'),
         ]),
         dom.p(classes: 'animus-muted animus-citizens-id', <Widget>[
-          const Component.text('Import '),
+          const Component.text('Import id '),
           dom.code(<Widget>[Component.text(preview.id)]),
         ]),
         dom.div(classes: 'animus-row', <Widget>[
@@ -583,7 +597,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
           (shops.linksUnchecked, 'Citizens links unchecked'),
         ]),
         dom.p(classes: 'animus-muted animus-citizens-id', <Widget>[
-          const Component.text('Import '),
+          const Component.text('Import id '),
           dom.code(<Widget>[Component.text(shops.id)]),
         ]),
         dom.div(classes: 'animus-row', <Widget>[
@@ -608,7 +622,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
                 if (review.warnings.isNotEmpty) '${review.warnings.length} migration warning${review.warnings.length == 1 ? '' : 's'}',
                 if (review.issues.isNotEmpty) '${review.issues.length} record${review.issues.length == 1 ? '' : 's'} that will not load',
               ].join(' and ')),
-              const Component.text('. Read them before applying.'),
+              const Component.text('. Read them before you install the import.'),
             ])
           else
             const dom.p(classes: 'animus-citizens-lead', <Widget>[Component.text('All records valid, no warnings.')]),
@@ -626,12 +640,13 @@ class _CitizensScreenState extends State<CitizensScreen> {
             (review.conversions['skinsKept'] ?? 0, 'skins kept for review'),
           ]),
           dom.p(classes: 'animus-muted animus-citizens-id', <Widget>[
-            const Component.text('Import '),
+            const Component.text('Import id '),
             dom.code(<Widget>[Component.text(review.preview.id)]),
           ]),
         ]),
-        _list('Migration warnings', review.warnings, 'None.'),
-        _list('Records that will not load', review.issues, 'None.'),
+        if (_canOpen) _nextPanel(review),
+        _list('Migration warnings', <String>[for (final String warning in review.warnings) plainWarning(warning, _names)], 'None.'),
+        _list('Records that will not load', <String>[for (final String issue in review.issues) plainWarning(issue, _names)], 'None.'),
         dom.section(classes: 'animus-panel', <Widget>[
           const dom.h2(<Widget>[
             InfoTip(
@@ -655,18 +670,18 @@ class _CitizensScreenState extends State<CitizensScreen> {
           ]),
           _counts(review.types, 'Type', 'Records'),
         ]),
-        dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Download the conversion'}, <Widget>[
-          dom.div(classes: 'animus-row', <Widget>[
-            Button.secondary(label: 'Download data-folder bundle', icon: ArcaneIcon.download(), size: ButtonSize.small, onPressed: () => _download(review)),
-            const dom.span(classes: 'animus-muted', <Widget>[Component.text(_unzipNext)]),
+        if (!_canOpen)
+          dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Download the conversion'}, <Widget>[
+            dom.div(classes: 'animus-row', <Widget>[
+              Button.secondary(label: 'Download data-folder bundle', icon: ArcaneIcon.download(), size: ButtonSize.small, onPressed: () => _download(review)),
+              const dom.span(classes: 'animus-muted', <Widget>[Component.text(_unzipNext)]),
+            ]),
           ]),
-        ]),
       ];
 
-  /// Counts as tiles, the non-zero ones only; the zeros share one quiet line.
+  /// Counts as tiles, the non-zero ones only.
   Widget _stats(List<(int, String)> counts) {
     final List<(int, String)> shown = <(int, String)>[for (final (int, String) count in counts) if (count.$1 != 0) count];
-    final List<String> zero = <String>[for (final (int, String) count in counts) if (count.$1 == 0) count.$2];
     return dom.div(<Widget>[
       if (shown.isNotEmpty)
         dom.div(classes: 'animus-stats', <Widget>[
@@ -676,7 +691,6 @@ class _CitizensScreenState extends State<CitizensScreen> {
               dom.span(<Widget>[Component.text(label)]),
             ]),
         ]),
-      if (zero.isNotEmpty) dom.p(classes: 'animus-muted animus-stats-none', <Widget>[Component.text('None: ${zero.join(', ')}.')]),
     ]);
   }
 

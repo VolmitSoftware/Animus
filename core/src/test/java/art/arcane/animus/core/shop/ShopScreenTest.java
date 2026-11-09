@@ -69,6 +69,17 @@ class ShopScreenTest {
         assertEquals(List.of("Alex bought 4x minecraft:bread"), host.broadcasts);
     }
 
+    @Test void aNameThatCannotBeWrittenIntoACommandRefusesThePurchase() {
+        Player selector = new Player("@a");
+        economy.give(selector.id, "100");
+        manager.open(selector, Optional.empty(), (ScreenManager<Player, Stack>.Viewer viewer) -> ShopScreen.open(parse(BAKERY), viewer, context));
+        manager.click(selector, selector.window, 10, Click.LEFT);
+        assertTrue(host.console.isEmpty(), host.console.toString());
+        assertEquals(0, selector.inventory.total("minecraft:bread"));
+        assertEquals(0, new BigDecimal("100").compareTo(economy.balance(selector.id)), "nothing is paid for a refused purchase");
+        assertTrue(selector.messages.getFirst().contains("name cannot be written into this shop's commands"), selector.messages.toString());
+    }
+
     @Test void aRefusedPurchaseSaysWhyAndRunsNothing() {
         open(parse(BAKERY));
         click(10, Click.LEFT);

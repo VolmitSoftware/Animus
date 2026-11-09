@@ -61,6 +61,11 @@ public final class EditorListener implements AutoCloseable {
     private static final int HEAD_BYTES = 16 * 1024, WEBSOCKET_FRAME_BYTES = 64 * 1024, REQUESTS_PER_CONNECTION = 1000;
     /** An idle connection waits this long for the next request; once its first byte arrives the whole head must follow within {@link #HEAD_MILLIS}. */
     private static final int IDLE_MILLIS = 15_000, HEAD_MILLIS = 5_000;
+    /**
+     * A body without a token must arrive whole within {@link #OPEN_BODY_MILLIS}; an authenticated one gets
+     * {@link #BODY_MILLIS} plus a millisecond for each {@link #BODY_BYTES_PER_MILLI} bytes, however slowly it trickles.
+     */
+    private static final int OPEN_BODY_MILLIS = 5_000, BODY_MILLIS = 30_000, BODY_BYTES_PER_MILLI = 16;
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
     private static final String WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
     private volatile EditorSettings settings;
@@ -149,7 +154,7 @@ public final class EditorListener implements AutoCloseable {
                 if (!closed) log.accept("Editor listener stopped accepting: " + stopped.getMessage());
                 return;
             }
-            String address = socket.getInetAddress().getHostAddress();
+            String address = addressKey(socket.getInetAddress());
             if (!connections.tryAcquire()) {
                 Thread.ofVirtual().start(() -> refuse(socket, "The editor listener has its maximum of connections open."));
                 continue;
@@ -229,8 +234,9 @@ public final class EditorListener implements AutoCloseable {
                     write(output, EditorReplies.error(new EditorError(EditorError.Code.TOO_LARGE, "Request bodies are limited to " + limit + " bytes here.")), false);
                     return;
                 }
-                socket.setSoTimeout(60_000);
-                byte[] body = input.readNBytes((int) length);
+                byte[] body;
+                try { body = readBody(socket, input, (int) length, admission.authenticated() ? BODY_MILLIS + length / BODY_BYTES_PER_MILLI : OPEN_BODY_MILLIS); }
+                catch (SocketTimeoutException slow) { return; }
                 if (body.length != length) return;
                 EditorResponse response;
                 try {
@@ -253,6 +259,34 @@ public final class EditorListener implements AutoCloseable {
         } catch (IOException gone) {
             // The client closed the connection or the TLS handshake failed; nothing is owed to it.
         }
+    }
+
+    /**
+     * The key an address's connections are counted under: an IPv4 address itself, an IPv6 address by its {@code /64}, since
+     * one host can usually choose any address inside its {@code /64}.
+     */
+    static String addressKey(InetAddress address) {
+        if (!(address instanceof java.net.Inet6Address)) return address.getHostAddress();
+        byte[] bytes = address.getAddress();
+        StringBuilder prefix = new StringBuilder();
+        for (int index = 0; index < 8; index += 2) prefix.append(Integer.toHexString(((bytes[index] & 0xff) << 8) | (bytes[index + 1] & 0xff))).append(':');
+        return prefix.append(":/64").toString();
+    }
+
+    /** Reads exactly {@code length} bytes, or fewer at end of stream, within {@code millis} in all. */
+    private static byte[] readBody(Socket socket, InputStream input, int length, long millis) throws IOException {
+        byte[] body = new byte[length];
+        long deadline = System.nanoTime() + millis * 1_000_000L;
+        int read = 0;
+        while (read < length) {
+            long left = (deadline - System.nanoTime()) / 1_000_000;
+            if (left <= 0) throw new SocketTimeoutException("The request body was too slow");
+            socket.setSoTimeout((int) Math.min(left, Integer.MAX_VALUE));
+            int count = input.read(body, read, length - read);
+            if (count < 0) return java.util.Arrays.copyOf(body, read);
+            read += count;
+        }
+        return body;
     }
 
     /** The client's headers with the socket's address in {@link EditorReplies#PEER_HEADER}; a client cannot supply its own. */

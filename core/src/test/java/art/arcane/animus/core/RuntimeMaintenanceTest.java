@@ -30,7 +30,51 @@ class RuntimeMaintenanceTest {
         try (AnimusRuntime runtime = runtime()) {
             runtime.start();
             assertFalse(Files.exists(root.resolve("imports/.preview-42")));
-            assertFalse(Files.exists(object));
+            gone(object);
+        }
+    }
+
+    @Test void oldReceiptsArePrunedOnTheFileLaneAfterStartReturns() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) { store.read("config.toml"); }
+        int aged = 205;
+        java.util.List<Path> receipts = new java.util.ArrayList<>();
+        Files.createDirectories(root.resolve("backups"));
+        for (int index = 0; index < aged; index++) {
+            Path receipt = root.resolve("backups/" + java.util.UUID.nameUUIDFromBytes(new byte[]{(byte) index, (byte) (index >> 8)}) + ".json");
+            Files.writeString(receipt, "{}");
+            Files.setLastModifiedTime(receipt, FileTime.from(Instant.now().minus(Duration.ofDays(30)).plusSeconds(index)));
+            receipts.add(receipt);
+        }
+        try (AnimusRuntime runtime = runtime()) {
+            // Maintenance takes the runtime's lock on the file lane, so while this thread holds it nothing can have pruned yet.
+            synchronized (runtime) {
+                runtime.start();
+                assertEquals(aged, receipts.stream().filter(Files::exists).count(), "start itself removes nothing");
+            }
+            for (Path oldest : receipts.subList(0, aged - 200)) gone(oldest);
+            assertEquals(200, receipts.stream().filter(Files::exists).count(), "the newest backupsKept stay");
+        }
+    }
+
+    @Test void aTooDeepFolderOrALinkUnderNpcsIsSkippedAndTheRestStarts() throws Exception {
+        Path guard = Files.createDirectories(root.resolve("npcs/town")).resolve("guard.json");
+        Files.writeString(guard, "{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"12345678-1234-1234-1234-123456789abc\",\"id\":\"guard\",\"group\":\"town\",\"name\":\"Guard\","
+                + "\"type\":\"minecraft:player\",\"spawned\":false,\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}}");
+        Path deep = Files.createDirectories(root.resolve("npcs/a/b/c/d/e/f/g/h/i/j"));
+        Files.writeString(deep.resolve("lost.json"), "{}");
+        Files.createSymbolicLink(root.resolve("npcs/link.json"), guard);
+        try (AnimusRuntime runtime = runtime()) {
+            runtime.start();
+            assertEquals("Guard", runtime.npcs().find("guard").orElseThrow().name());
+            assertEquals(1, runtime.npcs().all().size());
+        }
+    }
+
+    private static void gone(Path file) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        while (Files.exists(file)) {
+            if (System.nanoTime() > deadline) fail(file + " was not removed by maintenance");
+            Thread.sleep(10);
         }
     }
 

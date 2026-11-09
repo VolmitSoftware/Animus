@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.npc.GroupDocument;
@@ -23,6 +24,7 @@ final class GroupScreen<P, S> extends ToolScreen<P, S> {
     GroupScreen(Toolkit<P, S> toolkit, ScreenManager<P, S>.Viewer viewer, Toolkit.Commands commands) { super(toolkit, viewer, commands); }
 
     @Override String title() { return "Trait groups"; }
+    @Override String node() { return PermissionNodes.NPC_EDIT; }
     @Override int rows() { return 6; }
 
     @Override void draw() {

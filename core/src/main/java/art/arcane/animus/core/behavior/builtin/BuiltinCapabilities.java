@@ -952,22 +952,19 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         return new Audience(Optional.of(target(call)), 0);
     }
 
-    /**
-     * Owner only. A name for a console command must be one word without quotes, brackets or selectors; Bedrock prefixes such as
-     * {@code .} and {@code *} pass.
-     */
+    /** Owner only. Refuses a name {@link art.arcane.animus.core.behavior.ArgumentTemplate#commandSafeName} refuses. */
     private UUID commandSafeName(UUID player) {
         Optional<String> name = platform.playerName(player);
-        if (name.isPresent() && !name.get().matches("[\\p{L}\\p{N}_.*-]{1,32}"))
+        if (name.isPresent() && !art.arcane.animus.core.behavior.ArgumentTemplate.commandSafeName(name.get()))
             throw new CapabilityRefusal(Outcome.Status.INVALID, "player-name-unsafe", "The triggering player's name cannot be written into a command");
         return player;
     }
 
-    /** Owner only. Replaces {player_name} with the player's current name. */
+    /** Owner only. Replaces {player_name} with the player's current name, which cannot name a placeholder. */
     private String withPlayerName(String text, Optional<UUID> player) {
         if (player.isEmpty()) return text;
         String name = platform.playerName(player.get()).orElseThrow(() -> new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "player-name-unknown", "The triggering player's name is not known"));
-        return text.replace(PLAYER_NAME_TOKEN, name);
+        return text.replace(PLAYER_NAME_TOKEN, art.arcane.animus.core.text.Placeholders.escape(name));
     }
 
     /** The player named by the player argument, or the triggering player. */

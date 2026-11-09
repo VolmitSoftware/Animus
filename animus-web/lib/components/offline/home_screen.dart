@@ -33,8 +33,12 @@ class HomeScreen extends StatefulWidget {
     required this.onOpenFolder,
     required this.onOpenZip,
     required this.onNavigate,
+    this.openProblem,
     super.key,
   });
+
+  /// Why the last picked folder or zip opened nothing.
+  final String? openProblem;
 
   final EditorStore store;
   final ServerHub hub;
@@ -202,6 +206,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: () => component.onNavigate(const CitizensRoute()),
               ),
             ]),
+            if (component.openProblem != null)
+              dom.p(classes: 'animus-error', attributes: const <String, String>{'role': 'alert', 'data-testid': 'open-problem'}, <Widget>[
+                Component.text('Nothing opened, nothing saved. ${component.openProblem!}'),
+              ]),
           ]),
         ]),
       ]),

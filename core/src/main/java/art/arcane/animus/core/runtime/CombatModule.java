@@ -290,7 +290,7 @@ public final class CombatModule implements AutoCloseable {
             files().execute(() -> {
                 try {
                     HealthRecords.markDead(runtime.npcs(), npc).ifPresent((HealthRecords.Recorded recorded) ->
-                            warnings.accept("NPC " + recorded.id() + " died for good; /animus npc revive " + recorded.id() + " brings it back; tx " + recorded.transaction()));
+                            System.getLogger("Animus").log(System.Logger.Level.INFO, recorded.deathNotice()));
                 } catch (java.io.IOException failure) {
                     warnings.accept("Combat could not record the permadeath of " + npc + ": " + failure.getMessage());
                 }

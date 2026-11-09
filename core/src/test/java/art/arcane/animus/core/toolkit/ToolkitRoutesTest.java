@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.FakeNpcRuntime;
 import art.arcane.animus.core.gui.GuiModel.Click;
 import art.arcane.animus.core.gui.MockScreenHost;
@@ -73,7 +74,7 @@ class ToolkitRoutesTest {
                 new DocumentStore.Change("recordings/wave.json", "missing", recording("wave"))));
         npcs = new NpcRepository(store);
         assertTrue(npcs.reload().isEmpty());
-        alex.permissions.add(Toolkit.ADMIN);
+        alex.permissions.add(PermissionNodes.ADMIN);
         stand(0, 0);
         alex.wand = true;
         FakeNpcRuntime<Player> living = new FakeNpcRuntime<>((UUID id) -> id.equals(alex.id) ? Optional.of(alex) : Optional.empty()) {

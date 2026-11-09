@@ -79,6 +79,8 @@ public final class AnimusModRuntime {
     private static final double CORRECTION_SQUARED = 1.0;
     private final Platform platform;
     private final Path dataDirectory;
+    /** Why the last start failed, for /animus replies, or null. */
+    private volatile String startupFailure;
     private volatile Running running;
 
     /** Everything one server start owns; a new start builds a new one. */
@@ -114,16 +116,16 @@ public final class AnimusModRuntime {
 
     public void start(MinecraftServer server) {
         if (running != null) throw new IllegalStateException(BuildIdentity.NAME + " is already running");
-        RuntimeEnvironment environment = new RuntimeEnvironment(platform, MinecraftVersion.current(), dataDirectory);
+        startupFailure = null;
         Running next = new Running();
         AnimusMetrics measured = AnimusMetrics.restart();
         long startedAt = System.nanoTime();
+        RuntimeEnvironment environment = new RuntimeEnvironment(platform, MinecraftVersion.current(), dataDirectory);
         try {
+            Path data = RuntimeEnvironment.resolveDataDirectory(dataDirectory);
+            environment = new RuntimeEnvironment(platform, MinecraftVersion.current(), data);
             next.runtime = new AnimusRuntime(environment, (Throwable failure) -> LOGGER.error("File cleanup failed", failure));
             next.runtime.start();
-            List<String> recovered = next.runtime.npcs().diagnostics();
-            recovered.stream().limit(5).forEach((String problem) -> LOGGER.warn("Definition kept at last valid version: {}", problem));
-            if (recovered.size() > 5) LOGGER.warn("{} more definition problems; /animus validate lists them", recovered.size() - 5);
             next.ticks = new ModTicks(LOGGER::warn);
             Executor files = next.runtime.fileExecutor((Runnable task, MutationLane.EngineTaskEvent event, Throwable failure) -> {
                 if (event == MutationLane.EngineTaskEvent.FAILED) LOGGER.warn("File task failed", failure);
@@ -181,14 +183,16 @@ public final class AnimusModRuntime {
             next.living.observeInteractions(modules::interacted);
             next.living.animationEvents(new art.arcane.animus.core.rig.AnimationEventRunner((art.arcane.animus.api.Capabilities.Key key, art.arcane.animus.api.NpcHandle npc, String arguments) ->
                     modules.action(key, npc, Optional.empty(), arguments), LOGGER::info));
-            next.behaviors = new BehaviorCommands(dataDirectory, next.runtime, next.extensions, LOGGER::info);
+            next.behaviors = new BehaviorCommands(data, next.runtime, next.extensions, (String message) -> {
+                if (message.contains(": FAILED")) LOGGER.warn(message); else LOGGER.info(message);
+            });
             next.runtime.catalogs(new art.arcane.animus.core.RuntimeCatalogs(new art.arcane.animus.core.RuntimeCatalogs.Parts(next.runtime, next.living::refresh,
                     () -> owner.behaviors, () -> screenService.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {}),
                     () -> holoService.reload((art.arcane.animus.core.gui.HoloCatalog catalog) -> {}), LOGGER::info)));
             BuiltinCapabilities actions = next.builtins;
             next.runtime.onSettings((art.arcane.animus.core.config.PluginSettings settingsNow) -> actions.settings(settingsNow.behaviors().actions()));
             next.hotload = new art.arcane.animus.core.hotload.HotloadService(new art.arcane.animus.core.hotload.HotloadService.Parts(next.runtime, files, server::execute, next.living,
-                    new ModOperators(server), screenService::refreshOpen, LOGGER::info));
+                    new ModOperators(server), screenService::refreshOpen, LOGGER::info, LOGGER::warn));
             next.hotload.start();
             TriggerDispatcher triggers = next.behaviors.triggers();
             ServerTriggerDispatcher servers = next.behaviors.servers();
@@ -220,25 +224,34 @@ public final class AnimusModRuntime {
             startEditor(server, next, files);
             running = next;
             ModHooks.attach(this);
-            if (next.runtime.splashScreen()) splash(environment.minecraftVersion(), true);
+            SplashScreen.Startup health = art.arcane.animus.core.StartupCheck.check(next.runtime, next.living.available(), next.shops.stateProblem(), next.editor, LOGGER::warn);
+            if (next.runtime.splashScreen()) splash(environment.minecraftVersion(), health);
+            else if (!health.ready()) LOGGER.warn("Startup: {}", health.label());
             LOGGER.info("Enabled {} on {} {} in {}ms | {} NPCs | editor {}", BuildIdentity.VERSION, platform.name().toLowerCase(java.util.Locale.ROOT), environment.minecraftVersion(),
                     (System.nanoTime() - startedAt) / 1_000_000, next.runtime.npcs().all().size(), next.editor == null ? "off" : next.editor.reach());
             next.onboarding = new ModOnboarding(server, next.ticks, next.runtime, files, () -> owner.stopping, LOGGER::info, LOGGER::warn);
-        } catch (IOException | RuntimeException | LinkageError failure) {
-            LOGGER.error("Failed to start", failure);
-            splash(environment.minecraftVersion(), false);
+        } catch (IOException failure) {
+            // A bad config.toml, an unreadable data folder or a damaged file: the message names it, so no stack trace.
+            startupFailure = failure.getMessage();
+            LOGGER.error("Animus did not start: {}. Fix it and restart the server.", failure.getMessage());
+            splash(environment.minecraftVersion(), SplashScreen.Startup.FAILED);
+            close(next);
+        } catch (RuntimeException | LinkageError failure) {
+            startupFailure = failure.getClass().getSimpleName() + ": " + failure.getMessage();
+            LOGGER.error("Animus did not start", failure);
+            splash(environment.minecraftVersion(), SplashScreen.Startup.FAILED);
             close(next);
         }
     }
 
     /** log4j has no Bukkit colour codes, so an interactive terminal gets ANSI escapes and anything else plain text. */
-    private void splash(String minecraftVersion, boolean ready) {
+    private void splash(String minecraftVersion, SplashScreen.Startup startup) {
         try {
             java.io.Console console = System.console();
             SplashScreen.Colors colors = SplashScreen.Colors.forTerminal(console != null && console.isTerminal(), System.getenv("NO_COLOR"));
             String loader = switch (platform) { case FABRIC -> "Fabric"; case FORGE -> "Forge"; case NEOFORGE -> "NeoForge"; case BUKKIT -> "Bukkit"; };
             String server = loader + " " + minecraftVersion;
-            LOGGER.info(SplashScreen.render(SplashScreen.Details.current(server, ready), colors));
+            LOGGER.info(SplashScreen.render(SplashScreen.Details.current(server, startup), colors));
         } catch (RuntimeException | LinkageError failure) {
             LOGGER.warn("Splash screen failed to render", failure);
         }
@@ -293,13 +306,16 @@ public final class AnimusModRuntime {
                 "placeholderapi", EditorHost.Feature.no("PlaceholderAPI is a Bukkit plugin"));
         EditorService service = new EditorService(next.runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(next.runtime, files, next.living,
                 next.extensions, platform.name().toLowerCase(java.util.Locale.ROOT), "", features, new ModLookups(server)::read,
-                (ServerPlayer player) -> VanillaRuntimeHost.permitted(player.permissions(), "animus.admin"), new ModEditorNotices(server), LOGGER::info,
-                new ModEditorTerrain(server), (java.util.UUID player) -> ModOfflineAdmin.check(server, player))), LOGGER::info, LOGGER::warn);
+                (ServerPlayer player, String node) -> VanillaRuntimeHost.permitted(player.permissions(), node), new ModEditorNotices(server), LOGGER::info,
+                new ModEditorTerrain(server), (java.util.UUID player, String node) -> ModOfflineAdmin.check(server, player, node))), LOGGER::info, LOGGER::warn);
         try {
             service.start();
             next.editor = service;
             if (!service.problem().isEmpty()) LOGGER.warn("Editor {}", service.problem());
-        } catch (IOException | RuntimeException failure) {
+        } catch (IOException failure) {
+            LOGGER.warn("Editor could not start: {}", failure.getMessage());
+            service.close();
+        } catch (RuntimeException failure) {
             LOGGER.warn("Editor could not start", failure);
             service.close();
         }
@@ -321,6 +337,8 @@ public final class AnimusModRuntime {
 
     private int run(CommandSourceStack source, String text) {
         Running active = running;
+        String failure = startupFailure;
+        if (active == null && failure != null) { source.sendFailure(Component.literal("Animus did not start: " + failure + ". Fix it and restart; the server log has the details")); return 0; }
         if (active == null || active.stopping) { source.sendFailure(Component.literal("Animus is not running.")); return 0; }
         active.commands.execute(new ModActor(source, active.ticks), words(text));
         return 1;

@@ -18,6 +18,7 @@ Future<void> main(List<String> args) async {
     address: settings.address,
     limits: settings.limits,
     allowedAppOrigins: settings.allowedAppOrigins,
+    trustedProxyHops: settings.trustedProxyHops,
   );
   stdout.writeln(
     'animus-relay listening on ${server.address.host}:${server.port} '

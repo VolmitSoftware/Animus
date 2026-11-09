@@ -1,0 +1,293 @@
+{
+  "schemaVersion": 1,
+  "converterVersion": 7,
+  "importId": "93c1567610dcfbe08a2a8c8af4236371325f4dd938d4e2d81c5f9cb53daafe1c",
+  "notice": "Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.",
+  "sources": {
+    "scripts/guards.dsc": "466638fde72c8e5ecfcdc59043b873c50b88cd799c15741b458db2f3bf7951a9",
+    "citizens": "ed55c8cbfbf7dfce99386a3a6d4ea1bfd457532bb15997a4d5b13859204e1847"
+  },
+  "behaviors": 6,
+  "containers": {
+    "assignment": {
+      "total": 2,
+      "converted": 2,
+      "partial": 0,
+      "preserved": 0
+    },
+    "command": {
+      "total": 1,
+      "converted": 0,
+      "partial": 1,
+      "preserved": 0
+    },
+    "interact": {
+      "total": 2,
+      "converted": 0,
+      "partial": 2,
+      "preserved": 0
+    },
+    "task": {
+      "total": 2,
+      "converted": 1,
+      "partial": 0,
+      "preserved": 1
+    },
+    "world": {
+      "total": 1,
+      "converted": 0,
+      "partial": 1,
+      "preserved": 0
+    }
+  },
+  "commands": {
+    "execute": {
+      "converted": 2,
+      "preserved": 3
+    },
+    "foreach": {
+      "converted": 0,
+      "preserved": 1
+    },
+    "if": {
+      "converted": 1,
+      "preserved": 2
+    },
+    "inject": {
+      "converted": 0,
+      "preserved": 1
+    },
+    "narrate": {
+      "converted": 2,
+      "preserved": 3
+    },
+    "ratelimit": {
+      "converted": 0,
+      "preserved": 1
+    },
+    "stop": {
+      "converted": 1,
+      "preserved": 2
+    },
+    "trigger": {
+      "converted": 2,
+      "preserved": 0
+    }
+  },
+  "events": {
+    "click trigger": {
+      "converted": 2,
+      "preserved": 0
+    },
+    "interact script": {
+      "converted": 2,
+      "preserved": 0
+    },
+    "on assignment": {
+      "converted": 2,
+      "preserved": 0
+    },
+    "permission": {
+      "converted": 0,
+      "preserved": 1
+    },
+    "world on player joins": {
+      "converted": 1,
+      "preserved": 0
+    }
+  },
+  "tags": {
+    "npc": {
+      "mapped": 0,
+      "unmapped": 1
+    },
+    "player.has_flag": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "player.money": {
+      "mapped": 0,
+      "unmapped": 3
+    },
+    "player.name": {
+      "mapped": 2,
+      "unmapped": 3
+    }
+  },
+  "flags": {
+    "imported": {
+      "global": 0,
+      "npc": 0,
+      "player": 0,
+      "relationship": 0
+    },
+    "preserved": 0
+  },
+  "bindings": {},
+  "npcUuids": {},
+  "behaviorStatus": {
+    "denizen:command/reward_command": "held",
+    "denizen:interact/bank_interact": "held",
+    "denizen:interact/greeter_interact": "held",
+    "denizen:task/reward_task": "held",
+    "denizen:task/vip_check": "complete",
+    "denizen:world/lobby_world": "held"
+  },
+  "heldBehaviors": {
+    "denizen:command/reward_command": {
+      "server": true,
+      "lines": [
+        "guards.dsc:67"
+      ],
+      "npcs": []
+    },
+    "denizen:interact/bank_interact": {
+      "lines": [
+        "guards.dsc:16"
+      ],
+      "npcs": [
+        "citizens-3"
+      ]
+    },
+    "denizen:interact/greeter_interact": {
+      "lines": [
+        "guards.dsc:36"
+      ],
+      "npcs": [
+        "citizens-4"
+      ]
+    },
+    "denizen:task/reward_task": {
+      "lines": [
+        "guards.dsc:44"
+      ],
+      "npcs": []
+    },
+    "denizen:world/lobby_world": {
+      "server": true,
+      "lines": [
+        "guards.dsc:59"
+      ],
+      "npcs": []
+    }
+  },
+  "commandBehaviors": [
+    "denizen:command/reward_command",
+    "denizen:interact/greeter_interact"
+  ],
+  "serverBehaviors": [],
+  "guis": [],
+  "sounds": {},
+  "issues": [
+    "guards.dsc:39: execute as_op runs as the player without operator rights; the command fails where it needs them",
+    "guards.dsc:67: command permission is not 1-256 characters of text; the command is held until it is fixed"
+  ],
+  "preserved": [
+    {
+      "source": "guards.dsc:16",
+      "container": "bank_interact",
+      "kind": "command",
+      "item": "if",
+      "reason": "tag player.money has no Animus expression"
+    },
+    {
+      "source": "guards.dsc:17",
+      "container": "bank_interact",
+      "kind": "command",
+      "item": "narrate",
+      "reason": "inside a block that is kept: tag player.money has no Animus expression"
+    },
+    {
+      "source": "guards.dsc:18",
+      "container": "bank_interact",
+      "kind": "command",
+      "item": "stop",
+      "reason": "inside a block that is kept: tag player.money has no Animus expression"
+    },
+    {
+      "source": "guards.dsc:19",
+      "container": "bank_interact",
+      "kind": "command",
+      "item": "execute",
+      "reason": "never runs: after a line that did not convert and may stop the script; the routine ends there"
+    },
+    {
+      "source": "guards.dsc:20",
+      "container": "bank_interact",
+      "kind": "command",
+      "item": "narrate",
+      "reason": "never runs: after a line that did not convert and may stop the script; the routine ends there"
+    },
+    {
+      "source": "guards.dsc:36",
+      "container": "greeter_interact",
+      "kind": "command",
+      "item": "if",
+      "reason": "tag player.money has no Animus expression"
+    },
+    {
+      "source": "guards.dsc:37",
+      "container": "greeter_interact",
+      "kind": "command",
+      "item": "narrate",
+      "reason": "inside a block that is kept: tag player.money has no Animus expression"
+    },
+    {
+      "source": "guards.dsc:59",
+      "container": "lobby_world",
+      "kind": "command",
+      "item": "foreach",
+      "reason": "tag player.money has no Animus expression"
+    },
+    {
+      "source": "guards.dsc:60",
+      "container": "lobby_world",
+      "kind": "command",
+      "item": "stop",
+      "reason": "inside a block that is kept: tag player.money has no Animus expression"
+    },
+    {
+      "source": "guards.dsc:61",
+      "container": "lobby_world",
+      "kind": "command",
+      "item": "execute",
+      "reason": "never runs: after a line that did not convert and may stop the script; the routine ends there"
+    },
+    {
+      "source": "guards.dsc:67",
+      "container": "reward_command",
+      "kind": "event",
+      "item": "permission",
+      "reason": "command permission is not 1-256 characters of text"
+    },
+    {
+      "source": "guards.dsc:44",
+      "container": "reward_task",
+      "kind": "command",
+      "item": "inject",
+      "reason": "inject runs vip_check inside this script, so a stop there ends this script too; an Animus call ends only the task"
+    },
+    {
+      "source": "guards.dsc:45",
+      "container": "reward_task",
+      "kind": "command",
+      "item": "ratelimit",
+      "reason": "never runs: after a line that did not convert and may stop the script; the routine ends there"
+    },
+    {
+      "source": "guards.dsc:46",
+      "container": "reward_task",
+      "kind": "command",
+      "item": "execute",
+      "reason": "never runs: after a line that did not convert and may stop the script; the routine ends there"
+    }
+  ],
+  "documents": {
+    "behaviors/denizen/command/reward_command.json": "bee827e80be08c1f4b7bcb6110ffed368fe685d8df863632ff0e6dc2e9eadc23",
+    "behaviors/denizen/interact/bank_interact.json": "42393a35d4fc3bcc4b26e0f009b8dff3c42dd8ae0cc87749113b1b71e4e694a2",
+    "behaviors/denizen/interact/greeter_interact.json": "ad9fef85cd44a3e59f1f2bf3ab9bf6d3110b0c615d477fd99796bfbd915ba7c4",
+    "behaviors/denizen/task/reward_task.json": "7a91057532c2f47c5d584b9dca4372bf63942e01b5c5e31937b5214d802474e9",
+    "behaviors/denizen/task/vip_check.json": "6c216c350f27d5ef8a03bf9428c82596cb36859134d7ae93b7db30d301543656",
+    "behaviors/denizen/world/lobby_world.json": "eb12247dc9aaab9d0d53db8e31f811f36c7dc184dac87582e36239223598fde4"
+  }
+}

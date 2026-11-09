@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import art.arcane.animus.core.behavior.conversation.ConversationDocument;
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.editor.DocumentKind;
 import art.arcane.animus.core.editor.EditorDocuments;
 import art.arcane.animus.core.gui.FakeNpcRuntime;
@@ -65,7 +66,7 @@ class BehaviorScreensTest {
         store.commit(files);
         npcs = new NpcRepository(store);
         assertTrue(npcs.reload().isEmpty(), npcs.diagnostics().toString());
-        alex.permissions.add(Toolkit.ADMIN);
+        alex.permissions.add(PermissionNodes.ADMIN);
         alex.pose = new ScreenHost.Pose(Set.of("world"), 0, 64, 0, 65.62, 0, 0, false);
         alex.wand = true;
         FakeNpcRuntime<Player> living = new FakeNpcRuntime<>((UUID id) -> id.equals(alex.id) ? Optional.of(alex) : Optional.empty());

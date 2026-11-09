@@ -178,14 +178,70 @@ class ModuleIntegrationTest {
         assertEquals(ProtectionAdapter.Decision.DENY, combat.decide(ATTACK), "A provider whose module stopped denies");
     }
 
-    @Test void aHookPastTheDeadlineSuspendsItsModule() throws Exception {
+    @Test void oneSlowHookCallDoesNotSuspendItsModule() throws Exception {
         ModuleHooks hooks = new ModuleHooks();
         try (ModuleHost host = host(8, Duration.ofMillis(5))) {
             host.connectHooks(hooks);
-            host.install(module("sluggish", (ModuleContext c) -> c.integrations().protection(HOOK, (Integrations.ProtectionRequest r) -> { Thread.sleep(20); return Integrations.Decision.ALLOW; })));
+            AtomicBoolean slow = new AtomicBoolean(true);
+            host.install(module("sluggish", (ModuleContext c) -> c.integrations().protection(HOOK, (Integrations.ProtectionRequest r) -> {
+                if (slow.getAndSet(false)) Thread.sleep(20);
+                return Integrations.Decision.ALLOW;
+            })));
             assertEquals(ProtectionAdapter.Decision.ALLOW, hooks.protection(ProtectionAdapter.NONE).decide(ATTACK));
-            assertEquals(ModuleHost.State.SUSPENDED, host.modules().getFirst().state());
-            assertEquals(ProtectionAdapter.Decision.DENY, hooks.protection(ProtectionAdapter.NONE).decide(ATTACK));
+            assertEquals(ModuleHost.State.ACTIVE, host.modules().getFirst().state(), "A single lag spike is not a broken module");
+            assertEquals(ProtectionAdapter.Decision.ALLOW, hooks.protection(ProtectionAdapter.NONE).decide(ATTACK));
+        }
+    }
+
+    @Test void repeatedSlowHookCallsSuspendUntilAnAdministratorResumes() throws Exception {
+        ModuleHooks hooks = new ModuleHooks();
+        List<String> reports = new CopyOnWriteArrayList<>();
+        try (ModuleHost host = host(8, Duration.ofMillis(5))) {
+            host.connectHooks(hooks);
+            host.connectReports(reports::add);
+            AtomicBoolean slow = new AtomicBoolean(true);
+            host.install(module("sluggish", (ModuleContext c) -> c.integrations().protection(HOOK, (Integrations.ProtectionRequest r) -> {
+                if (slow.get()) Thread.sleep(20);
+                return Integrations.Decision.ALLOW;
+            })));
+            ProtectionAdapter combat = hooks.protection(ProtectionAdapter.NONE);
+            for (int call = 1; call < OverrunPolicy.LIMIT; call++) combat.decide(ATTACK);
+            assertEquals(ModuleHost.State.ACTIVE, host.modules().getFirst().state());
+            combat.decide(ATTACK);
+            ModuleHost.ModuleStatus suspended = host.modules().getFirst();
+            assertEquals(ModuleHost.State.SUSPENDED, suspended.state());
+            assertTrue(suspended.reason().startsWith("integration-deadline-exceeded: protection"), suspended.reason());
+            assertEquals(ProtectionAdapter.Decision.DENY, combat.decide(ATTACK), "A suspended provider still fails closed");
+            assertEquals(1, reports.stream().filter((String line) -> line.contains("sluggish") && line.contains("suspended") && line.contains("/animus modules resume sluggish")).count(), reports.toString());
+            slow.set(false);
+            assertEquals(Outcome.Status.OK, host.resume("sluggish").status());
+            assertEquals(ModuleHost.State.ACTIVE, host.modules().getFirst().state());
+            assertEquals(ProtectionAdapter.Decision.ALLOW, combat.decide(ATTACK));
+            assertTrue(reports.stream().anyMatch((String line) -> line.contains("sluggish") && line.contains("resumed")), reports.toString());
+            assertEquals(Outcome.Status.INVALID, host.resume("sluggish").status(), "Only a suspended module resumes");
+            assertEquals(Outcome.Status.NOT_FOUND, host.resume("missing").status());
+        }
+    }
+
+    @Test void aThrowOnDoorUseAllowsAsBeforeTheActionExistedAndWarnsOnce() throws Exception {
+        List<String> warnings = new CopyOnWriteArrayList<>();
+        ModuleHooks hooks = new ModuleHooks(warnings::add);
+        try (ModuleHost host = host(8, Duration.ofSeconds(2))) {
+            host.connectHooks(hooks);
+            // A module built against 1.1 with an exhaustive switch and no default branch.
+            host.install(module("legacy", (ModuleContext c) -> c.integrations().protection(HOOK, (Integrations.ProtectionRequest request) -> {
+                if (request.action() == Integrations.ProtectionAction.BLOCK_USE) throw new MatchException(null, null);
+                if (request.action() == Integrations.ProtectionAction.BLOCK_BREAK) throw new IllegalStateException("region lookup failed");
+                return Integrations.Decision.ALLOW;
+            })));
+            BuildProtection builds = hooks.buildProtection(BuildProtection.NONE);
+            BuildProtection.Request door = new BuildProtection.Request(NPC.uuid(), Optional.empty(), "world", new BlockPos(1, 64, 1), BuildProtection.Action.USE);
+            assertEquals(BuildProtection.Decision.ALLOW, builds.decide(door));
+            assertEquals(BuildProtection.Decision.ALLOW, builds.decide(door));
+            assertEquals(BuildProtection.Decision.DENY, builds.decide(BREAK), "Actions the module knows still fail closed");
+            assertEquals(1, warnings.size(), warnings.toString());
+            assertTrue(warnings.getFirst().contains("legacy") && warnings.getFirst().contains("BLOCK_USE"), warnings.toString());
+            assertEquals(BuildProtection.Decision.DENY, hooks.buildProtection((BuildProtection.Request r) -> BuildProtection.Decision.DENY).decide(door), "The platform still decides first");
         }
     }
 

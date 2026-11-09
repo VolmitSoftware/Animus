@@ -13,6 +13,7 @@ import java.util.concurrent.atomic.*;
 import java.util.concurrent.locks.ReentrantLock;
 import java.nio.charset.StandardCharsets;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 /** Bounded trusted-module lifecycle, capability registration and invocation. */
 public final class ModuleHost implements AutoCloseable {
@@ -125,8 +126,44 @@ public final class ModuleHost implements AutoCloseable {
     private <T> CompletionStage<Outcome<T>> valueCall(Entry entry,ValueWork<T> work){
         return invoke(entry,null,token->CompletableFuture.completedFuture(work.run(token)),Payload.VALUE);
     }
+    private volatile Consumer<String> reports=line->System.getLogger("Animus").log(System.Logger.Level.WARNING,line);
+    /** Console lines about suspensions and resumes. Quick and nonblocking; it may run while the host is locked. */
+    public void connectReports(Consumer<String> sink){reports=Objects.requireNonNull(sink);}
+    /** A synchronous hook ran past the deadline. Repeated overruns suspend the module; see {@link OverrunPolicy}. */
     private synchronized void overran(Entry entry,String hook){
-        if(entry.state==State.ACTIVE){entry.state=State.SUSPENDED;entry.reason="integration-deadline-exceeded: "+hook;}
+        if(entry.state!=State.ACTIVE)return;
+        long deadline=TimeUnit.NANOSECONDS.toMillis(limits.deadlineNanos());
+        OptionalLong coolOff=entry.overruns.overran(System.nanoTime());
+        if(coolOff.isEmpty()){
+            reports.accept("Module "+entry.manifest.id()+": its "+hook+" hook ran past the "+deadline+" ms deadline; "+OverrunPolicy.LIMIT
+                    +" times within "+TimeUnit.NANOSECONDS.toSeconds(OverrunPolicy.WINDOW)+" s suspends it");
+            return;
+        }
+        long seconds=TimeUnit.NANOSECONDS.toSeconds(coolOff.getAsLong());
+        entry.state=State.SUSPENDED;entry.hookSuspended=true;entry.reason="integration-deadline-exceeded: "+hook+"; cool-off "+seconds+" s";
+        reports.accept("Module "+entry.manifest.id()+" suspended: its "+hook+" hook ran past the "+deadline+" ms deadline "+OverrunPolicy.LIMIT
+                +" times within "+TimeUnit.NANOSECONDS.toSeconds(OverrunPolicy.WINDOW)+" s. Until it resumes, module protection denies and module money is refused."
+                +" It resumes in "+seconds+" s, or run /animus modules resume "+entry.manifest.id());
+    }
+    /** A hook suspension whose cool-off has passed ends when the module is next checked. */
+    private void refresh(Entry entry){
+        if(entry.state!=State.SUSPENDED || !entry.hookSuspended || admissionClosed || !entry.overruns.due(System.nanoTime()))return;
+        entry.state=State.ACTIVE;entry.reason="active";entry.hookSuspended=false;entry.overruns.resumed();
+        reports.accept("Module "+entry.manifest.id()+" resumed after its cool-off");
+    }
+    /**
+     * An administrator resumes a suspended module now. Its hooks, capabilities and notices work again and the next
+     * hook suspension starts from the first cool-off.
+     */
+    public synchronized Outcome<ModuleStatus> resume(String id){
+        Entry entry=modules.get(Objects.requireNonNull(id));
+        if(entry==null || entry.policy!=null)return rejected(Outcome.Status.NOT_FOUND,"module-not-found: "+id);
+        if(admissionClosed)return rejected(Outcome.Status.UNAVAILABLE,"host-admission-closed");
+        refresh(entry);
+        if(entry.state!=State.SUSPENDED)return rejected(Outcome.Status.INVALID,"module-not-suspended: "+entry.state);
+        entry.state=State.ACTIVE;entry.reason="active";entry.hookSuspended=false;entry.overruns.cleared();
+        reports.accept("Module "+id+" resumed by an administrator");
+        return Outcome.ok(status(entry));
     }
     /** Lifecycle is serialized separately from the registry; callbacks never hold its monitor. */
     public Outcome<ModuleStatus> install(TrustedModule module) {return install(module,null);}
@@ -146,7 +183,7 @@ public final class ModuleHost implements AutoCloseable {
                 if(policy==null && modules.values().stream().filter(existing->existing.policy==null).count()>=64)return rejected(Outcome.Status.BUSY,"module-capacity");
                 if(manifest.id().equals("animus")&&policy==null || modules.containsKey(manifest.id()))return rejected(Outcome.Status.INVALID,"module-identity-reserved-or-duplicate");
                 entry=new Entry(module,manifest,policy);modules.put(manifest.id(),entry);
-                if(!manifest.api().accepts(AnimusApi.API_VERSION))return unavailable(entry,"api-version-incompatible");
+                if(!manifest.api().accepts(AnimusApi.API_VERSION))return unavailable(entry,"api-version-incompatible: "+manifest.api().describe()+"; this server has "+AnimusApi.API_VERSION);
                 if(!manifest.platforms().contains(platform))return unavailable(entry,"platform-unavailable");
                 for(ModuleManifest.Dependency dependency:manifest.dependencies()){
                     Entry required=modules.get(dependency.id());
@@ -333,6 +370,7 @@ public final class ModuleHost implements AutoCloseable {
     }
     /** Whether work admitted earlier may still run and report: suspension refuses new work but lets admitted work finish. */
     private synchronized boolean admitted(Entry entry){
+        refresh(entry);
         if(admissionClosed || entry.state!=State.ACTIVE)return false;
         return dependenciesAvailable(entry,new HashSet<>());
     }
@@ -340,12 +378,13 @@ public final class ModuleHost implements AutoCloseable {
         if(!visited.add(entry))return true;
         for(ModuleManifest.Dependency dep:entry.manifest.dependencies()){
             Entry required=modules.get(dep.id());
+            if(required!=null)refresh(required);
             if(required==null || required.state!=State.ACTIVE || !dependenciesAvailable(required,visited))return false;
         }
         return true;
     }
     private synchronized String reason(Entry entry){return admissionClosed?"host-admission-closed":modulesSuspended && entry.policy==null && entry.state==State.ACTIVE?"modules-disabled: set [modules] enabled = true in config.toml":available(entry)?"available":entry.state==State.ACTIVE?"dependency-unavailable":entry.reason;}
-    private ModuleStatus status(Entry entry){return new ModuleStatus(entry.manifest,entry.state,entry.reason);}
+    private synchronized ModuleStatus status(Entry entry){refresh(entry);return new ModuleStatus(entry.manifest,entry.state,entry.reason);}
     private Outcome<ModuleStatus> unavailable(Entry entry,String reason){entry.seal();entry.state=State.UNAVAILABLE;entry.reason=reason;return rejected(Outcome.Status.UNAVAILABLE,reason);}
     private static <T> Outcome<T> rejected(Outcome.Status status,String reason){return Outcome.rejected(status,reason.split(":",2)[0],reason);}
     private static <T> CompletionStage<Outcome<T>> completed(Outcome.Status status,String reason){return CompletableFuture.completedFuture(rejected(status,reason));}
@@ -394,6 +433,8 @@ public final class ModuleHost implements AutoCloseable {
         Integrations.Protection stagedProtection;Integrations.Economy stagedEconomy;
         volatile List<InteractionNotice.Listener> listeners=List.of();
         volatile State state=State.STARTING;volatile String reason="starting";boolean staging=true,cleaned;
+        /** Host monitor: the suspension came from hook overruns, so it ends by itself after the cool-off. */
+        final OverrunPolicy overruns=new OverrunPolicy();boolean hookSuspended;
         final ModuleHooks.Owner owner=new ModuleHooks.Owner(){
             public String id(){return manifest.id();}
             public boolean available(){return ModuleHost.this.available(Entry.this);}

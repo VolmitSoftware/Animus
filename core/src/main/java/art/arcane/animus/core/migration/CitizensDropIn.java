@@ -186,6 +186,79 @@ public final class CitizensDropIn {
 
     public List<String> reviewApplied() throws IOException { return review(); }
 
+    /** The Denizen behaviors held because a guard did not convert, with those lines; none is bound or enabled until released. */
+    public List<String> heldDenizen() throws IOException {
+        List<DenizenDropIn.Held> held = DenizenDropIn.held(store, state());
+        if (held.isEmpty()) return List.of("No Denizen behavior is held");
+        List<String> lines = new ArrayList<>();
+        for (DenizenDropIn.Held behavior : held) {
+            String targets = behavior.server() ? "server behavior" : behavior.npcs().isEmpty() ? "on no NPC" : "for " + String.join(", ", behavior.npcs());
+            lines.add(behavior.id() + (behavior.released() ? " (released)" : "") + ": " + targets + (behavior.commands() ? ", runs commands" : ""));
+            behavior.lines().stream().limit(8).forEach((String line) -> lines.add("  " + line));
+            if (behavior.lines().size() > 8) lines.add("  " + (behavior.lines().size() - 8) + " more lines in the report");
+        }
+        lines.add("Next: read the behavior, then /animus import denizen release <behavior>");
+        return lines;
+    }
+
+    /** Whether the held Denizen behavior runs console commands, which needs {@code animus.editor.commands} to release in game. */
+    public boolean denizenRunsCommands(String behavior) throws IOException {
+        return DenizenDropIn.held(store, state()).stream().anyMatch((DenizenDropIn.Held held) -> held.id().equals(behavior) && held.commands());
+    }
+
+    /**
+     * Binds a held Denizen behavior to the NPCs it was made for and enables it as a server behavior when it is one, in
+     * one transaction that the import's rollback also undoes. Without {@code confirmed} it only says what it would do.
+     */
+    public List<String> releaseDenizen(String behavior, boolean confirmed) throws IOException { return recorded(() -> release(behavior, confirmed)); }
+
+    private List<String> release(String behavior, boolean confirmed) throws IOException {
+        if (host.denizenEnabled().getAsBoolean()) throw new IOException(DenizenDropIn.RUNNING);
+        JsonObject state = state();
+        DenizenDropIn.Held held = DenizenDropIn.held(store, state).stream().filter((DenizenDropIn.Held candidate) -> candidate.id().equals(behavior)).findFirst()
+                .orElseThrow(() -> new IOException(behavior + " is not a held Denizen behavior; /animus import denizen held lists them"));
+        if (held.released()) return List.of(behavior + " is already released");
+        if (!held.server() && held.npcs().isEmpty()) throw new IOException(behavior + " has no NPC or server list to join; list it where it is needed yourself");
+        if (!confirmed) {
+            List<String> lines = new ArrayList<>(List.of(behavior + " was held because these lines did not convert; releasing runs it as converted:"));
+            held.lines().stream().limit(8).forEach((String line) -> lines.add("  " + line));
+            lines.add("Read behaviors/" + behavior.replace(':', '/') + ".json first, then /animus import denizen release " + behavior + " confirm");
+            return lines;
+        }
+        List<NpcDefinition> changed = new ArrayList<>();
+        Map<String, String> expected = new LinkedHashMap<>();
+        NpcRepository.Installed installed = npcs.installed();
+        for (NpcDefinition definition : imported(state, installed.definitions())) {
+            if (!held.npcs().contains(definition.id())) continue;
+            JsonObject json = definition.json();
+            JsonArray listed = json.has("behaviors") && json.get("behaviors").isJsonArray() ? json.getAsJsonArray("behaviors") : new JsonArray();
+            if (listed.contains(new JsonPrimitive(behavior))) continue;
+            if (definition.revision() == Long.MAX_VALUE) throw new IOException(definition.id() + ": revision exhausted");
+            listed.add(behavior);
+            json.add("behaviors", listed);
+            json.addProperty("revision", definition.revision() + 1);
+            changed.add(NpcDefinition.parse(JsonDocuments.write(json)));
+            expected.put(definition.path(), installed.expectedHash(definition));
+        }
+        List<DocumentStore.Change> others = new ArrayList<>();
+        if (held.server()) {
+            String before = store.read(art.arcane.animus.core.behavior.catalog.ServerBehaviorList.PATH);
+            String after = art.arcane.animus.core.behavior.catalog.ServerBehaviorList.append(before, List.of(behavior));
+            if (!after.equals(before)) others.add(new DocumentStore.Change(art.arcane.animus.core.behavior.catalog.ServerBehaviorList.PATH,
+                    before == null ? "missing" : store.hash(art.arcane.animus.core.behavior.catalog.ServerBehaviorList.PATH), after));
+        }
+        DenizenDropIn.released(state, behavior);
+        String transaction = journal.commit(state, (String id) -> DefinitionBatch.commit(store, id, changed, expected, others));
+        List<String> errors = npcs.reload();
+        List<String> lines = new ArrayList<>(List.of(Palette.success("Released " + behavior + " on " + changed.size() + " NPCs"
+                + (others.isEmpty() ? "" : " and enabled it in server-behaviors.json") + "; tx " + transaction)));
+        if (!errors.isEmpty()) lines.add(problems(errors));
+        if (!others.isEmpty()) lines.add("It starts once the behaviors reload");
+        if (held.commands()) lines.add("Its commands stay denied until accept commands allows the denizen namespace");
+        lines.add("/animus import citizens rollback undoes the import and every release");
+        return lines;
+    }
+
     public List<String> rollbackApplied() throws IOException { return rollback(); }
 
     /**

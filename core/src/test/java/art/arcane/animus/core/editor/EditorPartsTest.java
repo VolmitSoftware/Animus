@@ -66,10 +66,7 @@ class EditorPartsTest {
     }
 
     @Test
-    void settings_unknownEditorKey_isRefused() {
-        JsonObject table = new JsonObject();
-        table.addProperty("listnerEnabled", true);
-        assertThrows(IllegalArgumentException.class, () -> EditorSettings.parse(table));
+    void settings_relayKeysShareTheTable() {
         JsonObject relay = new JsonObject();
         relay.addProperty("relayEnabled", true);
         assertEquals(EditorSettings.DEFAULT, EditorSettings.parse(relay));
@@ -218,5 +215,22 @@ class EditorPartsTest {
         assertTrue(refused.getMessage().contains(EditorCommands.COMMANDS_PERMISSION), refused.getMessage());
         assertEquals(List.of(EditorScope.APPLY_BEHAVIORS, EditorScope.APPLY_COMMANDS), EditorCommands.grant(actor(EditorHarness.ADMIN), "", "apply:behaviors,apply:commands", "", "", 7).scopes());
         assertEquals(List.of(EditorScope.APPLY_COMMANDS), EditorCommands.grant(actor(null), "", "apply:commands", "", "", 7).scopes());
+    }
+
+    @Test
+    void importAccept_commandsNeedsTheCommandsPermissionInGameToo() {
+        CommandActor admin = new CommandActor() {
+            @Override public boolean permitted(String node) { return !node.equals(EditorCommands.COMMANDS_PERMISSION); }
+            @Override public void tell(String message) {}
+            @Override public Optional<UUID> player() { return Optional.of(EditorHarness.ADMIN); }
+            @Override public boolean reply(Runnable action) { action.run(); return true; }
+        };
+        assertTrue(EditorCommands.acceptRefusal(admin, List.of("shops", "Commands")).orElseThrow().contains(EditorCommands.COMMANDS_PERMISSION));
+        assertTrue(EditorCommands.acceptRefusal(admin, List.of("shops", "all")).isEmpty(), "all never includes commands");
+        assertTrue(EditorCommands.acceptRefusal(actor(EditorHarness.ADMIN), List.of("commands")).isEmpty());
+        assertTrue(EditorCommands.acceptRefusal(actor(null), List.of("commands")).isEmpty(), "the console may");
+        assertTrue(EditorCommands.releaseRefusal(admin, true).orElseThrow().contains(EditorCommands.COMMANDS_PERMISSION), "releasing a held behavior that runs commands");
+        assertTrue(EditorCommands.releaseRefusal(admin, false).isEmpty());
+        assertTrue(EditorCommands.releaseRefusal(actor(null), true).isEmpty(), "the console may");
     }
 }

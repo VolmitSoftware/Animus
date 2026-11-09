@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.FakeNpcRuntime;
 import art.arcane.animus.core.gui.GuiModel.Click;
 import art.arcane.animus.core.gui.MockScreenHost;
@@ -76,7 +77,7 @@ class ToolkitScreensTest {
         assertTrue(npcs.reload().isEmpty());
         active.put(GUARD, new NpcRuntimeView("guard", at(GUARD, 3)));
         active.put(BAKER, new NpcRuntimeView("baker", at(BAKER, 6)));
-        alex.permissions.add(Toolkit.ADMIN);
+        alex.permissions.add(PermissionNodes.ADMIN);
         alex.pose = new ScreenHost.Pose(Set.of("world"), 0, 64, 0, 65.62, 0, 0, false);
         alex.wand = true;
         FakeNpcRuntime<Player> living = new FakeNpcRuntime<>((UUID id) -> id.equals(alex.id) ? Optional.of(alex) : Optional.empty()) {
@@ -122,7 +123,7 @@ class ToolkitScreensTest {
         assertFalse(toolkit.interacted(alex, GUARD, false, false), "without the wand the click goes on to shops and GUIs");
         alex.wand = true;
         alex.permissions.clear();
-        assertFalse(toolkit.interacted(alex, GUARD, false, false), "only admins use the wand");
+        assertFalse(toolkit.interacted(alex, GUARD, false, false), "only players with animus.tools use the wand");
     }
 
     @Test void thePaletteHintsEveryClickAndOpensEachTool() {
@@ -188,6 +189,48 @@ class ToolkitScreensTest {
         assertTrue(npcs.find("guard").isEmpty());
         assertTrue(alex.messages.getLast().contains("Deleted guard; tx "), alex.messages.getLast());
         assertTrue(toolkit.selected(alex.id).isEmpty(), "a deleted NPC leaves the selection");
+    }
+
+    @Test void selectByCommandReplacesThePaletteSelection() {
+        toolkit.interacted(alex, GUARD, false, false);
+        now += Toolkit.REPEAT_NANOS;
+        toolkit.interacted(alex, BAKER, false, true);
+        assertEquals(List.of("guard", "baker"), toolkit.selected(alex.id));
+        toolkit.selectOnly(alex.id, "baker");
+        assertEquals(List.of("baker"), toolkit.selected(alex.id), "the palette, Edit and @selected all read this one list");
+        toolkit.open(alex.id, Toolkit.Tool.PALETTE, commands);
+        assertTrue(alex.frame.items().values().stream().anyMatch((ScreenFrame.Item item) -> item.name().map(RichText::plain).orElse("").equals("1 selected")));
+        click("1 selected", Click.SHIFT_LEFT);
+        assertTrue(toolkit.selected(alex.id).isEmpty(), "clearing in the palette leaves nothing for @selected");
+    }
+
+    @Test void eachToolActionRechecksItsOwnNode() {
+        alex.permissions.clear();
+        alex.permissions.add(PermissionNodes.TOOLS);
+        assertTrue(toolkit.interacted(alex, GUARD, false, false), "animus.tools is enough for the wand");
+        toolkit.open(alex.id, Toolkit.Tool.MANAGE, commands);
+        click("Delete", Click.LEFT);
+        click("Click again to delete", Click.LEFT);
+        drain();
+        assertTrue(npcs.find("guard").isPresent(), "delete needs animus.npc.delete");
+        assertTrue(alex.messages.getLast().contains("No permission: animus.npc.delete"), alex.messages.getLast());
+        click("Clone", Click.LEFT);
+        drain();
+        assertTrue(npcs.find("guard-copy").isEmpty(), "clone needs animus.npc.create");
+        click("Open in editor", Click.LEFT);
+        assertTrue(calls.isEmpty(), "pairing needs animus.editor.pair: " + calls);
+        click("Combat", Click.LEFT);
+        assertEquals("Manage selection", RichText.plain(alex.frame.title()), "the combat screen needs animus.combat");
+        assertTrue(alex.messages.getLast().contains("No permission: animus.combat"), alex.messages.getLast());
+        toolkit.open(alex.id, Toolkit.Tool.PALETTE, commands);
+        click("New NPC", Click.LEFT);
+        assertNull(alex.prompt, "a new NPC needs animus.npc.create");
+        alex.permissions.add(PermissionNodes.NPC_DELETE);
+        toolkit.open(alex.id, Toolkit.Tool.MANAGE, commands);
+        click("Delete", Click.LEFT);
+        click("Click again to delete", Click.LEFT);
+        drain();
+        assertTrue(npcs.find("guard").isEmpty(), "granted, it runs");
     }
 
     @Test void manageRunsSpawnCloneInspectAndTheEditorLink() {

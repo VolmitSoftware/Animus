@@ -58,7 +58,7 @@ public final class ModuleDiscovery {
         Map<String,Candidate> unique=new TreeMap<>();Set<String> blocked=new HashSet<>();
         for(Candidate candidate:parsed)if(unique.putIfAbsent(candidate.id(),candidate)!=null)blocked.add(candidate.id());
         for(Candidate c:parsed) {
-            String reason=blocked.contains(c.id())?"duplicate-id":c.id().equals("animus")?"reserved-id":!c.descriptor.manifest().api().accepts(AnimusApi.API_VERSION)?"api-incompatible":!c.descriptor.manifest().platforms().contains(platform)?"platform-incompatible":null;
+            String reason=blocked.contains(c.id())?"duplicate-id":c.id().equals("animus")?"reserved-id":!c.descriptor.manifest().api().accepts(AnimusApi.API_VERSION)?"api-incompatible: "+c.descriptor.manifest().api().describe()+"; this server has "+AnimusApi.API_VERSION:!c.descriptor.manifest().platforms().contains(platform)?"platform-incompatible":null;
             if(reason!=null){blocked.add(c.id());problems.add(new Problem(c.archive,c.id(),reason));}
         }
         // Iterative invalidation covers missing/incompatible dependencies and their dependents.

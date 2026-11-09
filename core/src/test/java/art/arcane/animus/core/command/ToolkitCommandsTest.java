@@ -15,17 +15,17 @@ class ToolkitCommandsTest {
         assertEquals(List.of("list"), ToolkitCommands.expand(List.of("list")));
     }
 
-    @Test void theToolsAreAdminPlayerCommands() {
+    @Test void theToolsArePlayerCommandsUnderTheirOwnNode() {
         AnimusDirector director = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of());
         DirectorRuntimeNode tools = director.engine().getRoot().getChildren().stream().filter((DirectorRuntimeNode node) -> node.getDescriptor().getName().equals("tools")).findFirst().orElseThrow();
         assertEquals(List.of("manage", "open", "wand"), tools.getChildren().stream().map((DirectorRuntimeNode node) -> node.getDescriptor().getName()).sorted().toList());
-        for (DirectorRuntimeNode command : tools.getChildren()) assertEquals(AnimusDirector.ADMIN, AnimusDirector.permission(command));
+        for (DirectorRuntimeNode command : tools.getChildren()) assertEquals(PermissionNodes.TOOLS, AnimusDirector.permission(command));
 
         AnimusDirectorTest.Actor console = new AnimusDirectorTest.Actor(false, AnimusDirector.ADMIN);
         director.execute(console, new String[]{"tools"});
         assertTrue(console.text().contains("Players only"), console.text());
         AnimusDirectorTest.Actor player = new AnimusDirectorTest.Actor(true);
         director.execute(player, new String[]{"tools", "wand"});
-        assertTrue(player.text().contains("No permission: animus.admin"), player.text());
+        assertTrue(player.text().contains("No permission: animus.tools"), player.text());
     }
 }

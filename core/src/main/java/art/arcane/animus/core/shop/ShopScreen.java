@@ -199,6 +199,11 @@ public final class ShopScreen<P, S> implements Screen {
         ScreenHost<P, S> host = viewer.host();
         P player = viewer.player();
         Optional<ShopTransactions.Prepared<S>> ready = prepare(entry);
+        if (entry.commands().stream().anyMatch((ShopDocument.ShopCommand command) -> command.command().contains("{player}"))
+                && !art.arcane.animus.core.behavior.ArgumentTemplate.commandSafeName(host.name(player))) {
+            host.message(player, RichText.colorize(text("failed").replace("{reason}", "your name cannot be written into this shop's commands")));
+            return;
+        }
         if (ready.isEmpty()) { host.message(player, RichText.colorize(text("failed").replace("{reason}", "an item in this entry does not exist on this server"))); return; }
         ShopTransactions.Buyer<S> buyer = new ShopTransactions.Buyer<>(viewer.id(), (String node) -> host.permitted(player, node), host.inventory(player),
                 (S stack) -> host.drop(player, stack));

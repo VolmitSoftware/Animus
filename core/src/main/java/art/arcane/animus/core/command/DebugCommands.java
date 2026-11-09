@@ -171,7 +171,7 @@ public final class DebugCommands {
 
     private List<String> npc(String id) {
         Optional<UUID> uuid = npcIds.apply(id);
-        if (uuid.isEmpty()) return List.of("&7Unknown NPC: &f" + id + "&7; /animus list shows ids");
+        if (uuid.isEmpty()) return List.of("&7No NPC named &f" + id + "&7; /animus list shows ids");
         MetricsSnapshot snapshot = snapshot();
         List<String> lines = new ArrayList<>();
         lines.add(HEADER);

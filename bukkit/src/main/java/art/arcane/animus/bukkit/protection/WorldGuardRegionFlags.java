@@ -53,6 +53,14 @@ final class WorldGuardRegionFlags implements RegionFlags {
         return regions().createQuery().testBuild(BukkitAdapter.adapt(location(at)), plugin.wrapOfflinePlayer(server.getOfflinePlayer(player)), flag(flag));
     }
 
+    @Override public boolean bypass(WorldPosition at, UUID player) {
+        Player online = server.getPlayer(player);
+        World world = world(at.world());
+        if (online == null || world == null) return false;
+        regions();
+        return WorldGuard.getInstance().getPlatform().getSessionManager().hasBypass(plugin.wrapPlayer(online), BukkitAdapter.adapt(world));
+    }
+
     @Override public Optional<Boolean> inRegion(String region, WorldPosition at) {
         RegionContainer container = regions();
         World world = world(at.world());
@@ -99,6 +107,7 @@ final class WorldGuardRegionFlags implements RegionFlags {
             case BLOCK_BREAK -> Flags.BLOCK_BREAK;
             case CHEST_ACCESS -> Flags.CHEST_ACCESS;
             case USE -> Flags.USE;
+            case ENTRY -> Flags.ENTRY;
         };
     }
 }

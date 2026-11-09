@@ -110,6 +110,49 @@ class EditorCommandScopeTest {
                 "a document without commands needs only its apply scope");
     }
 
+    private static JsonObject say(String id, String capability) throws Exception {
+        return JsonDocuments.object("""
+                {"schemaVersion": 1, "revision": 1, "id": "%s", "entry": "main",
+                 "routines": {"main": {"type": "action", "capability": "%s", "arguments": {"text": "Hello"}}},
+                 "triggers": [{"id": "click", "event": "interaction"}]}
+                """.formatted(id, capability));
+    }
+
+    @Test
+    void apply_guiActionsThatCreateItemsOrMoney_needApplyCommands() throws Exception {
+        JsonObject current = stored("inventory", "shop:counter");
+        for (String type : List.of("give", "economy")) {
+            JsonObject source = current.getAsJsonObject("source").deepCopy();
+            JsonObject action = new JsonObject();
+            action.addProperty("type", type);
+            source.getAsJsonObject("keys").getAsJsonObject("X").getAsJsonArray("actions").add(action);
+            refused(harness.send("POST", "/v1/changes", plain, set("key-00000000000002" + (type.equals("give") ? "01" : "02"), change("inventory", "shop:counter", current, source))));
+        }
+    }
+
+    @Test
+    void apply_shopThatTrades_needsApplyCommands() throws Exception {
+        JsonObject current = stored("shop", "shop:bakery");
+        JsonObject source = current.getAsJsonObject("source").deepCopy();
+        source.addProperty("title", "&6Cheaper");
+        refused(harness.send("POST", "/v1/changes", plain, set("key-0000000000000203", change("shop", "shop:bakery", current, source))));
+        EditorResponse granted = harness.send("POST", "/v1/changes", commands, set("key-0000000000000204", change("shop", "shop:bakery", current, source)));
+        assertEquals(200, granted.status(), () -> granted.body().toString());
+    }
+
+    @Test
+    void apply_behaviorThatGivesItems_needsApplyCommands() throws Exception {
+        refused(harness.send("POST", "/v1/changes", plain, set("key-0000000000000205", change("behavior", "town:gift", null, say("town:gift", "animus:give-item")))));
+    }
+
+    @Test
+    void apply_anyBehaviorBesideARawTextBehavior_needsApplyCommands() throws Exception {
+        harness.host.rawTextBehaviors = List.of("town:reward");
+        refused(harness.send("POST", "/v1/changes", plain, set("key-0000000000000206", change("behavior", "town:notes", null, say("town:notes", "animus:say")))));
+        EditorResponse elsewhere = harness.send("POST", "/v1/changes", plain, set("key-0000000000000207", change("behavior", "village:notes", null, say("village:notes", "animus:say"))));
+        assertEquals(200, elsewhere.status(), "flags are shared by namespace, so only the raw text behavior's namespace is gated: " + elsewhere.body());
+    }
+
     @Test
     void undo_restoringABehaviorThatRunsCommands_needsApplyCommands() throws Exception {
         assertEquals(200, harness.send("POST", "/v1/changes", commands, set("key-0000000000000108", change("behavior", "town:gate", null, gate("say opened", "Opening")))).status());

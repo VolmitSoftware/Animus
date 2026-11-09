@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.npc.NpcItem;
@@ -19,7 +20,7 @@ final class SkinScreen<P, S> extends ToolScreen<P, S> {
     private List<SkinFiles.Entry> skins;
     private String deleting;
 
-    SkinScreen(Toolkit<P, S> toolkit, ScreenManager<P, S>.Viewer viewer, Toolkit.Commands commands) { this(toolkit, viewer, commands, Mojang.LOOKUP); }
+    SkinScreen(Toolkit<P, S> toolkit, ScreenManager<P, S>.Viewer viewer, Toolkit.Commands commands) { this(toolkit, viewer, commands, SkinLookup.shared()); }
 
     SkinScreen(Toolkit<P, S> toolkit, ScreenManager<P, S>.Viewer viewer, Toolkit.Commands commands, SkinLookup lookup) {
         super(toolkit, viewer, commands);
@@ -27,10 +28,8 @@ final class SkinScreen<P, S> extends ToolScreen<P, S> {
         reload();
     }
 
-    /** One HTTP client for every Skins screen, made on first use. */
-    private static final class Mojang { static final SkinLookup LOOKUP = SkinLookup.mojang(); }
-
     @Override String title() { return "Skins"; }
+    @Override String node() { return PermissionNodes.NPC_SKIN; }
     @Override int rows() { return 6; }
 
     @Override void draw() {
@@ -79,11 +78,7 @@ final class SkinScreen<P, S> extends ToolScreen<P, S> {
             if (found.skin().isEmpty()) { toolkit.say(online, ChatLine.error(found.problem())); return; }
             String label = found.name().orElse(name);
             List<String> ids = toolkit.selected(viewer.id());
-            files((SkinFiles files) -> {
-                String hash = files.save(found.skin().get(), label);
-                String saved = "Saved " + label + "'s skin as skins/" + hash.substring(0, 12);
-                return ids.isEmpty() ? saved + "; select NPCs and click it to wear it" : saved + "; " + new ToolkitFiles(toolkit.npcs(), toolkit.documents()).skin(Optional.of(hash), ids);
-            });
+            files((SkinFiles files) -> files.wear(found.skin().get(), label, ids));
         }));
     }
 

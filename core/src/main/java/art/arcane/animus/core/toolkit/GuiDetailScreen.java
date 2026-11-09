@@ -1,5 +1,6 @@
 package art.arcane.animus.core.toolkit;
 
+import art.arcane.animus.core.command.PermissionNodes;
 import art.arcane.animus.core.editor.DocumentKind;
 import art.arcane.animus.core.gui.GuiBinding;
 import art.arcane.animus.core.gui.GuiModel;
@@ -38,6 +39,7 @@ final class GuiDetailScreen<P, S> extends ToolScreen<P, S> {
     private ShopFiles files() { return new ShopFiles(toolkit.npcs(), toolkit.documents()); }
 
     @Override String title() { return GuiBindScreen.tab(gui.kind()).replaceFirst("s$", "") + " " + gui.id(); }
+    @Override String node() { return PermissionNodes.GUI; }
     @Override int rows() { return 6; }
 
     @Override void draw() {
@@ -75,7 +77,7 @@ final class GuiDetailScreen<P, S> extends ToolScreen<P, S> {
             guarded(UNBIND, "minecraft:shears", "Unbind from selection", "Removes it from " + ToolkitFiles.count(bound), bound, false,
                     () -> chosen().ifPresent((List<String> ids) -> toolkit.write(viewer, (ToolkitFiles ignored) -> files().unbindGui(gui.kind(), gui.id(), ids))));
         boolean used = users != null && !users.isEmpty();
-        guarded(DELETE, "minecraft:lava_bucket", "Delete file", used ? "Refused while used; unbind first" : "Rollback restores it", 0, true,
+        guarded(DELETE, "minecraft:lava_bucket", "Delete file", used ? "Refused while used; unbind first" : "Deletes the file; rollback restores it", 0, true,
                 () -> ShopFiles.save(toolkit, viewer, (ToolkitFiles ignored) -> files().deleteGui(gui.kind(), gui.id()), GuiBindScreen.RELOAD_COMMAND, () -> { changed.run(); viewer.back(); }));
         back();
     }

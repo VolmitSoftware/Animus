@@ -70,7 +70,7 @@ class CapabilityFields extends StatelessWidget {
             value: id,
             options: <String>[for (final CapabilitySpec choice in choices) choice.id],
             labels: <String, String>{
-              for (final CapabilitySpec choice in choices) choice.id: choice.note.isEmpty ? choice.id : '${choice.id} (${choice.available ? choice.note : 'unavailable offline'})',
+              for (final CapabilitySpec choice in choices) choice.id: capabilityChoiceLabel(choice),
             },
             noneLabel: 'Pick a capability',
             label: 'Capability of this $kind',

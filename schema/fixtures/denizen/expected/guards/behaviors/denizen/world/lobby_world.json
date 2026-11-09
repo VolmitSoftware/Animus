@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:world/lobby_world",
+  "server": true,
+  "entry": "on-player-joins",
+  "routines": {
+    "on-player-joins": {
+      "type": "return"
+    }
+  },
+  "triggers": [
+    {
+      "id": "on-player-joins",
+      "event": "player_join",
+      "routine": "on-player-joins"
+    }
+  ]
+}

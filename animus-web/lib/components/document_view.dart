@@ -6,6 +6,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../logic/conversation/conversation_json.dart';
+import '../logic/diagnostic_text.dart';
 import '../logic/gui/gui_json.dart';
 import '../logic/gui/gui_text.dart';
 import '../logic/gui/gui_presets.dart';
@@ -85,8 +86,17 @@ class DocumentPane extends StatefulWidget {
     this.newConversationHref,
     this.skinEditing,
     this.serverBehaviors = const <String>[],
+    this.codeDraft,
+    this.onCodeDraft,
     super.key,
   });
+
+  /// Code text typed earlier and not applied yet, kept by the store while
+  /// the user looks at other documents.
+  final String? codeDraft;
+
+  /// Keeps the Code draft (null drops it) outside this pane.
+  final void Function(String? text)? onCodeDraft;
 
   /// Writes several documents as one undoable change (attaching a
   /// conversation to NPCs); null hides that list.
@@ -164,7 +174,6 @@ class _DocumentPaneState extends State<DocumentPane> {
   String? _recordingRefusal;
   String? _renaming;
   String? _renameProblem;
-  void Function()? _stopGuard;
 
   /// True when the id field copies instead of moving.
   bool _copying = false;
@@ -194,8 +203,9 @@ class _DocumentPaneState extends State<DocumentPane> {
   @override
   void initState() {
     super.initState();
-    // Closing the tab with Code text that was never applied asks first.
-    _stopGuard = guardUnload(() => _draft != null);
+    // A Code draft left on another document comes back where it was.
+    final String? kept = component.codeDraft;
+    if (kept != null) _check(kept);
     pendingProblems.addListener(_pendingChanged);
     // A behavior shaped like a conversation opens on its Conversation tab.
     if (component.document.kind == DocumentKind.behavior && component.view == ViewMode.visual && conversationOf(component.document.json) != null) {
@@ -207,7 +217,6 @@ class _DocumentPaneState extends State<DocumentPane> {
 
   @override
   void dispose() {
-    _stopGuard?.call();
     pendingProblems.removeListener(_pendingChanged);
     super.dispose();
   }
@@ -250,6 +259,12 @@ class _DocumentPaneState extends State<DocumentPane> {
   }
 
   void _edit(String value) {
+    setState(() => _check(value));
+    component.onCodeDraft?.call(value);
+  }
+
+  /// Holds [value] as the Code draft with its JSON error or recording refusal.
+  void _check(String value) {
     String? error;
     String? refusal;
     try {
@@ -258,18 +273,26 @@ class _DocumentPaneState extends State<DocumentPane> {
     } on FormatException catch (invalid) {
       error = invalid.message;
     }
-    setState(() {
-      _draft = value;
-      _draftError = error;
-      _recordingRefusal = refusal;
-    });
+    _draft = value;
+    _draftError = error;
+    _recordingRefusal = refusal;
   }
 
   Future<void> _apply() async {
     final String? draft = _draft;
     if (draft == null || _draftError != null || _recordingRefusal != null) return;
     await component.onSource(draft);
+    component.onCodeDraft?.call(null);
     if (mounted) setState(() => _draft = null);
+  }
+
+  void _discard() {
+    component.onCodeDraft?.call(null);
+    setState(() {
+      _draft = null;
+      _draftError = null;
+      _recordingRefusal = null;
+    });
   }
 
   @override
@@ -295,6 +318,11 @@ class _DocumentPaneState extends State<DocumentPane> {
         ),
       ]),
       _diagnostics(document),
+      if (_draft != null && view != ViewMode.code && view != ViewMode.split)
+        dom.div(classes: 'animus-row animus-code-draft-note', attributes: const <String, String>{'role': 'status', 'data-testid': 'code-draft-note'}, <Widget>[
+          const dom.span(<Widget>[Component.text('Code draft not applied. This view shows the document without it.')]),
+          Button.secondary(label: 'Open Code', size: ButtonSize.small, onPressed: () => component.onView(ViewMode.code)),
+        ]),
       SuggestSources(
         documents: component.workspaceDocuments,
         catalog: _schemas.catalog,
@@ -416,17 +444,16 @@ class _DocumentPaneState extends State<DocumentPane> {
   }
 
   Widget _diagnosticList(List<Diagnostic> shown, List<Diagnostic> server) {
+    final List<Diagnostic> local = withoutRepeats(<Diagnostic>[for (final Diagnostic d in shown) if (d.code != 'no-schema') d]);
     return dom.ul(classes: 'animus-diagnostics', <Widget>[
-      for (final Diagnostic diagnostic in shown.where((Diagnostic d) => d.code != 'no-schema').take(50))
-        dom.li(classes: 'is-${diagnostic.severity.name}', <Widget>[
-          dom.code(<Widget>[Component.text(diagnostic.path)]),
-          Component.text(' ${diagnostic.message}'),
+      for (final Diagnostic diagnostic in local.take(50))
+        dom.li(classes: 'is-${diagnostic.severity.name}', attributes: <String, String>{'title': diagnostic.path}, <Widget>[
+          Component.text(diagnosticSentence(diagnostic)),
         ]),
-      for (final Diagnostic diagnostic in server.take(50))
-        dom.li(classes: 'is-${diagnostic.severity.name} is-server', <Widget>[
+      for (final Diagnostic diagnostic in withoutRepeats(serverOnly(local, server)).take(50))
+        dom.li(classes: 'is-${diagnostic.severity.name} is-server', attributes: <String, String>{'title': diagnostic.path}, <Widget>[
           const dom.span(classes: 'animus-tag is-server', <Widget>[Component.text('server')]),
-          dom.code(<Widget>[Component.text(diagnostic.path)]),
-          Component.text(' ${diagnostic.message}'),
+          Component.text(' ${diagnosticSentence(diagnostic)}'),
         ]),
     ]);
   }
@@ -699,10 +726,7 @@ class _DocumentPaneState extends State<DocumentPane> {
           Button.ghost(
             label: 'Discard',
             size: ButtonSize.small,
-            onPressed: () => setState(() {
-              _draft = null;
-              _recordingRefusal = null;
-            }),
+            onPressed: _discard,
           ),
         if (_recordingRefusal != null && _draftError == null)
           dom.span(classes: 'animus-error', attributes: const <String, String>{'data-recording': 'code-refusal', 'role': 'alert'}, <Widget>[

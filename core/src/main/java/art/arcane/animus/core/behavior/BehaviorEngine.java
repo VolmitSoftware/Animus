@@ -208,7 +208,7 @@ public final class BehaviorEngine implements AutoCloseable {
         if(!available){terminate(fiber.execution,State.UNAVAILABLE,"capability-unavailable:"+key);return;}
         refresh(fiber);
         String arguments;
-        try{arguments=template.resolve(fiber.variables,environment(fiber),invoker.strictText(key,fiber.execution.program.id()));}
+        try{arguments=template.resolve(fiber.variables,environment(fiber),invoker.holes(key,fiber.execution.program.id()));}
         catch(ArgumentTemplate.Invalid invalid){terminate(fiber.execution,State.FAILED,"arguments-invalid:"+invalid.field()+":"+invalid.getMessage());return;}
         BehaviorInvoker.Invocation invocation=new BehaviorInvoker.Invocation(key,fiber.execution.context.npc(),fiber.execution.context.player(),arguments,fiber.variables,fiber.execution.context.preview(),fiber.execution.context.sourceCurrent(),fiber.execution.program.id());
         BehaviorInvoker.Call<?> call=condition?invoker.condition(invocation):invoker.action(invocation);

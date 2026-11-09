@@ -52,6 +52,8 @@ class MockCombatWorld implements CombatWorld {
     /** An instant walk ends this far short of its goal across, as a path that stops beside a goal it cannot reach. */
     double stopShort;
     boolean refuseSteps;
+    /** When set, revive refuses, as an unloaded chunk or a region another thread owns would. */
+    boolean refuseRevive;
     /** A teleport is accepted and applied later, as a Folia teleport into another region is; {@link #flush} applies it. */
     boolean deferTeleports;
     final Map<UUID, WorldPosition> deferred = new HashMap<>();
@@ -195,6 +197,7 @@ class MockCombatWorld implements CombatWorld {
     @Override public Optional<Vec3> helperPosition(UUID helper) { return Optional.ofNullable(helpers.get(helper)); }
     @Override public void removeHelper(UUID helper) { helpers.remove(helper); removedHelpers.add(helper); }
     @Override public boolean revive(UUID npc, WorldPosition at) {
+        if (refuseRevive) return false;
         revived.add(npc);
         VirtualNpcState.Snapshot after = npcs.get(npc).respawn(at);
         index.upsert(after);

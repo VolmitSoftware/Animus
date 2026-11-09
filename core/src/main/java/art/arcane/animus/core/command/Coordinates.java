@@ -86,4 +86,9 @@ public final class Coordinates {
     }
 
     private static double round(double value) { return Math.round(value * 100) / 100.0; }
+
+    /** {@code x y z} for a reply, whole numbers without a decimal point. */
+    public static String shown(Vec3 point) { return plain(point.x()) + " " + plain(point.y()) + " " + plain(point.z()); }
+
+    private static String plain(double value) { return value == Math.rint(value) ? String.valueOf((long) value) : String.valueOf(value); }
 }

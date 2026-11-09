@@ -30,23 +30,26 @@ class AnimusHelpTest {
         return group.getChildren().stream().filter((DirectorRuntimeNode child) -> !child.getDescriptor().isHidden()).toList();
     }
 
-    @Test void theRootIsGroupedByTopicWithLifecycleFirst() {
+    @Test void theRootIsGroupedByTopicWithTheNewcomerToolsFirst() {
         AnimusHelp.Page page = rootPage(0);
         List<String> titles = page.sections().stream().map(AnimusHelp.Section::title).toList();
-        assertEquals(List.of("NPCs", "Movement", "Combat", "Content", "Services", "Behaviors", "Groups", "Diagnostics", "Tools"), titles);
-        List<String> npcs = page.sections().getFirst().entries().stream().map((DirectorRuntimeNode node) -> node.getDescriptor().getName()).toList();
+        assertEquals(List.of("Tools", "NPCs", "Movement", "Combat", "Content", "Services", "Behaviors", "Groups", "Diagnostics"), titles);
+        assertEquals(List.of("setup", "tools"), page.sections().getFirst().entries().stream().map((DirectorRuntimeNode node) -> node.getDescriptor().getName()).toList());
+        String first = String.join("\n", AnimusHelp.lines(page));
+        assertTrue(first.contains("setup") && first.contains("tools"), "setup and tools are on the first page");
+        List<String> npcs = page.sections().get(1).entries().stream().map((DirectorRuntimeNode node) -> node.getDescriptor().getName()).toList();
         assertEquals(List.of("status", "list", "create", "inspect", "edit", "clone", "delete", "spawn", "despawn", "select", "selection", "validate", "reload", "rollback", "npc"), npcs);
         assertFalse(page.entries().stream().anyMatch((DirectorRuntimeNode node) -> node.getDescriptor().getName().equals("choice")), "the hidden click target stays out");
     }
 
     @Test void everyEntryIsDrawnAsVolmLibDrawsItWithTheDescriptionOnHover() {
         Component create = MINI.deserialize(AnimusHelp.entry(child(root, "create")));
-        assertEquals("⇀ create [id] ⊰type⊱ ⊰name⊱ ⊰folder⊱ ⊰world⊱ ⊰x⊱ ⊰y⊱ ⊰z⊱", PLAIN.serialize(create));
+        assertEquals("⇀ create [id] ⊰type⊱ ⊰name⊱ ⊰folder⊱ ⊰world⊱ ⊰x⊱ ⊰y⊱ ⊰z⊱ ⊰spawned⊱", PLAIN.serialize(create));
         ClickEvent click = first(create);
         assertEquals(ClickEvent.Action.SUGGEST_COMMAND, click.action());
         assertEquals("/animus create ", ((ClickEvent.Payload.Text) click.payload()).value());
         String hover = PLAIN.serialize(hovers(create).getFirst());
-        assertTrue(hover.startsWith("create\n✎ Save a new despawned NPC where you stand"), hover);
+        assertTrue(hover.startsWith("create\n✎ Save and spawn a new NPC where you stand"), hover);
         assertTrue(hover.contains("✦ " + AnimusDirector.usage(child(root, "create"))), hover);
         assertFalse(hover.contains("<String>"), "the example names arguments as the list line does: " + hover);
         assertEquals(ClickEvent.Action.RUN_COMMAND, first(MINI.deserialize(AnimusHelp.entry(child(root, "validate")))).action(), "a command without parameters runs on click");

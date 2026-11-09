@@ -8,11 +8,16 @@ final class RelaySettings {
   final List<String> allowedAppOrigins;
   final RelayLimits limits;
 
+  /// Proxies in front of the relay that append to `X-Forwarded-For`: 1 behind
+  /// Cloud Run, 0 when browsers connect to the relay directly.
+  final int trustedProxyHops;
+
   const RelaySettings({
     required this.port,
     required this.address,
     required this.allowedAppOrigins,
     required this.limits,
+    required this.trustedProxyHops,
   });
 
   /// Throws [FormatException] or [ArgumentError] naming the bad variable.
@@ -127,6 +132,7 @@ final class RelaySettings {
       address: address == null || address.isEmpty ? '0.0.0.0' : address,
       allowedAppOrigins: List<String>.unmodifiable(normalized),
       limits: limits,
+      trustedProxyHops: integer('TRUSTED_PROXY_HOPS', 1, 0, 8),
     );
   }
 }

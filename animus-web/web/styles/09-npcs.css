@@ -44,6 +44,15 @@
   align-items: center;
 }
 
+/* Filters, folders and tags fold behind Filters on a phone only. */
+.animus-npc-filter-fold { display: none; }
+
+@media (max-width: 480px) {
+  .animus-npc-filter-fold { display: inline-flex; }
+  .animus-npc-browser.is-filters-folded .animus-npc-filters,
+  .animus-npc-browser.is-filters-folded .animus-npc-folders { display: none; }
+}
+
 .animus-npc-filter-select {
   display: inline-flex;
   align-items: center;
