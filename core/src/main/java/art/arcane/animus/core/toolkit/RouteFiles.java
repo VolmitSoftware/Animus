@@ -43,6 +43,7 @@ final class RouteFiles {
     }
 
     /** What saving a capture wrote: the route id and the line for the player. */
+    /** A saved capture: its route id and the short reply; the file is {@link #path(String)}. */
     record Saved(String id, String line) {}
 
     /** Every saved route with its users, in id order. */
@@ -119,11 +120,11 @@ final class RouteFiles {
         int count = capture.points().size();
         if (capture.source().isEmpty()) {
             String id = new ToolkitFiles(npcs, store).saveRoute(player, document);
-            return new Saved(id, "Saved routes/" + id + ".json with " + count + " points; sneak-click it in Routes to rename it");
+            return new Saved(id, "Saved " + id + ", " + count + " points; sneak-click it in Routes to rename");
         }
         String id = capture.source().get();
         if (!store.hash(path(id)).equals(capture.hash().orElseThrow())) throw DocumentStore.conflict(path(id));
-        return new Saved(id, "Saved routes/" + id + ".json with " + count + " points; tx " + store.commit(List.of(new DocumentStore.Change(path(id), capture.hash().get(), document))));
+        return new Saved(id, "Saved " + id + ", " + count + " points; tx " + store.commit(List.of(new DocumentStore.Change(path(id), capture.hash().get(), document))));
     }
 
     private Route route(String id, List<String> users) throws IOException {
@@ -178,7 +179,7 @@ final class RouteFiles {
         if (store.read(path(id)) != null) throw new IOException("routes/" + id + ".json already exists");
     }
 
-    private static String path(String id) { return "routes/" + id + ".json"; }
+    static String path(String id) { return "routes/" + id + ".json"; }
 
     /** The NPC's {@code animus:navigation} module, or null. */
     static JsonObject navigation(JsonObject definition) {

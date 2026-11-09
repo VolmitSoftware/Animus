@@ -292,13 +292,13 @@ class BehaviorCommandsTest {
             CommandActor sender=sender(false,true);exec(harness.service,sender,new String[]{"behaviors","triggers"});pump();
             assertTrue(messages.get(1).startsWith("⇀ NPC triggers | 1 binding ("),messages.toString());
             String row=messages.stream().filter(line->line.startsWith("⇀ test | ")).findFirst().orElseThrow();
-            assertTrue(row.startsWith("⇀ test | example:greeter #click on interaction (Never fired; Routine main;"),row);
+            assertTrue(row.startsWith("⇀ test | example:greeter #click (On interaction; Never fired; Routine main;"),row);
             assertTrue(messages.stream().anyMatch(line->line.startsWith("⇀ Server triggers | off (no platform bridge is connected)")),messages.toString());
             assertFalse(messages.stream().anyMatch(line->line.contains("=")||line.contains("…")),"no raw counters and no cut rows: "+messages);
             assertEquals(art.arcane.animus.api.Outcome.Status.OK,triggers.publish(new art.arcane.animus.core.behavior.trigger.TriggerEvent.Interaction(npc,playerId,art.arcane.animus.core.behavior.trigger.TriggerEvent.Action.INTERACT)).status());
             until(()->harness.service.diagnosticRuntime().snapshot().executions().values().stream().anyMatch(item->item.trigger().isPresent()));
             messages.clear();exec(harness.service,sender,new String[]{"behaviors","triggers"});pump();
-            assertTrue(messages.stream().anyMatch(line->line.startsWith("⇀ test | example:greeter #click on interaction (Fired once, last ")),messages.toString());
+            assertTrue(messages.stream().anyMatch(line->line.startsWith("⇀ test | example:greeter #click (On interaction; Fired once, last ")),messages.toString());
             exec(harness.service,screen(),new String[]{"behaviors","triggers"});pump();
             List<String> entries=menus.getLast().entries();
             assertTrue(entries.stream().anyMatch(entry->entry.contains("Fired once")&&entry.contains("Routine main")),entries.toString());

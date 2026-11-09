@@ -156,15 +156,15 @@ class EditorPartsTest {
                 assertEquals(2, player.size());
                 String link = player.getFirst().console().substring(player.getFirst().console().indexOf("https://"));
                 assertTrue(link.contains("#/pair/ANM1."), link);
-                assertEquals("[Animus]: Pairing link ready; single use, open within 10 minutes [Open editor] [Click to copy]",
+                assertEquals("[Animus]: Pairing link ready; open it once within 10 minutes [Open editor] [Click to copy]",
                         PlainTextComponentSerializer.plainText().serialize(player.getFirst().component()));
                 String access = PlainTextComponentSerializer.plainText().serialize(player.get(1).component());
-                assertTrue(access.startsWith("[Animus]: Once paired it may ") && access.endsWith("[Token id] [Revoke]"), access);
+                assertTrue(access.startsWith("[Animus]: The paired editor may ") && access.contains("; pairing lasts 7d") && access.endsWith("[Token id] [Revoke]"), access);
                 assertFalse(access.contains("tok_"), "no bare token in chat: " + access);
                 List<String> console = new ArrayList<>();
                 commands.pair(recorder(null, console), "", "", "", "");
                 assertEquals(2, console.size());
-                assertTrue(RichText.plain(console.getFirst()).matches("\\[Animus]: Pairing link ready; single use, open within 10 minutes https://\\S+#/pair/ANM1\\.\\S+"), console.getFirst());
+                assertTrue(RichText.plain(console.getFirst()).matches("\\[Animus]: Pairing link ready; open it once within 10 minutes https://\\S+#/pair/ANM1\\.\\S+"), console.getFirst());
             } finally { service.close(); }
         } finally { runtime.close(); }
     }

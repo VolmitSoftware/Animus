@@ -1084,7 +1084,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             Object attributed = attributes == null ? null : attributes.packet(body.entityId, body.nativeType, look.traits().attributes());
             if (attributed != null) packets.add(attributed);
             if (body.displayIds.length > 0) {
-                double lift = BodyLook.lift(body.height, body.seat.seatY(), look.aboveNativeNameplate(), look.traits().attributes().scale());
+                double lift = BodyLook.lift(body.typeKey, body.height, body.seat.seatY(), look.aboveNativeNameplate(), look.traits().attributes().scale());
                 for (int row = 0; row < body.displayIds.length; row++) {
                     BodyLook.TextRow text = look.rows().get(row);
                     packets.add(addEntity.newInstance(body.displayIds[row], body.displayUuids[row], pose.x(), pose.y() + body.height, pose.z(), 0f, 0f, textDisplayType, 0, zeroVelocity, 0d));

@@ -4,6 +4,7 @@ import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.Screen;
 import art.arcane.animus.core.gui.ScreenFrame;
 import art.arcane.animus.core.gui.ScreenManager;
+import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.Palette;
@@ -172,6 +173,9 @@ abstract class ToolScreen<P, S> implements Screen {
     }
 
     /** A player head wearing a skin texture, the base64 {@code textures} value of a skin file, and its signature. */
+    /** {@code Folder npcs/town/}, the lore line naming where an NPC's file lives. */
+    static String folder(NpcDefinition npc) { return "&7Folder &fnpcs/" + (npc.group().isEmpty() ? "" : npc.group() + "/"); }
+
     static NpcItem skinHead(String texture, Optional<String> signature) {
         String signed = signature.map((String value) -> ",signature:\"" + value.replace("\"", "") + "\"").orElse("");
         return new NpcItem(HEAD, 1, Optional.of("[profile={properties:[{name:\"textures\",value:\"" + texture.replace("\"", "") + "\"" + signed + "}]}]"), Optional.empty());

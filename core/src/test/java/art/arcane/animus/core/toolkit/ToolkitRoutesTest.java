@@ -231,7 +231,7 @@ class ToolkitRoutesTest {
         click("Point 2", Click.SHIFT_LEFT);
         click("Save route", Click.LEFT);
         drain();
-        assertTrue(alex.messages.getLast().contains("Saved routes/market.json with 2 points; tx "), alex.messages.getLast());
+        assertTrue(alex.messages.getLast().contains("Saved market, 2 points; tx ") && alex.messages.getLast().endsWith(" routes/market.json"), "short line, path behind [Path]: " + alex.messages.getLast());
         assertEquals(4.5, JsonDocuments.object(store.read("routes/market.json")).getAsJsonArray("points").get(1).getAsJsonObject().get("x").getAsDouble());
         store.rollback(tx());
         assertEquals(JsonDocuments.object(MARKET), JsonDocuments.object(store.read("routes/market.json")));
@@ -262,7 +262,8 @@ class ToolkitRoutesTest {
         click("wave", Click.RIGHT);
         drain();
         assertEquals("pingpong", navigation("guard").get("playback").getAsString());
-        assertTrue(lore("wave").contains("Selection plays it pingpong on 1 NPC"), lore("wave"));
+        assertTrue(alex.messages.getLast().contains("Playback pingpong for wave on guard; tx "), alex.messages.getLast());
+        assertTrue(lore("wave").contains("Selection plays it pingpong on guard"), lore("wave"));
     }
 
     @Test void recordingDetailPreviewsRenamesWithItsPlayersAndRefusesDeleteWhileUsed() throws IOException {

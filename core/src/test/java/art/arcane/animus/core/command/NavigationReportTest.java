@@ -10,7 +10,14 @@ class NavigationReportTest {
     @Test void theDebugStatusReadsAsASentence() {
         String raw = "Navigation fountain-keeper: walking; route=390fa066-8810-43a0-a570-fe4faaaad7eb; waypoint=0; goal=Vec3[x=4.5, y=64.0, z=2.5]"
                 + "; capture=10..12; sampled=400; unavailable=0; position=Vec3[x=3.25, y=64.0, z=1.0]; tick=812; arrivals=0";
-        assertEquals("Navigation fountain-keeper: walking to 4.5 64 2.5, now at 3.25 64 1; route 390fa066", NavigationReport.readable(raw));
+        assertEquals("Navigation fountain-keeper: walking to 4.5 64 2.5, now at 3.25 64 1", NavigationReport.readable(raw));
+    }
+
+    @Test void aMovingLegLeavesOutThePlannerWording() {
+        String raw = "Navigation fountain-keeper: moving; route=2eaf13a4-8810-43a0-a570-fe4faaaad7eb; waypoint=0; goal=Vec3[x=-7.5, y=64.0, z=9.5]"
+                + "; kinematic; live collision revalidation; long leg segment; position=Vec3[x=-2.76, y=64.0, z=6.76]; arrivals=0";
+        assertEquals("Navigation fountain-keeper: moving to -7.5 64 9.5, now at -2.76 64 6.76", NavigationReport.readable(raw));
+        assertEquals("Navigation guard: sleeping, no player within 32 blocks", NavigationReport.readable("Navigation guard: sleeping; route=x; no player within 32 blocks"));
     }
 
     @Test void finishedRoutesErrorsAndRecordingsKeepWhatMatters() {

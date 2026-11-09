@@ -33,6 +33,8 @@ final class ShopFiles {
     /** The kinds the GUI screen lists, in tab order. */
     static final List<DocumentKind> GUIS = List.of(DocumentKind.HOLOGRAM, DocumentKind.INVENTORY, DocumentKind.MENU, DocumentKind.TEXT_ANIMATION);
     static final String VILLAGER = "minecraft:villager";
+    /** How a shop binding field reads in a reply, as the shop screen labels it. */
+    private static final Map<String, String> LABELS = Map.of("style", "Window", "openOn", "Opens on", "villager", "Villager");
     private final NpcRepository npcs;
     private final DocumentStore store;
 
@@ -47,14 +49,14 @@ final class ShopFiles {
     @FunctionalInterface private interface Edit { boolean change(JsonObject document); }
 
     /**
-     * Runs file work that writes shop or GUI files, then chats its line, runs {@code reload} when it changed something
-     * so the catalog shows it, and calls {@code after}. Refusals come back as red lines.
+     * Runs file work that writes shop or GUI files, then chats its line, runs {@code reload} as the console when it changed
+     * something so the catalog shows it without a second line in the player's chat, and calls {@code after}. Refusals come back as red lines.
      */
     static <P, S> void save(Toolkit<P, S> toolkit, ScreenManager<P, S>.Viewer viewer, Toolkit.Load<String> work, String reload, Runnable after) {
         toolkit.later(viewer, work, (String line) -> {
             boolean changed = line.contains("; tx ");
             toolkit.say(viewer.player(), ChatLine.parse(changed ? Palette.success(line) : Palette.reply(line)));
-            if (changed) viewer.host().command(Optional.of(viewer.player()), reload);
+            if (changed) viewer.host().command(Optional.empty(), reload);
             after.run();
             viewer.refresh();
         });
@@ -118,10 +120,10 @@ final class ShopFiles {
             put(document, ShopBinding.MODULE, Optional.of(module));
             return true;
         });
-        String shown = value.map((JsonElement next) -> next.isJsonPrimitive() ? next.getAsString() : villager(next)).orElse("the default");
+        String shown = value.map((JsonElement next) -> next.isJsonPrimitive() ? next.getAsString() : villager(next)).orElse("default");
         if (drafts.isEmpty() && skipped[0] == ids.size())
             return field.equals("villager") ? "No selected villager binds " + shop : "No selected NPC binds " + shop;
-        String head = "Shop " + field + " " + shown + " on " + ToolkitFiles.named(drafts) + (skipped[0] == 0 ? "" : ", " + skipped[0] + " skipped");
+        String head = LABELS.getOrDefault(field, field) + " set to " + shown + " on " + ToolkitFiles.named(drafts) + (skipped[0] == 0 ? "" : ", " + skipped[0] + " skipped");
         return drafts.isEmpty() ? head : head + "; tx " + npcs.applyAll(drafts);
     }
 

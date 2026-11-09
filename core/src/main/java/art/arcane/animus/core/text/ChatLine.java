@@ -149,6 +149,9 @@ public final class ChatLine {
         return chip(new Chip("[" + label + "]", Palette.PINK_LIGHT, Click.COPY, text, text + "\n\nClick to copy", null));
     }
 
+    /** {@code [Path]} with the data-folder path on hover and on click to copy, so a reply can name a file without spelling it out. */
+    public ChatLine path(String path) { return copy("[Path]", path, path + "\nClick to copy"); }
+
     /** {@code [Docs]} for a wiki section. */
     public ChatLine docs(DocsLink link) { return docs(link.url()); }
 

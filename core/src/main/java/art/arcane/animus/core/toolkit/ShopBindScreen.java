@@ -44,7 +44,7 @@ final class ShopBindScreen<P, S> extends ToolScreen<P, S> {
             List<String> lines = new ArrayList<>();
             lines.add("&7" + shop.path());
             if (shop.problem().isPresent()) lines.add("&c" + shop.problem().get());
-            else lines.add("&7Offers &f" + shop.offers() + "&7, window &f" + shop.style().map(ShopDocument.Style::key).orElse("server default"));
+            else lines.add("&7Offers &f" + shop.offers() + "&7, window &f" + shop.style().map(ShopDocument.Style::key).orElse("default"));
             lines.add("&7In the selection &f" + picked.getOrDefault(shop.id(), 0) + "&7 of &f" + selected.size());
             button(slot, shop.problem().isPresent() ? "minecraft:barrel" : "minecraft:emerald", title(shop.id()), lore(lines, hints("bind to the selection", "open it for you now", "settings")),
                     (GuiModel.Click click) -> {

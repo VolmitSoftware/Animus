@@ -164,8 +164,13 @@ final class WorldCommands {
             npc(actor, npc).ifPresent((String id) -> combat(actor, () -> lent.isEmpty() ? services.combat().releaseMobs(id) : services.combat().control(id, lent.get())));
         }
 
+        /** Runs the operation; a reply that names the player who sent it by UUID says {@code you} instead. */
         private void run(CommandActor actor, String npc, CombatControl.Operation operation, Optional<UUID> target) {
-            npc(actor, npc).ifPresent((String id) -> combat(actor, () -> services.combat().npc(id, operation, target)));
+            Optional<String> self = target.filter((UUID who) -> actor.player().map(who::equals).orElse(false)).map((UUID who) -> ChatLine.shortId(who.toString()));
+            npc(actor, npc).ifPresent((String id) -> combat(actor, () -> {
+                String reply = services.combat().npc(id, operation, target);
+                return self.map((String shown) -> reply.replace(" " + shown, " you")).orElse(reply);
+            }));
         }
     }
 }

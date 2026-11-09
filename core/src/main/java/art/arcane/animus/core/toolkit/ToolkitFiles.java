@@ -15,6 +15,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -288,6 +289,9 @@ final class ToolkitFiles {
     }
 
     static String count(int npcs) { return npcs + (npcs == 1 ? " NPC" : " NPCs"); }
+
+    /** The one id, else how many NPCs. */
+    static String named(Collection<String> ids) { return ids.size() == 1 ? ids.iterator().next() : count(ids.size()); }
 
     /** The one NPC's id, else how many. */
     static String named(List<NpcRepository.Draft> drafts) {

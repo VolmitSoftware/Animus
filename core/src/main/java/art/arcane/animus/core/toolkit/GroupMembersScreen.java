@@ -36,7 +36,7 @@ final class GroupMembersScreen<P, S> extends ToolScreen<P, S> {
             Optional<NpcDefinition> definition = toolkit.npcs().find(id);
             boolean player = definition.map((NpcDefinition npc) -> ToolkitFiles.PLAYER.equals(npc.json().get("type").getAsString())).orElse(false);
             List<String> lines = new ArrayList<>();
-            lines.add("&7Folder &f" + definition.map((NpcDefinition npc) -> npc.group().isEmpty() ? "npcs/" : npc.group()).orElse("?"));
+            definition.ifPresent((NpcDefinition npc) -> lines.add(folder(npc)));
             lines.add(selected.contains(id) ? "&aSelected" : "&7Not selected");
             NpcItem icon = player ? Optional.ofNullable(skins.get(id)).orElse(new NpcItem(HEAD, 1, Optional.empty(), Optional.empty()))
                     : new NpcItem("minecraft:name_tag", 1, Optional.empty(), Optional.empty());

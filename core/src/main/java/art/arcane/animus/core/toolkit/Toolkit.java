@@ -210,7 +210,7 @@ public final class Toolkit<P, S> implements AutoCloseable {
         for (Vec3 corner : ToolkitOutline.outline(pose.get(), shown)) host.particle(player, ToolkitOutline.OUTLINE_PARTICLE, 1, 0, corner.x(), corner.y(), corner.z());
         if (capture != null)
             for (ToolkitOutline.Marker marker : ToolkitOutline.waypoints(pose.get(), capture))
-                host.particle(player, marker.current() ? ToolkitOutline.CURRENT_PARTICLE : ToolkitOutline.WAYPOINT_PARTICLE, marker.current() ? 4 : 2, 0.1, marker.point().x(), marker.point().y() + 0.2, marker.point().z());
+                host.particle(player, marker.current() ? ToolkitOutline.CURRENT_PARTICLE : ToolkitOutline.WAYPOINT_PARTICLE, 4, 0.1, marker.point().x(), marker.point().y() + 0.2, marker.point().z());
     }
 
     /** The player left: selection, capture, pick and click state go. */
@@ -342,11 +342,11 @@ public final class Toolkit<P, S> implements AutoCloseable {
         catch (IOException | RuntimeException invalid) { say(player, ChatLine.error(String.valueOf(invalid.getMessage()))); return; }
         String name = host().name(player);
         List<String> chosen = selected(id);
-        write(viewer, (ToolkitFiles files) -> {
+        line(viewer, (ToolkitFiles files) -> {
             RouteFiles.Saved saved = new RouteFiles(npcs(), documents()).save(name, capture, document);
             captures.remove(id, capture);
-            if (!assign || chosen.isEmpty()) return saved.line();
-            return "Saved routes/" + saved.id() + ".json; " + files.route(saved.id(), chosen);
+            String text = !assign || chosen.isEmpty() ? saved.line() : "Saved " + saved.id() + "; " + files.route(saved.id(), chosen);
+            return reply(text).path(RouteFiles.path(saved.id()));
         });
     }
 
@@ -454,16 +454,22 @@ public final class Toolkit<P, S> implements AutoCloseable {
     }
 
     /** Runs file work, then tells the player its line and redraws the screen. A line with a transaction refreshes the NPCs. */
-    void write(ScreenManager<P, S>.Viewer viewer, FileWork work) {
+    void write(ScreenManager<P, S>.Viewer viewer, FileWork work) { line(viewer, (ToolkitFiles files) -> reply(work.run(files))); }
+
+    /** A file work result in green when it wrote something, that is when it names a transaction. */
+    private static ChatLine reply(String result) { return ChatLine.parse(result.contains("; tx ") ? Palette.success(result) : Palette.reply(result)); }
+
+    @FunctionalInterface private interface LineWork { ChatLine run(ToolkitFiles files) throws IOException; }
+
+    /** {@link #write} for work that builds its own chat line. */
+    private void line(ScreenManager<P, S>.Viewer viewer, LineWork work) {
         UUID id = viewer.id();
         try {
             parts.files().execute(() -> {
                 ChatLine line;
                 try {
-                    String result = work.run(files());
-                    boolean changed = result.contains("; tx ");
-                    if (changed) living().refresh();
-                    line = ChatLine.parse(changed ? Palette.success(result) : Palette.reply(result));
+                    line = work.run(files());
+                    if (line.toString().contains("; tx ")) living().refresh();
                 } catch (IOException | RuntimeException failure) { line = ChatLine.error(String.valueOf(failure.getMessage())); }
                 ChatLine reply = line;
                 living().players().deliver(id, (P online) -> {

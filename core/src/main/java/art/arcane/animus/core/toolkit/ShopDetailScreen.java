@@ -21,7 +21,7 @@ import java.util.function.Function;
  */
 final class ShopDetailScreen<P, S> extends ToolScreen<P, S> {
     static final int SUMMARY = 4, OPEN = 19, STYLE = 20, OPEN_ON = 21, PROFESSION = 23, LEVEL = 24, RESET = 29, UNBIND = 31, DELETE = 33;
-    static final List<String> STYLES = List.of("default", "native", "chest"), CLICKS = List.of("right", "left", "both");
+    static final List<String> STYLES = List.of("chest", "native", "default"), CLICKS = List.of("right", "left", "both");
     static final List<String> PROFESSIONS = List.of("minecraft:none", "minecraft:armorer", "minecraft:butcher", "minecraft:cartographer", "minecraft:cleric",
             "minecraft:farmer", "minecraft:fisherman", "minecraft:fletcher", "minecraft:leatherworker", "minecraft:librarian", "minecraft:mason",
             "minecraft:nitwit", "minecraft:shepherd", "minecraft:toolsmith", "minecraft:weaponsmith");
@@ -64,7 +64,7 @@ final class ShopDetailScreen<P, S> extends ToolScreen<P, S> {
         });
         String none = "&7No selected NPC binds this shop";
         String style = binding.map((JsonObject module) -> module.has("style") ? module.get("style").getAsString() : "default").orElse("default");
-        setting(STYLE, "minecraft:painting", "Window", style, List.of(binding.isPresent() ? "&7native is the villager trading screen" : none, "&7default uses the shop's own style"),
+        setting(STYLE, "minecraft:painting", "Window", style, binding.isPresent() ? List.of("&fchest &7a chest window", "&fnative &7the villager trading screen", "&fdefault &7the shop's own window") : List.of(none),
                 bound, "style", (GuiModel.Click click) -> cycle(click, STYLES, style), (String next) -> next.equals("default") ? Optional.empty() : Optional.of(new JsonPrimitive(next)));
         String openOn = binding.map((JsonObject module) -> module.has("openOn") ? module.get("openOn").getAsString() : "right").orElse("right");
         setting(OPEN_ON, "minecraft:lever", "Opens on", openOn, List.of(binding.isPresent() ? "&7Which click on the NPC opens the shop" : none),

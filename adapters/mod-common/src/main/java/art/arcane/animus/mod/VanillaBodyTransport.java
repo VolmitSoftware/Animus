@@ -670,7 +670,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         ClientboundUpdateAttributesPacket attributes = ModAttributes.packet(body.entityId, body.type, look.traits().attributes());
         if (attributes != null) packets.add(attributes);
         if (body.displayIds.length > 0) {
-            double lift = BodyLook.lift(body.height, body.seat.seatY(), look.aboveNativeNameplate(), look.traits().attributes().scale());
+            double lift = BodyLook.lift(body.typeKey, body.height, body.seat.seatY(), look.aboveNativeNameplate(), look.traits().attributes().scale());
             for (int row = 0; row < body.displayIds.length; row++) {
                 BodyLook.TextRow text = look.rows().get(row);
                 packets.add(new ClientboundAddEntityPacket(body.displayIds[row], body.displayUuids[row], pose.x(), pose.y() + body.height, pose.z(), 0f, 0f, textDisplayType, 0, Vec3.ZERO, 0d));

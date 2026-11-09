@@ -164,8 +164,14 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
         return (byte) ((look.small() ? 0x01 : 0) | (look.arms() ? 0x04 : 0) | (look.basePlate() ? 0 : 0x08));
     }
 
-    /** Height above the passenger point at which the lowest text row's bottom sits; the client scales the body and its passenger point by {@code scale}. */
-    public static double lift(double bodyHeight, double seatY, boolean aboveNativeNameplate, double scale) {
-        return scale * (bodyHeight - seatY) + (aboveNativeNameplate ? 0.55 : 0.3);
+    /**
+     * Height above the passenger point at which the lowest text row's bottom sits; the client scales the body and its
+     * passenger point by {@code scale}. A llama holds its head above its hitbox, so its text sits higher by {@link #NECK}.
+     */
+    public static double lift(String type, double bodyHeight, double seatY, boolean aboveNativeNameplate, double scale) {
+        double neck = type.equals("minecraft:llama") || type.equals("minecraft:trader_llama") ? NECK : 0;
+        return scale * (bodyHeight - seatY + neck) + (aboveNativeNameplate ? 0.55 : 0.3);
     }
+
+    private static final double NECK = 0.45;
 }

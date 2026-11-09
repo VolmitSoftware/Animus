@@ -509,15 +509,12 @@ final class RegionViewer {
         if (consumed) return;
         NpcRuntime.InteractionListener<Player> listener = host.interactions;
         if (listener != null && listener.interacted(player, actor.uuid, action == VirtualNpcInteractionEvent.Action.ATTACK, input.secondaryAction())) return;
-        // A sneaking interaction keeps its administrative meaning, so a rideable NPC can still be selected.
+        // Only the wand selects, through the listener above; a plain click is play.
         if (actor.publication.ride() && action == VirtualNpcInteractionEvent.Action.INTERACT && !input.secondaryAction() && "MAIN_HAND".equals(input.hand())) {
             String refusal = actor.requestRide(player);
             if (refusal != null) player.sendMessage(RichText.colorize(Palette.error("Cannot ride " + actor.spec.name() + ": " + refusal)));
             else attach(body, actor);
-            return;
         }
-        // Click selection tells an administrator once; clicking the selected NPC again, as play does, stays quiet.
-        if (player.hasPermission("animus.admin") && !actor.id.equals(host.selections.put(id, actor.id))) player.sendMessage(Palette.reply("Selected " + actor.id));
     }
 
     /**

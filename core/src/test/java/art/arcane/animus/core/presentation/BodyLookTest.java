@@ -103,10 +103,12 @@ class BodyLookTest {
     }
 
     @Test void textSitsAboveTheHeadOrTheNativeNameplate() {
-        assertEquals(0.3, BodyLook.lift(1.8, 1.8, false, 1), 1e-9);
-        assertEquals(0.55, BodyLook.lift(1.8, 1.8, true, 1), 1e-9);
-        assertEquals(0.9, BodyLook.lift(1.6, 1.0, false, 1), 1e-9);
-        assertEquals(2 * 0.6 + 0.3, BodyLook.lift(1.6, 1.0, false, 2), 1e-9, "a scaled body lifts its text with its own height above the passenger point");
+        assertEquals(0.3, BodyLook.lift("minecraft:player", 1.8, 1.8, false, 1), 1e-9);
+        assertEquals(0.55, BodyLook.lift("minecraft:player", 1.8, 1.8, true, 1), 1e-9);
+        assertEquals(0.9, BodyLook.lift("minecraft:horse", 1.6, 1.0, false, 1), 1e-9);
+        assertEquals(2 * 0.6 + 0.3, BodyLook.lift("minecraft:horse", 1.6, 1.0, false, 2), 1e-9, "a scaled body lifts its text with its own height above the passenger point");
+        assertEquals(BodyLook.lift("minecraft:horse", 1.87, 1.87, false, 1) + 0.45, BodyLook.lift("minecraft:llama", 1.87, 1.87, false, 1), 1e-9, "a llama's raised head would cover the name from the front");
+        assertEquals(2 * 0.45 + 0.3, BodyLook.lift("minecraft:trader_llama", 1.87, 1.87, false, 2), 1e-9);
     }
 
     @Test void defaultStyleKeepsOneDisplayAndStyledHologramsStackRowsTheCitizensWay() {

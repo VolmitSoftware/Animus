@@ -1,5 +1,6 @@
 package art.arcane.animus.core.command;
 
+import art.arcane.animus.core.text.ChatLine;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -9,8 +10,10 @@ import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Names in the data folder that commands take, for tab completion: inbox entries, import previews and applications,
@@ -50,9 +53,14 @@ final class CompletionFiles {
         return found.stream().distinct().limit(OFFERED).toList();
     }
 
-    /** Transaction ids with a rollback receipt under {@code backups/}, newest first. */
+    /**
+     * Transactions with a rollback receipt under {@code backups/}, newest first, as the short id the [Undo] chip suggests, so
+     * the client's inline completion does not spell out the full id. A short id two receipts share completes in full.
+     */
     static List<String> transactions(Path data) {
-        return names(data.resolve("backups"), (Path entry) -> UUID_TEXT.matcher(stem(entry)).matches(), true, ".json");
+        List<String> ids = names(data.resolve("backups"), (Path entry) -> UUID_TEXT.matcher(stem(entry)).matches(), true, ".json");
+        Map<String, Long> shared = ids.stream().collect(Collectors.groupingBy(ChatLine::shortId, Collectors.counting()));
+        return ids.stream().map((String id) -> shared.get(ChatLine.shortId(id)) == 1 ? ChatLine.shortId(id) : id).toList();
     }
 
     /** Stored skin hashes, {@code skins/<sha256>.json}. */

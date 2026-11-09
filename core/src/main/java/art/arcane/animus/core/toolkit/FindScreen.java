@@ -51,7 +51,7 @@ final class FindScreen<P, S> extends ToolScreen<P, S> {
             String id = npc.definition().id();
             boolean player = ToolkitFiles.PLAYER.equals(npc.definition().json().get("type").getAsString());
             List<String> lines = List.of("&f" + String.format(Locale.ROOT, "%.1f", npc.distance()) + "&7 blocks away",
-                    "&7Folder &f" + (npc.definition().group().isEmpty() ? "npcs/" : npc.definition().group()));
+                    folder(npc.definition()));
             NpcItem icon = player ? Optional.ofNullable(skins.get(id)).orElse(new NpcItem(HEAD, 1, Optional.empty(), Optional.empty()))
                     : new NpcItem("minecraft:name_tag", 1, Optional.empty(), Optional.empty());
             button(slot, icon, title(id), lore(lines, hints("teleport to it", "select it", "bring it here")), (GuiModel.Click click) -> {

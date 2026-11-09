@@ -101,7 +101,7 @@ final class SkinFiles {
         String tx = DefinitionBatch.commit(store, wearers, expected, changes);
         npcs.reload();
         String what = next.map((String name) -> "Labelled skin " + hash.substring(0, 12) + " " + name).orElse("Removed the label of skin " + hash.substring(0, 12));
-        String carried = wearers.isEmpty() && groups.isEmpty() ? "" : ", moved " + ToolkitFiles.count(wearers.size()) + (groups.isEmpty() ? "" : " and " + groups.size() + (groups.size() == 1 ? " group" : " groups"));
+        String carried = wearers.isEmpty() && groups.isEmpty() ? "" : ", moved " + ToolkitFiles.named(wearers.stream().map(NpcDefinition::id).toList()) + (groups.isEmpty() ? "" : " and " + groups.size() + (groups.size() == 1 ? " group" : " groups"));
         return what + "; now " + moved.substring(0, 12) + carried + "; tx " + tx;
     }
 

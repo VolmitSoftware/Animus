@@ -47,12 +47,12 @@ final class CombatScreen<P, S> extends ToolScreen<P, S> {
         }
         JsonObject first = toolkit.npcs().find(selected.getFirst()).map((NpcDefinition definition) -> CombatFiles.module(definition.json(), CombatSettings.MODULE)).orElse(new JsonObject());
         List<String> summary = new ArrayList<>(List.of("&7Combat on &f" + on + "&7 of &f" + selected.size(), "&7Rows show &f" + selected.getFirst()));
-        if (waiting > 0) summary.add("&c" + waiting + " imported waiting for review; Enable accepts it");
+        if (waiting > 0) summary.add("&c" + waiting + " with imported combat waiting; Enable turns it on");
         icon(SUMMARY, "minecraft:name_tag", title(ToolkitFiles.count(selected.size()) + " selected"), summary, Optional.empty());
 
-        guarded(ENABLE, "minecraft:lime_concrete", "Enable combat", "Writes enabled: true; accepts the review of imports", selected.size(), false,
+        guarded(ENABLE, "minecraft:lime_concrete", "Enable combat", "Lets them fight; also turns on imported combat", selected.size(), false,
                 () -> write((CombatFiles files, List<String> ids) -> files.enable(ids, true)));
-        guarded(DISABLE, "minecraft:gray_concrete", "Disable combat", "Removes enabled; the profile stays", selected.size(), false,
+        guarded(DISABLE, "minecraft:gray_concrete", "Disable combat", "Stops them fighting; their combat settings stay", selected.size(), false,
                 () -> write((CombatFiles files, List<String> ids) -> files.enable(ids, false)));
         boolean mobs = CombatFiles.literalTrue(first, "targetableByMobs");
         guarded(MOBS, mobs ? "minecraft:zombie_head" : "minecraft:skeleton_skull", "Targetable by mobs: " + (mobs ? "on" : "off"),

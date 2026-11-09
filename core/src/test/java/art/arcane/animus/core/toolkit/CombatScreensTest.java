@@ -158,6 +158,8 @@ class CombatScreensTest {
             assertTrue(settings.targets().patterns().players().isEmpty(), "the refused pattern was never added");
         }
         assertEquals(1, alex.messages.stream().filter((String line) -> line.contains("; tx ")).count(), alex.messages.toString());
+        String saved = alex.messages.stream().filter((String line) -> line.contains("; tx ")).findFirst().orElseThrow();
+        assertTrue(saved.contains("Combat targets on 2 NPCs: monsters") && saved.contains("players: Steve"), "the reply lists the saved rules: " + saved);
 
         click("Players by name", Click.RIGHT);
         assertEquals("Players by name", title());

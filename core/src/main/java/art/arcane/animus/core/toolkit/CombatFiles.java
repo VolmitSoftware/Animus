@@ -64,10 +64,14 @@ final class CombatFiles {
     /** Replaces one rule list ({@code targets}, {@code ignores} or {@code avoids}) on every listed NPC. */
     String rules(List<String> ids, String list, JsonObject rules) throws IOException {
         Optional<JsonElement> value = rules.isEmpty() ? Optional.empty() : Optional.of(rules);
-        return change(COMBAT, ids, new Changes(Map.of(List.of(list), value)), "Combat " + list);
+        List<String> summary = TargetRulesScreen.summary(rules);
+        return change(COMBAT, ids, new Changes(Map.of(List.of(list), value)), "Combat " + list, summary.isEmpty() ? ": none" : ": " + String.join("; ", summary));
     }
 
-    private String change(String key, List<String> ids, Changes changes, String what) throws IOException {
+    private String change(String key, List<String> ids, Changes changes, String what) throws IOException { return change(key, ids, changes, what, ""); }
+
+    /** {@code detail} follows the NPCs, such as the rules a list now holds. */
+    private String change(String key, List<String> ids, Changes changes, String what, String detail) throws IOException {
         if (changes.values().isEmpty()) return "Nothing to save";
         List<NpcRepository.Draft> drafts = drafts(ids, (JsonObject document) -> {
             JsonObject module = module(document, key);
@@ -78,7 +82,7 @@ final class CombatFiles {
             return true;
         });
         if (drafts.isEmpty()) return what + " already set on " + ToolkitFiles.count(ids.size());
-        return what + " on " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
+        return what + " on " + ToolkitFiles.named(drafts) + detail + "; tx " + npcs.applyAll(drafts);
     }
 
     /** Puts {@code rider} on {@code vehicle}, refused when the vehicle is unknown or the pair would loop or overload. */

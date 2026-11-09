@@ -118,7 +118,7 @@ class CombatModuleLiveSettingsTest {
             tick(module, 3);
             assertTrue(module.active());
             assertTrue(module.engine().registered(NPC), "The new engine registers the combat NPC again");
-            assertTrue(module.command("guard", CombatControl.Operation.STATUS, Optional.empty()).contains("APPLIED"));
+            assertTrue(module.command("guard", CombatControl.Operation.STATUS, Optional.empty()).startsWith("guard is "));
         }
     }
 

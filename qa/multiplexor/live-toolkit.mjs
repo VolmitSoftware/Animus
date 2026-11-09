@@ -115,7 +115,7 @@ export async function toolkit(t) {
     const groups = await click('Trait groups');
     assert.equal(groups.title, 'Trait groups');
     await click('watch');
-    await chatLine(/Assigned watch to 1 NPC/);
+    await chatLine(/Assigned watch to guard; tx /);
     await delay(300);
     assert.deepEqual(npcFile('guard').groups, ['watch']);
     return 'guard has watch';
@@ -126,7 +126,7 @@ export async function toolkit(t) {
     const behaviors = await click('Behaviors');
     assert.equal(behaviors.title, 'Behaviors');
     await click('live:greet');
-    await chatLine(/Attached live:greet to 1 NPC/);
+    await chatLine(/Attached live:greet to guard; tx /);
     await delay(300);
     assert.deepEqual(npcFile('guard').behaviors, ['live:greet']);
     return 'guard runs live:greet';
@@ -193,13 +193,54 @@ export async function toolkit(t) {
     const routes = await click('Routes');
     assert.equal(routes.title, 'Routes');
     await click('Save route', { right: true });
-    await chatLine(/Saved routes\/wp-animusproofqa\.json/);
+    const saved = await chatLine(/Saved wp-animusproofqa; /);
+    assert(saved.actions?.some(action => action.includes('routes/wp-animusproofqa.json')), `no [Path] chip: ${JSON.stringify(saved).slice(0, 300)}`);
     await delay(500);
     assert(existsSync(file('routes', 'wp-animusproofqa.json')), 'route file written');
     assert.equal(json('routes', 'wp-animusproofqa.json').points.length, 2);
     assert.equal(npcFile('guard').modules['animus:navigation'].route, 'wp-animusproofqa');
     await click('Back');
     return '2 points, assigned';
+  });
+
+  await check('toolkit: the shop Window button steps chest, native, default and names the NPC', async () => {
+    const shops = await click('Shops');
+    assert.equal(shops.title, 'Shops');
+    const detail = await click('live:stall', { sneak: true });
+    const window = detail.items.find(item => item.name.startsWith('Window'));
+    assert(window, `no Window button: ${detail.items.map(item => item.name).join(' | ')}`);
+    await click('Window');
+    await chatLine(/Window set to chest on guard; tx /);
+    await click('Window');
+    await chatLine(/Window set to native on guard; tx /);
+    await click('Back');
+    await click('Back');
+    return 'chest then native';
+  });
+
+  await check('toolkit: navigation and combat replies read as sentences', async () => {
+    const navigation = await owner.command('animus navigation status guard', /Navigation guard: /);
+    assert(!/kinematic|revalidation|route [0-9a-f]{8}/.test(navigation.text), navigation.text);
+    const combat = await owner.command('animus combat status npc=guard', /guard (is|:)/);
+    assert(!/APPLIED|target=/.test(combat.text), combat.text);
+    return `${navigation.text} / ${combat.text}`;
+  });
+
+  await check('toolkit: a click on an NPC without the wand does not select it', async () => {
+    owner.send('close_container', { container: shown().container });
+    await delay(300);
+    await server.cmd(`clear ${OWNER.name}`, /Removed|No items/);
+    await delay(300);
+    const before = owner.events.length;
+    const now = await owner.body(guardUuid);
+    await owner.look(now.x, now.y + 0.9, now.z);
+    owner.send('use', { id: now.id });
+    await delay(1500);
+    const selected = owner.events.slice(before).filter(e => e.event === 'chat' && /Selected /.test(e.text));
+    assert.equal(selected.length, 0, selected.map(e => e.text).join(' | '));
+    await owner.command('animus tools wand', /Wand given/);
+    await openTools();
+    return 'no selection line';
   });
 
   await check('toolkit: a skin from a player name through the anvil prompt', async () => {

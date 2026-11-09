@@ -278,7 +278,7 @@ class ToolkitScreensTest {
         click("Routes", Click.LEFT);
         click("Save route", Click.LEFT);
         drain();
-        assertTrue(alex.messages.getLast().contains("Saved routes/wp-alex.json with 2 points"), alex.messages.getLast());
+        assertTrue(alex.messages.getLast().contains("Saved wp-alex, 2 points; sneak-click it in Routes to rename routes/wp-alex.json"), alex.messages.getLast());
         assertNotNull(store.read("routes/wp-alex.json"));
         assertTrue(toolkit.capture(alex.id).isEmpty());
         drain();

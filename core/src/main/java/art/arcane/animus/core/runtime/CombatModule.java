@@ -23,10 +23,12 @@ import art.arcane.animus.core.config.PluginSettings;
 import art.arcane.animus.core.extension.CapabilityRefusal;
 import art.arcane.animus.core.extension.MutationLane;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.text.ChatLine;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -37,6 +39,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
@@ -123,16 +126,16 @@ public final class CombatModule implements AutoCloseable {
                 + " | dropped-events=" + engine.droppedEvents() + " | region-unavailable=" + engine.regionUnavailable() + " | deleted-on-death=" + deletedOnDeath.get();
     }
 
-    /** {@code combat <operation> <npc>}: the module's own operations on one NPC. */
+    /** {@code combat <operation> <npc>}: the module's own operations on one NPC, answered as a sentence naming it. */
     public String command(String id, CombatControl.Operation operation, Optional<UUID> target) {
         if (!active()) throw new IllegalStateException("Combat module " + reason());
         NpcDefinition definition = runtime.npcs().find(id).orElseThrow(() -> new IllegalArgumentException("Unknown NPC: " + id));
         UUID npc = definition.uuid();
+        if (operation == CombatControl.Operation.STATUS)
+            return engine.status(npc).map((CombatEngine.Status state) -> status(id, state, this::who))
+                    .orElse(id + " is not a combat NPC (combat disabled, review not accepted, or not active)");
         CombatOperations.Result result = switch (operation) {
-            case STATUS -> engine.status(npc).map((CombatEngine.Status state) -> new CombatOperations.Result(CombatOperations.Status.APPLIED,
-                        state.state() + " target=" + state.target().map((TargetRef ref) -> ref.kind() + ":" + ref.id()).orElse("none") + (state.disengaged() ? " disengaged" : "")
-                                + (state.ammunition() >= 0 ? " ammunition=" + state.ammunition() : "")))
-                        .orElse(new CombatOperations.Result(CombatOperations.Status.NOT_COMBATANT, "not a combat NPC (combat disabled, review not accepted, or not active)"));
+            case STATUS -> throw new IllegalStateException("answered above");
             case ENGAGE -> engine.engage(npc);
             case DISENGAGE -> engine.disengage(npc);
             case RELEASE -> engine.release(npc);
@@ -140,8 +143,36 @@ public final class CombatModule implements AutoCloseable {
             case GUARD -> engine.guard(npc, target.map(this::participant));
             case REVIVE -> engine.revive(npc);
         };
-        return "Combat " + id + ": " + result.status() + " " + result.detail();
+        return sentence(id, operation, target.map(this::who), result);
     }
+
+    /** {@code guard is idle, no target}, then whether it is disengaged and its ammunition. */
+    static String status(String id, CombatEngine.Status state, Function<UUID, String> who) {
+        return id + " is " + state.state().name().toLowerCase(Locale.ROOT).replace('_', ' ') + ", "
+                + state.target().map((TargetRef ref) -> "targeting " + who.apply(ref.id())).orElse("no target")
+                + (state.disengaged() ? ", disengaged" : "") + (state.ammunition() >= 0 ? ", " + state.ammunition() + " ammunition" : "");
+    }
+
+    /** What an operation did, naming the NPC and the one it targets or guards; a refusal gives the engine's reason. */
+    static String sentence(String id, CombatControl.Operation operation, Optional<String> other, CombatOperations.Result result) {
+        if (result.status() != CombatOperations.Status.APPLIED) return id + ": " + result.detail();
+        return switch (operation) {
+            case STATUS -> id + " " + result.detail();
+            case ENGAGE -> id + " can fight";
+            case DISENGAGE -> id + " stopped fighting";
+            case RELEASE -> id + " released its target";
+            case TARGET -> id + " targets " + other.orElse("nothing");
+            case GUARD -> other.map((String charge) -> id + " is guarding " + charge).orElse(id + " stopped guarding");
+            case REVIVE -> "Revived " + id;
+        };
+    }
+
+    /** An NPC by its id, anything else by the first characters of its UUID. */
+    private String who(UUID participant) {
+        return runtime.npcs().all().stream().filter((NpcDefinition npc) -> npc.uuid().equals(participant)).map(NpcDefinition::id).findFirst().orElseGet(() -> shortWho(participant));
+    }
+
+    static String shortWho(UUID participant) { return ChatLine.shortId(participant.toString()); }
 
     /** Whether the NPC guards this player or NPC now. */
     public boolean guards(UUID npc, UUID charge) {

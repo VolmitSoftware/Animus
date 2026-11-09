@@ -115,7 +115,7 @@ class SkinScreenTest {
         assertEquals("", alex.prompt.initial());
         MockScreenHost.answer(alex, Optional.of("  Town guard "));
         assertTrue(last().startsWith("Labelled skin " + WORN.substring(0, 12) + " Town guard; now "), last());
-        assertTrue(last().contains("moved 1 NPC and 1 group; tx "), last());
+        assertTrue(last().contains("moved guard and 1 group; tx "), last());
         String moved = npcs.find("guard").orElseThrow().json().get("skin").getAsString();
         assertNull(store.read("skins/" + WORN + ".json"), "the old file goes");
         String text = store.read("skins/" + moved + ".json");

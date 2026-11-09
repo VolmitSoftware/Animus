@@ -96,7 +96,7 @@ final class RecordingFiles {
             drafts.add(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
         }
         int skipped = ids.size() - chosen.size();
-        return "Playback " + next.key() + " for " + id + " on " + ToolkitFiles.count(chosen.size()) + (skipped == 0 ? "" : ", " + skipped + " skipped (not playing it)")
+        return "Playback " + next.key() + " for " + id + " on " + ToolkitFiles.named(chosen) + (skipped == 0 ? "" : ", " + skipped + " skipped (not playing it)")
                 + "; tx " + RouteFiles.commit(npcs, store, drafts, List.of());
     }
 

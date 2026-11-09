@@ -1,6 +1,7 @@
 package art.arcane.animus.core.toolkit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -140,11 +141,16 @@ class ToolkitShopScreensTest {
         click("town:bakery", Click.SHIFT_LEFT);
         assertEquals("Shop town:bakery", RichText.plain(alex.frame.title()));
         assertEquals("Window: default", name("Window"));
+        assertTrue(lore("Window").contains("chest") && lore("Window").contains("native") && lore("Window").contains("default"), lore("Window"));
         click("Window", Click.LEFT);
+        assertEquals("chest", module("guard", ShopBinding.MODULE).get("style").getAsString());
+        click("Window", Click.LEFT);
+        assertTrue(last().contains("Window set to native on 2 NPCs; tx "), last());
         assertEquals("native", module("guard", ShopBinding.MODULE).get("style").getAsString());
         assertEquals(Optional.of(ShopDocument.Style.NATIVE), ShopBinding.parse(definition("baker")).orElseThrow().style());
-        click("Window", Click.RIGHT);
+        click("Window", Click.LEFT);
         assertEquals("Window: default", name("Window"));
+        assertTrue(last().contains("Window set to default on 2 NPCs"), last());
         assertNull(module("guard", ShopBinding.MODULE).get("style"), "default removes the field");
         click("Opens on", Click.LEFT);
         assertEquals("Opens on: left", name("Opens on"));
@@ -188,7 +194,7 @@ class ToolkitShopScreensTest {
         twice(ShopDetailScreen.DELETE);
         assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("Deleted shops/town/bakery.json; tx ")), alex.messages.toString());
         assertNull(store.read("shops/town/bakery.json"));
-        assertEquals("animus shop reload", alex.commands.getLast());
+        assertEquals("animus shop reload", host.console.getLast(), "the console reloads, so the player sees no reload line");
         assertEquals("Shops", RichText.plain(alex.frame.title()), "back on the list");
         assertTrue(lore("No shops yet").isEmpty());
     }
@@ -205,7 +211,8 @@ class ToolkitShopScreensTest {
         assertEquals(List.of(), parsed.problems());
         assertEquals(1, parsed.shop().orElseThrow().pages().size());
         assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("Created shops/town/smith.json; add offers in the web editor; tx ")), alex.messages.toString());
-        assertEquals("animus shop reload", alex.commands.getLast());
+        assertEquals(List.of("animus shop reload"), host.console);
+        assertFalse(alex.commands.contains("animus shop reload"), alex.commands.toString());
         assertTrue(lore("town:smith").contains("Offers 0"), lore("town:smith"));
 
         click("New shop", Click.LEFT);

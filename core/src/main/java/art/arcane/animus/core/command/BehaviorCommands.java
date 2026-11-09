@@ -461,7 +461,7 @@ public final class BehaviorCommands implements AutoCloseable {
         if(!view.dropped().isEmpty())lines.add("NPC trigger drops | "+drops(view.dropped()));
         view.diagnostics().forEach(diagnostic->lines.add("NPC trigger problem | "+diagnostic.message()+"\n"+diagnostic.code()+" at "+diagnostic.field()));
         for(TriggerDispatcher.Row row:triggers.rows(0,LISTED))
-            lines.add(row.npcId()+" | "+binding(row.behavior(),row.trigger(),row.event())+"\n"+fired(row.fired(),row.lastFiredTicksAgo())+"\nRoutine "+row.routine()+"\n"+row.active()+" running, "+row.queued()+" queued, "+row.suppressed()+" suppressed, "+row.dropped()+" dropped");
+            lines.add(row.npcId()+" | "+binding(row.behavior(),row.trigger(),row.event())+"\nOn "+row.event()+"\n"+fired(row.fired(),row.lastFiredTicksAgo())+"\nRoutine "+row.routine()+"\n"+row.active()+" running, "+row.queued()+" queued, "+row.suppressed()+" suppressed, "+row.dropped()+" dropped");
         ServerTriggerDispatcher.Snapshot server=servers.snapshot();
         long serverDropped=server.dropped().values().stream().mapToLong(Long::longValue).sum();
         lines.add("Server triggers | "+(server.available()?(server.behaviors()==0?"no server behaviors":counted(server.behaviors(),"behavior")+", "+counted(server.bindings(),"binding"))
@@ -470,12 +470,12 @@ public final class BehaviorCommands implements AutoCloseable {
         if(!server.dropped().isEmpty())lines.add("Server trigger drops | "+drops(server.dropped()));
         server.diagnostics().forEach(diagnostic->lines.add("Server trigger problem | "+diagnostic.message()+"\n"+diagnostic.code()+" at "+diagnostic.field()));
         for(ServerTriggerDispatcher.Row row:servers.rows(0,LISTED))
-            lines.add("server | "+binding(row.behavior(),row.trigger(),row.event())+"\n"+fired(row.fired(),row.lastFiredTicksAgo())+"\nRoutine "+row.routine()+"\n"+row.active()+" running, "+row.queued()+" queued, "+row.suppressed()+" suppressed, "+row.dropped()+" dropped");
+            lines.add("server | "+binding(row.behavior(),row.trigger(),row.event())+"\nOn "+row.event()+"\n"+fired(row.fired(),row.lastFiredTicksAgo())+"\nRoutine "+row.routine()+"\n"+row.active()+" running, "+row.queued()+" queued, "+row.suppressed()+" suppressed, "+row.dropped()+" dropped");
         return lines;
     }
-    /** {@code town:wave #ask on interaction}; the trigger id is left out when it only repeats the event. */
+    /** {@code town:wave #ask}, short enough for a narrow chat; the trigger id is left out when it only repeats the event, which the hover names. */
     static String binding(String behavior,String trigger,String event){
-        return behavior+(trigger.equals(event)?"":" #"+trigger)+" on "+event;
+        return behavior+(trigger.equals(event)?"":" #"+trigger);
     }
     private static String fired(long fired,OptionalLong ticksAgo){
         if(fired==0||ticksAgo.isEmpty())return "Never fired";

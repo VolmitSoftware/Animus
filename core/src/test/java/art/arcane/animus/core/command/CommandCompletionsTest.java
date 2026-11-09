@@ -107,9 +107,21 @@ class CommandCompletionsTest {
         assertEquals(List.of("saves.yml", "Shopkeepers"), CompletionFiles.inbox(data));
         assertEquals(List.of(newer, older), CompletionFiles.previews(data));
         assertEquals(List.of("c".repeat(64)), CompletionFiles.applications(data));
-        assertEquals(List.of(second, first), CompletionFiles.transactions(data), "receipts only, newest first");
+        assertEquals(List.of(second.substring(0, 8), first.substring(0, 8)), CompletionFiles.transactions(data), "receipts only, newest first, as the short id Undo suggests");
         assertEquals(List.of("d".repeat(64)), CompletionFiles.skins(data));
         assertEquals(List.of(), CompletionFiles.inbox(data.resolve("missing")));
+    }
+
+    @Test void transactionsSharingTheShortIdCompleteInFull() throws Exception {
+        String first = "ee3120a3-f545-4304-9a1b-80ba58e9c3e8", second = "ee3120a3-0000-4304-9a1b-80ba58e9c3e8", other = "12345678-f545-4304-9a1b-80ba58e9c3e8";
+        Files.createDirectories(data.resolve("backups"));
+        Files.writeString(data.resolve("backups/" + first + ".json"), "{}");
+        Files.writeString(data.resolve("backups/" + second + ".json"), "{}");
+        Files.writeString(data.resolve("backups/" + other + ".json"), "{}");
+        Files.setLastModifiedTime(data.resolve("backups/" + first + ".json"), FileTime.fromMillis(1_000));
+        Files.setLastModifiedTime(data.resolve("backups/" + second + ".json"), FileTime.fromMillis(2_000));
+        Files.setLastModifiedTime(data.resolve("backups/" + other + ".json"), FileTime.fromMillis(3_000));
+        assertEquals(List.of("12345678", second, first), CompletionFiles.transactions(data));
     }
 
     private static List<String> names(DirectorRuntimeNode node) {

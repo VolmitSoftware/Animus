@@ -220,6 +220,7 @@ class ToolkitGroupsTest {
         openGroup();
         click("Members", Click.LEFT);
         assertEquals("Members of guards", title());
+        assertTrue(lore("guard").contains("Folder npcs/town/"), "the folder reads as in Find and Selection: " + lore("guard"));
         click("guard", Click.LEFT);
         assertEquals(List.of("guard"), toolkit.selected(alex.id));
         click("guard", Click.SHIFT_LEFT);

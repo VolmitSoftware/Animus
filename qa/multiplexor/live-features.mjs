@@ -60,6 +60,8 @@ const session = `mc-${consumer}-${name}`;
 const serverLibraries = MOD ? path.join(pluginInstances, `animus-baseline-paper-${dashed}`, 'libraries') : path.join(instance, project === 'spigot' ? 'bundler/libraries' : 'libraries');
 const LOADERS = JSON.parse(readFileSync(path.join(root, 'gradle/targets.json'), 'utf8'))[version];
 const loaderVersion = { fabric: LOADERS.fabricLoader, neoforge: LOADERS.neoforge, forge: LOADERS.forge?.replace(`${version}-`, '') }[project];
+// The reload answer: `Reloaded behaviors: ...`, `Behaviors not reloaded: ...`, or a `Behaviors reload: BUSY` style state.
+const RELOADED = /(?:Reloaded behaviors|Behaviors not reloaded|Behaviors reload): ?(\w+)?[^\n]*/;
 const OWNER = { uuid: 'b2b7d4ea-c517-3a19-8a16-ee03e26cbe9f', name: 'AnimusProofQA' };
 const PEER = { uuid: '262b16de-d06b-325b-b115-4ad978f962f2', name: 'AnimusProofPeer' };
 // A detach to a player who already left is an ordinary failed send, never a warning.
@@ -241,7 +243,7 @@ class Server {
   }
   async reload() {
     for (let i = 0; i < 20; i++) {
-      const found = await this.cmd('animus behaviors reload', /Behaviors reload: (\w+)[^\n]*/);
+      const found = await this.cmd('animus behaviors reload', RELOADED);
       if (found[1] !== 'BUSY') return found;
       await delay(250);
     }
@@ -535,12 +537,12 @@ async function state() {
   await check('malformed edit keeps last valid while running', async () => {
     const file = server.behavior('live:state', stateDoc());
     writeFileSync(file, readFileSync(file, 'utf8').replace('"entry": "main"', '"entry": "nowhere"'));
-    const text = await server.capture('animus behaviors reload', /Behaviors reload: \w+[^\n]*/);
+    const text = await server.capture('animus behaviors reload', RELOADED);
     note(text);
     assert(/nowhere|\$\.entry/.test(text), text.slice(0, 400));
     const { lines } = await values(owner);
     assert.equal(lines.length, 5);
-    return text.match(/Behaviors reload:[^\n]*/)[0].slice(0, 160);
+    return text.match(RELOADED)[0].slice(0, 160);
   });
   await owner.close(); await delay(300);
   await server.stop();
@@ -834,7 +836,7 @@ async function actions() {
   });
   await check('command denied by default', async () => {
     server.behavior('live:cmd', { routines: { main: action('animus:command', { command: 'setblock 20 61 20 minecraft:gold_block' }) } });
-    const reload = await server.capture('animus behaviors reload', /Behaviors reload: \w+[^\n]*/);
+    const reload = await server.capture('animus behaviors reload', RELOADED);
     note(reload);
     const run = await server.capture('animus behaviors run act live:cmd', /Behavior run: \w+[^\n]*/, 600);
     note(run);

@@ -32,7 +32,7 @@ final class SelectionScreen<P, S> extends ToolScreen<P, S> {
             NpcDefinition definition = found.get();
             String type = definition.json().get("type").getAsString();
             boolean active = toolkit.living().state(definition.uuid()).isPresent();
-            List<String> lines = List.of("&7Folder &f" + (definition.group().isEmpty() ? "npcs/" : "npcs/" + definition.group() + "/"), "&7Type &f" + type,
+            List<String> lines = List.of(folder(definition), "&7Type &f" + type,
                     "&7Groups &f" + names(definition.groups(), 4), active ? "&aActive" : "&7Not active");
             button(slot, ToolkitFiles.PLAYER.equals(type) ? HEAD : "minecraft:name_tag", title(id), lore(lines, hints("teleport to it", "remove it from the selection", "select only it")),
                     (GuiModel.Click click) -> {

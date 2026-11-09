@@ -43,7 +43,7 @@ final class RecordingScreen<P, S> extends ToolScreen<P, S> {
         else list(recordings, "No recordings yet; record one below", (Integer slot, RecordingFiles.Recording recording) -> {
             List<String> lines = new ArrayList<>(describe(recording));
             List<String> mine = recording.playerIds().stream().filter(picked::contains).toList();
-            if (!mine.isEmpty()) lines.add("&7Selection plays it &f" + recording.players().get(mine.getFirst()).orElse(Playback.DEFAULT).key() + "&7 on " + ToolkitFiles.count(mine.size()));
+            if (!mine.isEmpty()) lines.add("&7Selection plays it &f" + recording.players().get(mine.getFirst()).orElse(Playback.DEFAULT).key() + "&7 on " + ToolkitFiles.named(mine));
             button(slot, recording.error().isPresent() ? "minecraft:barrier" : "minecraft:music_disc_13", title(recording.id()),
                     lore(lines, hints("play it on the selection", "next playback: once, loop, pingpong", "preview, rename, delete")), (GuiModel.Click click) -> {
                         if (sneak(click)) { viewer.push(new RecordingDetailScreen<>(toolkit, viewer, commands, recording.id(), this::reload)); return; }

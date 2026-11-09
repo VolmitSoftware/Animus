@@ -2,6 +2,7 @@ package art.arcane.animus.core.toolkit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -16,6 +17,7 @@ import art.arcane.animus.core.gui.ScreenHost;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.inventory.MockInventory.Stack;
 import art.arcane.animus.core.npc.NpcRepository;
+import art.arcane.animus.core.npc.VanillaAttributes;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.text.RichText;
@@ -23,6 +25,7 @@ import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -271,6 +274,16 @@ class PropertyScreensTest {
         click("scale", Click.SHIFT_RIGHT);
         drain();
         assertFalse(guard().has("attributes"));
+        assertTrue(alex.messages.getLast().contains("Reset attributes.scale on guard"), "the reset names the attribute: " + alex.messages.getLast());
+    }
+
+    @Test void attributeIconsAreDistinct() {
+        Set<String> icons = new HashSet<>();
+        for (VanillaAttributes.Attribute attribute : VanillaAttributes.ALL) {
+            String icon = AttributeScreen.icon(attribute.id());
+            assertNotEquals(FieldScreen.NUMBER, icon, attribute.id());
+            assertTrue(icons.add(icon), attribute.id() + " shares " + icon);
+        }
     }
 
     @Test void theCoveredPathsReachNestedListsMapsAndModules() {
