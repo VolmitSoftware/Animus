@@ -1,0 +1,24 @@
+{
+  "citizensId": 19,
+  "presentationWarnings": [],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/entitypose/pose": "CONVERTED",
+    "/traits/text/text/0": "CONVERTED",
+    "/traits/text/speech-bubbles": "CONVERTED",
+    "/traits/text/send-text-to-chat": "CONVERTED",
+    "/traits/text/speech-bubble-duration": "CONVERTED"
+  },
+  "reasons": {},
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": []
+}

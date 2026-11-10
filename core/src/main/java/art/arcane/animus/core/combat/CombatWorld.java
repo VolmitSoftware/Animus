@@ -31,6 +31,8 @@ public interface CombatWorld {
     default String npcName(UUID npc) { return ""; }
     /** A current real entity observation; empty when it is gone, dead, unloaded, or not attackable. */
     Optional<CombatTarget> real(TargetRef ref);
+    /** The real player or mob a guard follows: as {@link #real}, but a player in creative or spectator mode counts too. */
+    default Optional<CombatTarget> charge(TargetRef ref) { return real(ref); }
     /** At most limit attackable real entities within the radius, from loaded chunks only. */
     List<CombatTarget> nearbyReal(WorldPosition center, double radius, int limit);
     /** Whether an online player stands within the radius. Guards with no player near sleep; the default keeps them awake. */

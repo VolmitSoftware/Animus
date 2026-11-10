@@ -15,6 +15,7 @@ import '../../logic/gui/shop_templates.dart';
 import '../../logic/npc/npc_paths.dart';
 import '../../logic/npc/skin_edits.dart' show skinListing;
 import '../../logic/offline/new_documents.dart';
+import '../../logic/quest/quest_model.dart';
 import '../../mc/rigs/mc_rigs.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
@@ -28,19 +29,19 @@ import '../../config/docs_links.dart';
 import '../gui/gui_fields.dart';
 import '../select/skin_faces.dart';
 import '../info_tip.dart';
+import '../quest/quest_fields.dart';
 import 'offline_fields.dart';
 
 /// Body types by plain name, for the NPC step.
-const Map<String, String> bodyLabels = <String, String>{
-  'minecraft:player': 'Player',
-  'minecraft:armor_stand': 'Armor stand',
-  'minecraft:horse': 'Horse',
-  'minecraft:turtle': 'Turtle',
-  'minecraft:frog': 'Frog',
-  'minecraft:llama': 'Llama',
-  'minecraft:armadillo': 'Armadillo',
-  'minecraft:ender_dragon': 'Ender dragon',
+/// The body choices' names: `minecraft:polar_bear` reads Polar bear.
+final Map<String, String> bodyLabels = <String, String>{
+  for (final String type in mcPresentedBodyTypes) type: _bodyLabel(type.substring(type.indexOf(':') + 1)),
 };
+
+String _bodyLabel(String name) {
+  final String words = name.replaceAll('_', ' ');
+  return '${words[0].toUpperCase()}${words.substring(1)}';
+}
 
 enum _SkinSource { none, file, url, existing }
 
@@ -96,6 +97,9 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
   String? _shop;
   ShopTemplate _shopTemplate = ShopTemplate.blank;
   String? _attachTo;
+
+  // Quest.
+  String? _giver;
 
   // Route.
   String _mode = 'walk';
@@ -302,6 +306,9 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
           return;
         case DocumentKind.shop:
           await _write(<DocumentChange>[_change(kind, id, shopFromTemplate(_shopTemplate, id, title: _title))], kind, id);
+        case DocumentKind.quest:
+          final JsonMap quest = newQuest(id, title: _title);
+          await _write(<DocumentChange>[_change(kind, id, _giver == null ? quest : <String, Object?>{...quest, 'givers': <String>[_giver!]})], kind, id);
         case DocumentKind.inventory:
         case DocumentKind.menu:
         case DocumentKind.hologram:
@@ -472,6 +479,23 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
           ),
           _idField(kind),
         ],
+      DocumentKind.quest => <Widget>[
+          OfflineTextField(label: 'Title', value: _title, help: '& color codes work', onChanged: (String value) => setState(() => _title = value)),
+          FieldRow(
+            label: 'Giver',
+            help: 'The NPC that offers it',
+            child: npcPicker(
+              id: 'animus-new-quest-giver',
+              label: 'Giver',
+              value: _giver,
+              npcs: QuestNpcs(_of(DocumentKind.npc)),
+              allowNone: true,
+              noneLabel: 'None yet',
+              onChanged: (String? value) => setState(() => _giver = value),
+            ),
+          ),
+          _idField(kind),
+        ],
       DocumentKind.rig => <Widget>[
           OfflineTextField(label: 'Name', value: _name, onChanged: (String value) => setState(() => _name = value)),
           _idField(kind),
@@ -579,7 +603,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
         label: 'Body',
         child: GuiSelect(
           value: _type,
-          options: mcBodyTypes,
+          options: mcPresentedBodyTypes,
           labels: bodyLabels,
           onChanged: (String? value) => setState(() => _type = value ?? 'minecraft:player'),
         ),

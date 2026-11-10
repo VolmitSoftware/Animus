@@ -1,11 +1,13 @@
 package art.arcane.animus.core.runtime;
 
 import art.arcane.animus.core.mount.MountDeclaration;
+import art.arcane.animus.core.npc.BossBarSettings;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcAppearance;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.npc.NpcPose;
+import art.arcane.animus.core.npc.ViewerFilter;
 import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
@@ -18,16 +20,18 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
- * One definition checked against the running server: its body type, world, items and appearance.
+ * One definition checked against the running server: its body type, world, items and appearance, who may see it and
+ * the boss bar it shows.
  *
  * @param <I> the platform's item stack
  */
 public record DefinitionSpec<I>(NpcDefinition definition, String type, String name, WorldPosition position,
-                                float yaw, float pitch, String skin, String serialized, NpcAppearance appearance, Map<EquipmentSlot, I> equipment) {
+                                float yaw, float pitch, String skin, String serialized, NpcAppearance appearance, Map<EquipmentSlot, I> equipment,
+                                ViewerFilter viewers, java.util.Optional<BossBarSettings> bossBar) {
     /** Turns one definition item into a server stack, or adds a field error and returns null. */
     @FunctionalInterface public interface Items<I> { I item(NpcItem item, String path, List<String> errors); }
 
-    public DefinitionSpec { equipment = Map.copyOf(equipment); }
+    public DefinitionSpec { equipment = Map.copyOf(equipment); java.util.Objects.requireNonNull(viewers); java.util.Objects.requireNonNull(bossBar); }
 
     /** @param worlds the loaded world key a definition's world reference names, or null */
     public static <I> List<String> validate(NpcDefinition definition, Set<String> types, Function<String, String> worlds, Items<I> items) {
@@ -48,6 +52,8 @@ public record DefinitionSpec<I>(NpcDefinition definition, String type, String na
         if (json.has("skin") && !json.get("type").getAsString().equals(BodyRules.PLAYER)) errors.add("$.skin: textures require a player body");
         if (NpcAppearance.of(definition).pose() == NpcPose.SITTING && MountDeclaration.parse(json).isPresent())
             errors.add("$.pose: a sitting NPC cannot also ride another NPC; remove the pose or the mount");
+        try { art.arcane.animus.core.integration.ModelEngineModule.parse(json); }
+        catch (IllegalArgumentException malformed) { errors.add(malformed.getMessage()); }
         return List.copyOf(errors);
     }
     public static <I> DefinitionSpec<I> parse(NpcDefinition definition, Set<String> types, Function<String, String> worlds, Items<I> items) {
@@ -60,7 +66,7 @@ public record DefinitionSpec<I>(NpcDefinition definition, String type, String na
         return new DefinitionSpec<>(definition, json.get("type").getAsString(), definition.name(),
                 new WorldPosition(world, new Vec3(p.get("x").getAsDouble(), p.get("y").getAsDouble(), p.get("z").getAsDouble())),
                 p.get("yaw").getAsFloat(), p.get("pitch").getAsFloat(), json.has("skin") ? json.get("skin").getAsString() : null, definition.serialize(),
-                appearance, equipment);
+                appearance, equipment, definition.viewers(), definition.bossBar());
     }
     /**
      * An imported definition stays despawned while Citizens itself runs; see {@link art.arcane.animus.core.migration.CitizensGuard}.

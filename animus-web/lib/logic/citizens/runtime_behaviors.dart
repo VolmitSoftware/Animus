@@ -4,8 +4,12 @@ library;
 
 import 'dart:math' as math;
 
+import 'destinations.dart' show destinationsProvider;
+import 'citizens_stacks.dart';
 import 'field_notes.dart';
 import 'java_json.dart';
+import 'java_lang.dart';
+import 'presentation.dart' show roundHalfUp;
 
 const double citizensWalkSpeed = 4.3;
 const int _legHorizontal = 32;
@@ -25,13 +29,20 @@ const int _defaultWanderWait = 60;
 
 /// Lookclose booleans Citizens writes only when they differ from the server default, with Citizens' own defaults.
 const Map<String, bool> lookDefaults = <String, bool>{'enabled': false, 'realisticlooking': false, 'disablewhilenavigating': true};
-/// Look-close options Animus does not have, with what the NPC does instead, in key order.
-const Map<String, String> _lookUnsupported = <String, String>{
-  'headonly': 'Animus turns the whole body, not only the head',
-  'linkedbody': 'Animus turns the whole body with the head',
-  'perplayer': 'every viewer sees the NPC look at the same target',
-  'randomSwitchTargets': 'the NPC keeps looking at the nearest target',
+/// Citizens' player animations as `animus:animate`; elytra flight has no Animus animation.
+const Map<String, String> _animations = <String, String>{
+  'ARM_SWING': 'swing', 'ARM_SWING_OFFHAND': 'swing_offhand', 'HURT': 'hurt', 'CRIT': 'crit', 'MAGIC_CRIT': 'magic_crit', //
+  'LEAVE_BED': 'wake', 'STOP_SLEEPING': 'wake', 'SLEEP': 'sleep', 'SIT': 'sit', 'STOP_SITTING': 'stand', 'SNEAK': 'sneak', //
+  'STOP_SNEAKING': 'stand', 'EAT_FOOD': 'use_item', 'START_USE_MAINHAND_ITEM': 'use_item', 'START_USE_OFFHAND_ITEM': 'use_item', //
+  'STOP_USE_ITEM': 'stop_using_item',
 };
+
+/// Citizens' rotation defaults: 40 degrees of yaw and 10 of pitch a tick.
+const double _rotationYaw = 40;
+const double _rotationPitch = 10;
+
+/// `BigDecimal.valueOf(value).setScale(3, HALF_UP).doubleValue()`.
+double _degrees(double value) => double.parse(roundHalfUp(JavaDecimal.parse(javaDoubleToString(value))!, 3));
 
 /// Citizens' default random look delay in ticks.
 const int _defaultRandomLookDelay = 60;
@@ -106,12 +117,92 @@ RuntimeResult mapRuntime(String key, String name, String world, JObject traits, 
 }
 
 class _Command {
-  const _Command(this.id, this.hand, this.node, this.cooldown);
+  const _Command(this.id, this.hand, this.node);
 
   final int id;
   final String hand;
   final JObject node;
-  final int cooldown;
+}
+
+/// One cost: checked part by part so the player hears which part is missing, then taken at once.
+class _Charge {
+  _Charge(this.runtime, this.arguments);
+
+  final _Runtime runtime;
+  final JObject arguments;
+
+  JObject take() => _action('animus:charge', arguments.deepCopy());
+
+  JObject afford(JObject then) {
+    JObject node = then;
+    final JElement? items = arguments.get('items');
+    if (items is JArray) {
+      for (int index = items.length - 1; index >= 0; index--) {
+        final JObject item = items[index] as JObject;
+        final JObject part = JObject()..add('items', JArray(<JElement>[item.deepCopy()]));
+        final String id = (item.get('item')! as JObject).get('id')!.asPrimitive.asString;
+        node = _otherwise(_condition('animus:can-afford', part, node), runtime._message('MISSING_ITEM', _readable(id), item.get('amount')!.asPrimitive.asString));
+      }
+    }
+    if (arguments.has('levels')) {
+      node = _otherwise(_condition('animus:can-afford', _only('levels'), node), runtime._message('MISSING_EXPERIENCE', arguments.get('levels')!.asPrimitive.asString, ''));
+    }
+    if (arguments.has('money')) {
+      node = _otherwise(_condition('animus:can-afford', _only('money'), node), runtime._message('MISSING_MONEY', plainNumber(arguments.get('money')!), ''));
+    }
+    return node;
+  }
+
+  JObject gate(JObject body) => afford(_sequence(<JObject>[take(), body]));
+
+  JObject _only(String field) => JObject()..add(field, arguments.get(field)!.deepCopy());
+}
+
+const String _commandBase = '/traits/commandtrait';
+const int _maxExpiry = 31536000;
+/// Citizens' default error messages, by its error name.
+const Map<String, String> _commandMessages = <String, String>{
+  'NO_PERMISSION': "You don't have permission to do that.",
+  'ON_COOLDOWN': 'Please wait before using this again.',
+  'ON_GLOBAL_COOLDOWN': 'Please wait before using this again.',
+  'MAXIMUM_TIMES_USED': 'You have reached the maximum number of uses ({0}).',
+  'GLOBAL_MAXIMUM_TIMES_USED': 'You have reached the maximum number of uses ({0}).',
+  'MISSING_MONEY': r'You need at least ${0}.',
+  'MISSING_EXPERIENCE': 'You need at least {0} experience.',
+  'MISSING_ITEM': 'Missing {1} {0}',
+};
+
+String _readable(String id) {
+  final String path = id.substring(id.indexOf(':') + 1).replaceAll('_', ' ');
+  return path.isEmpty ? id : '${path[0].toUpperCase()}${path.substring(1)}';
+}
+
+JObject _plain(String text) => _action('animus:message', _arguments('text', text.length > _maxText ? text.substring(0, _maxText) : text));
+
+JObject _otherwise(JObject condition, JObject? otherwise) {
+  if (otherwise != null) condition.add('else', otherwise);
+  return condition;
+}
+
+JObject _check(String capability, JObject arguments) => JObject()
+  ..addString('type', 'condition')
+  ..addString('capability', capability)
+  ..add('arguments', arguments);
+
+JObject _stage(String name, String scope, int atLeast) => _check('animus:quest-state', _quest(name, scope)..addInt('atLeast', atLeast));
+
+JObject _setFlag(String name, String scope, int seconds) {
+  final JObject arguments = _quest(name, scope);
+  if (seconds > 0) arguments.addInt('expireSeconds', seconds < 1 ? 1 : seconds);
+  return _action('animus:set-flag', arguments);
+}
+
+bool _sameNodes(List<JObject> a, List<JObject> b) {
+  if (a.length != b.length) return false;
+  for (int index = 0; index < a.length; index++) {
+    if (writeJson(a[index]) != writeJson(b[index])) return false;
+  }
+  return true;
 }
 
 class _Runtime {
@@ -130,6 +221,9 @@ class _Runtime {
   final List<BehaviorDocument> documents = <BehaviorDocument>[];
   int points = 0;
   int guides = 0;
+  /// What each converted route point runs on arrival, by its index: chat and command waypoint triggers.
+  final Map<int, JObject> arrivals = <int, JObject>{};
+  bool waypointCommands = false;
 
   // ---- Waypoints ----
 
@@ -211,6 +305,9 @@ class _Runtime {
         wander = JObject()
           ..addInt('radius', radius)
           ..addInt('height', height);
+      case destinationsProvider:
+        // NPC Destinations walks the NPC itself; its trait converts to animus:schedule.
+        return null;
       default:
         warnings.add('$base/provider: waypoint provider $provider is not supported; kept in citizens:review');
         return null;
@@ -227,6 +324,7 @@ class _Runtime {
     if (route.isEmpty && order != 'wander') return null;
     points = route.length;
     guides = helpers.length;
+    _arrivals();
     final JObject module = JObject();
     module.addBool('enabled', false);
     module.addBool('reviewAccepted', false);
@@ -287,6 +385,7 @@ class _Runtime {
       }
       if (triggers && item != null && item.has('triggers')) {
         int delay = 0;
+        final List<JObject> steps = <JObject>[];
         for (final MapEntry<String, JElement> trigger in listEntries(item.get('triggers'))) {
           final JObject? data = _object(trigger.value);
           final String type = data == null ? '' : _string(data.get('type'), '');
@@ -299,16 +398,167 @@ class _Runtime {
             }
             converted.add('$triggerPath/type');
             converted.add('$triggerPath/delay');
+          } else if (type == 'speed') {
+            // Citizens sets the navigator's speed for every later leg; a SpeedTrigger saves 1 when left at its default.
+            point.addDouble('speed', citizensSpeed(_positive(data!.get('speed')) ? data.get('speed')!.asPrimitive.asDouble : 1));
+            converted.add('$triggerPath/type');
+            converted.add('$triggerPath/speed');
+          } else if (type == 'teleport') {
+            _teleportTrigger(data!, triggerPath, point);
+          } else if (type == 'chat') {
+            _chatTrigger(data!, triggerPath, steps);
+          } else if (type == 'command') {
+            _commandTrigger(data!, triggerPath, steps);
+          } else if (type == 'animation') {
+            _animationTrigger(data!, triggerPath, point, steps);
           } else {
             unsupported.add('${type.isEmpty ? 'unknown' : type} waypoint triggers are not supported; kept in citizens:review');
           }
         }
         if (delay > _maxWait) warnings.add('$at/triggers: delays above 12000 ticks became 12000');
         if (delay > 0) point.addInt('waitTicks', delay > _maxWait ? _maxWait : delay);
+        if (steps.isNotEmpty) arrivals[out.length] = _sequence(steps);
       }
       out.add(point);
     }
     return dropped;
+  }
+
+  /// A teleport trigger moves the NPC on arrival to the trigger's exact position and facing; one in another world names
+  /// that world, and the route goes on there.
+  void _teleportTrigger(JObject data, String path, JObject point) {
+    if (_teleportTo(_object(data.get('location')), '$path/location', point)) converted.add('$path/type');
+  }
+
+  /// Writes the point's teleport from a Citizens location; false, with a warning, when it has no usable position.
+  bool _teleportTo(JObject? location, String path, JObject point) {
+    if (location == null || !_number(location.get('x')) || !_number(location.get('y')) || !_number(location.get('z'))) {
+      warnings.add('$path: a teleport without a location was left out');
+      return false;
+    }
+    final String target = _string(location.get('world'), '');
+    if (target.isEmpty) {
+      warnings.add('$path: a teleport without a world was left out');
+      return false;
+    }
+    final JObject teleport = JObject();
+    for (final String axis in const <String>['x', 'y', 'z']) {
+      final double value = location.get(axis)!.asPrimitive.asDouble;
+      if (value.abs() > 29999984) {
+        warnings.add('$path: the teleport lies outside the world and was left out');
+        return false;
+      }
+      teleport.addDouble(axis, value);
+    }
+    if (_number(location.get('yaw'))) teleport.addDouble('yaw', _degrees(location.get('yaw')!.asPrimitive.asDouble.remainder(360)));
+    if (_number(location.get('pitch'))) {
+      final double pitch = location.get('pitch')!.asPrimitive.asDouble;
+      teleport.addDouble('pitch', _degrees(pitch > 90 ? 90 : (pitch < -90 ? -90 : pitch)));
+    }
+    if (target != world) teleport.addString('world', target);
+    point.add('teleport', teleport);
+    for (final String field in const <String>['world', 'x', 'y', 'z', 'yaw', 'pitch', 'worldid']) {
+      if (location.has(field)) converted.add('$path/$field');
+    }
+    return true;
+  }
+
+  /// Animation trigger animations run in order on arrival; Citizens' `at` becomes the point's teleport when it has none.
+  void _animationTrigger(JObject data, String path, JObject point, List<JObject> steps) {
+    final int before = steps.length;
+    for (final MapEntry<String, JElement> line in listEntries(data.get('animations'))) {
+      final String name = line.value is JPrimitive ? line.value.asPrimitive.asString.toUpperCase() : '';
+      final String? animation = _animations[name];
+      if (animation == null) {
+        warnings.add('$path/animations/${line.key}: the $name animation has no Animus animation; left out');
+        continue;
+      }
+      steps.add(_action('animus:animate', _arguments('animation', animation)));
+      converted.add('$path/animations/${line.key}');
+    }
+    final JObject? at = _object(data.get('at'));
+    if (at != null && !point.has('teleport')) {
+      _teleportTo(at, '$path/at', point);
+    } else if (at != null) {
+      warnings.add("$path/at: the point already teleports; the animation's own position was left out");
+    }
+    if (steps.length > before) converted.add('$path/type');
+  }
+
+  /// Chat trigger lines go to players within its radius, or to the NPC's world when Citizens' radius is unset.
+  void _chatTrigger(JObject data, String path, List<JObject> steps) {
+    double radius = _number(data.get('radius')) ? data.get('radius')!.asPrimitive.asDouble : -1;
+    if (radius > _maxLookRange) {
+      warnings.add('$path/radius: chat radii above 64 blocks became 64');
+      radius = _maxLookRange.toDouble();
+    }
+    final int before = steps.length;
+    for (final MapEntry<String, JElement> line in listEntries(data.get('lines'))) {
+      if (line.value is! JPrimitive) continue;
+      String text = line.value.asPrimitive.asString;
+      if (text.contains('<p>') || text.contains('<player>')) {
+        warnings.add('$path/lines/${line.key}: a waypoint has no player to name; left out');
+        continue;
+      }
+      text = _placeholders(text, '$path/lines/${line.key}');
+      if (text.isEmpty || text.length > _maxText) {
+        warnings.add('$path/lines/${line.key}: empty or longer than 1024 characters; left out');
+        continue;
+      }
+      final JObject arguments = _arguments('text', text)..addString('to', radius > 0 ? 'nearby' : 'world');
+      if (radius > 0) arguments.addDouble('radius', math.max(1.0, radius));
+      steps.add(_action('animus:message', arguments));
+      converted.add('$path/lines/${line.key}');
+    }
+    if (steps.length > before) {
+      converted.add('$path/type');
+      if (data.has('radius')) converted.add('$path/radius');
+    }
+  }
+
+  /// Command trigger commands run from the console, as Citizens runs them with no player.
+  void _commandTrigger(JObject data, String path, List<JObject> steps) {
+    final int before = steps.length;
+    for (final MapEntry<String, JElement> line in listEntries(data.get('commands'))) {
+      if (line.value is! JPrimitive) continue;
+      String command = line.value.asPrimitive.asString;
+      if (command.startsWith('/')) command = command.substring(1);
+      if (command.contains('<p>') || command.contains('<player>')) {
+        warnings.add('$path/commands/${line.key}: a waypoint has no player to name; left out');
+        continue;
+      }
+      command = _placeholders(command, '$path/commands/${line.key}');
+      if (command.isEmpty || command.length > _maxText) {
+        warnings.add('$path/commands/${line.key}: empty or longer than 1024 characters; left out');
+        continue;
+      }
+      steps.add(_action('animus:command', _arguments('command', command)..addString('as', 'console')));
+      waypointCommands = true;
+      converted.add('$path/commands/${line.key}');
+    }
+    if (steps.length > before) converted.add('$path/type');
+  }
+
+  /// The behavior `citizens:waypoints-<id>`: one routine per point with chat or command triggers, run on arrival.
+  void _arrivals() {
+    if (arrivals.isEmpty) return;
+    final JObject routines = JObject();
+    final JArray triggers = JArray();
+    final List<int> indexes = arrivals.keys.toList()..sort();
+    for (final int index in indexes) {
+      final String routine = 'point-$index';
+      routines.add(routine, arrivals[index]);
+      triggers.add(JObject()
+        ..addString('id', routine)
+        ..addString('event', 'waypoint')
+        ..addInt('waypoint', index)
+        ..addString('routine', routine));
+    }
+    final String id = 'waypoints-$key';
+    if (waypointCommands) {
+      warnings.add('/traits/waypoints: waypoint commands stay denied until $_namespace:$id is on the [behaviors.actions] commandBehaviors list in config.toml');
+    }
+    _behavior(id, 'point-${indexes.first}', routines, triggers);
   }
 
   double _speed() {
@@ -356,29 +606,95 @@ class _Runtime {
       range = _maxLookRange.toDouble();
     }
     if (range < 1) range = 1;
-    final List<String> options = _lookUnsupported.keys.toList()..sort();
-    for (final String option in options) {
-      final JElement? value = look.get(option);
-      if (value is! JBool) continue;
-      if (!value.value) {
-        converted.add('$base/$option');
-      } else {
-        notes['$base/$option'] = FieldNote(requiresReview, _lookUnsupported[option]!);
-      }
-    }
-    if (look.has('filter') && look.get('filter') is JPrimitive) {
-      notes['$base/filter'] = const FieldNote(requiresReview, 'entity filters are not available; the NPC looks at the nearest target');
-    }
     final bool npcs = _flag(look, 'targetnpcs', false, base);
+    // A linked body turns with the head, as Animus turns every NPC; head-only looking leaves the body where it stands.
+    final bool linked = _flag(look, 'linkedbody', false, base);
+    final bool headOnly = _flag(look, 'headonly', false, base) && !linked;
+    final bool perPlayer = _flag(look, 'perplayer', false, base);
     final JObject module = JObject()
       ..addBool('enabled', enabled)
       ..addDouble('range', range)
       ..addBool('lineOfSight', realistic)
       ..addBool('whileNavigating', !disabled);
     if (npcs) module.addBool('npcs', true);
+    if (headOnly) module.addBool('headOnly', true);
+    if (perPlayer) module.addBool('perPlayer', true);
+    final JArray? permissions = _filter(look, base);
+    if (permissions == null) {
+      module.addBool('enabled', false);
+      warnings.add('$base/filter: the filter admits no players, so look-close is off');
+    } else if (permissions.isNotEmpty) {
+      module.add('permissions', permissions);
+    }
+    final JObject? turn = _turnRate();
+    if (turn != null) module.add('turnRate', turn);
+    // Citizens switches to a random player in range every random look delay.
+    if (_flag(look, 'randomSwitchTargets', false, base)) {
+      final String delayKey = look.has('randomlookdelay') ? 'randomlookdelay' : 'randomLookDelay';
+      final JElement? delay = look.get(delayKey);
+      module.addInt('switchTicks', _number(delay) ? _floorClamp(delay!.asPrimitive.asDouble, 1, _maxWait) : _defaultRandomLookDelay);
+      if (_number(delay)) converted.add('$base/$delayKey');
+    }
     final JObject? random = _randomLook(look, base);
     if (random != null) module.add('randomLook', random);
     return module;
+  }
+
+  /// Citizens' look-close filter as the permissions a player must hold; a group becomes `group.<name>`. Null when no player passes.
+  JArray? _filter(JObject look, String base) {
+    final JArray permissions = JArray();
+    final JElement? value = look.get('filter');
+    if (value is! JPrimitive || value.asString.trim().isEmpty) return permissions;
+    final String path = '$base/filter';
+    bool groups = false;
+    bool players = true;
+    for (final String argument in value.asString.trim().split(RegExp(' +'))) {
+      final int split = argument.indexOf('=');
+      final String name = split < 0 ? argument : argument.substring(0, split);
+      final List<String> values = split < 0 ? <String>[] : argument.substring(split + 1).split(',');
+      switch (name.toLowerCase()) {
+        case 'type':
+          bool player = false;
+          for (final String type in values) {
+            player |= type.trim().toLowerCase() == 'player' || type.trim().toLowerCase() == 'minecraft:player';
+          }
+          players &= player;
+        case 'permission' || 'perm':
+          for (final String node in values) {
+            if (node.trim().isNotEmpty && permissions.length < 8) permissions.addString(node.trim());
+          }
+        case 'group':
+          for (final String group in values) {
+            if (group.trim().isNotEmpty && permissions.length < 8) {
+              permissions.addString('group.${group.trim().toLowerCase()}');
+              groups = true;
+            }
+          }
+        default:
+          notes[path] = FieldNote(requiresReview, 'filter part $name is not known; the NPC looks at any player');
+          return permissions;
+      }
+    }
+    if (!players) {
+      notes[path] = const FieldNote(requiresReview, 'the filter admits no players, so look-close is off');
+      return null;
+    }
+    notes[path] = FieldNote(statusConverted, groups ? 'groups became group.<name> permissions, which LuckPerms and most permission plugins grant to group members' : '');
+    return permissions;
+  }
+
+  /// Citizens' gradual rotation as the most a look turns each tick; null for its defaults or immediate turning.
+  JObject? _turnRate() {
+    final JObject? rotation = _object(traits.get('rotationtrait'));
+    final JObject? parameters = rotation == null ? null : _object(rotation.get('globalParameters'));
+    if (parameters == null || _bool(parameters.get('immediate'), false)) return null;
+    final double yaw = _number(parameters.get('maxYawPerTick')) ? math.max(0.0, math.min(360.0, parameters.get('maxYawPerTick')!.asPrimitive.asDouble)) : _rotationYaw;
+    double pitch = _number(parameters.get('maxPitchPerTick')) ? math.max(0.0, math.min(180.0, parameters.get('maxPitchPerTick')!.asPrimitive.asDouble)) : _rotationPitch;
+    if (_bool(parameters.get('lockPitch'), false)) pitch = 0;
+    if (yaw == _rotationYaw && pitch == _rotationPitch) return null;
+    return JObject()
+      ..addDouble('yaw', yaw)
+      ..addDouble('pitch', pitch);
   }
 
   JObject? _randomLook(JObject look, String base) {
@@ -472,13 +788,30 @@ class _Runtime {
         ? _floorClamp(text.get('delay')!.asPrimitive.asDouble, 0, _maxCooldown)
         : 100;
     final String item = _string(text.get('talkitem'), 'default');
-    if (item != 'default' && item != '*') warnings.add('$base/talkitem: a required held item is not supported; any click talks');
-    if (_bool(text.get('speech-bubbles'), false)) warnings.add('$base/speech-bubbles: speech bubbles are not supported; the NPC speaks in chat');
-    if (!_bool(text.get('send-text-to-chat'), true)) warnings.add('$base/send-text-to-chat: the NPC speaks in chat');
+    final String? held = close || item == 'default' || item.contains('*') || item.isEmpty ? null : _heldItem(item);
+    if (text.has('talkitem')) converted.add('$base/talkitem');
+    // Speech bubbles show each line over the NPC for Citizens' bubble duration, 50 ticks by default.
+    final bool bubbles = _bool(text.get('speech-bubbles'), false);
+    final bool chat = !bubbles || _bool(text.get('send-text-to-chat'), true);
+    final int bubbleTicks = _number(text.get('speech-bubble-duration')) && text.get('speech-bubble-duration')!.asPrimitive.asDouble > 0
+        ? _floorClamp(text.get('speech-bubble-duration')!.asPrimitive.asDouble, 1, 1200)
+        : 50;
+    for (final String field in const <String>['speech-bubbles', 'send-text-to-chat', 'speech-bubble-duration']) {
+      if (text.has(field)) converted.add('$base/$field');
+    }
     final List<JObject> choices = <JObject>[
-      for (final List<String> parts in lines) _sequence(<JObject>[for (final String part in parts) _action('animus:say', _arguments('text', part))]),
+      for (final List<String> parts in lines)
+        _sequence(<JObject>[
+          for (final String part in parts) _action('animus:say', _spoken(part, bubbles ? bubbleTicks : 0, chat)),
+        ]),
     ];
-    final JObject main = _select(choices, 'text-$key', 'npc', random);
+    JObject main = _select(choices, 'text-$key', 'npc', random);
+    if (held != null) {
+      main = JObject()
+        ..addString('type', 'condition')
+        ..addString('expression', held)
+        ..add('then', main);
+    }
     final JObject trigger = JObject();
     if (close) {
       trigger
@@ -492,145 +825,262 @@ class _Runtime {
         ..addString('event', 'interaction')
         ..addString('action', 'interact');
     }
-    trigger.addInt('cooldownTicks', cooldown);
+    // Citizens spaces each player's lines on their own, so one player never holds back another.
+    trigger.addInt('playerCooldownTicks', cooldown);
     _behavior('text-$key', 'main', JObject()..add('main', main), JArray(<JElement>[trigger]));
   }
 
-  // ---- Commands ----
+  /// The arguments of one spoken line, with its speech bubble and without chat when Citizens sent none.
+  static JObject _spoken(String part, int bubbleTicks, bool chat) {
+    final JObject spoken = _arguments('text', part);
+    if (bubbleTicks > 0) spoken.addInt('bubbleTicks', bubbleTicks);
+    if (!chat) spoken.addBool('chat', false);
+    return spoken;
+  }
+
+  /// Citizens' talk item, a comma list of material names, as a check of the clicking player's held item.
+  static String? _heldItem(String pattern) {
+    final List<String> checks = <String>[];
+    for (final String part in pattern.split(',')) {
+      String material = part.trim().toLowerCase();
+      if (material.startsWith('minecraft:')) material = material.substring('minecraft:'.length);
+      if (!_material.hasMatch(material)) continue;
+      checks.add("same(player.item_in_hand, 'minecraft:$material')");
+    }
+    return checks.isEmpty ? null : checks.join(' || ');
+  }
+
+  // ---- Commands (port of core's CitizensCommands, without the add-on files the browser does not read) ----
+
+  bool _hide = false;
+  final Map<String, String> _custom = <String, String>{};
 
   void commands() {
+    final Map<String, List<JObject>> clicks = <String, List<JObject>>{
+      for (final String action in const <String>['interact', 'attack', 'sneak_interact', 'sneak_attack']) action: <JObject>[]
+    };
     final JObject? trait = _object(traits.get('commandtrait'));
-    if (trait == null) return;
-    const String base = '/traits/commandtrait';
-    if (_positive(trait.get('cost')) || _positive(trait.get('experienceCost')) || listEntries(trait.get('itemRequirements')).isNotEmpty) {
-      warnings.add('$base: the commands cost money, experience or items, which Animus cannot charge, so none were converted');
-      return;
+    if (trait != null) _citizensCommands(trait, clicks);
+    final JObject routines = JObject();
+    final JArray triggers = JArray();
+    final List<JObject> right = clicks['interact']!;
+    final List<JObject> left = clicks['attack']!;
+    if (right.isNotEmpty && _sameNodes(right, left)) {
+      _commandRoutine('click', 'any', right, routines, triggers);
+    } else {
+      _commandRoutine('right', 'interact', right, routines, triggers);
+      _commandRoutine('left', 'attack', left, routines, triggers);
+    }
+    _commandRoutine('sneak-right', 'sneak_interact', clicks['sneak_interact']!, routines, triggers);
+    _commandRoutine('sneak-left', 'sneak_attack', clicks['sneak_attack']!, routines, triggers);
+    if (routines.isEmpty) return;
+    warnings.add('$_commandBase: commands stay denied until $_namespace:commands-$key is on the [behaviors.actions] commandBehaviors list in config.toml');
+    _behavior('commands-$key', routines.keys.first, routines, triggers);
+  }
+
+  void _commandRoutine(String routine, String action, List<JObject> steps, JObject routines, JArray triggers) {
+    if (steps.isEmpty) return;
+    routines.add(routine, _sequence(steps));
+    triggers.add(JObject()
+      ..addString('id', routine)
+      ..addString('event', 'interaction')
+      ..addString('action', action)
+      ..addString('routine', routine));
+  }
+
+  void _citizensCommands(JObject trait, Map<String, List<JObject>> clicks) {
+    _hide = _bool(trait.get('hideErrorMessages'), false);
+    if (trait.has('hideErrorMessages')) converted.add('$_commandBase/hideErrorMessages');
+    final JObject? messages = _object(trait.get('customErrorMessages'));
+    if (messages != null) {
+      for (final MapEntry<String, JElement> message in messages.entries) {
+        if (_commandMessages.containsKey(message.key) && message.value is JPrimitive) {
+          _custom[message.key] = message.value.asPrimitive.asString;
+          converted.add('$_commandBase/customErrorMessages/${pointer(message.key)}');
+        }
+      }
     }
     if (listEntries(trait.get('temporaryPermissions')).isNotEmpty) {
-      warnings.add('$base/temporaryPermissions: temporary permissions are not granted; player commands run with the player\'s own permissions');
+      warnings.add('$_commandBase/temporaryPermissions: temporary permissions are not granted; player commands run with the player\'s own permissions');
+    }
+    final (bool, _Charge?) clickCost = _cost(trait.get('cost'), trait.get('experienceCost'), trait.get('itemRequirements'), _commandBase, 'itemRequirements');
+    if (!clickCost.$1) {
+      warnings.add('$_commandBase: the click cost has items that cannot be matched exactly, so no commands were converted');
+      return;
     }
     final List<_Command> commands = <_Command>[];
     for (final MapEntry<String, JElement> entry in listEntries(trait.get('commands'))) {
-      final String at = '$base/commands/${entry.key}';
-      final JObject? data = _object(entry.value);
-      if (data == null || !data.has('command') || data.get('command') is! JPrimitive) continue;
-      final String hand = _string(data.get('hand'), 'BOTH').toUpperCase();
-      if (!_hands.contains(hand)) {
-        warnings.add('$at/hand: $hand is not a Citizens click; not converted');
-        continue;
-      }
-      if (_bool(data.get('npc'), false)) {
-        warnings.add('$at/npc: commands run as the NPC are not supported; not converted');
-        continue;
-      }
-      if (_positive(data.get('cost')) || _positive(data.get('experienceCost')) || listEntries(data.get('itemCost')).isNotEmpty) {
-        warnings.add('$at: the command costs money, experience or items, which Animus cannot charge; not converted');
-        continue;
-      }
-      if (_positive(data.get('n')) || _positive(data.get('gn'))) {
-        warnings.add('$at: use limits are not supported; not converted');
-        continue;
-      }
-      String text = data.get('command')!.asPrimitive.asString;
-      if (text.startsWith('/')) text = text.substring(1);
-      text = _placeholders(text, '$at/command');
-      if (text.isEmpty || text.length > _maxText) {
-        warnings.add('$at/command: empty or longer than 1024 characters; not converted');
-        continue;
-      }
-      final bool player = _bool(data.get('player'), false);
-      final bool op = _bool(data.get('op'), false);
-      if (op) warnings.add('$at/op: the command ran as an operator player; it now runs from the console');
-      final JObject arguments = _arguments('command', text)..addString('as', player && !op ? 'player' : 'console');
-      JObject node = _action('animus:command', arguments);
-      if (_number(data.get('delay')) && data.get('delay')!.asPrimitive.asDouble >= 1) {
-        final JObject wait = JObject()
-          ..addString('type', 'wait')
-          ..addInt('ticks', _floorClamp(data.get('delay')!.asPrimitive.asDouble, 1, _maxCooldown));
-        node = _sequence(<JObject>[wait, node]);
-        converted.add('$at/delay');
-      }
-      final List<MapEntry<String, JElement>> permissions = listEntries(data.get('permissions'));
-      for (int index = permissions.length - 1; index >= 0; index--) {
-        final JElement permission = permissions[index].value;
-        if (permission is! JPrimitive) continue;
-        node = JObject()
-          ..addString('type', 'condition')
-          ..addString('capability', 'animus:has-permission')
-          ..add('arguments', _arguments('permission', permission.asString))
-          ..add('then', node);
-        converted.add('$at/permissions/${permissions[index].key}');
-      }
-      int seconds = 0;
-      for (final String field in const <String>['cooldown', 'globalcooldown']) {
-        if (_number(data.get(field))) {
-          final int value = _floorClamp(data.get(field)!.asPrimitive.asDouble, 0, _maxCooldown);
-          if (value > seconds) seconds = value;
-          converted.add('$at/$field');
-        }
-      }
-      if (_number(data.get('cooldown')) && data.get('cooldown')!.asPrimitive.asDouble > 0) {
-        warnings.add('$at/cooldown: the per-player cooldown is one cooldown for the NPC');
-      }
-      for (final String field in const <String>['command', 'hand', 'player', 'op']) {
-        if (data.has(field)) converted.add('$at/$field');
-      }
-      commands.add(_Command(int.parse(entry.key), hand, node, seconds));
+      final _Command? command = _command(entry.key, _object(entry.value));
+      if (command != null) commands.add(command);
     }
     if (commands.isEmpty) return;
     commands.sort((_Command a, _Command b) => a.id.compareTo(b.id));
     String mode = _string(trait.get('executionMode'), 'LINEAR').toUpperCase();
-    if (trait.has('executionMode')) converted.add('$base/executionMode');
+    if (trait.has('executionMode')) converted.add('$_commandBase/executionMode');
     if (!const <String>{'LINEAR', 'RANDOM', 'CYCLE', 'SEQUENTIAL'}.contains(mode)) {
-      warnings.add('$base/executionMode: $mode is not known; commands run in order');
+      warnings.add('$_commandBase/executionMode: $mode is not known; commands run in order');
       mode = 'LINEAR';
     }
-    final List<_Command> right = _clicks(commands, 'RIGHT', 'BOTH');
-    final List<_Command> left = _clicks(commands, 'LEFT', 'BOTH');
-    final List<_Command> sneakRight = _clicks(commands, 'SHIFT_RIGHT', 'SHIFT_BOTH');
-    final List<_Command> sneakLeft = _clicks(commands, 'SHIFT_LEFT', 'SHIFT_BOTH');
-    final JObject routines = JObject();
-    final JArray triggers = JArray();
-    if (right.isNotEmpty && _sameCommands(right, left)) {
-      _routine('click', 'any', right, mode, routines, triggers);
-    } else {
-      if (right.isNotEmpty) _routine('right', 'interact', right, mode, routines, triggers);
-      if (left.isNotEmpty) _routine('left', 'attack', left, mode, routines, triggers);
+    final Map<String, List<_Command>> hands = <String, List<_Command>>{
+      'interact': _clicks(commands, 'RIGHT', 'BOTH'),
+      'attack': _clicks(commands, 'LEFT', 'BOTH'),
+      'sneak_interact': _clicks(commands, 'SHIFT_RIGHT', 'SHIFT_BOTH'),
+      'sneak_attack': _clicks(commands, 'SHIFT_LEFT', 'SHIFT_BOTH'),
+    };
+    const Map<String, String> names = <String, String>{'interact': 'right', 'attack': 'left', 'sneak_interact': 'sneak-right', 'sneak_attack': 'sneak-left'};
+    final List<_Command> right = hands['interact']!;
+    for (final MapEntry<String, List<_Command>> hand in hands.entries) {
+      if (hand.value.isEmpty) continue;
+      final String routine = hand.key == 'attack' && _sameCommands(right, hand.value) ? 'right' : names[hand.key]!;
+      JObject body = _mode(hand.value, mode, 'commands-$key-$routine');
+      if (clickCost.$2 != null) body = clickCost.$2!.gate(body);
+      clicks[hand.key]!.add(body);
     }
-    if (sneakRight.isNotEmpty) _routine('sneak-right', 'sneak_interact', sneakRight, mode, routines, triggers);
-    if (sneakLeft.isNotEmpty) _routine('sneak-left', 'sneak_attack', sneakLeft, mode, routines, triggers);
-    if ((sneakRight.isNotEmpty || sneakLeft.isNotEmpty) && commands.any((_Command command) => !command.hand.startsWith('SHIFT_'))) {
-      warnings.add('$base: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones');
+    if ((hands['sneak_interact']!.isNotEmpty || hands['sneak_attack']!.isNotEmpty) && commands.any((_Command command) => !command.hand.startsWith('SHIFT_'))) {
+      warnings.add('$_commandBase: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones');
     }
-    final String id = 'commands-$key';
-    warnings.add('$base: commands stay denied until $_namespace:$id is on the [behaviors.actions] commandBehaviors list in config.toml');
-    _behavior(id, routines.keys.first, routines, triggers);
   }
 
-  void _routine(String routine, String action, List<_Command> commands, String mode, JObject routines, JArray triggers) {
-    final List<JObject> nodes = <JObject>[];
-    int seconds = 0;
-    for (final _Command command in commands.sublist(0, commands.length < _maxChoices ? commands.length : _maxChoices)) {
-      nodes.add(command.node);
-      if (command.cooldown > seconds) seconds = command.cooldown;
+  JObject _mode(List<_Command> commands, String mode, String quest) {
+    final List<JObject> nodes = <JObject>[
+      for (final _Command command in commands.sublist(0, commands.length < _maxChoices ? commands.length : _maxChoices)) command.node
+    ];
+    if (commands.length > _maxChoices) warnings.add('$_commandBase/commands: only the first $_maxChoices commands for one click were converted');
+    return switch (mode) {
+      'RANDOM' => _select(nodes, quest, 'npc', true),
+      'CYCLE' => _select(nodes, quest, 'npc', false),
+      'SEQUENTIAL' => _select(nodes, quest, 'relationship', false),
+      _ => _sequence(nodes),
+    };
+  }
+
+  _Command? _command(String id, JObject? data) {
+    final String at = '$_commandBase/commands/$id';
+    if (data == null || !data.has('command') || data.get('command') is! JPrimitive) return null;
+    final String hand = _string(data.get('hand'), 'BOTH').toUpperCase();
+    if (!_hands.contains(hand)) {
+      warnings.add('$at/hand: $hand is not a Citizens click; not converted');
+      return null;
     }
-    if (commands.length > _maxChoices) warnings.add('/traits/commandtrait/commands: only the first $_maxChoices commands for one click were converted');
-    final String quest = 'commands-$key-$routine';
-    routines.add(
-        routine,
-        switch (mode) {
-          'RANDOM' => _select(nodes, quest, 'npc', true),
-          'CYCLE' => _select(nodes, quest, 'npc', false),
-          'SEQUENTIAL' => _select(nodes, quest, 'relationship', false),
-          _ => _sequence(nodes),
-        });
-    final JObject trigger = JObject()
-      ..addString('id', routine)
-      ..addString('event', 'interaction')
-      ..addString('action', action)
-      ..addString('routine', routine);
-    if (seconds > 0) trigger.addInt('cooldownTicks', _clamp(BigInt.from(seconds * 20), 0, _maxCooldown));
-    triggers.add(trigger);
+    final (bool, _Charge?) cost = _cost(data.get('cost'), data.get('experienceCost'), data.get('itemCost'), at, 'itemCost');
+    if (!cost.$1) {
+      warnings.add('$at/itemCost: an item cost cannot be matched exactly; not converted');
+      return null;
+    }
+    final bool npc = _bool(data.get('npc'), false);
+    final bool player = _bool(data.get('player'), false);
+    final bool op = _bool(data.get('op'), false);
+    String text = data.get('command')!.asPrimitive.asString;
+    if (text.startsWith('/')) text = text.substring(1);
+    text = _placeholders(text, '$at/command', npc: npc);
+    if (text.isEmpty || text.length > _maxText) {
+      warnings.add('$at/command: empty or longer than 1024 characters; not converted');
+      return null;
+    }
+    final RegExpMatch? mythic = (player || op) && !npc ? _mythicCast.firstMatch(text) : null;
+    final JObject run;
+    if (mythic != null) {
+      run = _action('mythic:cast-skill', _arguments('skill', mythic.group(1)!)..addString('caster', 'player'));
+      warnings.add('$at/command: the MythicMobs skill cast became mythic:cast-skill, which needs MythicMobs on the server');
+    } else {
+      if (op) warnings.add('$at/op: the command ran as an operator player; it now runs from the console');
+      if (npc && player) warnings.add("$at/npc: the NPC's own player body ran the command; it now runs from the console, with the NPC's name for the player");
+      run = _action('animus:command', _arguments('command', text)..addString('as', player && !op && !npc ? 'player' : 'console'));
+    }
+    final String flag = 'commands-$key-$id';
+    final int cooldown = _seconds(data.get('cooldown'), '$at/cooldown');
+    final int globalCooldown = _seconds(data.get('globalcooldown'), '$at/globalcooldown');
+    final int uses = _whole(data.get('n'), '$at/n');
+    final int globalUses = _whole(data.get('gn'), '$at/gn');
+    final List<JObject> effects = <JObject>[
+      if (cost.$2 != null) cost.$2!.take(),
+      if (cooldown > 0) _setFlag('$flag-cooldown', 'relationship', cooldown),
+      if (globalCooldown > 0) _setFlag('$flag-global-cooldown', 'npc', globalCooldown),
+      if (uses > 0) _action('animus:advance-quest-state', _quest('$flag-uses', 'relationship')),
+      if (globalUses > 0) _action('animus:advance-quest-state', _quest('$flag-global-uses', 'npc')),
+      run,
+    ];
+    JObject node = _sequence(effects);
+    if (cost.$2 != null) node = cost.$2!.afford(node);
+    if (globalUses > 0) node = _refuse(_stage('$flag-global-uses', 'npc', globalUses), 'GLOBAL_MAXIMUM_TIMES_USED', '$globalUses', '', node);
+    if (uses > 0) node = _refuse(_stage('$flag-uses', 'relationship', uses), 'MAXIMUM_TIMES_USED', '$uses', '', node);
+    if (globalCooldown > 0) node = _refuse(_check('animus:flag-state', _quest('$flag-global-cooldown', 'npc')), 'ON_GLOBAL_COOLDOWN', '', '', node);
+    if (cooldown > 0) node = _refuse(_check('animus:flag-state', _quest('$flag-cooldown', 'relationship')), 'ON_COOLDOWN', '', '', node);
+    final List<MapEntry<String, JElement>> permissions = listEntries(data.get('permissions'));
+    for (int index = permissions.length - 1; index >= 0; index--) {
+      final JElement permission = permissions[index].value;
+      if (permission is! JPrimitive) continue;
+      node = _otherwise(_condition('animus:has-permission', _arguments('permission', permission.asString), node), _message('NO_PERMISSION', '', ''));
+      converted.add('$at/permissions/${permissions[index].key}');
+    }
+    if (_number(data.get('delay')) && data.get('delay')!.asPrimitive.asDouble >= 1) {
+      final JObject wait = JObject()
+        ..addString('type', 'wait')
+        ..addInt('ticks', _floorClamp(data.get('delay')!.asPrimitive.asDouble, 1, _maxCooldown));
+      node = _sequence(<JObject>[wait, node]);
+      converted.add('$at/delay');
+    }
+    for (final String field in const <String>['command', 'hand', 'player', 'op', 'npc']) {
+      if (data.has(field)) converted.add('$at/$field');
+    }
+    return _Command(int.parse(id), hand, node);
+  }
+
+  int _seconds(JElement? value, String at) {
+    if (!_number(value)) return 0;
+    converted.add(at);
+    return _floorClamp(value!.asPrimitive.asDouble, 0, _maxExpiry);
+  }
+
+  int _whole(JElement? value, String at) {
+    if (!_number(value)) return 0;
+    converted.add(at);
+    return _floorClamp(value!.asPrimitive.asDouble, 0, 1000000);
+  }
+
+  /// A cost, or null inside a true result when there is none; false when an item cannot be matched exactly.
+  (bool, _Charge?) _cost(JElement? money, JElement? levels, JElement? items, String at, String itemField) {
+    final JObject arguments = JObject();
+    bool exact = true;
+    if (_positive(money)) {
+      arguments.add('money', citizensMoney(money!.asPrimitive.asDouble));
+      converted.add('$at/cost');
+    }
+    if (_positive(levels)) {
+      arguments.addInt('levels', _floorClamp(levels!.asPrimitive.asDouble, 1, 100000));
+      converted.add('$at/experienceCost');
+    }
+    final JArray wanted = JArray();
+    for (final MapEntry<String, JElement> entry in listEntries(items)) {
+      final CitizensStack? stack = readCitizensStack(entry.value);
+      if (stack == null) continue;
+      if (stack.inexact != null) {
+        exact = false;
+        continue;
+      }
+      wanted.add(JObject()
+        ..add('item', stack.item.deepCopy())
+        ..addInt('amount', stack.amount < 6400 ? stack.amount : 6400));
+      converted.add('$at/$itemField/${entry.key}');
+    }
+    if (!exact) return (false, null);
+    if (wanted.isNotEmpty) arguments.add('items', wanted);
+    return (true, arguments.isEmpty ? null : _Charge(this, arguments));
+  }
+
+  JObject? _message(String error, String first, String second) {
+    if (_hide) return null;
+    final String text = (_custom[error] ?? _commandMessages[error]!).replaceAll('{0}', first).replaceAll('{1}', second);
+    if (javaIsBlank(text)) return null;
+    return _plain(_placeholders(text, '$_commandBase/customErrorMessages/$error', npc: false));
+  }
+
+  /// Runs the message when the check holds and `node` otherwise.
+  JObject _refuse(JObject check, String error, String first, String second, JObject node) {
+    final JObject? message = _message(error, first, second);
+    check.add('then', message ?? _sequence(const <JObject>[]));
+    check.add('else', node);
+    return check;
   }
 
   void _behavior(String path, String entry, JObject routines, JArray triggers) {
@@ -645,8 +1095,9 @@ class _Runtime {
     documents.add(BehaviorDocument('behaviors/$_namespace/$path.json', writeJson(document)));
   }
 
-  String _placeholders(String text, String path) {
-    final String result = text.replaceAll('<player>', '{player_name}').replaceAll('<p>', '{player_name}').replaceAll('<npc>', name).replaceAll('<id>', key);
+  String _placeholders(String text, String path, {bool npc = false}) {
+    final String player = npc ? name : '{player_name}';
+    final String result = text.replaceAll('<player>', player).replaceAll('<p>', player).replaceAll('<npc>', name).replaceAll('<id>', key);
     if (_untranslated.hasMatch(result)) warnings.add('$path: placeholders other than <p>, <player>, <npc> and <id> are not filled in');
     return result;
   }
@@ -656,6 +1107,8 @@ final RegExp _newline = RegExp('<br>|\\n');
 final RegExp _untranslated = RegExp(r'<[a-z_]+>|%[a-z_]+%');
 final RegExp _listKey = RegExp(r'^(?:0|[1-9][0-9]{0,8})$');
 
+/// A player casting a MythicMobs skill, `mm test cast <skill>`, which `mythic:cast-skill` does without the command permission.
+final RegExp _mythicCast = RegExp(r'^(?:mythicmobs:)?(?:mm|mythicmobs)\s+(?:test|t)\s+(?:cast|c)\s+([A-Za-z0-9_.-]{1,128})(?:\s+-s)?\s*$', caseSensitive: false);
 const Set<String> _hands = <String>{'LEFT', 'RIGHT', 'BOTH', 'SHIFT_LEFT', 'SHIFT_RIGHT', 'SHIFT_BOTH'};
 
 /// The commands one click runs: those for that hand and those for both.
@@ -724,6 +1177,8 @@ List<MapEntry<String, JElement>> listEntries(JElement? value) {
   }
   return result;
 }
+
+final RegExp _material = RegExp(r'^[a-z0-9_]+$');
 
 String pointer(String key) => key.replaceAll('~', '~0').replaceAll('/', '~1');
 JObject? _object(JElement? value) => value is JObject ? value : null;

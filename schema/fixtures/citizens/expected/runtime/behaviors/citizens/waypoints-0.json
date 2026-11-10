@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "citizens:waypoints-0",
+  "entry": "point-1",
+  "routines": {
+    "point-1": {
+      "type": "action",
+      "capability": "animus:message",
+      "arguments": {
+        "text": "Halt!",
+        "to": "world"
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "point-1",
+      "event": "waypoint",
+      "waypoint": 1,
+      "routine": "point-1"
+    }
+  ]
+}

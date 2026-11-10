@@ -1,10 +1,12 @@
 package art.arcane.animus.core.runtime;
 
 import art.arcane.animus.core.behavior.trigger.TriggerEvent;
+import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcAttributes;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.presentation.BodyLook;
 import art.arcane.animus.core.presentation.BodyPose;
+import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.presentation.BodyTransport;
 import art.arcane.animus.core.rig.DisplayTransform;
 import art.arcane.animus.core.rig.NpcRig;
@@ -18,6 +20,7 @@ import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.ViewerSession;
 import art.arcane.animus.core.virtual.VirtualNpcState;
 import art.arcane.animus.core.virtual.WorldPosition;
+import art.arcane.animus.core.control.LookClose;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -242,13 +245,15 @@ final class ViewerPresenter<P, I> {
         }
         return false;
     }
-    /** A live NPC a preview stands in for stays hidden from that viewer only. */
+    /** A live NPC a preview stands in for stays hidden from that viewer only, as does one whose viewers filter hides it from them. */
     private boolean eligible(Viewer viewer, PersistedNpcService<P, I>.Value value, WorldPosition at, Predicate<ChunkPosition> delivered) {
         PersistedNpcService<P, I>.Entry entry = service.byUuid.get(value.spec.definition().uuid());
         VirtualNpcState.Snapshot snapshot = value.state.snapshot();
-        return entry != null && entry.value == value && (snapshot.active() || value.dyingUntil > service.tickNumber) && !service.previews.hides(viewer.id, entry.id, value.spec.definition().uuid())
-                && snapshot.position().world().equals(at.world())
-                && snapshot.position().point().distance(at.point()) <= service.settings.viewDistance() && delivered.test(snapshot.position().chunk());
+        if (entry == null || entry.value != value || !(snapshot.active() || value.dyingUntil > service.tickNumber) || service.previews.hides(viewer.id, entry.id, value.spec.definition().uuid())
+                || !snapshot.position().world().equals(at.world())) return false;
+        double distance = snapshot.position().point().distance(at.point());
+        return distance <= service.settings.viewDistance() && delivered.test(snapshot.position().chunk())
+                && !value.spec.viewers().hides(viewer.id, distance, (String node) -> service.host.permitted(viewer.player, node));
     }
     private boolean eligibleNow(Viewer viewer, PersistedNpcService<P, I>.Value value) {
         RuntimeHost<P, I> host = service.host;
@@ -261,17 +266,23 @@ final class ViewerPresenter<P, I> {
 
     private void spawn(Viewer viewer, PersistedNpcService<P, I>.Value value) {
         try {
-            NpcPresentation.Label label = NpcPresentation.label(value.spec, value.displayName, value.attributes, service.runtime.placeholders(), viewer.id);
-            BodyTransport.Body body = NpcPresentation.body(service.packets, label, value.displaySkin);
+            art.arcane.animus.core.presentation.MirrorSettings mirror = value.mirror;
+            String name = shownName(value, viewer);
+            NpcPresentation.Label label = NpcPresentation.label(value.spec, name, value.bubble, value.attributes, service.runtime.placeholders(), viewer.id);
+            // A mirrored skin shows only on a player body; a viewer without a readable skin sees the NPC's own.
+            BodySkin skin = mirror != null && mirror.skin() && value.spec.type().equals(art.arcane.animus.core.presentation.BodyRules.PLAYER)
+                    ? service.host.skin(viewer.player).orElse(value.displaySkin) : value.displaySkin;
+            BodyTransport.Body body = NpcPresentation.body(service.packets, label, skin);
             Presented presented = new Presented(value, body); viewer.visible.put(body.uuid(), presented); showing.shown(body.uuid(), viewer);
-            if (service.runtime.placeholders().active() && NpcPresentation.placeholdered(value.spec, value.displayName)) { presented.labels = label.rows(); presented.labelledAt = service.tickNumber; }
-            presented.deliveredSwings = value.swings; presented.deliveredAttackSwings = value.attackSwings; presented.deliveredAttributeRevision = value.attributeRevision;
+            if (service.runtime.placeholders().active() && NpcPresentation.placeholdered(value.spec, name)) { presented.labels = label.rows(); presented.labelledAt = service.tickNumber; }
+            if (mirror != null && mirror.equipment()) presented.deliveredEquipmentRevision = -1;
+            presented.deliveredSwings = value.swings; presented.deliveredGestures = value.gestures; presented.deliveredAttackSwings = value.attackSwings; presented.deliveredAttributeRevision = value.attributeRevision;
             viewer.presentationOrder.addLast(presented); viewer.cosmeticOrder.addLast(presented);
             viewer.nativeIds += body.entityIds().length; viewer.pendingSpawns++;
             presented.deliveredPoseRevision = value.poseRevision;
             // A body spawns with its definition's look, so a playback pose shown now is sent once the spawn lands.
             presented.deliveredLookRevision = value.lookPose == value.spec.appearance().pose() && value.lookMotion == 0 ? value.lookRevision : value.lookRevision - 1;
-            BodyPose pose = pose(value);
+            BodyPose pose = pose(value, viewer);
             handOver(viewer, () -> service.packets.spawn(viewer.player, body, pose)).whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
                 if (!current(viewer)) return;
                 presented.spawnFinished = true; viewer.pendingSpawns--;
@@ -284,13 +295,26 @@ final class ViewerPresenter<P, I> {
             }));
         } catch (RuntimeException failure) { fail(viewer, "spawn", value, failure); }
     }
+    /** The name this viewer sees: its own on an NPC that mirrors names, else the NPC's. */
+    private String shownName(PersistedNpcService<P, I>.Value value, Viewer viewer) {
+        return value.mirror != null && value.mirror.name() ? service.host.name(viewer.player) : value.displayName;
+    }
     /** Native IDs a body of this NPC reserves, including its text display and seat. */
     private int nativeIds(PersistedNpcService<P, I>.Value value) {
         return NpcPresentation.nativeIds(service.packets, value.spec, value.displayName, value.ids);
     }
-    private static BodyPose pose(PersistedNpcService<?, ?>.Value value) {
+    /** The body's pose for this viewer: a per-player look-close NPC looks at a viewer in its range who may be looked at. */
+    private BodyPose pose(PersistedNpcService<P, I>.Value value, Viewer viewer) {
         WorldPosition position = value.state.snapshot().position(); Vec3 p = position.point();
-        return new BodyPose(position.world(), p.x(), p.y(), p.z(), value.yaw, value.pitch, value.onGround);
+        LookClose look = value.lookClose;
+        if (value.lookingAtViewers && look != null && look.perPlayer()) {
+            Vec3 eye = LookClose.eye(p, PersistedNpcService.bodyHeight(value)), target = service.host.eye(viewer.player);
+            Optional<LookClose.Facing> facing = target.distance(eye) <= look.range() && look.admits((String node) -> service.host.permitted(viewer.player, node))
+                    ? LookClose.facing(eye, target) : Optional.empty();
+            if (facing.isPresent())
+                return new BodyPose(position.world(), p.x(), p.y(), p.z(), look.headOnly() ? value.yaw : facing.get().yaw(), facing.get().yaw(), facing.get().pitch(), value.onGround);
+        }
+        return new BodyPose(position.world(), p.x(), p.y(), p.z(), value.yaw, value.headYaw, value.pitch, value.onGround);
     }
     /** A body farther than half the view distance moves on fewer turns while any budget is short, always to its latest pose. */
     private boolean moveDue(Viewer viewer, Presented body, WorldPosition at) {
@@ -303,7 +327,7 @@ final class ViewerPresenter<P, I> {
         long revision = body.value.poseRevision;
         body.moving = true;
         try {
-            handOver(viewer, () -> service.packets.move(viewer.player, body.body, pose(body.value))).whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
+            handOver(viewer, () -> service.packets.move(viewer.player, body.body, pose(body.value, viewer))).whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
                 if (!current(viewer) || body.retired || viewer.visible.get(body.body.uuid()) != body) return;
                 body.moving = false;
                 if (failure != null) { fail(viewer, "move", body.value, failure); return; }
@@ -321,7 +345,8 @@ final class ViewerPresenter<P, I> {
         body.equipping = true;
         try {
             NpcRig<I> rig = body.value.rig;
-            handOver(viewer, () -> service.packets.equipment(viewer.player, body.body, Map.copyOf(rig == null ? body.value.equipment : rig.bodyEquipment(body.value.equipment)))).whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
+            Map<EquipmentSlot, I> worn = body.value.mirror != null && body.value.mirror.equipment() ? service.host.equipment(viewer.player) : body.value.equipment;
+            handOver(viewer, () -> service.packets.equipment(viewer.player, body.body, Map.copyOf(rig == null ? worn : rig.bodyEquipment(worn)))).whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
                 body.equipping = false;
                 body.deliveredEquipmentRevision = revision;
                 if (failure != null && current(viewer) && !body.retired) cosmeticFailed(viewer, "equipment", body.value, failure);
@@ -410,6 +435,17 @@ final class ViewerPresenter<P, I> {
                 sent++;
                 if (!current(viewer)) return sent;
             }
+            if (body.spawnFinished && body.bound && body.deliveredGestures != body.value.gestures) {
+                if (tickNumber - body.value.gesturedAt > STALE_SWING_TICKS) body.deliveredGestures = body.value.gestures;
+                else if (sent < packetBudget) {
+                    body.deliveredGestures = body.value.gestures;
+                    int gesture = body.value.gesture;
+                    sendCosmetic(viewer, body, "gesture", () -> gesture == art.arcane.animus.core.npc.NpcAnimation.HURT_FLASH
+                            ? service.packets.hurt(viewer.player, body.body) : service.packets.gesture(viewer.player, body.body, gesture));
+                    sent++;
+                    if (!current(viewer)) return sent;
+                }
+            }
             if (body.spawnFinished && body.bound && body.deliveredSwings != body.value.swings) {
                 if (tickNumber - body.value.swungAt > STALE_SWING_TICKS) body.deliveredSwings = body.value.swings;
                 else if (sent < packetBudget) {
@@ -434,7 +470,7 @@ final class ViewerPresenter<P, I> {
      */
     private boolean relabel(Viewer viewer, Presented body) {
         body.labelledAt = service.tickNumber;
-        List<String> rows = NpcPresentation.label(body.value.spec, body.value.displayName, body.value.attributes, service.runtime.placeholders(), viewer.id).rows();
+        List<String> rows = NpcPresentation.label(body.value.spec, shownName(body.value, viewer), body.value.bubble, body.value.attributes, service.runtime.placeholders(), viewer.id).rows();
         if (rows.equals(body.labels)) return true;
         if (rows.size() != body.labels.size()) { retire(viewer, body); return true; }
         if (!admit(viewer, PresentationPressure.Tier.COSMETIC)) return false;
@@ -496,7 +532,7 @@ final class ViewerPresenter<P, I> {
             catch (RuntimeException invalid) { viewer.outbox.abandon(); body.rigFailed = true; body.value.rigProblem = PersistedNpcService.concise(invalid); service.failures.record("rig bones", context(viewer, body.value), invalid); return 0; }
             body.rigIdentity = shown.identity(); body.socketRevision = shown.socketRevision(); body.view = new RigView(body.bones.count()); viewer.bones += body.bones.count();
             try {
-                handOver(viewer, () -> packets.showBones(viewer.player, body.body, body.bones, pose(body.value), List.of(frame.targets()), shown.hideBody()))
+                handOver(viewer, () -> packets.showBones(viewer.player, body.body, body.bones, pose(body.value, viewer), List.of(frame.targets()), shown.hideBody()))
                         .whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
                             if (failure != null) { if (current(viewer) && !body.retired && !cosmeticFailed(viewer, "show bones", body.value, failure)) body.rigFailed = true; return; }
                             body.view.shown(frame); body.bonesShown = true;
@@ -613,28 +649,41 @@ final class ViewerPresenter<P, I> {
         ViewerSession.Validation validated = hit(viewer, body);
         if (validated == null) return;
         RuntimeHost.Interaction action = input.action() == BodyTransport.Action.ATTACK ? RuntimeHost.Interaction.ATTACK : RuntimeHost.Interaction.INTERACT;
-        boolean allowed = host.interactionAllowed(viewer.player, body.body.uuid(), action, validated.distance());
+        // A click on an NPC that redirects its clicks counts as a click on the target, while that target is active.
+        UUID target = redirect(body.value);
+        boolean allowed = host.interactionAllowed(viewer.player, target, action, validated.distance());
+        // A combat listener hurts and knocks the NPC back during that event; it is still this click unless the NPC left the world.
+        VirtualNpcState.Snapshot now = body.value.state.snapshot();
         if (!allowed || !current(viewer) || host.dead(viewer.player) || viewer.visible.get(body.body.uuid()) != body || !eligibleNow(viewer, body.value)
-                || !body.value.state.snapshot().active()
-                || body.value.state.snapshot().revision() != validated.npc().revision()
+                || !now.active() || !now.position().world().equals(validated.npc().position().world())
                 || !DefinitionSpec.spawned(service.runtime.npcs().snapshot().get(body.value.spec.definition().id()))) return;
         accepted++;
+        PersistedNpcService<P, I>.Value clicked = body.value;
+        if (action == RuntimeHost.Interaction.INTERACT && clicked.pause != null && clicked.pause.onClick()) clicked.pauseClock.pause(clicked.pause, service.tickNumber);
         TriggerBridge triggers = service.triggers;
         // An attack packet carries no sneaking flag, so a left click reads the player's own state.
-        boolean consumed = triggers != null && triggers.interaction(body.body.uuid(), host.id(viewer.player),
+        boolean consumed = triggers != null && triggers.interaction(target, host.id(viewer.player),
                 action == RuntimeHost.Interaction.ATTACK ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT,
                 action == RuntimeHost.Interaction.ATTACK ? host.sneaking(viewer.player) : input.secondaryAction(), TriggerEvent.Interaction.hand(input.hand()), false);
         NpcRuntime.InteractionObserver observed = service.observer;
-        if (observed != null) observed.accepted(body.body.uuid(), host.id(viewer.player), action == RuntimeHost.Interaction.ATTACK, validated.distance(), false);
+        if (observed != null) observed.accepted(target, host.id(viewer.player), action == RuntimeHost.Interaction.ATTACK, validated.distance(), false);
         // A behavior that consumes the click owns it: modules, riding and selection never see it.
         if (consumed) return;
         NpcRuntime.InteractionListener<P> listener = service.interactions;
-        if (listener != null && listener.interacted(viewer.player, body.body.uuid(), action == RuntimeHost.Interaction.ATTACK, input.secondaryAction())) return;
+        if (listener != null && listener.interacted(viewer.player, target, action == RuntimeHost.Interaction.ATTACK, input.secondaryAction())) return;
         // Only the wand selects, through the listener above; a plain click is play.
-        if (body.value.ride != null && action == RuntimeHost.Interaction.INTERACT && !input.secondaryAction() && "MAIN_HAND".equals(input.hand())) {
+        if (target.equals(body.body.uuid()) && body.value.ride != null && action == RuntimeHost.Interaction.INTERACT && !input.secondaryAction() && "MAIN_HAND".equals(input.hand())) {
             String refusal = service.riders.request(viewer.player, service.mountRuntime.vehicle(body.value));
             if (refusal != null) host.tell(viewer.player, Palette.error("Cannot ride " + body.value.spec.name() + ": " + refusal));
         }
+    }
+    /** The NPC that receives clicks on {@code value}: its redirect target when that NPC is active here, otherwise itself. */
+    private UUID redirect(PersistedNpcService<P, I>.Value value) {
+        UUID self = value.spec.definition().uuid();
+        java.util.Optional<UUID> target = value.spec.definition().clickRedirect();
+        if (target.isEmpty()) return self;
+        PersistedNpcService<P, I>.Entry entry = service.byUuid.get(target.get());
+        return entry != null && entry.value != null && entry.value.state.snapshot().active() ? target.get() : self;
     }
     /** A key press aimed at an NPC in interaction reach, validated as a click is; see {@link NpcRuntime#pressed}. */
     boolean pressed(P player, TriggerEvent.Action key) {
@@ -669,7 +718,7 @@ final class ViewerPresenter<P, I> {
             int minZ = ((int) Math.floor(Math.min(eye.z(), to.z()))) >> 4, maxZ = ((int) Math.floor(Math.max(eye.z(), to.z()))) >> 4;
             for (int x = minX; x <= maxX; x++) for (int z = minZ; z <= maxZ; z++) if (!host.chunkLoaded(world, x, z)) return false;
             return distance <= 0.000001 || host.clearSight(viewer.player, eye, direction, Math.max(0, distance - 0.0001));
-        }, shape(body.value));
+        }, service.packets.hitShape(body.body.uuid()).orElseGet(() -> shape(body.value)));
         if (!validated.accepted()) { rejected++; return null; }
         return validated;
     }
@@ -726,7 +775,7 @@ final class ViewerPresenter<P, I> {
     final class Presented {
         final PersistedNpcService<P, I>.Value value; final BodyTransport.Body body;
         boolean bound, retired, spawnFinished, despawnFinished, moving, equipping, looking;
-        long deliveredPoseRevision, deliveredEquipmentRevision, deliveredLookRevision, deliveredSwings, deliveredAttackSwings, deliveredAttributeRevision;
+        long deliveredPoseRevision, deliveredEquipmentRevision, deliveredLookRevision, deliveredSwings, deliveredGestures, deliveredAttackSwings, deliveredAttributeRevision;
         boolean attributing;
         List<Integer> sentRoster = List.of();
         int sentDragonPhase = DragonBody.PHASE_HOVERING;

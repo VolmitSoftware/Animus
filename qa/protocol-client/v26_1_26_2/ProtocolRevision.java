@@ -22,6 +22,7 @@ final class ProtocolRevision {
     }
     static int[] removed(ClientboundRemoveEntitiesPacket packet) { return packet.getEntityIds().toIntArray(); }
     static Vec3 position(ClientboundEntityPositionSyncPacket packet) { return packet.values().position(); }
+    static float yaw(ClientboundEntityPositionSyncPacket packet) { return packet.values().yRot(); }
     static Map<ResourceKey<? extends Registry<?>>, TagNetworkSerialization.NetworkPayload> tags(ClientboundUpdateTagsPacket packet) { return packet.getTags(); }
     static ParticleOptions particle(ClientboundLevelParticlesPacket packet) { return packet.getParticle(); }
     static int particleCount(ClientboundLevelParticlesPacket packet) { return packet.getCount(); }

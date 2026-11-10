@@ -2,8 +2,6 @@
   "citizensId": 3,
   "presentationWarnings": [],
   "runtimeWarnings": [
-    "/traits/commandtrait/commands/0/cooldown: the per-player cooldown is one cooldown for the NPC",
-    "/traits/commandtrait/commands/3: the command costs money, experience or items, which Animus cannot charge; not converted",
     "/traits/commandtrait/commands/4/op: the command ran as an operator player; it now runs from the console",
     "/traits/commandtrait: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones",
     "/traits/commandtrait: commands stay denied until citizens:commands-3 is on the [behaviors.actions] commandBehaviors list in config.toml"
@@ -31,19 +29,15 @@
     "/traits/commandtrait/commands/2/command": "CONVERTED",
     "/traits/commandtrait/commands/2/hand": "CONVERTED",
     "/traits/commandtrait/commands/2/player": "CONVERTED",
-    "/traits/commandtrait/commands/3/command": "UNSUPPORTED_PRESERVED",
-    "/traits/commandtrait/commands/3/hand": "UNSUPPORTED_PRESERVED",
-    "/traits/commandtrait/commands/3/cost": "UNSUPPORTED_PRESERVED",
+    "/traits/commandtrait/commands/3/command": "CONVERTED",
+    "/traits/commandtrait/commands/3/hand": "CONVERTED",
+    "/traits/commandtrait/commands/3/cost": "CONVERTED",
     "/traits/commandtrait/commands/4/command": "CONVERTED",
     "/traits/commandtrait/commands/4/hand": "CONVERTED",
     "/traits/commandtrait/commands/4/player": "CONVERTED",
     "/traits/commandtrait/commands/4/op": "CONVERTED"
   },
-  "reasons": {
-    "/traits/commandtrait/commands/3/command": "trait commandtrait has no Animus equivalent; kept in citizens:review",
-    "/traits/commandtrait/commands/3/hand": "trait commandtrait has no Animus equivalent; kept in citizens:review",
-    "/traits/commandtrait/commands/3/cost": "trait commandtrait has no Animus equivalent; kept in citizens:review"
-  },
+  "reasons": {},
   "worldRemaps": [
     {
       "source": "/traits/location",

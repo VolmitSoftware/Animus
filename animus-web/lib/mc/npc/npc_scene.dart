@@ -171,13 +171,16 @@ NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
   final List<String> notes = <String>[];
   final bool small = look.armorStand?.small ?? false;
   final McRig? rig = mcBodyRig(look.type, slim: skin.slim, small: small);
+  if (rig == null && mcPlainBodyTypes.contains(look.type)) {
+    return NpcScene(scene: McScene.empty, texts: const <NpcText>[], notes: <String>['The preview has no model for ${look.type}; the server shows it.'], presentable: true);
+  }
   if (rig == null) {
     return NpcScene(
       scene: McScene.empty,
       texts: const <NpcText>[],
       notes: <String>[
         '${look.type.isEmpty ? 'This definition names no body type' : '${look.type} is not a body type Animus presents'}. '
-            'Use one of ${mcBodyTypes.join(', ')}.',
+            'Use one of ${mcPresentedBodyTypes.join(', ')}.',
       ],
       presentable: false,
     );

@@ -161,6 +161,12 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         };
     }
     @Override public boolean permitted(Player player, String node) { return player.hasPermission(node); }
+    @Override public boolean takeLevels(Player player, int levels) {
+        if (player.getLevel() < levels) return false;
+        player.giveExpLevels(-levels);
+        return true;
+    }
+    @Override public void giveLevels(Player player, int levels) { player.giveExpLevels(levels); }
 
     @Override public Optional<Object> show(Player player, ScreenFrame frame, Object window) {
         if (frame.merchant().isPresent()) return merchants.show(player, frame, window);
@@ -339,6 +345,10 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         if (line.interactive()) ComponentMessenger.send(player, ComponentText.component(line.component()));
         else player.sendMessage(line.console());
     }
+    @Override public void parts(Player player, List<art.arcane.animus.core.text.TextPart> parts) {
+        player.spigot().sendMessage(art.arcane.animus.bukkit.BukkitChoiceMessages.components(parts));
+    }
+    @Override public boolean experience(Player player, int points) { player.giveExp(points); return true; }
 
     private static Optional<Window> window(InventoryView view) {
         return view.getTopInventory().getHolder() instanceof Window window ? Optional.of(window) : Optional.empty();

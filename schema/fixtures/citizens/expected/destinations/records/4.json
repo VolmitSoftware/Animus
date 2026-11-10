@@ -1,0 +1,101 @@
+{
+  "uuid": "00000000-0000-0000-0000-000000000004",
+  "name": "Shepherd",
+  "traits": {
+    "type": "VILLAGER",
+    "location": {
+      "world": "old_town",
+      "x": 5.5,
+      "y": 64,
+      "z": 5.5,
+      "yaw": 0,
+      "pitch": 0
+    },
+    "npcdestinations": {
+      "OpensWoodDoors": "true",
+      "Destinations": {
+        "0": {
+          "Location": {
+            "world": "old_town",
+            "x": 7,
+            "y": 64,
+            "z": 9,
+            "yaw": "-450.0",
+            "pitch": "95.0"
+          },
+          "TimeOfDay": 30000,
+          "AliasName": "!!",
+          "Probability": {
+            "ChancePercent": "150",
+            "Min_Time": 99999,
+            "Max_Time": 5
+          },
+          "WanderSettings": {
+            "Wandering_Distance": "40.6",
+            "Wait_Minimum": 9,
+            "Wait_Maximum": 4,
+            "Wandering_UseBlocks": true
+          },
+          "Items": {
+            "Head": {
+              "type": "AIR"
+            },
+            "Chest": {
+              "==": "org.bukkit.inventory.ItemStack",
+              "type": "IRON_CHESTPLATE",
+              "amount": 300,
+              "meta": {
+                "==": "ItemMeta",
+                "meta-type": "UNSPECIFIC",
+                "display-name": "Wool"
+              }
+            },
+            "Legs": null,
+            "Boots": {
+              "amount": 1
+            }
+          },
+          "Skin": {
+            "Name": "Shepherd",
+            "MetaData": "abc",
+            "Signature": "def",
+            "ApplyOnArrival": true
+          },
+          "Commands": {
+            "arrival": [
+              "  //say hi  ",
+              1,
+              "say ok"
+            ]
+          },
+          "PluginSettings": {
+            "Animations": {
+              "Setting": "SIT"
+            },
+            "Farmer": {
+              "Crop": "wheat"
+            }
+          },
+          "Sentinel": {
+            "lastSet": 5
+          }
+        },
+        "1": {
+          "Location": {
+            "world": "old_town",
+            "x": 1.5,
+            "y": 64,
+            "z": 1
+          },
+          "TimeOfDay": 100
+        },
+        "2": "not-a-destination"
+      },
+      "Locations": [
+        "1:64:2:-5",
+        "bad",
+        "3:4"
+      ]
+    }
+  }
+}

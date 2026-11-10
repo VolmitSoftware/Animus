@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000611",
+  "id": "citizens-11",
+  "group": "world",
+  "name": "Frame",
+  "type": "minecraft:glow_item_frame",
+  "spawned": false,
+  "migration": {
+    "importId": "851ceffdf2b438f2987502d4250c12fdde95b8cb2caf090a47d291b0a9c4be75",
+    "citizensId": 11,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 22.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "glowItemFrame": {
+    "item": {
+      "id": "minecraft:diamond",
+      "count": 1
+    },
+    "rotation": 2,
+    "facing": "east"
+  },
+  "modules": {
+    "citizens:review": {
+      "type": "GLOW_ITEM_FRAME",
+      "location": {
+        "world": "world",
+        "x": 22.5,
+        "y": 64,
+        "z": 0.5
+      },
+      "itemframe": {
+        "item": {
+          "type": "DIAMOND",
+          "amount": 1
+        },
+        "rotation": "CLOCKWISE",
+        "facing": "EAST",
+        "fixed": true
+      }
+    }
+  }
+}

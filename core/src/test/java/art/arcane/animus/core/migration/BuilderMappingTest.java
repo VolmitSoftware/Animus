@@ -69,6 +69,12 @@ class BuilderMappingTest {
         try (DocumentStore store = new DocumentStore(root.resolve("out"))) {
             importer.apply(store, preview.id());
             NpcDefinition definition = NpcDefinition.parse(store.read("npcs/world/citizens-7.json"));
+            assertEquals("[\"citizens:builder-7\"]", definition.json().get("behaviors").toString(), "a build Builder left running starts again once");
+            JsonObject resume = JsonDocuments.object(store.read("behaviors/citizens/builder-7.json"));
+            assertEquals("{\"id\":\"spawn\",\"event\":\"spawn\",\"routine\":\"resume\"}", resume.getAsJsonArray("triggers").get(0).toString());
+            JsonArray start = resume.getAsJsonObject("routines").getAsJsonObject("resume").getAsJsonObject("else").getAsJsonArray("steps");
+            assertEquals("{\"operation\":\"start\"}", start.get(0).getAsJsonObject().getAsJsonObject("arguments").toString());
+            assertEquals("animus:set-flag", start.get(1).getAsJsonObject().get("capability").getAsString());
             BuilderModule module = BuilderModule.of(definition).orElseThrow();
             assertFalse(module.reviewAccepted());
             assertEquals("tower.schem", module.schematic());

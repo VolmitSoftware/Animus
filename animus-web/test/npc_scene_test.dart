@@ -196,7 +196,8 @@ void main() {
       for (final String type in <String>['minecraft:turtle', 'minecraft:frog', 'minecraft:armadillo', 'minecraft:ender_dragon']) {
         expect(mcDrawnSlots(type), isEmpty, reason: type);
       }
-      expect(mcDrawnSlots('minecraft:zombie'), NpcSlot.values);
+      expect(mcDrawnSlots('minecraft:zombie'), mcDrawnSlots('minecraft:player'));
+      expect(mcDrawnSlots('minecraft:blaze'), NpcSlot.values);
     });
 
     test('the llama wears its carpet; the armadillo shows nothing it cannot', () {
@@ -247,9 +248,9 @@ void main() {
         expect(scene.scene.nodes, isNotEmpty, reason: file.path);
         expect(scene.scene.frame, isNotEmpty, reason: file.path);
       }
-      final NpcScene zombie = npcScene(NpcLook.fromDefinition(<String, Object?>{'type': 'minecraft:zombie', 'name': 'Z'}));
-      expect(zombie.presentable, isFalse);
-      expect(zombie.scene.nodes, isEmpty);
+      final NpcScene marker = npcScene(NpcLook.fromDefinition(<String, Object?>{'type': 'minecraft:marker', 'name': 'Z'}));
+      expect(marker.presentable, isFalse);
+      expect(marker.scene.nodes, isEmpty);
     });
 
     test('signatures change with what the mesh depends on', () {

@@ -32,6 +32,7 @@ const List<DocumentKind> listedKinds = <DocumentKind>[
   DocumentKind.behavior,
   DocumentKind.pack,
   DocumentKind.shop,
+  DocumentKind.quest,
   DocumentKind.inventory,
   DocumentKind.menu,
   DocumentKind.hologram,

@@ -10,8 +10,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-/** Armor stand parts and pose angles in degrees. Undeclared angles keep the client's defaults. */
-public record ArmorStandLook(boolean small, boolean arms, boolean basePlate, boolean invisible, Map<Part, Angles> angles) {
+/**
+ * Armor stand parts and pose angles in degrees. Undeclared angles keep the client's defaults. A marker stand has no
+ * hitbox, so players cannot click it.
+ */
+public record ArmorStandLook(boolean small, boolean arms, boolean basePlate, boolean invisible, boolean marker, Map<Part, Angles> angles) {
     public enum Part {
         HEAD("head"), BODY("body"), LEFT_ARM("leftArm"), RIGHT_ARM("rightArm"), LEFT_LEG("leftLeg"), RIGHT_LEG("rightLeg");
         private final String key;
@@ -19,7 +22,7 @@ public record ArmorStandLook(boolean small, boolean arms, boolean basePlate, boo
         public String key() { return key; }
     }
     public record Angles(float x, float y, float z) {}
-    private static final Set<String> FLAGS = Set.of("small", "arms", "basePlate", "invisible");
+    private static final Set<String> FLAGS = Set.of("small", "arms", "basePlate", "invisible", "marker");
 
     public ArmorStandLook { angles = angles.isEmpty() ? Map.of() : Collections.unmodifiableMap(new EnumMap<>(angles)); }
 
@@ -34,6 +37,7 @@ public record ArmorStandLook(boolean small, boolean arms, boolean basePlate, boo
         }
         boolean small = flag(look, "small", false, errors), arms = flag(look, "arms", false, errors);
         boolean basePlate = flag(look, "basePlate", true, errors), invisible = flag(look, "invisible", false, errors);
+        boolean marker = flag(look, "marker", false, errors);
         Map<Part, Angles> angles = new EnumMap<>(Part.class);
         for (Part part : Part.values()) {
             if (!look.has(part.key)) continue;
@@ -42,7 +46,7 @@ public record ArmorStandLook(boolean small, boolean arms, boolean basePlate, boo
             else angles.put(part, parsed.get());
         }
         if (errors.size() != before) return Optional.empty();
-        return Optional.of(new ArmorStandLook(small, arms, basePlate, invisible, angles));
+        return Optional.of(new ArmorStandLook(small, arms, basePlate, invisible, marker, angles));
     }
 
     private static boolean flag(JsonObject look, String key, boolean fallback, List<String> errors) {

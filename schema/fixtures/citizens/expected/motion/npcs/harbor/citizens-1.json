@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000601",
+  "id": "citizens-1",
+  "group": "harbor",
+  "name": "Hound",
+  "type": "minecraft:wolf",
+  "spawned": false,
+  "migration": {
+    "importId": "d0645871e188a9d2319eef3abff392d99015b22911be04c0fbb3999eef7ce282",
+    "citizensId": 1,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "harbor",
+    "x": 5.5,
+    "y": 64.0,
+    "z": 5.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "animus:combat": {
+      "enabled": false,
+      "reviewAccepted": false,
+      "targeting": {
+        "fightBack": false
+      },
+      "guard": {
+        "npc": "0a1b2c3d-0000-4000-8000-000000000600",
+        "followDistance": 3.0,
+        "pointRange": 1.0,
+        "protect": true
+      }
+    },
+    "animus:look-close": {
+      "enabled": true,
+      "range": 10.0,
+      "lineOfSight": false,
+      "whileNavigating": false
+    },
+    "citizens:review": {
+      "type": "WOLF",
+      "location": {
+        "world": "harbor",
+        "x": 5.5,
+        "y": 64.0,
+        "z": 5.5
+      },
+      "followtrait": {
+        "followingUUID": "0a1b2c3d-0000-4000-8000-000000000600",
+        "margin": 3.0,
+        "protect": true
+      },
+      "lookclose": {
+        "enabled": true,
+        "linkedbody": true,
+        "headonly": true
+      }
+    }
+  }
+}

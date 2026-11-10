@@ -1,0 +1,106 @@
+npc:
+  '3':
+    uuid: 00000000-0000-0000-0000-000000000003
+    name: Baker
+    traits:
+      type: PLAYER
+      spawned: true
+      location: {world: old_town, x: 0.5, y: 64, z: 0.5, yaw: 0, pitch: 0}
+      waypoints: {provider: npcdestinations}
+      npcdestinations:
+        PauseForPlayers: 5
+        PauseTimeout: 25
+        blocksUnderSurface: 0
+        Locations: ['30:64:30:18000']
+        OpensGates: true
+        OpensWoodDoors: false
+        OpensMetalDoors: true
+        TeleportOnFailedStartLoc: true
+        TeleportOnNoPath: false
+        MaxDistFromDestination: 2
+        enabledplugins: [Animations]
+        Destinations:
+          citizens_Swim: true
+          citizens_NewPathFinder: true
+          citizens_AvoidWater: true
+          citizens_DistanceMargin: 1.0
+          citizens_PathDistanceMargin: 1.0
+          maxprocessingtime: -1
+          '0':
+            locationid: 7f0c2c52-6f0e-4f43-a3a3-9d1f8f8a0c12
+            Location: {world: old_town, x: 10, y: 64, z: 4, pitch: '0.0', yaw: '90.0'}
+            MaxDistance: 2.0
+            Probability: {ChancePercent: 0, Min_Time: 0, Max_Time: 0}
+            TimeOfDay: 1000
+            WanderSettings: {Wait_Maximum: 8, Wait_Minimum: 3, Wandering_Region: '', Wandering_Distance: 6.0, Wandering_UseBlocks: false}
+            AliasName: Bakery Counter
+            UseBlockSetting: false
+            WeatherFlag: 0
+            Items:
+              Head: {==: org.bukkit.inventory.ItemStack, DataVersion: 4440, id: 'minecraft:leather_helmet', count: 1, schema_version: 1,
+                     components: {'minecraft:dyed_color': '16711680'}}
+              Hand: {==: org.bukkit.inventory.ItemStack, v: 3465, type: BREAD, amount: 3}
+              Clear: true
+            Skin: {Name: Baker, UUID: '', ApplyOnArrival: false, MetaData: 'ZXlKMFpYaDBkWEpsY3lJNmV5SlRTMGxPSWpwN2ZYMTk=', Signature: c2ln}
+            Commands: {arrival: ['/say The bakery is open', '']}
+            Pause: {Distance: 5, TimeOut: 25, Type: ALL}
+            PluginSettings: ''
+          '1':
+            locationid: 7f0c2c52-6f0e-4f43-a3a3-9d1f8f8a0c13
+            Location: {world: old_town, x: -20, y: 63, z: 8, pitch: '0.0', yaw: '0.0'}
+            MaxDistance: 2.0
+            Probability: {ChancePercent: 40, Min_Time: 60, Max_Time: 120}
+            TimeOfDay: 13000
+            WanderSettings: {Wait_Maximum: 0, Wait_Minimum: 0, Wandering_Region: market, Wandering_Distance: 0.0, Wandering_UseBlocks: false}
+            AliasName: ''
+            UseBlockSetting: false
+            WeatherFlag: 2
+            Skin: {Name: '', UUID: '', ApplyOnArrival: false, MetaData: '', Signature: ''}
+            Pause: {Distance: 5, TimeOut: 25, Type: ALL}
+            PluginSettings:
+              Animations: {Setting: SLEEP, Interval: 500, Volume: '1.0', Pitch: '0.0'}
+              JobsReborn: {JobName: Baker, JobMax: 2}
+          '2':
+            Location: {world: elsewhere, x: 0, y: 64, z: 0}
+            TimeOfDay: 6000
+          '3':
+            Location: {world: old_town, x: 0, y: 64, z: 0}
+            TimeOfDay: -1
+  '4':
+    uuid: 00000000-0000-0000-0000-000000000004
+    name: Shepherd
+    traits:
+      type: VILLAGER
+      location: {world: old_town, x: 5.5, y: 64, z: 5.5, yaw: 0, pitch: 0}
+      npcdestinations:
+        OpensWoodDoors: 'true'
+        Destinations:
+          '0':
+            Location: {world: old_town, x: 7, y: 64, z: 9, yaw: '-450.0', pitch: '95.0'}
+            TimeOfDay: 30000
+            AliasName: '!!'
+            Probability: {ChancePercent: '150', Min_Time: 99999, Max_Time: 5}
+            WanderSettings: {Wandering_Distance: '40.6', Wait_Minimum: 9, Wait_Maximum: 4, Wandering_UseBlocks: true}
+            Items:
+              Head: {type: AIR}
+              Chest: {==: org.bukkit.inventory.ItemStack, type: IRON_CHESTPLATE, amount: 300, meta: {==: ItemMeta, meta-type: UNSPECIFIC, display-name: Wool}}
+              Legs: null
+              Boots: {amount: 1}
+            Skin: {Name: Shepherd, MetaData: abc, Signature: def, ApplyOnArrival: true}
+            Commands: {arrival: ['  //say hi  ', 1, 'say ok']}
+            PluginSettings:
+              Animations: {Setting: SIT}
+              Farmer: {Crop: wheat}
+            Sentinel: {lastSet: 5}
+          '1':
+            Location: {world: old_town, x: 1.5, y: 64, z: 1}
+            TimeOfDay: 100
+          '2': not-a-destination
+        Locations: ['1:64:2:-5', 'bad', '3:4']
+  '5':
+    uuid: 00000000-0000-0000-0000-000000000005
+    name: Odd
+    traits:
+      type: PLAYER
+      location: {world: old_town, x: 0, y: 64, z: 0}
+      npcdestinations: [1, 2]

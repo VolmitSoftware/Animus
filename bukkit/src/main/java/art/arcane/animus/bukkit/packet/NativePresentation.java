@@ -5,6 +5,7 @@ import art.arcane.animus.core.npc.ArmorStandLook;
 import art.arcane.animus.core.npc.NpcAppearance;
 import art.arcane.animus.core.npc.NpcPose;
 import art.arcane.animus.core.presentation.BodyLook;
+import art.arcane.animus.core.presentation.VariantWire;
 import art.arcane.animus.core.presentation.BodyRules;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -111,7 +112,7 @@ final class NativePresentation {
         boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
         byte flags = look.sharedFlags(invisible);
         if (flags != 0) values.add(dataValue.invoke(null, sharedFlags, flags));
-        if (look.usingItem()) values.add(dataValue.invoke(null, livingFlags, BodyLook.livingFlags(true)));
+        if (look.usingItem() && VariantWire.living(typeKey)) values.add(dataValue.invoke(null, livingFlags, BodyLook.livingFlags(true)));
         Optional<BodyRules.BabyFlag> baby = look.traits().baby() ? BodyRules.babyFlag(typeKey) : Optional.empty();
         if (baby.isPresent() && babies.containsKey(baby.get())) values.add(dataValue.invoke(null, babies.get(baby.get()), Boolean.TRUE));
         if ((look.pose() != NpcPose.STANDING && look.pose() != NpcPose.SITTING) || (look.motion() & BodyLook.GLIDING) != 0)
@@ -147,11 +148,12 @@ final class NativePresentation {
     }
 
     /** The shared flags, pose and item use of a body whose look changed in place; all are always sent, so standing again clears a crouch. */
-    List<Object> lookValues(BodyLook look) throws ReflectiveOperationException {
+    List<Object> lookValues(BodyLook look, boolean living) throws ReflectiveOperationException {
         boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
-        return List.of(dataValue.invoke(null, sharedFlags, look.sharedFlags(invisible)),
-                dataValue.invoke(null, pose, Enum.valueOf((Class) poses, look.pose() == NpcPose.SITTING ? "STANDING" : look.nativePose())),
-                dataValue.invoke(null, livingFlags, BodyLook.livingFlags(look.usingItem())));
+        List<Object> values = new ArrayList<>(List.of(dataValue.invoke(null, sharedFlags, look.sharedFlags(invisible)),
+                dataValue.invoke(null, pose, Enum.valueOf((Class) poses, look.pose() == NpcPose.SITTING ? "STANDING" : look.nativePose()))));
+        if (living) values.add(dataValue.invoke(null, livingFlags, BodyLook.livingFlags(look.usingItem())));
+        return values;
     }
 
     /** Formatted text as a styled vanilla component, so hex colours render; a plain literal would show them as codes. */

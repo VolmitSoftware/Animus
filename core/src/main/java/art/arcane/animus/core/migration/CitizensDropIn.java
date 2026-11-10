@@ -1,8 +1,10 @@
 package art.arcane.animus.core.migration;
 
+import art.arcane.animus.core.shop.ShopDocument;
 import art.arcane.animus.core.npc.DefinitionBatch;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
+import art.arcane.animus.core.schedule.ScheduleSettings;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.text.DocsLink;
@@ -46,7 +48,7 @@ public final class CitizensDropIn {
     public record Found(Path path, String label) {}
     public record Sources(Optional<Found> saves, Optional<Found> traders, List<Found> schematics) {}
     /** The categories {@code /animus import citizens accept} turns on, in the order they are listed. */
-    public static final List<String> CATEGORIES = List.of("spawn", "patrols", "combat", "riding", "shops", "builder", "denizen");
+    public static final List<String> CATEGORIES = List.of("spawn", "patrols", "schedules", "combat", "riding", "shops", "builder", "denizen");
     public static final String STATE = "imports/citizens/state.json";
     /** The accept word that lets the imported command behaviors run; never part of {@code all}. */
     public static final String COMMANDS = "commands";
@@ -313,7 +315,7 @@ public final class CitizensDropIn {
         }
         Found save = sources.saves().get();
         StableSource.Read source = StableSource.read(save.path(), save.label());
-        CitizensImporter.Preview preview = new CitizensImporter().preview(save.path(), store, worlds, factorGroups);
+        CitizensImporter.Preview preview = new CitizensImporter().disguises(LibsDisguisesSaves.read(store, host.pluginsDirectory())).preview(save.path(), store, worlds, factorGroups);
         if (!preview.summary().get("sourceSha256").getAsString().equals(source.sha256()))
             throw new IOException(save.label() + " changed while the preview read it; if Citizens is saving it, wait and run preview again");
         if (preview.valid() != preview.records())
@@ -465,7 +467,7 @@ public final class CitizensDropIn {
         state.addProperty("state", "applied");
         writeState(state);
         List<String> errors = npcs.reload();
-        lines.addFirst(Palette.success("Installed import " + state.get("importId").getAsString().substring(0, 12) + "; NPCs stay despawned with patrols, combat, riding, shops and builds off; tx " + definitions));
+        lines.addFirst(Palette.success("Installed import " + state.get("importId").getAsString().substring(0, 12) + "; NPCs stay despawned with patrols, schedules, combat, riding, shops and builds off; tx " + definitions));
         if (copied > 0) lines.add("Copied " + copied + " schematics into schematics/");
         if (!errors.isEmpty()) lines.add(problems(errors));
         int behaviors = imported(state).stream().mapToInt((NpcDefinition definition) -> definition.json().has("behaviors") ? definition.json().getAsJsonArray("behaviors").size() : 0).sum();
@@ -723,6 +725,7 @@ public final class CitizensDropIn {
                 yield !despawned && !json.get("spawned").getAsBoolean();
             }
             case "patrols" -> unreviewed(modules, "animus:navigation");
+            case "schedules" -> unreviewed(modules, ScheduleSettings.MODULE);
             case "combat" -> unreviewed(modules, "animus:combat");
             case "riding" -> unreviewed(modules, "animus:riding");
             case "shops" -> unreviewed(modules, "animus:shop");
@@ -737,6 +740,7 @@ public final class CitizensDropIn {
         if (category.equals("denizen")) { DenizenImporter.accept(json); return; }
         String module = switch (category) {
             case "patrols" -> "animus:navigation";
+            case "schedules" -> ScheduleSettings.MODULE;
             case "combat" -> "animus:combat";
             case "riding" -> "animus:riding";
             case "shops" -> "animus:shop";
@@ -796,6 +800,9 @@ public final class CitizensDropIn {
         return false;
     }
 
+    /** Generated behaviors that may run commands: Citizens commands, and waypoint triggers that may hold command triggers. */
+    private static boolean mayRunCommands(String id) { return id.startsWith("citizens:commands-") || id.startsWith("citizens:waypoints-"); }
+
     private static List<String> behaviors(JsonObject definition) {
         List<String> ids = new ArrayList<>();
         if (definition.has("behaviors") && definition.get("behaviors").isJsonArray())
@@ -830,8 +837,9 @@ public final class CitizensDropIn {
     private String allowCommands(JsonObject state) throws IOException {
         List<String> ids = new ArrayList<>();
         for (NpcDefinition definition : imported(state))
-            for (String id : behaviors(definition.json())) if (id.startsWith("citizens:commands-")) ids.add(id);
+            for (String id : behaviors(definition.json())) if (mayRunCommands(id)) ids.add(id);
         ids.addAll(DenizenDropIn.commandBehaviors(store, state));
+        ids.addAll(shopCommands(store));
         List<String> needed = CommandAllowList.namespaces(ids);
         if (needed.isEmpty()) return "Commands: no imported behavior runs commands";
         String text = CommandAllowList.read(store);
@@ -847,6 +855,21 @@ public final class CitizensDropIn {
         writeState(state);
         return "Commands: added " + String.join(", ", added) + " to config.toml [behaviors.actions] commandNamespaces; " + ids.size()
                 + " imported behaviors may run commands, rollback removes " + (added.size() == 1 ? "it" : "them");
+    }
+
+    /** Imported Citizens shops that run commands, which the same allow-list keeps from loading. */
+    static List<String> shopCommands(DocumentStore store) throws IOException {
+        List<String> ids = new ArrayList<>();
+        Path folder = store.resolve(CitizensShops.FOLDER);
+        if (!Files.isDirectory(folder, LinkOption.NOFOLLOW_LINKS)) return ids;
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(folder, "*.json")) {
+            for (Path file : files) {
+                String name = file.getFileName().toString();
+                ShopDocument.Result shop = ShopDocument.parse(CitizensBehaviors.NAMESPACE + ":" + name.substring(0, name.length() - 5), JsonDocuments.read(file));
+                if (shop.shop().isPresent() && shop.shop().get().hasCommands()) ids.add(shop.shop().get().id());
+            }
+        }
+        return ids;
     }
 
     /** Takes the namespaces accept commands added back out of config.toml, leaving any the operator added since. */
@@ -868,7 +891,8 @@ public final class CitizensDropIn {
     static Optional<String> commandLine(List<JsonObject> definitions, DocumentStore store) throws IOException {
         List<String> ids = new ArrayList<>();
         for (JsonObject definition : definitions)
-            for (String id : behaviors(definition)) if (id.startsWith("citizens:commands-")) ids.add(id);
+            for (String id : behaviors(definition)) if (mayRunCommands(id)) ids.add(id);
+        ids.addAll(shopCommands(store));
         if (ids.isEmpty()) return Optional.empty();
         return Optional.of("Commands: " + ids.size() + " behaviors stay denied (such as " + ids.getFirst() + "); review behaviors/citizens/, "
                 + CommandAllowList.advice(store, List.of("citizens")));
@@ -900,6 +924,8 @@ public final class CitizensDropIn {
         List<JsonObject> staged = GroupFactoring.staged(preview);
         List<String> lines = new ArrayList<>(GroupFactoring.reviewLine(summary).stream().toList());
         lines.add(converted(staged));
+        if (summary.has("companions")) lines.add("Also read beside the save: " + String.join(", ", names(summary.getAsJsonArray("companions")))
+                + "; " + preview.shops() + " Citizens shops install in shops/citizens/");
         lines.add("Off until accepted: " + counts(pending(staged)));
         Map<String, Integer> preserved = preserved(staged);
         lines.add("Kept, not run: " + (preserved.isEmpty() ? "nothing" : counts(preserved)));
@@ -907,6 +933,12 @@ public final class CitizensDropIn {
         lines.add("Traits " + summary.getAsJsonObject("traits").size() + ", warnings " + summary.getAsJsonArray("migrationWarnings").size()
                 + ", unresolved NPC references " + summary.get("unresolvedReferences").getAsInt());
         return lines;
+    }
+
+    private static List<String> names(JsonArray array) {
+        List<String> names = new ArrayList<>();
+        for (JsonElement name : array) names.add(name.getAsString());
+        return names;
     }
 
     private static String counts(Map<String, Integer> counts) {

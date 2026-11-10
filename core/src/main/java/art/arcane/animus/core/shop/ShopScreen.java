@@ -206,7 +206,10 @@ public final class ShopScreen<P, S> implements Screen {
         }
         if (ready.isEmpty()) { host.message(player, RichText.colorize(text("failed").replace("{reason}", "an item in this entry does not exist on this server"))); return; }
         ShopTransactions.Buyer<S> buyer = new ShopTransactions.Buyer<>(viewer.id(), (String node) -> host.permitted(player, node), host.inventory(player),
-                (S stack) -> host.drop(player, stack));
+                (S stack) -> host.drop(player, stack), new ShopTransactions.Levels() {
+                    @Override public boolean take(int levels) { return host.takeLevels(player, levels); }
+                    @Override public void give(int levels) { host.giveLevels(player, levels); }
+                });
         Optional<TradeInventory<S>> stock = Optional.empty();
         if (shop.stocked()) {
             ShopStock<S> opened = host.stock(shop);
@@ -237,8 +240,9 @@ public final class ShopScreen<P, S> implements Screen {
             case FAILED -> "failed";
             case CONTAINER_FULL -> "containerFull";
             case CONTAINER_UNAVAILABLE -> "containerUnavailable";
+            case NOT_ENOUGH_LEVELS -> "notEnoughLevels";
         };
-        host.message(player, RichText.colorize(fill(text(key), item, price, outcome.detail().orElse(""))));
+        host.message(player, RichText.colorize(fill(text(key).replace("{levels}", Integer.toString(entry.levels())), item, price, outcome.detail().orElse(""))));
         if (!outcome.done()) return;
         String name = host.name(player);
         for (ShopDocument.ShopCommand command : entry.commands()) {
@@ -279,7 +283,12 @@ public final class ShopScreen<P, S> implements Screen {
         BigDecimal price = entry.price(now);
         if (entry.display().showPrice()) {
             switch (entry.type()) {
-                case BUY, COMMAND -> { lore.add(price.signum() > 0 ? text("priceLine").replace("{price}", price(price)) : text("freeLine")); if (entry.allowStack()) lore.add(text("stackLine")); }
+                case BUY, COMMAND -> {
+                    if (price.signum() > 0) lore.add(text("priceLine").replace("{price}", price(price)));
+                    if (entry.levels() > 0) lore.add(levelsLine(entry));
+                    if (price.signum() == 0 && entry.levels() == 0) lore.add(text("freeLine"));
+                    if (entry.allowStack()) lore.add(text("stackLine"));
+                }
                 case SELL -> { lore.add(text("payLine").replace("{price}", price(price))); if (entry.allowStack()) lore.add(text("stackLine")); }
                 case TRADE -> {
                     lore.add(text("needsLine"));
@@ -287,6 +296,7 @@ public final class ShopScreen<P, S> implements Screen {
                     lore.add(text("givesLine"));
                     for (ShopDocument.Goods give : entry.gives()) lore.add(text("goodsLine").replace("{item}", goods(give)));
                     if (price.signum() > 0) lore.add(text("priceLine").replace("{price}", price(price)));
+                    if (entry.levels() > 0) lore.add(levelsLine(entry));
                 }
                 case STATIC -> {}
             }
@@ -348,6 +358,8 @@ public final class ShopScreen<P, S> implements Screen {
         DecimalFormat format = new DecimalFormat(settings.priceFormat(), DecimalFormatSymbols.getInstance(Locale.ROOT));
         return format.format(amount);
     }
+
+    private String levelsLine(ShopDocument.Entry entry) { return text("levelsLine").replace("{levels}", Integer.toString(entry.levels())); }
 
     private String fill(String template, String item, String price, String reason) {
         return template.replace("{item}", item).replace("{price}", price).replace("{reason}", reason).replace("{shop}", shop.id());

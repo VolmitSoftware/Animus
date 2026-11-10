@@ -2,7 +2,7 @@
 /// workspace schema 2) to and from Animus documents, for the kinds Animus
 /// adopts: chest GUIs, holographic menus, holograms, text animations and
 /// presets. A GUI made
-/// in Gloss Web opens here, and the reverse (dev/editor-design.md, section 3).
+/// in Gloss Web opens here, and the reverse.
 ///
 /// Ids map as the server's GlossIds maps them. That mapping loses the
 /// namespace (`town:menu` leaves as `town.menu`), so an export also writes

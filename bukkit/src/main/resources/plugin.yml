@@ -5,11 +5,15 @@ description: 'A Manager for all things NPC.'
 authors: [Volmit Software]
 api-version: '${apiVersion}'
 folia-supported: true
-softdepend: [WorldGuard, Vault, LuckPerms, Gloss, React, PlaceholderAPI]
+softdepend: [WorldGuard, Vault, LuckPerms, Gloss, React, PlaceholderAPI, Quests, BeautyQuests, BetonQuest, NotQuests, Typewriter, ModelEngine, LibsDisguises, MythicMobs]
 commands:
   ${projectId}:
     description: Manages virtual NPCs, definitions and staged Citizens imports.
     usage: '/<command> help'
+  quests:
+    description: Opens your quest journal.
+    usage: '/<command>'
+    permission: animus.quests.use
 
 permissions:
   animus.status:
@@ -48,6 +52,7 @@ permissions:
       animus.build: true
       animus.record: true
       animus.rigs: true
+      animus.quests: true
   animus.npc.view:
     description: List, inspect, select and validate NPCs.
     default: op
@@ -99,6 +104,12 @@ permissions:
   animus.rigs:
     description: Load rigs, play animations and build the resource pack.
     default: op
+  animus.quests:
+    description: List and reload quests, and start, move, complete and reset a player's quests.
+    default: op
+  animus.quests.use:
+    description: Take quests from NPCs and open the quest journal with /quests.
+    default: true
   animus.hotload.notify:
     description: Hear the ding and see each change when a data file is hotloaded or refused.
     default: op

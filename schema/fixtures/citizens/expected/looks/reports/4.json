@@ -1,0 +1,24 @@
+{
+  "citizensId": 4,
+  "presentationWarnings": [],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/wolfmodifiers/variant": "CONVERTED",
+    "/traits/wolfmodifiers/collarColor": "CONVERTED",
+    "/traits/wolfmodifiers/tamed": "CONVERTED",
+    "/traits/wolfmodifiers/sitting": "CONVERTED",
+    "/traits/wolfmodifiers/angry": "CONVERTED"
+  },
+  "reasons": {},
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": []
+}

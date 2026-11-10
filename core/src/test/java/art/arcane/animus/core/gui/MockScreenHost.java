@@ -28,11 +28,12 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
         public final List<String> messages = new ArrayList<>();
         public final List<String> commands = new ArrayList<>();
         public final List<Stack> dropped = new ArrayList<>();
+        public int levels;
         public ScreenFrame frame;
         public Object window;
         public ScreenHost.Pose pose;
         public final List<String> effects = new ArrayList<>();
-        public int opened, closed;
+        public int opened, closed, experience;
         public boolean wand;
         /** The text prompt waiting for an answer, or null. Tests answer it through {@code prompt.answer()}. */
         public ScreenHost.Prompt prompt;
@@ -52,6 +53,12 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
     @Override public String name(Player player) { return player.name; }
     @Override public Object viewer(Player player, String property) { return player.facts.get(property); }
     @Override public boolean permitted(Player player, String node) { return player.permissions.contains("*") || PermissionNodes.granted(player.permissions::contains, node); }
+    @Override public boolean takeLevels(Player player, int levels) {
+        if (player.levels < levels) return false;
+        player.levels -= levels;
+        return true;
+    }
+    @Override public void giveLevels(Player player, int levels) { player.levels += levels; }
 
     @Override public Optional<Object> show(Player player, ScreenFrame frame, Object window) {
         if (unsupported.contains(frame.resolution())) return Optional.empty();
@@ -105,6 +112,12 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
     @Override public void drop(Player player, Stack stack) { player.dropped.add(stack); }
     @Override public Economy economy() { return economy; }
     @Override public Optional<NpcItem> worn(Player player, art.arcane.animus.core.npc.EquipmentSlot slot) { return Optional.ofNullable(player.worn.get(slot)); }
+    @Override public void parts(Player player, List<art.arcane.animus.core.text.TextPart> parts) {
+        StringBuilder line = new StringBuilder("parts:");
+        for (art.arcane.animus.core.text.TextPart part : parts) line.append(RichText.plain(part.text())).append(part.command().map((String command) -> "<" + command + ">").orElse(""));
+        player.messages.add(line.toString());
+    }
+    @Override public boolean experience(Player player, int points) { player.experience += points; return true; }
     @Override public boolean holdsWand(Player player) { return player.wand; }
     @Override public boolean giveWand(Player player) { player.wand = true; return true; }
     @Override public boolean prompt(Player player, ScreenHost.Prompt prompt) {

@@ -117,7 +117,7 @@ public final class Administration {
     public Creation creation(String id, String type, String world, art.arcane.animus.core.virtual.Vec3 point, float yaw, String group, String name,
                              Optional<UUID> owner, boolean spawned) throws IOException {
         if (!Double.isFinite(point.x()) || !Double.isFinite(point.y()) || !Double.isFinite(point.z())) throw new IOException("Coordinates must be numbers, such as x=0 y=64 z=0");
-        Optional<String> body = bodyProblem(type);
+        Optional<String> body = bodyProblem(runtime, type);
         if (body.isPresent()) throw new IOException(body.get().substring("$.type: ".length()));
         taken(id);
         JsonObject object = new JsonObject();
@@ -133,12 +133,35 @@ public final class Administration {
     }
 
     /**
-     * Why an NPC of this body type could never be shown: Animus presents only the bodies in {@link BodyRules#TYPES}, and
+     * This creation with a template's fields laid over it, such as the look of a MythicMobs mob: each field replaces the
+     * new NPC's own, and {@code modules} merges by module key. {@code keepName} keeps the name the command gave.
+     */
+    public Creation templated(Creation creation, JsonObject fields, boolean keepName) throws IOException {
+        JsonObject object = creation.draft().document().deepCopy();
+        for (Map.Entry<String, JsonElement> field : fields.entrySet()) {
+            String key = field.getKey();
+            if (keepName && key.equals("name")) continue;
+            if (key.equals("modules") && field.getValue().isJsonObject() && object.has("modules") && object.get("modules").isJsonObject()) {
+                for (Map.Entry<String, JsonElement> module : field.getValue().getAsJsonObject().entrySet())
+                    object.getAsJsonObject("modules").add(module.getKey(), module.getValue().deepCopy());
+            } else object.add(key, field.getValue().deepCopy());
+        }
+        Optional<String> body = bodyProblem(runtime, object.get("type").getAsString());
+        if (body.isPresent()) throw new IOException(body.get().substring("$.type: ".length()));
+        List<String> errors = NpcDefinition.validate(object);
+        if (!errors.isEmpty()) throw new IOException(errors.getFirst());
+        NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(object));
+        return new Creation(definition, new NpcRepository.Draft(definition.path(), "missing", 0, object));
+    }
+
+    /**
+     * Why an NPC of this body type could never be shown: Animus presents only the bodies the server's transport shows, and
      * any other type would be saved and then refused at spawn.
      */
-    public static Optional<String> bodyProblem(String type) {
-        if (BodyRules.TYPES.contains(art.arcane.animus.core.platform.MinecraftIds.normalize(type))) return Optional.empty();
-        return Optional.of("$.type: " + type + " cannot be shown; the bodies Animus shows are " + String.join(", ", new TreeSet<>(BodyRules.TYPES)));
+    public static Optional<String> bodyProblem(AnimusRuntime runtime, String type) {
+        java.util.Set<String> shown = runtime.bodyTypes();
+        if (shown.contains(art.arcane.animus.core.platform.MinecraftIds.normalize(type))) return Optional.empty();
+        return Optional.of("$.type: " + type + " cannot be shown; the bodies Animus shows are " + String.join(", ", new TreeSet<>(shown)));
     }
 
     /** Refuses an id another NPC already has, in any folder, with the toolkit's wording. */
@@ -179,7 +202,7 @@ public final class Administration {
         NpcRepository.Draft draft = runtime.npcs().draft(id);
         JsonObject edited = draft.document();
         JsonObject fields = patch(patch);
-        Optional<String> problem = patchProblem(runtime.documents(), fields);
+        Optional<String> problem = patchProblem(runtime, fields);
         if (problem.isPresent()) throw new IOException(problem.get());
         List<String> changes = merge(edited, fields);
         return "Saved " + id + ": " + describe(changes) + "; tx " + runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), edited));
@@ -204,12 +227,13 @@ public final class Administration {
      * Why an edit is refused before the definition rules run: a field no definition has, or a skin with no file under
      * {@code skins/}. Removing a field with {@code null} is always allowed. Read on the file lane.
      */
-    public static Optional<String> patchProblem(DocumentStore documents, JsonObject patch) {
+    public static Optional<String> patchProblem(AnimusRuntime runtime, JsonObject patch) {
+        DocumentStore documents = runtime.documents();
         for (Map.Entry<String, JsonElement> entry : patch.entrySet())
             if (!entry.getValue().isJsonNull() && !FIELDS.contains(entry.getKey())) return Optional.of("$." + entry.getKey() + ": unknown field");
         JsonElement type = patch.get("type");
         if (type != null && type.isJsonPrimitive()) {
-            Optional<String> body = bodyProblem(type.getAsString());
+            Optional<String> body = bodyProblem(runtime, type.getAsString());
             if (body.isPresent()) return body;
         }
         JsonElement skin = patch.get("skin");
@@ -325,7 +349,11 @@ public final class Administration {
         lines.addAll(catalogs(dropIn.committed(), dropIn.rolledBack()));
         if (dropIn.settingsChanged()) {
             // accept commands and rollback edit config.toml; apply it now instead of waiting for a hotload.
-            try { runtime.applySettings(art.arcane.animus.core.config.PluginSettings.load(runtime.documents())); }
+            try {
+                runtime.applySettings(art.arcane.animus.core.config.PluginSettings.load(runtime.documents()));
+                // Behaviors and shops check the command allow-list when they load, so the changed list applies once they load again.
+                runtime.catalogs().reload(new CatalogChange(java.util.Set.of(DocumentKind.BEHAVIOR, DocumentKind.SHOP, DocumentKind.INVENTORY), java.util.Set.of(), false));
+            }
             catch (IOException | RuntimeException failure) { lines.add("config.toml changed but not applied: " + failure.getMessage() + "; it applies at the next hotload or restart"); }
         }
         return lines;
@@ -357,15 +385,41 @@ public final class Administration {
     }
 
     /** Stages how a preview lands next to existing definitions: {@code reject}, {@code replace} or {@code duplicate} with a copy label. */
-    public List<String> stage(String importId, String mode, Optional<String> label) throws IOException {
+    public List<String> stage(String given, String mode, Optional<String> label) throws IOException {
+        String importId = imported("imports", "import", given);
         ImportApplications.Preview application = ImportApplications.stage(runtime.documents(), importId, mode, label.orElse(null));
         return List.of("Application " + application.applicationId() + ": " + application.mode() + ", " + application.records() + " records, " + application.replacements() + " replacements",
                 "Review " + relative(application.report()) + ", then /animus import plan " + importId + " " + application.applicationId());
     }
 
-    public List<String> apply(String importId) throws IOException { return installed(new CitizensImporter().apply(runtime.documents(), importId)); }
+    public List<String> apply(String given) throws IOException { return installed(new CitizensImporter().apply(runtime.documents(), imported("imports", "import", given))); }
 
-    public List<String> applyPlan(String importId, String applicationId) throws IOException { return installed(ImportApplications.apply(runtime.documents(), importId, applicationId)); }
+    public List<String> applyPlan(String given, String application) throws IOException {
+        String importId = imported("imports", "import", given);
+        return installed(ImportApplications.apply(runtime.documents(), importId, imported("imports/" + importId + "/applications", "application", application)));
+    }
+
+    /**
+     * The full id under {@code folder} that {@code given} starts with. Chat shows ids cut to their first characters with
+     * the full id on click, so a typed short id answers when it names exactly one.
+     */
+    private String imported(String folder, String kind, String given) throws IOException {
+        if (given.matches("[a-f0-9]{64}")) return given;
+        if (!given.matches("[a-f0-9]{8,63}")) throw new IOException("Give the " + kind + " id from the preview, at least its first 8 characters");
+        List<String> matches = new ArrayList<>();
+        Path parent = runtime.documents().resolve(folder);
+        if (java.nio.file.Files.isDirectory(parent)) {
+            try (java.util.stream.Stream<Path> children = java.nio.file.Files.list(parent)) {
+                for (Path child : children.toList()) {
+                    String name = child.getFileName().toString();
+                    if (name.matches("[a-f0-9]{64}") && name.startsWith(given) && java.nio.file.Files.isDirectory(child)) matches.add(name);
+                }
+            }
+        }
+        if (matches.isEmpty()) throw new IOException("No " + kind + " id starts with " + given);
+        if (matches.size() > 1) throw new IOException(given + " starts " + matches.size() + " " + kind + " ids; give more of it");
+        return matches.getFirst();
+    }
 
     private List<String> installed(String tx) throws IOException {
         List<String> errors = runtime.npcs().reload();

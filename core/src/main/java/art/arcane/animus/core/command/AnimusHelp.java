@@ -26,12 +26,13 @@ public final class AnimusHelp {
 
     static final List<Topic> TOPICS = List.of(
             new Topic("Tools", DocsLink.TOOLS, List.of("setup", "tools")),
-            new Topic("NPCs", DocsLink.COMMANDS, List.of("status", "list", "create", "inspect", "edit", "clone", "delete", "spawn", "despawn",
+            new Topic("NPCs", DocsLink.COMMANDS, List.of("status", "list", "create", "mythic", "inspect", "edit", "clone", "delete", "spawn", "despawn",
                     "select", "selection", "validate", "reload", "rollback", "npc")),
-            new Topic("Movement", DocsLink.MOVEMENT, List.of("navigation", "ride")),
+            new Topic("Movement", DocsLink.MOVEMENT, List.of("navigation", "schedule", "ride")),
             new Topic("Combat", DocsLink.COMBAT, List.of("combat")),
             new Topic("Content", DocsLink.CONTENT, List.of("modules", "rigs", "pack", "import", "record")),
             new Topic("Services", DocsLink.SERVICES, List.of("shop", "gui", "hologram", "build", "editor")),
+            new Topic("Quests", DocsLink.QUESTS, List.of("quest")),
             new Topic("Behaviors", DocsLink.BEHAVIORS, List.of("behaviors")),
             new Topic("Groups", DocsLink.GROUPS, List.of("groups")),
             new Topic("Diagnostics", DocsLink.DIAGNOSTICS, List.of("debug", "proof")));

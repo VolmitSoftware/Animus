@@ -8,7 +8,7 @@
   "type": "minecraft:player",
   "spawned": false,
   "migration": {
-    "importId": "20978d52deded908b070a8daa7e021f1822155a44fb8ab98ea4ddefbf7fc2c7b",
+    "importId": "87c9f64e72a9a6c35bb7eaac6aedc577495e67d7b7d365ba731bdee1b09190a3",
     "citizensId": 20,
     "originalSpawned": null,
     "references": []
@@ -21,6 +21,9 @@
     "yaw": 0,
     "pitch": 0
   },
+  "behaviors": [
+    "citizens:builder-20"
+  ],
   "modules": {
     "animus:builder": {
       "schematic": "Town_Hall.schem",
@@ -86,7 +89,7 @@
           "Builder used Town Hall.schematic in the old .schematic format, which Animus cannot read; save it again as Town_Hall.schem in the Animus schematics folder",
           "Builder's outstanding materials use old numeric item IDs; they are kept under imported and the build counts its needs again",
           "builder origin is used in the NPC's own world; its saved world was legacy",
-          "Builder was building when saved; start the build again with /animus build start after review. Blocks already in place are skipped",
+          "Builder was building when saved; the build starts again on the NPC's first spawn after accept builder. Blocks already in place are skipped",
           "builder onstart names a Denizen task; recreate it with a build_finished or build_paused trigger",
           "builder oncomplete names a Denizen task; recreate it with a build_finished or build_paused trigger",
           "builder fields kept for review without conversion: Extra"

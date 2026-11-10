@@ -24,7 +24,7 @@ public final class RecorderLook {
      * The player's signed {@code textures} property: Paper's {@code PlayerProfile.getProperties()}, otherwise the
      * CraftBukkit game profile. Empty in offline mode or when neither path binds.
      */
-    static Optional<BodySkin> skin(Player player) {
+    public static Optional<BodySkin> skin(Player player) {
         try {
             Optional<BodySkin> paper = paperSkin(player);
             if (paper.isPresent()) return paper;

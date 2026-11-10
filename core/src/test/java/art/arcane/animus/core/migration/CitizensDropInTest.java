@@ -161,7 +161,7 @@ class CitizensDropInTest {
             assertTrue(staged.contains("3 NPCs, 3 valid"), staged);
             assertTrue(staged.contains("Folders: npcs/world/ 2, npcs/world_nether/ 1"), staged);
             assertTrue(staged.contains("1 shops"), staged);
-            assertTrue(staged.contains("Off until accepted: spawn 2, patrols 0, combat 1, riding 1, shops 1, builder 0"), staged);
+            assertTrue(staged.contains("Off until accepted: spawn 2, patrols 0, schedules 0, combat 1, riding 1, shops 1, builder 0"), staged);
             assertTrue(staged.contains("Kept, not run: denizen 1\n") || staged.endsWith("Kept, not run: denizen 1"), staged);
             assertTrue(staged.contains("1 .schem/.nbt files") && staged.contains("1 old .schematic"), staged);
             assertTrue(staged.endsWith("Next: /animus import citizens apply"), staged);
@@ -185,7 +185,7 @@ class CitizensDropInTest {
             assertThrows(IOException.class, () -> flow.preview("reject", Optional.empty(), Map.of(), false));
 
             String review = joined(flow.reviewApplied());
-            assertTrue(review.contains("Waiting: spawn 2, patrols 0, combat 1, riding 1, shops 1, builder 0, denizen 0 https://docs."), review);
+            assertTrue(review.contains("Waiting: spawn 2, patrols 0, schedules 0, combat 1, riding 1, shops 1, builder 0, denizen 0 https://docs."), review);
             assertTrue(review.contains("Kept but not run: denizen 1") && !review.contains("waypoints 1"), "an empty waypoint set is not a kept route: " + review);
 
             String combat = joined(flow.acceptCategories(List.of("combat")));
@@ -336,7 +336,7 @@ class CitizensDropInTest {
             CitizensDropIn flow = dropIn(store, npcs);
             String staged = joined(flow.preview("reject", Optional.empty(), Map.of(), false));
             assertTrue(staged.contains("Converted: 1 patrol routes (2 points), look-close on 1 NPCs, 1 text and 1 command behaviors"), staged);
-            assertTrue(staged.contains("Off until accepted: spawn 1, patrols 1, combat 0"), staged);
+            assertTrue(staged.contains("Off until accepted: spawn 1, patrols 1, schedules 0, combat 0"), staged);
             assertTrue(staged.contains("Kept, not run: nothing"), staged);
             assertTrue(staged.contains("Commands: 1 behaviors stay denied (such as citizens:commands-5); review behaviors/citizens/"), staged);
 
@@ -435,9 +435,12 @@ class CitizensDropInTest {
             assertFalse(applied.rollback());
             admin.citizens((CitizensDropIn dropIn) -> dropIn.acceptCategories(List.of("all")));
             reloads.clear();
+            admin.citizens((CitizensDropIn dropIn) -> dropIn.acceptCategories(List.of("commands")));
+            assertTrue(reloads.stream().anyMatch((CatalogChange change) -> change.kinds().containsAll(Set.of(DocumentKind.SHOP, DocumentKind.BEHAVIOR))),
+                    "behaviors and shops load again under the changed command allow-list: " + reloads);
+            reloads.clear();
             admin.citizens(CitizensDropIn::rollbackApplied);
-            CatalogChange rolledBack = reloads.getLast();
-            assertTrue(rolledBack.rollback());
+            CatalogChange rolledBack = reloads.stream().filter(CatalogChange::rollback).findFirst().orElseThrow();
             assertTrue(rolledBack.kinds().containsAll(Set.of(DocumentKind.SHOP, DocumentKind.BEHAVIOR)), rolledBack.toString());
             assertEquals(Set.of("citizens:text-5", "citizens:commands-5"), rolledBack.removedBehaviors());
         }

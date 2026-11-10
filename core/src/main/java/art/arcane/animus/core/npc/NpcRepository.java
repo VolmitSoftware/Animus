@@ -43,6 +43,7 @@ public final class NpcRepository {
     private volatile Map<String, Map<String, String>> provenance = Map.of();
     private volatile Map<String, String> problems = Map.of(), groupProblems = Map.of();
     private volatile GroupCatalog groups = GroupCatalog.EMPTY;
+    private volatile Map<String, List<String>> disguiseNotes = Map.of();
     private Map<String, String> hashes = Map.of();
     /** The on-disk hash of each file whose hand edit a reload or hotload refused, while its last valid version stays published. */
     private Map<String, String> refused = Map.of();
@@ -147,7 +148,7 @@ public final class NpcRepository {
                 if (candidates.containsKey(read.definition().id())) problem = "$.id: duplicate " + read.definition().id();
                 else if (uuids.contains(read.definition().uuid())) problem = "$.uuid: duplicate " + read.definition().uuid();
                 else {
-                    Resolution resolution = resolve(read.definition(), catalog);
+                    Resolution resolution = resolve(read.definition(), catalog, apply);
                     // An edited file that names a missing group or merges into an invalid definition is refused like any
                     // invalid edit. When only its groups changed, the NPC keeps its last valid effective definition.
                     boolean edited = !startup && (!apply || !read.sourceHash().equals(hashes.get(read.path())));
@@ -157,7 +158,7 @@ public final class NpcRepository {
                             nextGroupProblems.put(read.path(), resolution.error());
                             NpcDefinition previous = previousByPath.get(read.path());
                             published = previous != null && previous.uuid().equals(read.definition().uuid()) && active.containsKey(previous.id())
-                                    ? new Resolution(active.get(previous.id()), provenance(previous.id()), null) : fallback(read.definition(), catalog);
+                                    ? new Resolution(active.get(previous.id()), provenance(previous.id()), null) : fallback(read.definition(), catalog, apply);
                         }
                         claim(read.definition(), published, read.sourceHash(), candidates, effective, sources, nextHashes, uuids);
                         continue;
@@ -225,8 +226,8 @@ public final class NpcRepository {
     }
 
     /** The effective definition of a stored one, or the first error: a missing group or an invalid combination. */
-    private static Resolution resolve(NpcDefinition definition, GroupCatalog catalog) {
-        if (definition.groups().isEmpty()) return new Resolution(definition, Map.of(), null);
+    private Resolution resolve(NpcDefinition definition, GroupCatalog catalog, boolean write) {
+        if (definition.groups().isEmpty()) return new Resolution(disguised(definition, write), Map.of(), null);
         List<GroupDocument> listed = new ArrayList<>();
         for (int i = 0; i < definition.groups().size(); i++) {
             Optional<GroupDocument> group = catalog.find(definition.groups().get(i));
@@ -234,18 +235,48 @@ public final class NpcRepository {
             listed.add(group.get());
         }
         GroupMerge.Result merged = GroupMerge.merge(definition.json(), listed);
-        try { return new Resolution(NpcDefinition.validated(merged.effective()), merged.provenance(), null); }
+        try { return new Resolution(disguised(NpcDefinition.validated(merged.effective()), write), merged.provenance(), null); }
         catch (IOException invalid) { return new Resolution(null, Map.of(), "with groups " + String.join(", ", definition.groups()) + ": " + invalid.getMessage()); }
     }
 
     /** Without a last valid effective definition (at startup): the groups that still exist if they merge validly, else the stored definition alone. */
-    private static Resolution fallback(NpcDefinition definition, GroupCatalog catalog) {
+    private Resolution fallback(NpcDefinition definition, GroupCatalog catalog, boolean write) {
         List<GroupDocument> available = new ArrayList<>();
         for (String id : definition.groups()) catalog.find(id).ifPresent(available::add);
         GroupMerge.Result merged = GroupMerge.merge(definition.json(), available);
-        try { return new Resolution(NpcDefinition.validated(merged.effective()), merged.provenance(), null); }
-        catch (IOException invalid) { return new Resolution(definition, Map.of(), null); }
+        try { return new Resolution(disguised(NpcDefinition.validated(merged.effective()), write), merged.provenance(), null); }
+        catch (IOException invalid) { return new Resolution(disguised(definition, write), Map.of(), null); }
     }
+
+    /**
+     * The effective definition wearing its {@link NpcDisguise}, with the skin document the disguise needs saved first when
+     * {@code write} is set. What the disguise left out is kept for {@link #disguiseNotes} and logged when it changes.
+     */
+    private NpcDefinition disguised(NpcDefinition effective, boolean write) {
+        if (NpcDisguise.declared(effective.json()).isEmpty()) { notes(effective.id(), List.of()); return effective; }
+        NpcDisguise.Applied applied = NpcDisguise.apply(effective.json());
+        try {
+            if (write && applied.skin().isPresent() && store.read(applied.skin().get().getKey()) == null)
+                store.commit(List.of(new DocumentStore.Change(applied.skin().get().getKey(), "missing", applied.skin().get().getValue())));
+            NpcDefinition disguised = NpcDefinition.validated(applied.definition());
+            notes(effective.id(), applied.notes());
+            return disguised;
+        } catch (IOException unsaved) {
+            notes(effective.id(), List.of("disguise not shown: " + unsaved.getMessage()));
+            return effective;
+        }
+    }
+
+    private void notes(String id, List<String> next) {
+        if (next.equals(disguiseNotes.getOrDefault(id, List.of()))) return;
+        Map<String, List<String>> updated = new TreeMap<>(disguiseNotes);
+        if (next.isEmpty()) updated.remove(id); else updated.put(id, next);
+        disguiseNotes = Collections.unmodifiableMap(updated);
+        for (String note : next) LOG.log(System.Logger.Level.INFO, "NPC " + id + ": " + note);
+    }
+
+    /** What an NPC's disguise could not show, or why it did not apply; empty when it applied in full or there is none. */
+    public List<String> disguiseNotes(String id) { return disguiseNotes.getOrDefault(id, List.of()); }
 
     public synchronized Draft draft(String id) throws IOException {
         NpcDefinition definition = stored.get(id);
@@ -259,7 +290,7 @@ public final class NpcRepository {
         json.addProperty("revision", draft.expectedRevision() + 1);
         NpcDefinition updated = NpcDefinition.parse(JsonDocuments.write(json));
         if (!updated.path().equals(draft.path())) throw new IOException("Rename/move requires an explicit transaction");
-        Resolution resolution = resolve(updated, groups);
+        Resolution resolution = resolve(updated, groups, true);
         if (resolution.error() != null) throw new IOException(resolution.error());
         for (NpcDefinition definition : stored.values()) {
             if (!definition.path().equals(updated.path()) && (definition.id().equals(updated.id()) || definition.uuid().equals(updated.uuid())))
@@ -314,7 +345,7 @@ public final class NpcRepository {
                 json.addProperty("revision", draft.expectedRevision() + 1);
                 NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(json));
                 if (!definition.path().equals(draft.path()) || !definition.uuid().equals(previous.uuid())) throw new IOException("Rename/move requires an explicit transaction");
-                Resolution resolution = resolve(definition, groups);
+                Resolution resolution = resolve(definition, groups, true);
                 if (resolution.error() != null) throw new IOException(resolution.error());
                 updated.add(definition);
                 resolutions.add(resolution);

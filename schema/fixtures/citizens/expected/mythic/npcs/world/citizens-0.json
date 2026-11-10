@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000600",
+  "id": "citizens-0",
+  "group": "world",
+  "name": "Fire Priest",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "dadfd414532c854e492a9d81afa39a059d64643c328d0e25abc7d4af1197e838",
+    "citizensId": 0,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64.0,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "behaviors": [
+    "citizens:commands-0"
+  ],
+  "modules": {
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "world",
+        "x": 0.5,
+        "y": 64.0,
+        "z": 0.5
+      },
+      "commandtrait": {
+        "commands": {
+          "0": {
+            "command": "mm test cast BlessingSkill",
+            "hand": "RIGHT",
+            "player": true
+          },
+          "1": {
+            "command": "/mythicmobs t c Fire_Burst -s",
+            "hand": "LEFT",
+            "player": true,
+            "op": true
+          },
+          "2": {
+            "command": "mm test cast ConsoleSkill",
+            "hand": "SHIFT_RIGHT"
+          }
+        }
+      }
+    }
+  }
+}

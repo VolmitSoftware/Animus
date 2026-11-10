@@ -8,7 +8,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://animus.volmitsoftware.com/schema/animation-v1.schema.json",
   "title": "Animus animation",
-  "description": "animations/<namespace>/<path>.json. Keyframe tracks over a rig's bones. Sampling is defined in dev/editor-contracts.md and pinned by schema/fixtures/animation/samples/. Validators also check that keyframe ticks strictly increase, stay within durationTicks, that track bones exist in the rig, and that values match the target.",
+  "description": "animations/<namespace>/<path>.json. Keyframe tracks over a rig's bones. Sampling is pinned by schema/fixtures/animation/samples/. Validators also check that keyframe ticks strictly increase, stay within durationTicks, that track bones exist in the rig, and that values match the target.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "revision", "id", "rig", "durationTicks", "tracks"],
@@ -130,6 +130,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "behavior": {"folder": "behaviors", "applyScope": "apply:behaviors", "schema": "generated/behavior.schema.json"},
     "pack": {"folder": "packs", "applyScope": "apply:behaviors", "schema": "generated/pack.schema.json"},
     "shop": {"folder": "shops", "applyScope": "apply:gui", "schema": "shop-v1.schema.json"},
+    "quest": {"folder": "quests", "applyScope": "apply:behaviors", "schema": "quest-v1.schema.json"},
     "inventory": {"folder": "gui/inventories", "applyScope": "apply:gui", "schema": "gui-inventory-v1.schema.json"},
     "menu": {"folder": "gui/menus", "applyScope": "apply:gui", "schema": "gloss/gloss.schema.json"},
     "hologram": {"folder": "gui/holograms", "applyScope": "apply:gui", "schema": "gloss/gloss-holograms.schema.json"},
@@ -194,7 +195,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "protocol": {"const": 1},
     "scope": {"enum": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs", "apply:commands", "import", "spawn", "terrain"]},
     "kind": {
-      "enum": ["npc", "route", "recording", "skin", "group", "behavior", "pack", "shop", "inventory", "menu", "hologram", "text-animation", "presets", "rig", "animation", "server-behaviors"],
+      "enum": ["npc", "route", "recording", "skin", "group", "behavior", "pack", "shop", "quest", "inventory", "menu", "hologram", "text-animation", "presets", "rig", "animation", "server-behaviors"],
       "description": "Document kinds. Folders and apply scopes are listed in editor-v1.endpoints.json."
     },
     "documentId": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[a-z0-9_.:/-]+$", "description": "The kind's own id: group/id for NPCs, namespace:path for behaviors, shops, GUIs, rigs and animations, the SHA-256 for skins, the relative path for menus."},
@@ -402,7 +403,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "schemas": {
           "type": "object",
-          "description": "Schema name (npc, route, behavior, pack, completions, shop, inventory, rig, animation and the Gloss kinds) to schema document.",
+          "description": "Schema name (npc, route, behavior, pack, completions, shop, quest, inventory, rig, animation and the Gloss kinds) to schema document.",
           "additionalProperties": {"type": "object"}
         }
       }
@@ -616,7 +617,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "additionalProperties": false,
       "required": ["categories"],
       "properties": {
-        "categories": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"enum": ["spawn", "patrols", "combat", "riding", "shops", "builder", "denizen", "all"]}}
+        "categories": {"type": "array", "minItems": 1, "maxItems": 9, "items": {"enum": ["spawn", "patrols", "schedules", "combat", "riding", "shops", "builder", "denizen", "all"]}}
       }
     },
     "import-review": {
@@ -925,7 +926,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     "player_kill",
                     "projectile_launch",
                     "projectile_hit",
-                    "entity_shoot_bow"
+                    "entity_shoot_bow",
+                    "quest_started",
+                    "quest_stage",
+                    "quest_completed"
                   ],
                   "description": "A server behavior uses server events only."
                 }
@@ -1010,12 +1014,24 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Shows action bar text to the triggering player, or the player named by player."
         },
         {
+          "const": "animus:advance-quest",
+          "description": "Moves the player's active Animus quest to its next stage, or to stage (from 1). Past the last stage it completes the quest with its rewards. Reports stage."
+        },
+        {
           "const": "animus:advance-quest-state",
           "description": "Advances a quest stage, by one unless by says otherwise, without passing maximum."
         },
         {
+          "const": "animus:animate",
+          "description": "Shows a vanilla animation: an arm swing, the hurt flash or a critical hit once, or a pose or held-item use that lasts until something changes it."
+        },
+        {
           "const": "animus:build",
           "description": "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z or where the NPC stands. Protection still applies."
+        },
+        {
+          "const": "animus:charge",
+          "description": "Takes money, experience levels and items from the triggering player, or the player named by player, all or nothing. Refuses with cannot-afford when they cannot pay, which ends the run."
         },
         {
           "const": "animus:choices",
@@ -1028,6 +1044,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         {
           "const": "animus:command",
           "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name. Allowed only for behaviors on the TOML allow-list, and never in a preview."
+        },
+        {
+          "const": "animus:complete-quest",
+          "description": "Completes the player's active Animus quest, with its rewards unless rewards is false. Reports stage."
         },
         {
           "const": "animus:give-book",
@@ -1043,7 +1063,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "const": "animus:message",
-          "description": "Sends formatted text without a speaker: to the triggering player (trigger, the default) or the player named by player, every online player (all), the players in the NPC's or triggering player's world (world), or the console. {player_name} becomes the player's name."
+          "description": "Sends formatted text without a speaker: to the triggering player (trigger, the default) or the player named by player, every online player (all), the players in the NPC's or triggering player's world (world), the players within radius of the NPC (nearby), or the console. {player_name} becomes the player's name."
         },
         {
           "const": "animus:navigate",
@@ -1072,6 +1092,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         {
           "const": "animus:pose",
           "description": "Turns the NPC to one of the named poses in its definition's poses."
+        },
+        {
+          "const": "animus:quest-objective",
+          "description": "Adds amount (1 by default) to a custom objective of the player's active Animus quest stage. Reports count."
         },
         {
           "const": "animus:resume-patrol",
@@ -1106,6 +1130,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Shows a particle effect at the NPC, or with at: player at the player, to the triggering player or nearby players. Server behaviors show it at the player."
         },
         {
+          "const": "animus:start-quest",
+          "description": "Starts an Animus quest for the triggering player, or the player named by player. quest is namespace:name, or a name in this behavior's namespace; force: true skips its requirements and repeat rule. Reports stage."
+        },
+        {
           "const": "animus:stop-animation",
           "description": "Stops one animation layer, or every played layer, and returns to the rig's idle animation."
         },
@@ -1119,7 +1147,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "const": "animus:teleport",
-          "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, or to the NPC or the player."
+          "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, to the NPC or the player, or the NPC to one of its anchors."
         },
         {
           "const": "animus:title",
@@ -1129,6 +1157,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "conditions": {
       "anyOf": [
+        {
+          "const": "animus:can-afford",
+          "description": "True when the triggering player, or the player named by player, holds the money, experience levels and items of the cost. False when there is no triggering player."
+        },
         {
           "const": "animus:flag-state",
           "description": "Compares a flag with value (true by default) by exact JSON equality. An unset or expired flag is false: it equals false and nothing else."
@@ -1148,6 +1180,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         {
           "const": "animus:quest-state",
           "description": "Compares a quest stage. An unset quest is stage zero."
+        },
+        {
+          "const": "animus:quest-status",
+          "description": "Compares where the player is in an Animus quest: none, active, ready (waiting for the turn-in NPC) or finished."
         }
       ]
     },
@@ -1822,6 +1858,86 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "if": {
             "properties": {
               "capability": {
+                "const": "animus:advance-quest"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "quest": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 129
+                    },
+                    "stage": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 33
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "required": [
+                    "quest"
+                  ],
+                  "description": "Moves the player's active Animus quest to its next stage, or to stage (from 1). Past the last stage it completes the quest with its rewards. Reports stage."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
                 "const": "animus:advance-quest-state"
               }
             },
@@ -1898,6 +2014,87 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     "name"
                   ],
                   "description": "Advances a quest stage, by one unless by says otherwise, without passing maximum."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:animate"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "animation": {
+                      "enum": [
+                        "swing",
+                        "swing_offhand",
+                        "hurt",
+                        "crit",
+                        "magic_crit",
+                        "wake",
+                        "sneak",
+                        "sleep",
+                        "sit",
+                        "stand",
+                        "use_item",
+                        "stop_using_item"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "animation"
+                  ],
+                  "description": "Shows a vanilla animation: an arm swing, the hurt flash or a critical hit once, or a pose or held-item use that lasts until something changes it."
                 }
               },
               "required": [
@@ -2034,6 +2231,149 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     "operation"
                   ],
                   "description": "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z or where the NPC stands. Protection still applies."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:charge"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "money": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000000000000
+                    },
+                    "levels": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "items": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 27,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "item": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128
+                              },
+                              "count": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 99
+                              },
+                              "components": {
+                                "type": "string",
+                                "maxLength": 4096
+                              }
+                            },
+                            "required": [
+                              "id"
+                            ]
+                          },
+                          "amount": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 6400
+                          }
+                        },
+                        "required": [
+                          "item",
+                          "amount"
+                        ]
+                      }
+                    },
+                    "match": {
+                      "enum": [
+                        "strict",
+                        "legacy",
+                        "material"
+                      ]
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "anyOf": [
+                    {
+                      "required": [
+                        "money"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "levels"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "items"
+                      ]
+                    }
+                  ],
+                  "description": "Takes money, experience levels and items from the triggering player, or the player named by player, all or nothing. Refuses with cannot-afford when they cannot pay, which ends the run."
                 }
               },
               "required": [
@@ -2319,6 +2659,84 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     "command"
                   ],
                   "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name. Allowed only for behaviors on the TOML allow-list, and never in a preview."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:complete-quest"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "quest": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 129
+                    },
+                    "rewards": {
+                      "type": "boolean"
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "required": [
+                    "quest"
+                  ],
+                  "description": "Completes the player's active Animus quest, with its rewards unless rewards is false. Reports stage."
                 }
               },
               "required": [
@@ -2668,8 +3086,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         "trigger",
                         "all",
                         "world",
+                        "nearby",
                         "console"
                       ]
+                    },
+                    "radius": {
+                      "type": "number",
+                      "minimum": 1.0,
+                      "maximum": 64.0
                     },
                     "player": {
                       "type": "string",
@@ -2680,7 +3104,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                   "required": [
                     "text"
                   ],
-                  "description": "Sends formatted text without a speaker: to the triggering player (trigger, the default) or the player named by player, every online player (all), the players in the NPC's or triggering player's world (world), or the console. {player_name} becomes the player's name."
+                  "description": "Sends formatted text without a speaker: to the triggering player (trigger, the default) or the player named by player, every online player (all), the players in the NPC's or triggering player's world (world), the players within radius of the NPC (nearby), or the console. {player_name} becomes the player's name."
                 }
               },
               "required": [
@@ -2746,6 +3170,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                       "minLength": 1,
                       "maxLength": 64
                     },
+                    "anchor": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    },
                     "x": {
                       "type": "number",
                       "minimum": -3.0E+7,
@@ -2786,6 +3215,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     {
                       "required": [
                         "route"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "anchor"
                       ]
                     },
                     {
@@ -3312,6 +3746,92 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "if": {
             "properties": {
               "capability": {
+                "const": "animus:quest-objective"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "quest": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 129
+                    },
+                    "objective": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "amount": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100000
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "required": [
+                    "quest",
+                    "objective"
+                  ],
+                  "description": "Adds amount (1 by default) to a custom objective of the player's active Animus quest stage. Reports count."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
                 "const": "animus:resume-patrol"
               }
             },
@@ -3438,6 +3958,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                       "type": "string",
                       "minLength": 1,
                       "maxLength": 36
+                    },
+                    "bubbleTicks": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1200
+                    },
+                    "chat": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -4009,6 +4537,84 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "if": {
             "properties": {
               "capability": {
+                "const": "animus:start-quest"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "quest": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 129
+                    },
+                    "force": {
+                      "type": "boolean"
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "required": [
+                    "quest"
+                  ],
+                  "description": "Starts an Animus quest for the triggering player, or the player named by player. quest is namespace:name, or a name in this behavior's namespace; force: true skips its requirements and repeat rule. Reports stage."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
                 "const": "animus:stop-animation"
               }
             },
@@ -4306,6 +4912,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         "player"
                       ]
                     },
+                    "anchor": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    },
                     "player": {
                       "type": "string",
                       "minLength": 1,
@@ -4324,9 +4935,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                       "required": [
                         "to"
                       ]
+                    },
+                    {
+                      "required": [
+                        "anchor"
+                      ]
                     }
                   ],
-                  "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, or to the NPC or the player."
+                  "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, to the NPC or the player, or the NPC to one of its anchors."
                 }
               },
               "required": [
@@ -4562,6 +5178,149 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               ]
             }
           ]
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:can-afford"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "money": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000000000000
+                    },
+                    "levels": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "items": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 27,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "item": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128
+                              },
+                              "count": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 99
+                              },
+                              "components": {
+                                "type": "string",
+                                "maxLength": 4096
+                              }
+                            },
+                            "required": [
+                              "id"
+                            ]
+                          },
+                          "amount": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 6400
+                          }
+                        },
+                        "required": [
+                          "item",
+                          "amount"
+                        ]
+                      }
+                    },
+                    "match": {
+                      "enum": [
+                        "strict",
+                        "legacy",
+                        "material"
+                      ]
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "anyOf": [
+                    {
+                      "required": [
+                        "money"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "levels"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "items"
+                      ]
+                    }
+                  ],
+                  "description": "True when the triggering player, or the player named by player, holds the money, experience levels and items of the cost. False when there is no triggering player."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
         },
         {
           "if": {
@@ -4988,6 +5747,90 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               ]
             }
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:quest-status"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "quest": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 129
+                    },
+                    "status": {
+                      "enum": [
+                        "none",
+                        "active",
+                        "ready",
+                        "finished"
+                      ]
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "required": [
+                    "quest",
+                    "status"
+                  ],
+                  "description": "Compares where the player is in an Animus quest: none, active, ready (waiting for the turn-in NPC) or finished."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
         }
       ]
     },
@@ -5299,7 +6142,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "player_kill",
             "projectile_launch",
             "projectile_hit",
-            "entity_shoot_bow"
+            "entity_shoot_bow",
+            "quest_started",
+            "quest_stage",
+            "quest_completed"
           ],
           "description": "What starts the run."
         },
@@ -5869,6 +6715,51 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "then": {
             "$ref": "#/$defs/trigger-entity_shoot_bow"
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "quest_started"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-quest_started"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "quest_stage"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-quest_stage"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "quest_completed"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-quest_completed"
+          }
         }
       ]
     },
@@ -5967,6 +6858,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "exclusiveMinimum": 0,
           "maximum": 64.0,
           "description": "Blocks, above 0."
+        },
+        "playerCooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one player's runs of this trigger. Without it the configured playerCooldownTicks applies, unless cooldownTicks is set; 0 turns it off."
         }
       },
       "required": [
@@ -7288,6 +8185,105 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "id",
         "event"
       ]
+    },
+    "trigger-quest_started": {
+      "type": "object",
+      "description": "A player starts an Animus quest. Runs read context.quest, context.stage (1) and context.title.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "quest_started"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "quest": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-quest_stage": {
+      "type": "object",
+      "description": "A player's Animus quest moves on to a later stage. Runs read context.quest, context.stage (from 1) and context.title.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "quest_stage"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "quest": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-quest_completed": {
+      "type": "object",
+      "description": "A player completes an Animus quest. Runs read context.quest, context.stage (the stage count plus one) and context.title.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "quest_completed"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "quest": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
     }
   },
   "examples": [
@@ -7343,6 +8339,35 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     },
     {
+      "id": "animus:advance-quest",
+      "kind": "action",
+      "description": "Moves the player's active Animus quest to its next stage, or to stage (from 1). Past the last stage it completes the quest with its rewards. Reports stage.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "quest": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 129
+        },
+        "stage": {
+          "type": "integer",
+          "required": false,
+          "minimum": 1,
+          "maximum": 33
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
       "id": "animus:advance-quest-state",
       "kind": "action",
       "description": "Advances a quest stage, by one unless by says otherwise, without passing maximum.",
@@ -7378,6 +8403,35 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "required": false,
           "minimum": 0,
           "maximum": 1000000000000
+        }
+      }
+    },
+    {
+      "id": "animus:animate",
+      "kind": "action",
+      "description": "Shows a vanilla animation: an arm swing, the hurt flash or a critical hit once, or a pose or held-item use that lasts until something changes it.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "animation": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "swing",
+            "swing_offhand",
+            "hurt",
+            "crit",
+            "magic_crit",
+            "wake",
+            "sneak",
+            "sleep",
+            "sit",
+            "stand",
+            "use_item",
+            "stop_using_item"
+          ]
         }
       }
     },
@@ -7482,6 +8536,112 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     },
     {
+      "id": "animus:can-afford",
+      "kind": "condition",
+      "description": "True when the triggering player, or the player named by player, holds the money, experience levels and items of the cost. False when there is no triggering player.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "money": {
+          "type": "number",
+          "required": false,
+          "minimum": 0,
+          "maximum": 1000000000000
+        },
+        "levels": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "items": {
+          "type": "array",
+          "required": false
+        },
+        "match": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "strict",
+            "legacy",
+            "material"
+          ]
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      },
+      "oneOfRequired": [
+        [
+          "money"
+        ],
+        [
+          "levels"
+        ],
+        [
+          "items"
+        ]
+      ]
+    },
+    {
+      "id": "animus:charge",
+      "kind": "action",
+      "description": "Takes money, experience levels and items from the triggering player, or the player named by player, all or nothing. Refuses with cannot-afford when they cannot pay, which ends the run.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "money": {
+          "type": "number",
+          "required": false,
+          "minimum": 0,
+          "maximum": 1000000000000
+        },
+        "levels": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "items": {
+          "type": "array",
+          "required": false
+        },
+        "match": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "strict",
+            "legacy",
+            "material"
+          ]
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      },
+      "oneOfRequired": [
+        [
+          "money"
+        ],
+        [
+          "levels"
+        ],
+        [
+          "items"
+        ]
+      ]
+    },
+    {
       "id": "animus:choices",
       "kind": "action",
       "description": "Presents clickable options to the triggering player and publishes the validated click.",
@@ -7564,6 +8724,33 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "console",
             "player"
           ]
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
+      "id": "animus:complete-quest",
+      "kind": "action",
+      "description": "Completes the player's active Animus quest, with its rewards unless rewards is false. Reports stage.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "quest": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 129
+        },
+        "rewards": {
+          "type": "boolean",
+          "required": false
         },
         "player": {
           "type": "string",
@@ -7741,7 +8928,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:message",
       "kind": "action",
-      "description": "Sends formatted text without a speaker: to the triggering player (trigger, the default) or the player named by player, every online player (all), the players in the NPC's or triggering player's world (world), or the console. {player_name} becomes the player's name.",
+      "description": "Sends formatted text without a speaker: to the triggering player (trigger, the default) or the player named by player, every online player (all), the players in the NPC's or triggering player's world (world), the players within radius of the NPC (nearby), or the console. {player_name} becomes the player's name.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -7760,8 +8947,15 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "trigger",
             "all",
             "world",
+            "nearby",
             "console"
           ]
+        },
+        "radius": {
+          "type": "number",
+          "required": false,
+          "minimum": 1.0,
+          "maximum": 64.0
         },
         "player": {
           "type": "string",
@@ -7785,6 +8979,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "required": false,
           "minLength": 1,
           "maxLength": 64
+        },
+        "anchor": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 32
         },
         "x": {
           "type": "number",
@@ -7833,6 +9033,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "oneOfRequired": [
         [
           "route"
+        ],
+        [
+          "anchor"
         ],
         [
           "x",
@@ -8106,6 +9309,41 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     },
     {
+      "id": "animus:quest-objective",
+      "kind": "action",
+      "description": "Adds amount (1 by default) to a custom objective of the player's active Animus quest stage. Reports count.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "quest": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 129
+        },
+        "objective": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "amount": {
+          "type": "integer",
+          "required": false,
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
       "id": "animus:quest-state",
       "kind": "condition",
       "description": "Compares a quest stage. An unset quest is stage zero.",
@@ -8162,6 +9400,39 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       ]
     },
     {
+      "id": "animus:quest-status",
+      "kind": "condition",
+      "description": "Compares where the player is in an Animus quest: none, active, ready (waiting for the turn-in NPC) or finished.",
+      "privileged": false,
+      "available": true,
+      "reason": "available",
+      "reach": "both",
+      "arguments": {
+        "quest": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 129
+        },
+        "status": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "none",
+            "active",
+            "ready",
+            "finished"
+          ]
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
       "id": "animus:resume-patrol",
       "kind": "action",
       "description": "Restarts the route or recording the NPC's definition declares; a stopped recording continues where it stopped. Reports resumed or nothing-to-resume.",
@@ -8205,6 +9476,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "required": false,
           "minLength": 1,
           "maxLength": 36
+        },
+        "bubbleTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 1,
+          "maximum": 1200
+        },
+        "chat": {
+          "type": "boolean",
+          "required": false
         }
       }
     },
@@ -8458,6 +9739,33 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     },
     {
+      "id": "animus:start-quest",
+      "kind": "action",
+      "description": "Starts an Animus quest for the triggering player, or the player named by player. quest is namespace:name, or a name in this behavior's namespace; force: true skips its requirements and repeat rule. Reports stage.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "quest": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 129
+        },
+        "force": {
+          "type": "boolean",
+          "required": false
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
       "id": "animus:stop-animation",
       "kind": "action",
       "description": "Stops one animation layer, or every played layer, and returns to the rig's idle animation.",
@@ -8522,7 +9830,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:teleport",
       "kind": "action",
-      "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, or to the NPC or the player.",
+      "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, to the NPC or the player, or the NPC to one of its anchors.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -8580,6 +9888,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "player"
           ]
         },
+        "anchor": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 32
+        },
         "player": {
           "type": "string",
           "required": false,
@@ -8595,6 +9909,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         ],
         [
           "to"
+        ],
+        [
+          "anchor"
         ]
       ]
     },
@@ -8765,6 +10082,13 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "maximum": 64.0,
           "exclusiveMinimum": 0,
           "description": "Blocks, above 0."
+        },
+        "playerCooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one player's runs of this trigger. Without it the configured playerCooldownTicks applies, unless cooldownTicks is set; 0 turns it off."
         }
       }
     },
@@ -10205,6 +11529,126 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
         }
       }
+    },
+    "quest_started": {
+      "description": "A player starts an Animus quest. Runs read context.quest, context.stage (1) and context.title.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "context": [
+        "quest",
+        "stage",
+        "title"
+      ],
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "quest_started"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "quest": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."
+        }
+      }
+    },
+    "quest_stage": {
+      "description": "A player's Animus quest moves on to a later stage. Runs read context.quest, context.stage (from 1) and context.title.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "context": [
+        "quest",
+        "stage",
+        "title"
+      ],
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "quest_stage"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "quest": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."
+        }
+      }
+    },
+    "quest_completed": {
+      "description": "A player completes an Animus quest. Runs read context.quest, context.stage (the stage count plus one) and context.title.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "context": [
+        "quest",
+        "stage",
+        "title"
+      ],
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "quest_completed"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "quest": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."
+        }
+      }
     }
   },
   "language": {
@@ -10694,14 +12138,108 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "pattern": "^([a-z0-9_]+:)?[a-z0-9_/]+$",
       "description": "An entity type such as minecraft:player or player. The examples are the bodies every transport draws.",
       "examples": [
+        "minecraft:allay",
         "minecraft:armadillo",
         "minecraft:armor_stand",
+        "minecraft:axolotl",
+        "minecraft:bat",
+        "minecraft:bee",
+        "minecraft:blaze",
+        "minecraft:block_display",
+        "minecraft:bogged",
+        "minecraft:breeze",
+        "minecraft:camel",
+        "minecraft:camel_husk",
+        "minecraft:cat",
+        "minecraft:cave_spider",
+        "minecraft:chicken",
+        "minecraft:cod",
+        "minecraft:copper_golem",
+        "minecraft:cow",
+        "minecraft:creaking",
+        "minecraft:creeper",
+        "minecraft:dolphin",
+        "minecraft:donkey",
+        "minecraft:drowned",
+        "minecraft:elder_guardian",
+        "minecraft:end_crystal",
         "minecraft:ender_dragon",
+        "minecraft:enderman",
+        "minecraft:endermite",
+        "minecraft:evoker",
+        "minecraft:falling_block",
+        "minecraft:fox",
         "minecraft:frog",
+        "minecraft:ghast",
+        "minecraft:giant",
+        "minecraft:glow_item_frame",
+        "minecraft:glow_squid",
+        "minecraft:goat",
+        "minecraft:guardian",
+        "minecraft:happy_ghast",
+        "minecraft:hoglin",
         "minecraft:horse",
+        "minecraft:husk",
+        "minecraft:illusioner",
+        "minecraft:iron_golem",
+        "minecraft:item",
+        "minecraft:item_display",
+        "minecraft:item_frame",
         "minecraft:llama",
+        "minecraft:magma_cube",
+        "minecraft:mannequin",
+        "minecraft:mooshroom",
+        "minecraft:mule",
+        "minecraft:nautilus",
+        "minecraft:ocelot",
+        "minecraft:painting",
+        "minecraft:panda",
+        "minecraft:parched",
+        "minecraft:parrot",
+        "minecraft:phantom",
+        "minecraft:pig",
+        "minecraft:piglin",
+        "minecraft:piglin_brute",
+        "minecraft:pillager",
         "minecraft:player",
-        "minecraft:turtle"
+        "minecraft:polar_bear",
+        "minecraft:pufferfish",
+        "minecraft:rabbit",
+        "minecraft:ravager",
+        "minecraft:salmon",
+        "minecraft:sheep",
+        "minecraft:shulker",
+        "minecraft:silverfish",
+        "minecraft:skeleton",
+        "minecraft:skeleton_horse",
+        "minecraft:slime",
+        "minecraft:sniffer",
+        "minecraft:snow_golem",
+        "minecraft:spider",
+        "minecraft:squid",
+        "minecraft:stray",
+        "minecraft:strider",
+        "minecraft:sulfur_cube",
+        "minecraft:tadpole",
+        "minecraft:text_display",
+        "minecraft:trader_llama",
+        "minecraft:tropical_fish",
+        "minecraft:turtle",
+        "minecraft:vex",
+        "minecraft:villager",
+        "minecraft:vindicator",
+        "minecraft:wandering_trader",
+        "minecraft:warden",
+        "minecraft:witch",
+        "minecraft:wither",
+        "minecraft:wither_skeleton",
+        "minecraft:wolf",
+        "minecraft:zoglin",
+        "minecraft:zombie",
+        "minecraft:zombie_horse",
+        "minecraft:zombie_nautilus",
+        "minecraft:zombie_villager",
+        "minecraft:zombified_piglin"
       ]
     },
     "spawned": {
@@ -10924,6 +12462,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "type": "boolean",
           "description": "Hide the stand and show only what it wears."
         },
+        "marker": {
+          "type": "boolean",
+          "description": "No hitbox: players cannot click the stand."
+        },
         "head": {
           "type": "array",
           "description": "[x, y, z] degrees; omit for the default pose.",
@@ -10991,6 +12533,47 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           }
         }
       }
+    },
+    "glowing": {
+      "type": "boolean",
+      "description": "An outline glow in the team colour."
+    },
+    "teamColor": {
+      "enum": [
+        "black",
+        "dark_blue",
+        "dark_green",
+        "dark_aqua",
+        "dark_red",
+        "dark_purple",
+        "gold",
+        "gray",
+        "dark_gray",
+        "blue",
+        "green",
+        "aqua",
+        "red",
+        "light_purple",
+        "yellow",
+        "white"
+      ],
+      "description": "The colour of the glow and the name."
+    },
+    "baby": {
+      "type": "boolean",
+      "description": "A baby body, for types that have one."
+    },
+    "usingItem": {
+      "type": "boolean",
+      "description": "Holds the main-hand item raised."
+    },
+    "listed": {
+      "type": "boolean",
+      "description": "Player bodies only: show an entry in the tab list."
+    },
+    "gravity": {
+      "type": "boolean",
+      "description": "False keeps the body where it is placed, whatever the gravity attribute says. True by default."
     },
     "horse": {
       "type": "object",
@@ -11086,46 +12669,1252 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         }
       }
     },
-    "glowing": {
-      "type": "boolean",
-      "description": "An outline glow in the team colour."
+    "player": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:player bodies only: the game mode and the parts of the skin's outer layer to hide. Every layer shows by default.",
+      "properties": {
+        "gameMode": {
+          "enum": [
+            "survival",
+            "creative",
+            "adventure",
+            "spectator"
+          ],
+          "description": "spectator shows only a see-through head. survival by default."
+        },
+        "cape": {
+          "enum": [
+            "shown",
+            "hidden"
+          ],
+          "description": "shown by default."
+        },
+        "hat": {
+          "enum": [
+            "shown",
+            "hidden"
+          ],
+          "description": "shown by default."
+        },
+        "jacket": {
+          "enum": [
+            "shown",
+            "hidden"
+          ],
+          "description": "shown by default."
+        },
+        "leftSleeve": {
+          "enum": [
+            "shown",
+            "hidden"
+          ],
+          "description": "shown by default."
+        },
+        "rightSleeve": {
+          "enum": [
+            "shown",
+            "hidden"
+          ],
+          "description": "shown by default."
+        },
+        "leftPants": {
+          "enum": [
+            "shown",
+            "hidden"
+          ],
+          "description": "shown by default."
+        },
+        "rightPants": {
+          "enum": [
+            "shown",
+            "hidden"
+          ],
+          "description": "shown by default."
+        }
+      }
     },
-    "teamColor": {
-      "enum": [
-        "black",
-        "dark_blue",
-        "dark_green",
-        "dark_aqua",
-        "dark_red",
-        "dark_purple",
-        "gold",
-        "gray",
-        "dark_gray",
-        "blue",
-        "green",
-        "aqua",
-        "red",
-        "light_purple",
-        "yellow",
-        "white"
-      ],
-      "description": "The colour of the glow and the name."
+    "sheep": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:sheep bodies only.",
+      "properties": {
+        "color": {
+          "enum": [
+            "white",
+            "orange",
+            "magenta",
+            "light_blue",
+            "yellow",
+            "lime",
+            "pink",
+            "gray",
+            "light_gray",
+            "cyan",
+            "purple",
+            "blue",
+            "brown",
+            "green",
+            "red",
+            "black"
+          ],
+          "description": "The wool colour. white by default."
+        },
+        "sheared": {
+          "type": "boolean",
+          "description": "Shorn wool."
+        }
+      }
     },
-    "baby": {
-      "type": "boolean",
-      "description": "A baby body, for types that have one."
+    "wolf": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:wolf bodies only.",
+      "properties": {
+        "variant": {
+          "enum": [
+            "pale",
+            "spotted",
+            "snowy",
+            "black",
+            "ashen",
+            "rusty",
+            "woods",
+            "chestnut",
+            "striped"
+          ],
+          "description": "The coat. pale by default."
+        },
+        "collar": {
+          "enum": [
+            "white",
+            "orange",
+            "magenta",
+            "light_blue",
+            "yellow",
+            "lime",
+            "pink",
+            "gray",
+            "light_gray",
+            "cyan",
+            "purple",
+            "blue",
+            "brown",
+            "green",
+            "red",
+            "black"
+          ],
+          "description": "A collar of this colour, which shows the wolf as tamed."
+        },
+        "sitting": {
+          "type": "boolean",
+          "description": "Sits."
+        },
+        "angry": {
+          "type": "boolean",
+          "description": "Angry eyes and raised fur."
+        },
+        "interested": {
+          "type": "boolean",
+          "description": "Tilts its head."
+        }
+      }
     },
-    "usingItem": {
-      "type": "boolean",
-      "description": "Holds the main-hand item raised."
+    "cat": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:cat bodies only.",
+      "properties": {
+        "variant": {
+          "enum": [
+            "tabby",
+            "black",
+            "red",
+            "siamese",
+            "british_shorthair",
+            "calico",
+            "persian",
+            "ragdoll",
+            "white",
+            "jellie",
+            "all_black"
+          ],
+          "description": "The coat."
+        },
+        "collar": {
+          "enum": [
+            "white",
+            "orange",
+            "magenta",
+            "light_blue",
+            "yellow",
+            "lime",
+            "pink",
+            "gray",
+            "light_gray",
+            "cyan",
+            "purple",
+            "blue",
+            "brown",
+            "green",
+            "red",
+            "black"
+          ],
+          "description": "A collar of this colour, which shows the cat as tamed."
+        },
+        "sitting": {
+          "type": "boolean",
+          "description": "Sits."
+        },
+        "lying": {
+          "type": "boolean",
+          "description": "Lies down."
+        }
+      }
     },
-    "listed": {
-      "type": "boolean",
-      "description": "Player bodies only: show an entry in the tab list."
+    "parrot": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:parrot bodies only.",
+      "properties": {
+        "variant": {
+          "enum": [
+            "red_blue",
+            "blue",
+            "green",
+            "yellow_blue",
+            "gray"
+          ],
+          "description": "The feathers. red_blue by default."
+        },
+        "sitting": {
+          "type": "boolean",
+          "description": "Sits."
+        }
+      }
     },
-    "gravity": {
-      "type": "boolean",
-      "description": "False keeps the body where it is placed, whatever the gravity attribute says. True by default."
+    "fox": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:fox bodies only.",
+      "properties": {
+        "type": {
+          "enum": [
+            "red",
+            "snow"
+          ],
+          "description": "red by default."
+        },
+        "sitting": {
+          "type": "boolean",
+          "description": "Sits."
+        },
+        "crouching": {
+          "type": "boolean",
+          "description": "Crouches."
+        },
+        "interested": {
+          "type": "boolean",
+          "description": "Tilts its head."
+        },
+        "pouncing": {
+          "type": "boolean",
+          "description": "Leaps."
+        },
+        "sleeping": {
+          "type": "boolean",
+          "description": "Sleeps curled up."
+        },
+        "faceplanted": {
+          "type": "boolean",
+          "description": "Head stuck in the ground."
+        }
+      }
+    },
+    "axolotl": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:axolotl bodies only.",
+      "properties": {
+        "variant": {
+          "enum": [
+            "lucy",
+            "wild",
+            "gold",
+            "cyan",
+            "blue"
+          ],
+          "description": "lucy (pink) by default."
+        },
+        "playingDead": {
+          "type": "boolean",
+          "description": "Lies on its back."
+        }
+      }
+    },
+    "rabbit": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:rabbit bodies only.",
+      "properties": {
+        "type": {
+          "enum": [
+            "brown",
+            "white",
+            "black",
+            "white_splotched",
+            "gold",
+            "salt",
+            "evil"
+          ],
+          "description": "The fur. evil is the killer bunny."
+        }
+      }
+    },
+    "villager": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:villager bodies only.",
+      "properties": {
+        "type": {
+          "enum": [
+            "desert",
+            "jungle",
+            "plains",
+            "savanna",
+            "snow",
+            "swamp",
+            "taiga"
+          ],
+          "description": "The biome clothes. plains by default."
+        },
+        "profession": {
+          "enum": [
+            "none",
+            "armorer",
+            "butcher",
+            "cartographer",
+            "cleric",
+            "farmer",
+            "fisherman",
+            "fletcher",
+            "leatherworker",
+            "librarian",
+            "mason",
+            "nitwit",
+            "shepherd",
+            "toolsmith",
+            "weaponsmith"
+          ],
+          "description": "The work clothes. none by default."
+        },
+        "level": {
+          "enum": [
+            "novice",
+            "apprentice",
+            "journeyman",
+            "expert",
+            "master"
+          ],
+          "description": "The badge. novice by default."
+        }
+      }
+    },
+    "zombieVillager": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:zombie_villager bodies only.",
+      "properties": {
+        "type": {
+          "enum": [
+            "desert",
+            "jungle",
+            "plains",
+            "savanna",
+            "snow",
+            "swamp",
+            "taiga"
+          ],
+          "description": "The biome clothes. plains by default."
+        },
+        "profession": {
+          "enum": [
+            "none",
+            "armorer",
+            "butcher",
+            "cartographer",
+            "cleric",
+            "farmer",
+            "fisherman",
+            "fletcher",
+            "leatherworker",
+            "librarian",
+            "mason",
+            "nitwit",
+            "shepherd",
+            "toolsmith",
+            "weaponsmith"
+          ],
+          "description": "The work clothes. none by default."
+        },
+        "level": {
+          "enum": [
+            "novice",
+            "apprentice",
+            "journeyman",
+            "expert",
+            "master"
+          ],
+          "description": "The badge. novice by default."
+        }
+      }
+    },
+    "creeper": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:creeper bodies only.",
+      "properties": {
+        "powered": {
+          "type": "boolean",
+          "description": "The charged glow."
+        }
+      }
+    },
+    "slime": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:slime bodies only.",
+      "properties": {
+        "size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 127,
+          "description": "1 is the smallest. The client picks by default."
+        }
+      }
+    },
+    "magmaCube": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:magma_cube bodies only.",
+      "properties": {
+        "size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 127,
+          "description": "1 is the smallest. The client picks by default."
+        }
+      }
+    },
+    "phantom": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:phantom bodies only.",
+      "properties": {
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64,
+          "description": "0 by default."
+        }
+      }
+    },
+    "mooshroom": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:mooshroom bodies only.",
+      "properties": {
+        "variant": {
+          "enum": [
+            "red",
+            "brown"
+          ],
+          "description": "red by default."
+        }
+      }
+    },
+    "panda": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:panda bodies only.",
+      "properties": {
+        "mainGene": {
+          "enum": [
+            "normal",
+            "lazy",
+            "worried",
+            "playful",
+            "brown",
+            "weak",
+            "aggressive"
+          ],
+          "description": "normal by default."
+        },
+        "hiddenGene": {
+          "enum": [
+            "normal",
+            "lazy",
+            "worried",
+            "playful",
+            "brown",
+            "weak",
+            "aggressive"
+          ],
+          "description": "normal by default."
+        },
+        "sitting": {
+          "type": "boolean",
+          "description": "Sits."
+        },
+        "rolling": {
+          "type": "boolean",
+          "description": "Rolls over."
+        },
+        "sneezing": {
+          "type": "boolean",
+          "description": "Sneezes."
+        },
+        "eating": {
+          "type": "boolean",
+          "description": "Eats."
+        }
+      }
+    },
+    "goat": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:goat bodies only.",
+      "properties": {
+        "leftHorn": {
+          "enum": [
+            "shown",
+            "hidden"
+          ],
+          "description": "shown by default."
+        },
+        "rightHorn": {
+          "enum": [
+            "shown",
+            "hidden"
+          ],
+          "description": "shown by default."
+        },
+        "screaming": {
+          "type": "boolean",
+          "description": "A screaming goat."
+        }
+      }
+    },
+    "pig": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:pig bodies only.",
+      "properties": {
+        "variant": {
+          "enum": [
+            "temperate",
+            "warm",
+            "cold"
+          ],
+          "description": "temperate by default."
+        }
+      }
+    },
+    "cow": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:cow bodies only.",
+      "properties": {
+        "variant": {
+          "enum": [
+            "temperate",
+            "warm",
+            "cold"
+          ],
+          "description": "temperate by default."
+        }
+      }
+    },
+    "chicken": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:chicken bodies only.",
+      "properties": {
+        "variant": {
+          "enum": [
+            "temperate",
+            "warm",
+            "cold"
+          ],
+          "description": "temperate by default."
+        }
+      }
+    },
+    "shulker": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:shulker bodies only.",
+      "properties": {
+        "color": {
+          "enum": [
+            "white",
+            "orange",
+            "magenta",
+            "light_blue",
+            "yellow",
+            "lime",
+            "pink",
+            "gray",
+            "light_gray",
+            "cyan",
+            "purple",
+            "blue",
+            "brown",
+            "green",
+            "red",
+            "black"
+          ],
+          "description": "Purple with no colour by default."
+        },
+        "peek": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "How far the shell is open. 0 by default."
+        }
+      }
+    },
+    "pufferfish": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:pufferfish bodies only.",
+      "properties": {
+        "puff": {
+          "enum": [
+            "deflated",
+            "half",
+            "full"
+          ],
+          "description": "deflated by default."
+        }
+      }
+    },
+    "tropicalFish": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:tropical_fish bodies only.",
+      "properties": {
+        "pattern": {
+          "enum": [
+            "kob",
+            "sunstreak",
+            "snooper",
+            "dasher",
+            "brinely",
+            "spotty",
+            "flopper",
+            "stripey",
+            "glitter",
+            "blockfish",
+            "betty",
+            "clayfish"
+          ],
+          "description": "The shape and pattern. kob by default."
+        },
+        "baseColor": {
+          "enum": [
+            "white",
+            "orange",
+            "magenta",
+            "light_blue",
+            "yellow",
+            "lime",
+            "pink",
+            "gray",
+            "light_gray",
+            "cyan",
+            "purple",
+            "blue",
+            "brown",
+            "green",
+            "red",
+            "black"
+          ],
+          "description": "white by default."
+        },
+        "patternColor": {
+          "enum": [
+            "white",
+            "orange",
+            "magenta",
+            "light_blue",
+            "yellow",
+            "lime",
+            "pink",
+            "gray",
+            "light_gray",
+            "cyan",
+            "purple",
+            "blue",
+            "brown",
+            "green",
+            "red",
+            "black"
+          ],
+          "description": "white by default."
+        }
+      }
+    },
+    "snowGolem": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:snow_golem bodies only.",
+      "properties": {
+        "pumpkin": {
+          "enum": [
+            "shown",
+            "hidden"
+          ],
+          "description": "shown by default."
+        }
+      }
+    },
+    "polarBear": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:polar_bear bodies only.",
+      "properties": {
+        "standing": {
+          "type": "boolean",
+          "description": "Rears up."
+        }
+      }
+    },
+    "piglin": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:piglin bodies only.",
+      "properties": {
+        "dancing": {
+          "type": "boolean",
+          "description": "Dances."
+        }
+      }
+    },
+    "allay": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:allay bodies only.",
+      "properties": {
+        "dancing": {
+          "type": "boolean",
+          "description": "Dances."
+        }
+      }
+    },
+    "bee": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:bee bodies only.",
+      "properties": {
+        "nectar": {
+          "type": "boolean",
+          "description": "Pollen on its body."
+        },
+        "stung": {
+          "type": "boolean",
+          "description": "Has lost its stinger."
+        },
+        "angry": {
+          "type": "boolean",
+          "description": "Red eyes."
+        }
+      }
+    },
+    "vex": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:vex bodies only.",
+      "properties": {
+        "charging": {
+          "type": "boolean",
+          "description": "The charging look."
+        }
+      }
+    },
+    "evoker": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:evoker bodies only.",
+      "properties": {
+        "spell": {
+          "enum": [
+            "none",
+            "summon_vex",
+            "fangs",
+            "wololo",
+            "disappear",
+            "blindness"
+          ],
+          "description": "Raised arms and spell particles. none by default."
+        }
+      }
+    },
+    "sniffer": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:sniffer bodies only.",
+      "properties": {
+        "state": {
+          "enum": [
+            "idling",
+            "feeling_happy",
+            "scenting",
+            "sniffing",
+            "searching",
+            "digging",
+            "rising"
+          ],
+          "description": "idling by default."
+        }
+      }
+    },
+    "bat": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:bat bodies only.",
+      "properties": {
+        "resting": {
+          "type": "boolean",
+          "description": "Hangs upside down."
+        }
+      }
+    },
+    "copperGolem": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:copper_golem bodies only.",
+      "properties": {
+        "weather": {
+          "enum": [
+            "unaffected",
+            "exposed",
+            "weathered",
+            "oxidized"
+          ],
+          "description": "How far the copper has oxidized. unaffected by default."
+        }
+      }
+    },
+    "donkey": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:donkey bodies only. The saddle is the saddle equipment slot.",
+      "properties": {
+        "chest": {
+          "type": "boolean",
+          "description": "Carry a chest."
+        }
+      }
+    },
+    "mule": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:mule bodies only. The saddle is the saddle equipment slot.",
+      "properties": {
+        "chest": {
+          "type": "boolean",
+          "description": "Carry a chest."
+        }
+      }
+    },
+    "enderman": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:enderman bodies only.",
+      "properties": {
+        "angry": {
+          "type": "boolean",
+          "description": "The open-mouthed scream."
+        }
+      }
+    },
+    "wither": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:wither bodies only.",
+      "properties": {
+        "invulnerableTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "The blue spawning glow while above 0. 0 by default."
+        },
+        "armored": {
+          "type": "boolean",
+          "description": "The arrow shield of a wither below half health."
+        }
+      }
+    },
+    "camel": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:camel bodies only.",
+      "properties": {
+        "sitting": {
+          "type": "boolean",
+          "description": "Sits."
+        },
+        "dashing": {
+          "type": "boolean",
+          "description": "The dash pose."
+        }
+      }
+    },
+    "painting": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:painting bodies only. The painting hangs on the block side it faces away from.",
+      "properties": {
+        "variant": {
+          "type": "string",
+          "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$",
+          "description": "The painting, such as minecraft:kebab."
+        },
+        "facing": {
+          "enum": [
+            "north",
+            "south",
+            "west",
+            "east"
+          ],
+          "description": "south by default."
+        }
+      }
+    },
+    "itemFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:item_frame bodies only.",
+      "properties": {
+        "item": {
+          "$ref": "#/$defs/item",
+          "description": "The item in the frame."
+        },
+        "rotation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 7,
+          "description": "Eighth turns of the item. 0 by default."
+        },
+        "facing": {
+          "enum": [
+            "down",
+            "up",
+            "north",
+            "south",
+            "west",
+            "east"
+          ],
+          "description": "The way the frame faces. south by default."
+        }
+      }
+    },
+    "glowItemFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:glow_item_frame bodies only.",
+      "properties": {
+        "item": {
+          "$ref": "#/$defs/item",
+          "description": "The item in the frame."
+        },
+        "rotation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 7,
+          "description": "Eighth turns of the item. 0 by default."
+        },
+        "facing": {
+          "enum": [
+            "down",
+            "up",
+            "north",
+            "south",
+            "west",
+            "east"
+          ],
+          "description": "The way the frame faces. south by default."
+        }
+      }
+    },
+    "fallingBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:falling_block bodies only.",
+      "properties": {
+        "block": {
+          "type": "string",
+          "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+(\\[[a-z0-9_]+=[a-z0-9_]+(,[a-z0-9_]+=[a-z0-9_]+)*\\])?$",
+          "description": "The block state, such as minecraft:oak_stairs[facing=east]. Sand by default."
+        }
+      }
+    },
+    "endCrystal": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:end_crystal bodies only.",
+      "properties": {
+        "base": {
+          "enum": [
+            "shown",
+            "hidden"
+          ],
+          "description": "The bedrock base. shown by default."
+        }
+      }
+    },
+    "blockDisplay": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:block_display bodies only.",
+      "properties": {
+        "block": {
+          "type": "string",
+          "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+(\\[[a-z0-9_]+=[a-z0-9_]+(,[a-z0-9_]+=[a-z0-9_]+)*\\])?$",
+          "description": "The block state shown."
+        },
+        "billboard": {
+          "enum": [
+            "fixed",
+            "vertical",
+            "horizontal",
+            "center"
+          ],
+          "description": "How it turns toward the viewer. fixed by default."
+        }
+      }
+    },
+    "itemDisplay": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:item_display bodies only.",
+      "properties": {
+        "item": {
+          "$ref": "#/$defs/item",
+          "description": "The item shown."
+        },
+        "transform": {
+          "enum": [
+            "none",
+            "thirdperson_lefthand",
+            "thirdperson_righthand",
+            "firstperson_lefthand",
+            "firstperson_righthand",
+            "head",
+            "gui",
+            "ground",
+            "fixed"
+          ],
+          "description": "How the item is held. none by default."
+        },
+        "billboard": {
+          "enum": [
+            "fixed",
+            "vertical",
+            "horizontal",
+            "center"
+          ],
+          "description": "How it turns toward the viewer. fixed by default."
+        }
+      }
+    },
+    "textDisplay": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:text_display bodies only.",
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "The text; & codes apply."
+        },
+        "billboard": {
+          "enum": [
+            "fixed",
+            "vertical",
+            "horizontal",
+            "center"
+          ],
+          "description": "How it turns toward the viewer. fixed by default."
+        },
+        "alignment": {
+          "enum": [
+            "center",
+            "left",
+            "right"
+          ],
+          "description": "center by default."
+        },
+        "lineWidth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024,
+          "description": "Pixels before a line wraps. 200 by default."
+        },
+        "shadowed": {
+          "type": "boolean",
+          "description": "A shadow under the text."
+        },
+        "seeThrough": {
+          "type": "boolean",
+          "description": "Shown through blocks."
+        }
+      }
+    },
+    "droppedItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "minecraft:item bodies only: an item lying on the ground.",
+      "properties": {
+        "item": {
+          "$ref": "#/$defs/item",
+          "description": "The item."
+        }
+      }
+    },
+    "bossBar": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A boss bar shown to players near the NPC.",
+      "properties": {
+        "title": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 256,
+          "description": "The bar's text; & colour codes apply. The NPC's name by default."
+        },
+        "color": {
+          "enum": [
+            "pink",
+            "blue",
+            "red",
+            "green",
+            "yellow",
+            "purple",
+            "white"
+          ],
+          "description": "purple by default."
+        },
+        "style": {
+          "enum": [
+            "solid",
+            "segmented_6",
+            "segmented_10",
+            "segmented_12",
+            "segmented_20"
+          ],
+          "description": "solid by default, or the bar split into notches."
+        },
+        "flags": {
+          "type": "array",
+          "description": "Sky and music effects while the bar shows.",
+          "minItems": 0,
+          "maxItems": 3,
+          "items": {
+            "enum": [
+              "darken_sky",
+              "play_boss_music",
+              "create_fog"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "range": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 256.0,
+          "description": "Blocks from the NPC within which players see it. 64 by default."
+        },
+        "progress": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            {
+              "enum": [
+                "health"
+              ]
+            }
+          ],
+          "description": "How full the bar is, from 0 to 1, or health to follow the NPC's health. Full by default."
+        },
+        "permission": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.*-]{1,128}$",
+          "description": "Only players with this permission see the bar."
+        }
+      }
+    },
+    "viewers": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Which players see the NPC. Others are never sent its body.",
+      "properties": {
+        "mode": {
+          "enum": [
+            "deny",
+            "allow"
+          ],
+          "description": "deny (default) hides the NPC from the players, groups and permissions listed; allow shows it only to players who match every list."
+        },
+        "players": {
+          "type": "array",
+          "description": "Player UUIDs.",
+          "minItems": 0,
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "uniqueItems": true
+        },
+        "groups": {
+          "type": "array",
+          "description": "Permission groups; a player is in one when they have group.<name>.",
+          "minItems": 0,
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.*-]{1,128}$"
+          },
+          "uniqueItems": true
+        },
+        "permissions": {
+          "type": "array",
+          "description": "Permission nodes; any one matches.",
+          "minItems": 0,
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.*-]{1,128}$"
+          },
+          "uniqueItems": true
+        },
+        "range": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 512.0,
+          "description": "Players farther than this are not filtered."
+        }
+      }
+    },
+    "clickRedirect": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "description": "The UUID of another NPC: clicking this NPC counts as clicking that one while it is active."
     },
     "attributes": {
       "type": "object",
@@ -11139,14 +13928,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
           "default": 1.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:air_drag_modifier": {
@@ -11156,14 +14030,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
           "default": 1.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "armor": {
@@ -11173,14 +14132,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Armor points with vanilla damage reduction, unless animus:health sets armor or armorFromEquipment.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:armor": {
@@ -11190,14 +14234,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Armor points with vanilla damage reduction, unless animus:health sets armor or armorFromEquipment.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "armor_toughness": {
@@ -11207,14 +14336,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Armor toughness, used with armor.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:armor_toughness": {
@@ -11224,14 +14438,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Armor toughness, used with armor.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "attack_damage": {
@@ -11241,8 +14540,62 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 2. Melee damage unless the combat module sets melee.damage or melee.fromEquipment.",
           "default": 2.0,
           "x-bodies": [
+            "minecraft:allay",
+            "minecraft:axolotl",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
-            "minecraft:player"
+            "minecraft:giant",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:hoglin",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
+            "minecraft:magma_cube",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
+            "minecraft:player",
+            "minecraft:polar_bear",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:slime",
+            "minecraft:spider",
+            "minecraft:stray",
+            "minecraft:vex",
+            "minecraft:vindicator",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:attack_damage": {
@@ -11252,8 +14605,62 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 2. Melee damage unless the combat module sets melee.damage or melee.fromEquipment.",
           "default": 2.0,
           "x-bodies": [
+            "minecraft:allay",
+            "minecraft:axolotl",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
-            "minecraft:player"
+            "minecraft:giant",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:hoglin",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
+            "minecraft:magma_cube",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
+            "minecraft:player",
+            "minecraft:polar_bear",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:slime",
+            "minecraft:spider",
+            "minecraft:stray",
+            "minecraft:vex",
+            "minecraft:vindicator",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "attack_knockback": {
@@ -11263,14 +14670,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Adds half its value to the 0.4 base melee knockback unless the combat module sets melee.knockback.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:attack_knockback": {
@@ -11280,14 +14772,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Adds half its value to the 0.4 base melee knockback unless the combat module sets melee.knockback.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "attack_speed": {
@@ -11317,14 +14894,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 10. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
           "default": 10.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:below_name_distance": {
@@ -11334,14 +14996,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 10. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
           "default": 10.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "block_break_speed": {
@@ -11391,14 +15138,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:bounciness": {
@@ -11408,14 +15240,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "burning_time": {
@@ -11425,14 +15342,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 1.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:burning_time": {
@@ -11442,14 +15444,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 1.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "camera_distance": {
@@ -11459,14 +15546,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 4. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 4.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:camera_distance": {
@@ -11476,14 +15648,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 4. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 4.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "entity_interaction_range": {
@@ -11493,14 +15750,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 3. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 3.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:entity_interaction_range": {
@@ -11510,14 +15852,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 3. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 3.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "explosion_knockback_resistance": {
@@ -11527,14 +15954,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:explosion_knockback_resistance": {
@@ -11544,14 +16056,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "fall_damage_multiplier": {
@@ -11561,14 +16158,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 1.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:fall_damage_multiplier": {
@@ -11578,14 +16260,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 1.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "flying_speed": {
@@ -11594,7 +16361,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "maximum": 1024.0,
           "description": "Vanilla default 0.4. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 0.4,
-          "x-bodies": []
+          "x-bodies": [
+            "minecraft:allay",
+            "minecraft:bee",
+            "minecraft:ghast",
+            "minecraft:happy_ghast",
+            "minecraft:parrot",
+            "minecraft:wither"
+          ]
         },
         "minecraft:flying_speed": {
           "type": "number",
@@ -11602,7 +16376,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "maximum": 1024.0,
           "description": "Vanilla default 0.4. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 0.4,
-          "x-bodies": []
+          "x-bodies": [
+            "minecraft:allay",
+            "minecraft:bee",
+            "minecraft:ghast",
+            "minecraft:happy_ghast",
+            "minecraft:parrot",
+            "minecraft:wither"
+          ]
         },
         "follow_range": {
           "type": "number",
@@ -11611,12 +16392,96 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 32. Combat scan range, at most 256, unless the combat module sets targeting.scanRange.",
           "default": 32.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
-            "minecraft:turtle"
+            "minecraft:magma_cube",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:follow_range": {
@@ -11626,12 +16491,96 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 32. Combat scan range, at most 256, unless the combat module sets targeting.scanRange.",
           "default": 32.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
-            "minecraft:turtle"
+            "minecraft:magma_cube",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "friction_modifier": {
@@ -11641,14 +16590,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
           "default": 1.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:friction_modifier": {
@@ -11658,14 +16692,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
           "default": 1.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "gravity": {
@@ -11675,14 +16794,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0.08. Fall acceleration in blocks per tick squared; 0 or less hovers. The gravity field set to false hovers whatever this says.",
           "default": 0.08,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:gravity": {
@@ -11692,14 +16896,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0.08. Fall acceleration in blocks per tick squared; 0 or less hovers. The gravity field set to false hovers whatever this says.",
           "default": 0.08,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "jump_strength": {
@@ -11709,14 +16998,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0.41999998688697815. Jump height on paths, worked out with gravity, at most 3 blocks.",
           "default": 0.41999998688697815,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:jump_strength": {
@@ -11726,14 +17100,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0.41999998688697815. Jump height on paths, worked out with gravity, at most 3 blocks.",
           "default": 0.41999998688697815,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "knockback_resistance": {
@@ -11743,14 +17202,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. The share of knockback the NPC ignores; below 0 it takes more.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:knockback_resistance": {
@@ -11760,14 +17304,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. The share of knockback the NPC ignores; below 0 it takes more.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "luck": {
@@ -11797,14 +17426,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:max_absorption": {
@@ -11814,14 +17528,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "max_health": {
@@ -11831,14 +17630,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 20. Maximum health unless animus:health sets maximumHealth.",
           "default": 20.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:max_health": {
@@ -11848,14 +17732,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 20. Maximum health unless animus:health sets maximumHealth.",
           "default": 20.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "mining_efficiency": {
@@ -11885,14 +17854,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:movement_efficiency": {
@@ -11902,14 +17956,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "movement_speed": {
@@ -11919,14 +18058,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0.7. Walking speed when neither the route nor movement.speed sets one: a player body walks 43.17 times this in blocks per second, other bodies 44.05 times its square, kept within 1..10.",
           "default": 0.7,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:movement_speed": {
@@ -11936,14 +18160,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0.7. Walking speed when neither the route nor movement.speed sets one: a player body walks 43.17 times this in blocks per second, other bodies 44.05 times its square, kept within 1..10.",
           "default": 0.7,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "name_tag_distance": {
@@ -11953,14 +18262,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 64. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
           "default": 64.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:name_tag_distance": {
@@ -11970,14 +18364,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 64. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
           "default": 64.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "oxygen_bonus": {
@@ -11987,14 +18466,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:oxygen_bonus": {
@@ -12004,14 +18568,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "safe_fall_distance": {
@@ -12021,14 +18670,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 3. Blocks a path may drop, 0..16, unless movement.maximumFall is set.",
           "default": 3.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:safe_fall_distance": {
@@ -12038,14 +18772,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 3. Blocks a path may drop, 0..16, unless movement.maximumFall is set.",
           "default": 3.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "scale": {
@@ -12055,14 +18874,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 1. Body size: hitbox, click reach, path clearance, rig bones and text height grow with it.",
           "default": 1.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:scale": {
@@ -12072,14 +18976,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 1. Body size: hitbox, click reach, path clearance, rig bones and text height grow with it.",
           "default": 1.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "sneaking_speed": {
@@ -12125,14 +19114,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0.6. Blocks climbed without a jump, at most 1.5, unless movement.stepHeight is set.",
           "default": 0.6,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:step_height": {
@@ -12142,14 +19216,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0.6. Blocks climbed without a jump, at most 1.5, unless movement.stepHeight is set.",
           "default": 0.6,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "submerged_mining_speed": {
@@ -12200,10 +19359,40 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "default": 10.0,
           "x-bodies": [
             "minecraft:armadillo",
+            "minecraft:axolotl",
+            "minecraft:bee",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:chicken",
+            "minecraft:cow",
+            "minecraft:donkey",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:goat",
+            "minecraft:happy_ghast",
             "minecraft:horse",
             "minecraft:llama",
-            "minecraft:turtle"
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parrot",
+            "minecraft:pig",
+            "minecraft:polar_bear",
+            "minecraft:rabbit",
+            "minecraft:sheep",
+            "minecraft:skeleton_horse",
+            "minecraft:sniffer",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:turtle",
+            "minecraft:wolf",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus"
           ]
         },
         "minecraft:tempt_range": {
@@ -12214,10 +19403,40 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "default": 10.0,
           "x-bodies": [
             "minecraft:armadillo",
+            "minecraft:axolotl",
+            "minecraft:bee",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:chicken",
+            "minecraft:cow",
+            "minecraft:donkey",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:goat",
+            "minecraft:happy_ghast",
             "minecraft:horse",
             "minecraft:llama",
-            "minecraft:turtle"
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parrot",
+            "minecraft:pig",
+            "minecraft:polar_bear",
+            "minecraft:rabbit",
+            "minecraft:sheep",
+            "minecraft:skeleton_horse",
+            "minecraft:sniffer",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:turtle",
+            "minecraft:wolf",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus"
           ]
         },
         "water_movement_efficiency": {
@@ -12227,14 +19446,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:water_movement_efficiency": {
@@ -12244,14 +19548,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "waypoint_receive_range": {
@@ -12281,14 +19670,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         },
         "minecraft:waypoint_transmit_range": {
@@ -12298,14 +19772,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
           "default": 0.0,
           "x-bodies": [
+            "minecraft:allay",
             "minecraft:armadillo",
             "minecraft:armor_stand",
+            "minecraft:axolotl",
+            "minecraft:bat",
+            "minecraft:bee",
+            "minecraft:blaze",
+            "minecraft:bogged",
+            "minecraft:breeze",
+            "minecraft:camel",
+            "minecraft:camel_husk",
+            "minecraft:cat",
+            "minecraft:cave_spider",
+            "minecraft:chicken",
+            "minecraft:cod",
+            "minecraft:copper_golem",
+            "minecraft:cow",
+            "minecraft:creaking",
+            "minecraft:creeper",
+            "minecraft:dolphin",
+            "minecraft:donkey",
+            "minecraft:drowned",
+            "minecraft:elder_guardian",
             "minecraft:ender_dragon",
+            "minecraft:enderman",
+            "minecraft:endermite",
+            "minecraft:evoker",
+            "minecraft:fox",
             "minecraft:frog",
+            "minecraft:ghast",
+            "minecraft:giant",
+            "minecraft:glow_squid",
+            "minecraft:goat",
+            "minecraft:guardian",
+            "minecraft:happy_ghast",
+            "minecraft:hoglin",
             "minecraft:horse",
+            "minecraft:husk",
+            "minecraft:illusioner",
+            "minecraft:iron_golem",
             "minecraft:llama",
+            "minecraft:magma_cube",
+            "minecraft:mannequin",
+            "minecraft:mooshroom",
+            "minecraft:mule",
+            "minecraft:nautilus",
+            "minecraft:ocelot",
+            "minecraft:panda",
+            "minecraft:parched",
+            "minecraft:parrot",
+            "minecraft:phantom",
+            "minecraft:pig",
+            "minecraft:piglin",
+            "minecraft:piglin_brute",
+            "minecraft:pillager",
             "minecraft:player",
-            "minecraft:turtle"
+            "minecraft:polar_bear",
+            "minecraft:pufferfish",
+            "minecraft:rabbit",
+            "minecraft:ravager",
+            "minecraft:salmon",
+            "minecraft:sheep",
+            "minecraft:shulker",
+            "minecraft:silverfish",
+            "minecraft:skeleton",
+            "minecraft:skeleton_horse",
+            "minecraft:slime",
+            "minecraft:sniffer",
+            "minecraft:snow_golem",
+            "minecraft:spider",
+            "minecraft:squid",
+            "minecraft:stray",
+            "minecraft:strider",
+            "minecraft:sulfur_cube",
+            "minecraft:tadpole",
+            "minecraft:trader_llama",
+            "minecraft:tropical_fish",
+            "minecraft:turtle",
+            "minecraft:vex",
+            "minecraft:villager",
+            "minecraft:vindicator",
+            "minecraft:wandering_trader",
+            "minecraft:warden",
+            "minecraft:witch",
+            "minecraft:wither",
+            "minecraft:wither_skeleton",
+            "minecraft:wolf",
+            "minecraft:zoglin",
+            "minecraft:zombie",
+            "minecraft:zombie_horse",
+            "minecraft:zombie_nautilus",
+            "minecraft:zombie_villager",
+            "minecraft:zombified_piglin"
           ]
         }
       }
@@ -12370,6 +19929,46 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "minimum": -90,
             "maximum": 90,
             "description": "0 by default."
+          }
+        }
+      }
+    },
+    "anchors": {
+      "type": "object",
+      "description": "Named places animus:navigate and animus:teleport take the NPC to.",
+      "maxProperties": 64,
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "x",
+          "y",
+          "z"
+        ],
+        "properties": {
+          "x": {
+            "type": "number",
+            "minimum": -29999984,
+            "maximum": 29999984
+          },
+          "y": {
+            "type": "number",
+            "minimum": -29999984,
+            "maximum": 29999984
+          },
+          "z": {
+            "type": "number",
+            "minimum": -29999984,
+            "maximum": 29999984
+          },
+          "world": {
+            "type": "string",
+            "pattern": "^[^\\s/\\\\]{1,64}$",
+            "description": "Another world by name. Unset: the NPC's own world."
           }
         }
       }
@@ -12513,6 +20112,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "maxLength": 256
         }
       }
+    },
+    "disguise": {
+      "type": "string",
+      "pattern": "\\S",
+      "maxLength": 8192,
+      "description": "A LibsDisguises disguise, as /disguise takes it or the name of a custom disguise, such as zombie setBaby true. With LibsDisguises installed the NPC shows that body; /animus npc disguise lists the options it leaves out."
     },
     "modules": {
       "type": "object",
@@ -12701,6 +20306,54 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         "maximum": 1000,
                         "description": "Order random only: how often this point is chosen."
                       },
+                      "speed": {
+                        "type": "number",
+                        "minimum": 1,
+                        "maximum": 5,
+                        "description": "Not order wander: the route's speed in blocks per second from this arrival on."
+                      },
+                      "teleport": {
+                        "type": "object",
+                        "required": [
+                          "x",
+                          "y",
+                          "z"
+                        ],
+                        "properties": {
+                          "x": {
+                            "type": "number",
+                            "minimum": -29999984,
+                            "maximum": 29999984
+                          },
+                          "y": {
+                            "type": "number",
+                            "minimum": -29999984,
+                            "maximum": 29999984
+                          },
+                          "z": {
+                            "type": "number",
+                            "minimum": -29999984,
+                            "maximum": 29999984
+                          },
+                          "yaw": {
+                            "type": "number",
+                            "minimum": -360,
+                            "maximum": 360
+                          },
+                          "pitch": {
+                            "type": "number",
+                            "minimum": -90,
+                            "maximum": 90
+                          },
+                          "world": {
+                            "type": "string",
+                            "pattern": "^[^\\s/\\\\]{1,64}$",
+                            "description": "Another loaded world by name; the route goes on there. Unset: the route's world."
+                          }
+                        },
+                        "description": "Not order wander: on arrival the NPC teleports here, in the route's world, before the wait.",
+                        "additionalProperties": false
+                      },
                       "next": {
                         "type": "array",
                         "description": "Order sequence only: after this point, the next point is drawn from these by weight.",
@@ -12860,6 +20513,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                           "required": [
                             "style"
                           ]
+                        },
+                        {
+                          "required": [
+                            "speed"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "teleport"
+                          ]
                         }
                       ]
                     }
@@ -12920,6 +20583,35 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                   "minimum": 0,
                   "maximum": 8,
                   "description": "Blocks up or down from a centre."
+                }
+              }
+            },
+            "pause": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "The route stands still for ticks when a player comes within playerRange, or with onClick when one right-clicks the NPC.",
+              "properties": {
+                "playerRange": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 64.0,
+                  "description": "Blocks. 0 or unset: players nearby never pause the route."
+                },
+                "onClick": {
+                  "type": "boolean",
+                  "description": "A right-click pauses the route."
+                },
+                "ticks": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 12000,
+                  "description": "How long a pause lasts. 20 by default."
+                },
+                "lockoutTicks": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 72000,
+                  "description": "After a pause starts, no new one starts for this long. 0 by default."
                 }
               }
             }
@@ -13481,6 +21173,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                   "minimum": 0.25,
                   "maximum": 16,
                   "description": "1.5 by default."
+                },
+                "protect": {
+                  "type": "boolean",
+                  "description": "Attack whatever hurts the charge. True by default; false only follows."
                 }
               },
               "not": {
@@ -14243,6 +21939,49 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "type": "boolean",
               "description": "Also look at the nearest other NPC when no player is in range."
             },
+            "headOnly": {
+              "type": "boolean",
+              "description": "Turn only the head; the body keeps its facing."
+            },
+            "perPlayer": {
+              "type": "boolean",
+              "description": "Each player in range sees the NPC look at them."
+            },
+            "permissions": {
+              "type": "array",
+              "description": "Only players holding every one of these permissions are looked at.",
+              "minItems": 0,
+              "maxItems": 8,
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_.*-]{1,128}$"
+              }
+            },
+            "turnRate": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Turn at most this many degrees a tick instead of at once.",
+              "properties": {
+                "yaw": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 360,
+                  "description": "Degrees a tick. 40 by default."
+                },
+                "pitch": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 180,
+                  "description": "Degrees a tick; 0 keeps the pitch. 10 by default."
+                }
+              }
+            },
+            "switchTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 12000,
+              "description": "Look at a random player in range every this many ticks instead of the nearest."
+            },
             "randomLook": {
               "type": "object",
               "additionalProperties": false,
@@ -14281,6 +22020,433 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                   "description": "[minimum, maximum] pitch in degrees. [0, 0] by default."
                 }
               }
+            }
+          }
+        },
+        "animus:schedule": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Where the NPC spends each part of the Minecraft day: it walks to the location whose time has passed last.",
+          "required": [
+            "locations"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "True when the object is present."
+            },
+            "reviewAccepted": {
+              "type": "boolean",
+              "description": "An imported schedule runs only once this is true."
+            },
+            "speed": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 10,
+              "description": "Blocks per second. The NPC's movement.speed by default, else 2."
+            },
+            "locations": {
+              "type": "array",
+              "description": "1-64 locations.",
+              "minItems": 1,
+              "maxItems": 64,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "A place and the world time the NPC goes there.",
+                "required": [
+                  "time",
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$",
+                    "description": "A name for replies and commands."
+                  },
+                  "time": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 23999,
+                    "description": "World time the NPC sets out: 0 is sunrise, 6000 noon, 13000 night."
+                  },
+                  "x": {
+                    "type": "integer",
+                    "minimum": -30000000,
+                    "maximum": 30000000,
+                    "description": "Block x in the NPC's world."
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": -30000000,
+                    "maximum": 30000000,
+                    "description": "Block y in the NPC's world."
+                  },
+                  "z": {
+                    "type": "integer",
+                    "minimum": -30000000,
+                    "maximum": 30000000,
+                    "description": "Block z in the NPC's world."
+                  },
+                  "yaw": {
+                    "type": "number",
+                    "minimum": -360,
+                    "maximum": 360,
+                    "description": "Facing on arrival."
+                  },
+                  "pitch": {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90,
+                    "description": "Head pitch on arrival."
+                  },
+                  "chance": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "description": "Draw weight among locations with the same time. 100 by default."
+                  },
+                  "weather": {
+                    "enum": [
+                      "any",
+                      "clear",
+                      "storm"
+                    ],
+                    "description": "Only in this weather. any by default."
+                  },
+                  "staySeconds": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 86400
+                      },
+                      {
+                        "type": "array",
+                        "description": "[min, max], min not above max.",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 86400
+                        }
+                      }
+                    ],
+                    "description": "How long it stays before drawing again among locations with the same time: seconds, or [min, max]."
+                  },
+                  "wander": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "Walks to random blocks around the location: within radius, or inside area.",
+                    "properties": {
+                      "radius": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 32,
+                        "description": "Blocks on x and z."
+                      },
+                      "area": {
+                        "type": "array",
+                        "minItems": 6,
+                        "maxItems": 6,
+                        "items": {
+                          "type": "integer",
+                          "minimum": -30000000,
+                          "maximum": 30000000
+                        },
+                        "description": "[x1, y1, z1, x2, y2, z2], both corners included."
+                      },
+                      "waitSeconds": {
+                        "oneOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 86400
+                          },
+                          {
+                            "type": "array",
+                            "description": "[min, max], min not above max.",
+                            "minItems": 2,
+                            "maxItems": 2,
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 86400
+                            }
+                          }
+                        ],
+                        "description": "Wait between wander legs: seconds, or [min, max]. 1 by default."
+                      }
+                    },
+                    "oneOf": [
+                      {
+                        "required": [
+                          "radius"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "area"
+                        ]
+                      }
+                    ]
+                  },
+                  "pose": {
+                    "enum": [
+                      "standing",
+                      "sneaking",
+                      "sleeping",
+                      "sitting"
+                    ],
+                    "description": "Pose on arrival, player bodies only."
+                  },
+                  "equipment": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "Items put on at arrival, by slot.",
+                    "properties": {
+                      "main_hand": {
+                        "$ref": "#/$defs/item"
+                      },
+                      "off_hand": {
+                        "$ref": "#/$defs/item"
+                      },
+                      "head": {
+                        "$ref": "#/$defs/item"
+                      },
+                      "chest": {
+                        "$ref": "#/$defs/item"
+                      },
+                      "legs": {
+                        "$ref": "#/$defs/item"
+                      },
+                      "feet": {
+                        "$ref": "#/$defs/item"
+                      },
+                      "body": {
+                        "$ref": "#/$defs/item"
+                      },
+                      "saddle": {
+                        "$ref": "#/$defs/item"
+                      }
+                    }
+                  },
+                  "clearEquipment": {
+                    "type": "boolean",
+                    "description": "Empty the other slots on arrival."
+                  },
+                  "skin": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "description": "A skin file under skins/, player bodies only."
+                  },
+                  "skinOnDeparture": {
+                    "type": "boolean",
+                    "description": "Show the skin as the NPC sets out instead of on arrival."
+                  },
+                  "commands": {
+                    "type": "array",
+                    "description": "Console commands run on arrival.",
+                    "minItems": 0,
+                    "maxItems": 16,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[^/].*$",
+                      "description": "A console command without the slash.",
+                      "maxLength": 256
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "animus:modelengine": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "A Model Engine model shown in place of the body. Needs Model Engine on the server; without it the body shows.",
+          "required": [
+            "model"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "True when the object is present."
+            },
+            "model": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_./-]{1,64}$",
+              "description": "The Model Engine model id."
+            },
+            "scale": {
+              "type": "number",
+              "minimum": 0.0625,
+              "maximum": 16.0,
+              "description": "Size of the model. 1 by default."
+            },
+            "showBody": {
+              "type": "boolean",
+              "description": "Also show the NPC's own body. False by default."
+            },
+            "hitbox": {
+              "type": "boolean",
+              "description": "Clicks on the model's hitbox count as clicks on the NPC. True by default."
+            },
+            "nametagBone": {
+              "type": "string",
+              "pattern": "\\S",
+              "maxLength": 64,
+              "description": "A bone of the model that shows the NPC's name."
+            },
+            "states": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Animations played for each state, by name in the model. A state left out plays its usual animation.",
+              "properties": {
+                "idle": {
+                  "type": "string",
+                  "pattern": "\\S",
+                  "maxLength": 64,
+                  "description": "idle by default."
+                },
+                "walk": {
+                  "type": "string",
+                  "pattern": "\\S",
+                  "maxLength": 64,
+                  "description": "walk by default."
+                },
+                "attack": {
+                  "type": "string",
+                  "pattern": "\\S",
+                  "maxLength": 64,
+                  "description": "attack by default."
+                },
+                "hurt": {
+                  "type": "string",
+                  "pattern": "\\S",
+                  "maxLength": 64,
+                  "description": "hurt by default."
+                },
+                "death": {
+                  "type": "string",
+                  "pattern": "\\S",
+                  "maxLength": 64,
+                  "description": "death by default."
+                },
+                "interact": {
+                  "type": "string",
+                  "pattern": "\\S",
+                  "maxLength": 64,
+                  "description": "Played when a player clicks the NPC. Nothing by default."
+                }
+              }
+            }
+          }
+        },
+        "mythic:mob": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The MythicMobs mob type this NPC was made from. Its skills run on the NPC's matching events.",
+          "required": [
+            "mob"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "False stops the mob's skills from running. True by default."
+            },
+            "mob": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,64}$",
+              "description": "The Mythic mob type, such as SkeletonKing."
+            }
+          }
+        },
+        "animus:home": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Returns the NPC home once it has stood idle away from it, in its own world.",
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "True when the object is present."
+            },
+            "x": {
+              "type": "number",
+              "minimum": -29999984,
+              "maximum": 29999984
+            },
+            "y": {
+              "type": "number",
+              "minimum": -29999984,
+              "maximum": 29999984
+            },
+            "z": {
+              "type": "number",
+              "minimum": -29999984,
+              "maximum": 29999984
+            },
+            "yaw": {
+              "type": "number",
+              "minimum": -360,
+              "maximum": 360,
+              "description": "Facing after a teleport home."
+            },
+            "pitch": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90,
+              "description": "Facing after a teleport home."
+            },
+            "delayTicks": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 72000,
+              "description": "Idle ticks before going home. 0 by default."
+            },
+            "distance": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 256.0,
+              "description": "Only from at least this far. 0 by default: any distance."
+            },
+            "return": {
+              "enum": [
+                "teleport",
+                "walk"
+              ],
+              "description": "teleport by default."
+            }
+          }
+        },
+        "animus:mirror": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Each viewer sees this NPC with their own skin, name or equipment.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "True when the object is present."
+            },
+            "skin": {
+              "type": "boolean",
+              "description": "The viewer's own skin on a player body. True by default."
+            },
+            "name": {
+              "type": "boolean",
+              "description": "The viewer's own name."
+            },
+            "equipment": {
+              "type": "boolean",
+              "description": "What the viewer holds and wears when the NPC comes into view."
             }
           }
         }
@@ -15071,6 +23237,778 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "if": {
         "properties": {
           "type": {
+            "const": "minecraft:player"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "player"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:sheep"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "sheep"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:wolf"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "wolf"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:cat"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "cat"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:parrot"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "parrot"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:fox"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "fox"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:axolotl"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "axolotl"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:rabbit"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "rabbit"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:villager"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "villager"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:zombie_villager"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "zombieVillager"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:creeper"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "creeper"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:slime"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "slime"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:magma_cube"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "magmaCube"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:phantom"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "phantom"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:mooshroom"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "mooshroom"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:panda"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "panda"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:goat"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "goat"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:pig"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "pig"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:cow"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "cow"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:chicken"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "chicken"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:shulker"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "shulker"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:pufferfish"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "pufferfish"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:tropical_fish"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "tropicalFish"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:snow_golem"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "snowGolem"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:polar_bear"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "polarBear"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:piglin"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "piglin"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:allay"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "allay"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:bee"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "bee"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:vex"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "vex"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:evoker"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "evoker"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:sniffer"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "sniffer"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:bat"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "bat"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:copper_golem"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "copperGolem"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:donkey"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "donkey"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:mule"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "mule"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:enderman"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "enderman"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:wither"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "wither"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:camel"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "camel"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:painting"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "painting"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:item_frame"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "itemFrame"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:glow_item_frame"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "glowItemFrame"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:falling_block"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "fallingBlock"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:end_crystal"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "endCrystal"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:block_display"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "blockDisplay"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:item_display"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "itemDisplay"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:text_display"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "textDisplay"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:item"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "droppedItem"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:allay"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
             "const": "minecraft:armadillo"
           }
         }
@@ -15112,6 +24050,260 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "if": {
         "properties": {
           "type": {
+            "const": "minecraft:axolotl"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:bat"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:bee"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:block_display"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:bogged"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand",
+                "off_hand",
+                "head",
+                "chest",
+                "legs",
+                "feet"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:camel"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "saddle"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:cat"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:chicken"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:copper_golem"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:cow"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:creeper"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:donkey"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "saddle"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:drowned"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand",
+                "off_hand",
+                "head",
+                "chest",
+                "legs",
+                "feet"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:end_crystal"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
             "const": "minecraft:ender_dragon"
           }
         }
@@ -15128,7 +24320,136 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "if": {
         "properties": {
           "type": {
+            "const": "minecraft:enderman"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:evoker"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:falling_block"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:fox"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
             "const": "minecraft:frog"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:giant"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand",
+                "off_hand",
+                "head",
+                "chest",
+                "legs",
+                "feet"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:glow_item_frame"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:goat"
           }
         }
       },
@@ -15165,6 +24486,99 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "if": {
         "properties": {
           "type": {
+            "const": "minecraft:husk"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand",
+                "off_hand",
+                "head",
+                "chest",
+                "legs",
+                "feet"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:illusioner"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:item"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:item_display"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:item_frame"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
             "const": "minecraft:llama"
           }
         }
@@ -15175,6 +24589,262 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "propertyNames": {
               "enum": [
                 "body"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:magma_cube"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:mannequin"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand",
+                "off_hand",
+                "head",
+                "chest",
+                "legs",
+                "feet"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:mooshroom"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:mule"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "saddle"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:painting"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:panda"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:parched"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand",
+                "off_hand",
+                "head",
+                "chest",
+                "legs",
+                "feet"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:parrot"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:phantom"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:pig"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "saddle"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:piglin"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand",
+                "off_hand",
+                "head",
+                "chest",
+                "legs",
+                "feet"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:piglin_brute"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand",
+                "off_hand",
+                "head",
+                "chest",
+                "legs",
+                "feet"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:pillager"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand"
               ]
             }
           }
@@ -15210,6 +24880,216 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "if": {
         "properties": {
           "type": {
+            "const": "minecraft:polar_bear"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:pufferfish"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:rabbit"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:sheep"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:shulker"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:skeleton"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand",
+                "off_hand",
+                "head",
+                "chest",
+                "legs",
+                "feet"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:slime"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:sniffer"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:snow_golem"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:stray"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand",
+                "off_hand",
+                "head",
+                "chest",
+                "legs",
+                "feet"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:text_display"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:tropical_fish"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
             "const": "minecraft:turtle"
           }
         }
@@ -15218,6 +25098,224 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "properties": {
           "equipment": {
             "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:vex"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand",
+                "off_hand"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:villager"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand",
+                "head"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:vindicator"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:witch"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:wither"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "maxProperties": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:wither_skeleton"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand",
+                "off_hand",
+                "head",
+                "chest",
+                "legs",
+                "feet"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:wolf"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "body"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:zombie"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand",
+                "off_hand",
+                "head",
+                "chest",
+                "legs",
+                "feet"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:zombie_villager"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand",
+                "off_hand",
+                "head",
+                "chest",
+                "legs",
+                "feet"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "minecraft:zombified_piglin"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "equipment": {
+            "propertyNames": {
+              "enum": [
+                "main_hand",
+                "off_hand",
+                "head",
+                "chest",
+                "legs",
+                "feet"
+              ]
+            }
           }
         }
       }
@@ -15460,6 +25558,54 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 "maximum": 1000,
                 "description": "Order random only: how often this point is chosen."
               },
+              "speed": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 5,
+                "description": "Not order wander: the route's speed in blocks per second from this arrival on."
+              },
+              "teleport": {
+                "type": "object",
+                "required": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "minimum": -29999984,
+                    "maximum": 29999984
+                  },
+                  "y": {
+                    "type": "number",
+                    "minimum": -29999984,
+                    "maximum": 29999984
+                  },
+                  "z": {
+                    "type": "number",
+                    "minimum": -29999984,
+                    "maximum": 29999984
+                  },
+                  "yaw": {
+                    "type": "number",
+                    "minimum": -360,
+                    "maximum": 360
+                  },
+                  "pitch": {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90
+                  },
+                  "world": {
+                    "type": "string",
+                    "pattern": "^[^\\s/\\\\]{1,64}$",
+                    "description": "Another loaded world by name; the route goes on there. Unset: the route's world."
+                  }
+                },
+                "description": "Not order wander: on arrival the NPC teleports here, in the route's world, before the wait.",
+                "additionalProperties": false
+              },
               "next": {
                 "type": "array",
                 "description": "Order sequence only: after this point, the next point is drawn from these by weight.",
@@ -15618,6 +25764,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 {
                   "required": [
                     "style"
+                  ]
+                },
+                {
+                  "required": [
+                    "speed"
+                  ]
+                },
+                {
+                  "required": [
+                    "teleport"
                   ]
                 }
               ]
@@ -22319,12 +32475,173 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   }
 }
 ''',
+  'quest-v1.schema.json': r'''
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://animus.volmitsoftware.com/schema/quest-v1.schema.json",
+  "title": "Animus quest",
+  "description": "quests/<namespace>/<name>.json. The id must equal the file location. The Java QuestDocument parser is authoritative; this schema checks structure for the editor.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "title", "stages"],
+  "properties": {
+    "schemaVersion": {"const": 1, "description": "Always 1."},
+    "revision": {"type": "integer", "minimum": 1, "description": "Raise this with every edit."},
+    "id": {"type": "string", "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9][a-z0-9_-]{0,63}$", "description": "namespace:name, matching this file's location. Behaviors of the same namespace read its stage as quest('player', name)."},
+    "title": {"type": "string", "minLength": 1, "maxLength": 128, "description": "Shown in offers, messages and the journal; & codes and MiniMessage."},
+    "description": {"type": "string", "maxLength": 1024, "description": "Offer text and journal lore."},
+    "icon": {"$ref": "#/$defs/item", "description": "Journal icon. Defaults to a writable book."},
+    "givers": {"type": "array", "maxItems": 16, "uniqueItems": true, "items": {"$ref": "#/$defs/npc"}, "description": "NPCs that offer the quest on right click. Without givers the quest starts only by command or behavior."},
+    "turnIn": {"$ref": "#/$defs/npc", "description": "NPC to return to after the last stage. Without it the quest completes as soon as the last stage is done."},
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "permission": {"$ref": "#/$defs/permission"},
+        "quests": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"$ref": "#/$defs/questId"}, "description": "Quests the player must have finished at least once."},
+        "condition": {"type": "string", "minLength": 1, "maxLength": 1024, "description": "A behavior expression that must be true, such as flag('player','helped_mayor') or quest('player','intro') >= 2. Flags and quests are those of this quest's namespace."}
+      }
+    },
+    "repeat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {"enum": ["never", "cooldown", "daily"], "description": "never: once per player. cooldown: again after seconds. daily: again after the server's local midnight."},
+        "seconds": {"type": "integer", "minimum": 1, "maximum": 31536000}
+      },
+      "if": {"properties": {"mode": {"const": "cooldown"}}},
+      "then": {"required": ["seconds"]},
+      "else": {"not": {"required": ["seconds"]}},
+      "description": "Defaults to never."
+    },
+    "stages": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"$ref": "#/$defs/stage"}},
+    "rewards": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 27,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["item"],
+            "properties": {
+              "item": {"$ref": "#/$defs/item"},
+              "amount": {"type": "integer", "minimum": 1, "maximum": 2304, "description": "Defaults to the item's count."}
+            }
+          },
+          "description": "Given on completion; what does not fit drops at the player's feet."
+        },
+        "money": {"type": "number", "exclusiveMinimum": 0, "maximum": 1000000000000, "description": "Paid through the server economy (Vault on Bukkit). At most 4 decimal places."},
+        "experience": {"type": "integer", "minimum": 1, "maximum": 1000000, "description": "Experience points."},
+        "commands": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["command"],
+            "properties": {
+              "command": {"type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^[^/]", "description": "Without the slash. {player} becomes the player's name."},
+              "as": {"enum": ["console", "player"], "description": "Defaults to console."}
+            }
+          },
+          "description": "Needs the quest id or its namespace on the command allow-list ([behaviors.actions] in config.toml), like behaviors and shops."
+        },
+        "flags": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name"],
+            "properties": {
+              "name": {"$ref": "#/$defs/stateName"},
+              "value": {"description": "Any JSON value. Defaults to true."},
+              "scope": {"enum": ["player", "global"], "description": "Defaults to player."}
+            }
+          },
+          "description": "Behavior flags of this quest's namespace."
+        }
+      }
+    },
+    "messages": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "offer": {"$ref": "#/$defs/message", "description": "Said by the giver before the accept and decline buttons."},
+        "accept": {"$ref": "#/$defs/message"},
+        "decline": {"$ref": "#/$defs/message"},
+        "complete": {"$ref": "#/$defs/message"}
+      },
+      "description": "Replace the default lines for this quest. {player} and {quest} are filled in."
+    },
+    "imported": {"type": "object", "description": "Preserved source data from an importer."}
+  },
+  "$defs": {
+    "npc": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$", "description": "An NPC id."},
+    "questId": {"type": "string", "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9][a-z0-9_-]{0,63}$"},
+    "stateName": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"},
+    "permission": {"type": "string", "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$"},
+    "message": {"type": "string", "minLength": 1, "maxLength": 512},
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"},
+        "count": {"type": "integer", "minimum": 1, "maximum": 99},
+        "components": {"type": "string", "maxLength": 4096, "pattern": "^\\[[\\s\\S]*\\]$", "description": "Item components in command syntax. When set, items must match them exactly; otherwise only the id is compared."}
+      }
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectives"],
+      "properties": {
+        "description": {"type": "string", "maxLength": 512, "description": "Journal and progress text for the stage."},
+        "order": {"enum": ["any", "ordered"], "description": "any: objectives count at once, in any order. ordered: one after another. Defaults to any."},
+        "objectives": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"$ref": "#/$defs/objective"}}
+      }
+    },
+    "objective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {"enum": ["talk", "bring", "kill", "reach", "collect", "custom"]},
+        "id": {"$ref": "#/$defs/stateName", "description": "Unique within the stage. Required for custom objectives, which behaviors and commands address by it."},
+        "description": {"type": "string", "maxLength": 256, "description": "Journal text. Defaults to a line built from the objective."},
+        "npc": {"$ref": "#/$defs/npc", "description": "talk and bring: the NPC to right click. kill: an NPC whose health can reach zero, instead of entity."},
+        "item": {"$ref": "#/$defs/item", "description": "bring and collect."},
+        "entity": {"type": "string", "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$", "description": "kill: an entity type such as minecraft:zombie."},
+        "amount": {"type": "integer", "minimum": 1, "maximum": 100000, "description": "bring, collect, kill and custom. Defaults to 1."},
+        "world": {"type": "string", "minLength": 1, "maxLength": 128, "description": "reach: world name or namespace:key."},
+        "x": {"type": "number", "minimum": -30000000, "maximum": 30000000},
+        "y": {"type": "number", "minimum": -2048, "maximum": 2048},
+        "z": {"type": "number", "minimum": -30000000, "maximum": 30000000},
+        "radius": {"type": "number", "minimum": 1, "maximum": 256, "description": "reach: blocks around the point. Defaults to 3."}
+      },
+      "allOf": [
+        {"if": {"properties": {"type": {"const": "talk"}}}, "then": {"required": ["npc"], "properties": {"item": false, "entity": false, "amount": false, "world": false, "x": false, "y": false, "z": false, "radius": false}}},
+        {"if": {"properties": {"type": {"const": "bring"}}}, "then": {"required": ["npc", "item"], "properties": {"entity": false, "world": false, "x": false, "y": false, "z": false, "radius": false}}},
+        {"if": {"properties": {"type": {"const": "kill"}}}, "then": {"oneOf": [{"required": ["entity"]}, {"required": ["npc"]}], "properties": {"item": false, "world": false, "x": false, "y": false, "z": false, "radius": false}}},
+        {"if": {"properties": {"type": {"const": "reach"}}}, "then": {"required": ["world", "x", "y", "z"], "properties": {"npc": false, "item": false, "entity": false, "amount": false}}},
+        {"if": {"properties": {"type": {"const": "collect"}}}, "then": {"required": ["item"], "properties": {"npc": false, "entity": false, "world": false, "x": false, "y": false, "z": false, "radius": false}}},
+        {"if": {"properties": {"type": {"const": "custom"}}}, "then": {"required": ["id"], "properties": {"npc": false, "item": false, "entity": false, "world": false, "x": false, "y": false, "z": false, "radius": false}}}
+      ]
+    }
+  }
+}
+''',
   'recording-v1.schema.json': r'''
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://animus.volmitsoftware.com/schema/recording-v1.schema.json",
   "title": "Animus performance recording",
-  "description": "recordings/<id>.json. A player's movement captured as frames relative to origin, plus arm swings, equipment changes and door uses. Rules a schema cannot express (frame ticks strictly increasing from 0 to durationTicks, at most durationTicks / sampleTicks + 1 frames, event ticks at most durationTicks, events sorted by tick then type, the id matching the file name, the file at most [recordings] maximumFileBytes) are checked by RecordingDocument; see dev/recording-groups-routes.md.",
+  "description": "recordings/<id>.json. A player's movement captured as frames relative to origin, plus arm swings, equipment changes and door uses. Rules a schema cannot express (frame ticks strictly increasing from 0 to durationTicks, at most durationTicks / sampleTicks + 1 frames, event ticks at most durationTicks, events sorted by tick then type, the id matching the file name, the file at most [recordings] maximumFileBytes) are checked by RecordingDocument.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "revision", "id", "recordedBy", "world", "origin", "sampleTicks", "durationTicks", "frames", "events"],
@@ -22436,7 +32753,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://animus.volmitsoftware.com/schema/rig-v1.schema.json",
   "title": "Animus rig",
-  "description": "rigs/<namespace>/<path>.json. A tree of bones shown as packet-only display entities. Rules a schema cannot express (unique bone ids, parents listed before children, depth at most 16, socket and animation references) are checked by the rig validators; see dev/editor-contracts.md.",
+  "description": "rigs/<namespace>/<path>.json. A tree of bones shown as packet-only display entities. Rules a schema cannot express (unique bone ids, parents listed before children, depth at most 16, socket and animation references) are checked by the rig validators.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "revision", "id", "bones"],
@@ -22669,6 +32986,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           }
         },
         "price": {"$ref": "#/$defs/price"},
+        "levels": {"type": "integer", "minimum": 0, "maximum": 100000, "description": "Experience levels the entry costs, taken with the price. Buy, command and trade entries."},
         "allowStack": {"type": "boolean"},
         "sellPartial": {"type": "boolean"},
         "needs": {"$ref": "#/$defs/goods"},
@@ -22726,6 +33044,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         {
           "if": {"required": ["type"], "properties": {"type": {"enum": ["buy", "sell", "command"]}}},
           "then": {"required": ["price"]}
+        },
+        {
+          "if": {"required": ["type"], "properties": {"type": {"enum": ["sell", "static"]}}},
+          "then": {"not": {"required": ["levels"], "properties": {"levels": {"exclusiveMinimum": 0}}}}
         },
         {
           "if": {"required": ["type"], "properties": {"type": {"const": "trade"}}},

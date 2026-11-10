@@ -31,8 +31,6 @@ import java.util.stream.Stream;
  * complete. Called on the actor's owner; a source that cannot answer offers nothing.
  */
 final class CommandCompletions {
-    /** The body types an NPC can have, offered for {@code type}; create and edit refuse any other. */
-    static final List<String> TYPES = art.arcane.animus.core.presentation.BodyRules.TYPES.stream().sorted().toList();
     /** The bodies the packet preview tools can show. */
     static final List<String> PROOF_BODIES = List.of("minecraft:player", "minecraft:armor_stand", "minecraft:horse", "minecraft:turtle", "minecraft:frog",
             "minecraft:llama", "minecraft:armadillo", "minecraft:ender_dragon");
@@ -57,8 +55,15 @@ final class CommandCompletions {
             case "tag" -> tree.runtime().npcs().all().stream().flatMap((NpcDefinition definition) -> definition.tags().stream()).distinct().sorted().toList();
             case "attribute" -> NpcCommands.ids();
             case "setting" -> HealthSetting.NAMES;
+            case "part" -> ModelSetting.NAMES;
+            case "to" -> ModelSetting.values(given.getOrDefault("part", ""));
             case "value" -> given.containsKey("setting") ? healthValues(given.get("setting")) : List.of(NpcCommands.RESET);
+            case "disguise" -> List.of(NpcCommands.RESET);
             case "shop" -> services.shops().shopIds();
+            case "quest" -> services.quests().questIds();
+            case "stage" -> List.of("1", "2", "3");
+            case "objective" -> services.quests().customObjectives(given.getOrDefault("quest", ""));
+            case "amount" -> List.of("1", "5", "10");
             case "gui" -> services.guis().guiIds();
             case "menu" -> services.guis().menuIds();
             case "document" -> Stream.concat(Stream.of("all"), Stream.concat(services.guis().guiIds().stream(), services.guis().menuIds().stream())).distinct().toList();
@@ -76,6 +81,7 @@ final class CommandCompletions {
             case "expires" -> List.of("30m", "12h", "1d", "7d", "30d");
             case "label" -> List.of("laptop", "desktop");
             case "player" -> services.players().get();
+            case "mythic-mob" -> tree.runtime().templates().names(art.arcane.animus.core.integration.NpcTemplates.MYTHIC);
             case "viewer" -> services.debug().viewers();
             case "uuid" -> Stream.concat(actor.player().stream(), actor.nearby().stream()).map(UUID::toString).distinct().toList();
             case "target" -> targets(actor, false);
@@ -83,12 +89,13 @@ final class CommandCompletions {
             case "mob" -> nearby(actor);
             case "enabled" -> List.of("on", "off", DiagnosticCommands.TOGGLE);
             case "confirm" -> List.of("confirm");
+            case "action" -> List.of("list", "add", "remove");
             case "style" -> List.of("native", "chest");
             case "mode" -> List.of("buy", "sell", "trade");
             case "price" -> List.of("1", "10", "100");
             case "rows" -> List.of("1", "2", "3", "4", "5", "6");
             case "recording" -> services.recordings().ids();
-            case "type" -> TYPES;
+            case "type" -> tree.runtime().bodyTypes().stream().sorted().toList();
             case "body" -> PROOF_BODIES;
             case "world" -> worlds(actor);
             case "worlds" -> worlds(actor).stream().map((String world) -> world + ":" + world).toList();
@@ -121,6 +128,12 @@ final class CommandCompletions {
             case "application" -> CompletionFiles.applications(data());
             case "transaction" -> CompletionFiles.transactions(data());
             case "skin" -> CompletionFiles.skins(data());
+            case "time" -> List.of("day", "noon", "night", "midnight", "1000", "13000");
+            case "chance" -> List.of("100", "50", "25");
+            case "stay" -> List.of("60", "60-120", "300");
+            case "wander" -> List.of("0", "4", "8");
+            case "pose" -> List.of("standing", "sneaking", "sleeping", "sitting");
+            case "location" -> ScheduleCommands.references(tree.runtime().npcs().find(given.getOrDefault("npc", "")).map(NpcDefinition::json).orElse(new JsonObject()));
             case "categories" -> { List<String> categories = new ArrayList<>(CitizensDropIn.CATEGORIES); categories.add("all"); categories.add(CitizensDropIn.COMMANDS); yield categories; }
             default -> List.of();
         };

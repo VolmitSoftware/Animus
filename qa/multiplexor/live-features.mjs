@@ -16,6 +16,15 @@ import { toolkit } from './live-toolkit.mjs';
 import { movementStyles } from './live-movement-styles.mjs';
 import { commandFeel } from './live-command-feel.mjs';
 import { placeholders } from './live-placeholders.mjs';
+import { questPlugins } from './live-quests.mjs';
+import { quests as questHosts } from './live-betonquest.mjs';
+import { schedules } from './live-schedules.mjs';
+import { mythic } from './live-mythic.mjs';
+import { citizensEconomy } from './live-citizens-economy.mjs';
+import { nativeQuests } from './live-native-quests.mjs';
+import { motion } from './live-motion.mjs';
+import { presentation } from './live-presentation.mjs';
+import { looks, gatedCommands } from './live-looks.mjs';
 
 const args = parseArgs();
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -39,6 +48,7 @@ const fixture = args.get('fixture') ? path.resolve(args.get('fixture')) : null;
 // Other plugins a scenario needs beside Animus, such as PlaceholderAPI for the placeholders scenario.
 const extraPlugins = (args.get('extra-plugins') ?? '').split(',').filter(Boolean).map(file => path.resolve(file));
 const papiExpansions = (args.get('papi-expansions') ?? '').split(',').filter(Boolean).map(file => path.resolve(file));
+const typewriterExtensions = (args.get('typewriter-extensions') ?? '').split(',').filter(Boolean).map(file => path.resolve(file));
 const javaHome = args.get('java-home') ?? '/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home';
 // Fabric, NeoForge and Forge run the mod jar on a vanilla server: data lives in config/animus and no Bukkit fixture exists.
 const MOD = ['fabric', 'neoforge', 'forge'].includes(project);
@@ -49,7 +59,7 @@ const scenarios = (args.get('scenarios') ?? defaultScenarios).split(',');
 const dashed = version.replaceAll('.', '-');
 const name = args.get('instance-name') ?? (MOD ? `animus-mod-${project}-${dashed}` : `animus-live-${project}-${dashed}`);
 // A Folia run may also use the animus-folia-paper-<version> instance a Folia check was asked to run on.
-assert(new RegExp(MOD ? `^animus-mod-${project}-${dashed}$` : `^animus-(?:live|gate-live|guarddebug|foliafinal|builderscaffold|combatedges|shopstyle|swinglook|npckeys|parity|movestyles|commandfeel|placeholders)-${project}-${dashed}$`).test(name)
+assert(new RegExp(MOD ? `^animus-(?:mod|r3-live(?:-[a-z]+)?|r3-merge(?:-[a-z]+)?)-${project}-${dashed}$` : `^animus-(?:live|gate-live|guarddebug|foliafinal|builderscaffold|combatedges|shopstyle|swinglook|npckeys|parity|movestyles|commandfeel|placeholders|r3-quests-pq-(?:pika|bq)|r3-quests-bq|r3-destinations|r3-mythic|r3-cz-shop|r3-quest-core|r3-cz-motion|presentation|r3-cz-presentation|r3-live(?:-[a-z]+)?)-${project}-${dashed}$`).test(name)
   || project === 'folia' && name === `animus-folia-paper-${dashed}`, 'Instance name must bind the requested platform/version');
 assert(!MOD || !fixture, 'The QA event fixture is a Bukkit plugin; mod servers run without it');
 const instances = path.join(workspace, `consumers/${MOD ? `${project}-mod` : 'plugin'}-consumers/instances`);
@@ -57,7 +67,7 @@ const pluginInstances = path.join(workspace, 'consumers/plugin-consumers/instanc
 const instance = path.join(instances, name), data = path.join(instance, MOD ? 'config/animus' : 'plugins/Animus'), logFile = path.join(instance, 'logs/latest.log');
 const session = `mc-${consumer}-${name}`;
 // The native client needs vanilla's libraries; a mod server keeps them inside its loader, so borrow the exact Paper template's.
-const serverLibraries = MOD ? path.join(pluginInstances, `animus-baseline-paper-${dashed}`, 'libraries') : path.join(instance, project === 'spigot' ? 'bundler/libraries' : 'libraries');
+const serverLibraries = args.get('libraries') ? path.resolve(args.get('libraries')) : MOD ? path.join(pluginInstances, `animus-baseline-paper-${dashed}`, 'libraries') : path.join(instance, project === 'spigot' ? 'bundler/libraries' : 'libraries');
 const LOADERS = JSON.parse(readFileSync(path.join(root, 'gradle/targets.json'), 'utf8'))[version];
 const loaderVersion = { fabric: LOADERS.fabricLoader, neoforge: LOADERS.neoforge, forge: LOADERS.forge?.replace(`${version}-`, '') }[project];
 // The reload answer: `Reloaded behaviors: ...`, `Behaviors not reloaded: ...`, or a `Behaviors reload: BUSY` style state.
@@ -129,7 +139,7 @@ class Server {
     writeFileSync(path.join(instance, 'eula.txt'), existsSync(path.join(template, 'eula.txt')) ? readFileSync(path.join(template, 'eula.txt')) : 'eula=true\n');
     const plugins = path.join(instance, MOD ? 'mods' : 'plugins');
     // Every run starts from empty plugin data so no earlier revision, checkpoint or state answers for this run.
-    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|guarddebug|foliafinal|builderscaffold|combatedges|shopstyle|swinglook|npckeys|parity|movestyles|commandfeel|placeholders|mod|folia-paper)-/.test(path.basename(instance)));
+    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|guarddebug|foliafinal|builderscaffold|combatedges|shopstyle|swinglook|npckeys|parity|movestyles|commandfeel|placeholders|r3-quests-pq|r3-quests-bq|r3-destinations|r3-mythic|r3-cz-shop|r3-quest-core|r3-cz-motion|presentation|r3-cz-presentation|r3-live|r3-merge|mod|folia-paper)-/.test(path.basename(instance)));
     rmSync(data, { recursive: true, force: true });
     mkdirSync(data, { recursive: true });
     mkdirSync(plugins, { recursive: true });
@@ -250,7 +260,9 @@ class Server {
     throw new Error('reload stayed busy');
   }
   async npc(id, type, x, y, z, display, edit = {}, spawned = true) {
-    await this.cmd(`animus create ${id} type=${type} world=world x=${x} y=${y} z=${z} folder=live name=${display}`, new RegExp(`Created dormant ${id}`));
+    // A console create spawns the NPC; it is despawned until the edit lands, so spawn triggers see the edited definition.
+    const made = await this.cmd(`animus create ${id} type=${type} world=world x=${x} y=${y} z=${z} folder=live name=${display}`, new RegExp(`Created (dormant )?${id}\\b`));
+    if (!made[1]) await this.cmd(`animus despawn ${id}`, new RegExp(`Despawn requested for ${id}`));
     if (Object.keys(edit).length) await this.cmd(`animus edit ${id} ${JSON.stringify(edit)}`, /Saved[^;]*; tx /);
     if (spawned) await this.cmd(`animus spawn ${id}`, new RegExp(`Spawning ${id}`));
     return JSON.parse(readFileSync(path.join(data, 'npcs/live', `${id}.json`), 'utf8')).uuid;
@@ -390,31 +402,32 @@ async function triggers() {
     return (await owner.chat('Trigger » waypoint-fired', from, 15_000)).text;
   });
   await check('behaviors triggers output', async () => {
-    const text = await server.capture('animus behaviors triggers', /Behavior triggers: AVAILABLE[^\n]*/);
+    const text = await server.capture('animus behaviors triggers', /⇀ Server triggers[^\n]*/);
     note(text);
-    const rows = text.split('\n').filter(line => line.includes('Trigger npc=trig'));
+    const rows = text.split('\n').filter(line => line.includes('⇀ trig |'));
     assert.equal(rows.length, 8, `rows: ${rows.length}`);
     for (const id of ['click', 'hit', 'near', 'away', 'spawn', 'clock', 'walked']) {
-      const row = rows.find(line => line.includes(`trigger=${id} `));
-      assert(row && /fired=[1-9]/.test(row), `${id}: ${row}`);
+      // A binding whose id is its event's name prints without the #id.
+      const row = rows.find(line => line.includes(`#${id} `) || line.includes(`(On ${id};`));
+      assert(row && /Fired (once|\d+ times)/.test(row), `${id}: ${row}`);
     }
-    return text.match(/Behavior triggers:[^\n]*/)[0];
+    return `${rows.length} bindings, each fired`;
   });
   await check('trigger despawn', async () => {
     const from = owner.events.length;
     await server.cmd('animus despawn trig', /./);
     await owner.wait(e => e.event === 'remove' && e.ids.includes(body.id), from);
     await delay(800);
-    const trace = await server.capture(`animus behaviors trace ${uuid}`, /Behavior trace:[^\n]*/);
+    const trace = await server.capture('animus behaviors trace trig', /--- Trace trig[^\n]*/);
     note(trace);
     const row = trace.split('\n').find(line => line.includes('trigger=live:triggers#despawn'));
     assert(row, `no despawn run in trace: ${trace.slice(0, 500)}`);
     assert(await flagStored('global', 'live', 'despawned'), 'flag not stored');
     // The world action after the flag cannot reach a dormant NPC; record how that is reported.
-    const execution = row.match(/execution=([0-9a-f-]{36})/)[1];
+    const execution = row.match(/⇀ ([0-9a-f-]{36})/)[1];
     const inspect = await server.finish(execution);
     note(inspect.text);
-    return `${row.slice(row.indexOf('Behavior recent')).slice(0, 200)} ; say after despawn: ${diagnosticOf(inspect.text).replace(/^.*Behavior diagnostic/, 'diagnostic').slice(0, 200)}`;
+    return `${row.slice(row.indexOf('⇀')).slice(0, 200)} ; say after despawn: ${diagnosticOf(inspect.text).replace(/^.*Behavior diagnostic/, 'diagnostic').slice(0, 200)}`;
   });
   await check('dormant NPC fires nothing', async () => {
     const from = owner.events.length;
@@ -526,7 +539,7 @@ async function state() {
   await check('state status reports no problem', async () => { const text = await server.capture('animus behaviors state status', /Behavior state:[^\n]*/); note(text); assert(!text.includes('Behavior state invalid')); return text.match(/Behavior state:[^\n]*/)[0]; });
   await check('trace and inspect after a run', async () => {
     const { execution } = await values(owner);
-    const trace = await server.capture('animus behaviors trace st', /Behavior trace: npc=st[^\n]*/);
+    const trace = await server.capture('animus behaviors trace st', /--- Trace st[^\n]*/);
     assert(trace.includes(execution), `trace lacks ${execution}: ${trace.slice(0, 400)}`);
     assert(/state=COMPLETED/.test(trace));
     const { state: terminal, text } = await server.finish(execution);
@@ -562,7 +575,7 @@ async function state() {
     assert(/INVALID|live/.test(validate), validate.slice(0, 300));
     server.revisions.set('live:state', 99);
     server.behavior('live:state', stateDoc());
-    assert.match((await server.reload())[0], /APPLIED/);
+    assert.match((await server.reload())[0], /Reloaded behaviors: (\d+) of \1 available/);
     return startup.replace(/\[[^\]]*\]: /g, '').slice(0, 240);
   });
   await check('state purge relationship', async () => { await server.capture(`animus behaviors state delete relationship st ${OWNER.uuid}`, /Behavior state delete: \w+[^\n]*/); const { lines } = await values(owner); assert.equal(lines[2], 'unset'); assert.notEqual(lines[0], 'unset'); return lines.join(','); });
@@ -717,7 +730,13 @@ async function actions() {
   });
   await check('navigate wait fails with no path', async () => {
     await server.cmd('fill 13 61 1 17 63 5 stone hollow', /filled/);
-    const result = await runDoc(owner, 'nav', seq(action('animus:navigate', { x: 15, y: 61, z: 3, speed: 3, wait: true }), sayTo('unreachable-arrived')));
+    // The goal is the floor of a closed box, out of reach and more than 1.5 blocks from any standing place, so the leg
+    // tries its detours and widened captures before it gives up.
+    server.behavior('live:nav', { routines: { main: seq(action('animus:navigate', { x: 15, y: 61, z: 3, speed: 3, wait: true }), sayTo('unreachable-arrived')) } });
+    await server.reload();
+    const result = await server.finish(await owner.run('act', 'live:nav'), 150_000).catch(async error => {
+      throw new Error(`${error.message.slice(0, 200)} | ${plain(await server.capture('animus navigation status act', /Navigation act[^\n]*/)).match(/Navigation act[^\n]*/)?.[0]}`);
+    });
     await server.cmd('fill 13 61 1 17 63 5 air', /filled/);
     assert.equal(result.state, 'FAILED', result.text.slice(0, 300));
     assert(/navigation-(blocked|failed)/.test(result.text), diagnosticOf(result.text));
@@ -732,7 +751,8 @@ async function actions() {
     await server.cmd('fill 6 61 -40 6 66 40 stone', /filled/);
     const result = await server.finish(execution, 45_000);
     await server.cmd('fill 6 61 -40 6 66 40 air', /filled/);
-    assert.equal(result.state, 'FAILED', result.text.slice(0, 400));
+    const end = await inspect('act');
+    assert.equal(result.state, 'FAILED', `${result.text.slice(0, 300)} | ended at ${end.x},${end.y},${end.z}`);
     return diagnosticOf(result.text).replace(/^.*Behavior diagnostic/, 'diagnostic').slice(0, 200);
   });
   await check('navigate wait times out', async () => {
@@ -939,7 +959,8 @@ async function mounts() {
   await owner.tp(0, 61, 0);
   await check('passenger relation returns after restart', async () => JSON.stringify(await passengerOf(owner, horse, riderUuid)));
   await check('ending relation returns to definition position', async () => {
-    await server.cmd('animus edit mrider {"modules":{}}', /Saved/);
+    // A merge patch removes a module by setting it to null; an empty modules object would keep it.
+    await server.cmd('animus edit mrider {"modules":{"animus:mount":null}}', /Saved/);
     await delay(1200);
     const body = owner.current(riderUuid);
     assert(body, 'rider body gone');
@@ -1374,7 +1395,7 @@ async function foliaMounts(owner, at) {
     return `group crossed ${chunks} chunk border(s); horse x=${end.x.toFixed(2)}, knight x=${rider.x.toFixed(2)} y=${rider.y.toFixed(2)}`;
   });
   await check('Folia: ending the relation returns the passenger to its own place', async () => {
-    await server.cmd('animus edit fknight {"modules":{}}', /Saved/);
+    await server.cmd('animus edit fknight {"modules":{"animus:mount":null}}', /Saved/);
     const back = await until(async () => { const r = await inspect('fknight'); return { ok: !/mounted-on=/.test(r.line) && Math.abs(r.x - at(-12, -4)[0]) < .01, line: r.line.slice(0, 200) }; }, 10000, 'knight did not return');
     return back.line.match(/position=[^;]*/)?.[0];
   });
@@ -1551,14 +1572,32 @@ async function inspect(id) {
   const at = line.match(/position=Vec3\[x=([-\dE.]+), y=([-\dE.]+), z=([-\dE.]+)\]/);
   return { line, health: Number(line.match(/health=([-\d.]+)/)?.[1]), x: Number(at?.[1]), y: Number(at?.[2]), z: Number(at?.[3]) };
 }
+/**
+ * Paper answers combat commands in sentences ("guard is attacking, targeting 1a2b3c4d, disengaged"); Folia's region
+ * runtime still answers "Combat guard: APPLIED ATTACKING target=PLAYER:<uuid>". Both read here as the second form,
+ * with a short id widened back to the QA player it names.
+ */
+function combatLine(id, line) {
+  if (line.startsWith('Combat ') || /^Unknown NPC|^Usage/.test(line)) return line;
+  const kind = who => {
+    const player = [OWNER, PEER].find(p => p.uuid.startsWith(who));
+    return /^[0-9a-f]{8}$/.test(who) ? (player ? `PLAYER:${player.uuid}` : `MOB:${who}`) : `NPC:${who}`;
+  };
+  const state = line.match(new RegExp(`^${id} is (.+?), (?:targeting (\\S+?)|no target)(, disengaged)?(?:, (\\d+) ammunition)?$`));
+  if (state) return `Combat ${id}: APPLIED ${state[1].toUpperCase().replaceAll(' ', '_')} target=${state[2] ? kind(state[2]) : 'none'}${state[3] ? ' disengaged' : ''}${state[4] ? ` ammunition=${state[4]}` : ''}`;
+  if (new RegExp(`^${id} is not a combat NPC`).test(line)) return `Combat ${id}: NOT_COMBATANT ${line}`;
+  if (line.startsWith(`${id}: `)) return `Combat ${id}: REFUSED ${line.slice(id.length + 2)}`;
+  return `Combat ${id}: APPLIED ${line}`;
+}
 async function combatOf(id) {
-  const pattern = new RegExp(`Combat ${id}:[^\\n]*`);
-  return plain(await server.capture(`animus combat status npc=${id}`, pattern)).match(pattern)[0];
+  const pattern = new RegExp(`Combat ${id}:[^\\n]*|\\b${id} is [^\\n]*`);
+  return combatLine(id, plain(await server.capture(`animus combat status npc=${id}`, pattern)).match(pattern)[0].trim());
 }
 async function combatCommand(id, operation) {
-  const pattern = new RegExp(`Combat ${id}:[^\\n]*|Unknown NPC[^\\n]*|Usage[^\\n]*`);
+  const pattern = new RegExp(`Combat ${id}:[^\\n]*|: ${id}[ :][^\\n]*|Revived ${id}[^\\n]*|Unknown NPC[^\\n]*|Usage[^\\n]*`);
   const [verb, ...rest] = operation.split(' ');
-  return plain(await server.capture(`animus combat ${verb} ${id}${rest.length ? ' ' + rest.join(' ') : ''}`, pattern)).match(pattern)[0];
+  const line = plain(await server.capture(`animus combat ${verb} ${id}${rest.length ? ' ' + rest.join(' ') : ''}`, pattern)).match(pattern)[0].replace(/^: /, '');
+  return combatLine(id, line.trim());
 }
 async function entityNumber(uuid, nbt) {
   const text = plain(await server.capture(`data get entity ${uuid} ${nbt}`, /following entity data[^\n]*|No entity was found|Found no elements[^\n]*/));
@@ -1734,9 +1773,9 @@ async function combat() {
     results.target = await combatCommand('cmelee', `target ${OWNER.uuid}`);
     results.guard = await combatCommand('cmelee', `guard ${OWNER.uuid}`);
     results.guardStop = await combatCommand('cmelee', 'guard stop');
-    results.unknown = plain(await server.capture('animus combat status npc=nobody', /Unknown NPC[^\n]*|Combat[^\n]*/)).match(/Unknown NPC[^\n]*|Combat[^\n]*/)[0];
+    results.unknown = plain(await server.capture('animus combat status npc=nobody', /Unknown NPC[^\n]*|No NPC named[^\n]*|Combat[^\n]*/)).match(/Unknown NPC[^\n]*|No NPC named[^\n]*|Combat[^\n]*/)[0];
     for (const key of ['disengage', 'engage', 'release', 'target', 'guard', 'guardStop']) assert(/: APPLIED/.test(results[key]), `${key}: ${results[key]}`);
-    assert(/Unknown NPC/.test(results.unknown), results.unknown);
+    assert(/Unknown NPC|No NPC named nobody/.test(results.unknown), results.unknown);
     await combatCommand('cmelee', 'disengage');
     await server.cmd('animus delete cmelee', /Deleted/);
     note(JSON.stringify(results));
@@ -1868,9 +1907,12 @@ async function combat() {
     const from = owner.events.length;
     const uuid = await server.npc('cfrail', 'minecraft:player', -20.5, 61, -4.5, 'Frail', combatNpc({ targeting: { fightBack: false } }, ['live:fighter'], { maximumHealth: 2, invulnerableTicks: 0, respawn: { delayTicks: 40 } }));
     await owner.chat('fighter-up', from);
-    const first = await owner.body(uuid);
+    const first = await owner.body(uuid).catch(error => {
+      const near = owner.events.slice(from).filter(e => (e.event === 'spawn' && Math.abs(e.x + 20.5) < 3) || e.event === 'remove').map(e => e.event === 'spawn' ? `spawn ${e.type}#${e.id} ${e.uuid}` : `remove ${e.ids}`);
+      throw new Error(`${error.message.slice(0, 120)} | npc ${uuid} | ${near.join(' ; ').slice(0, 600)}`);
+    });
     for (let i = 0; i < 4 && !owner.has(e => e.event === 'chat' && e.text.includes('fighter-down'), from); i++) { await click(owner, uuid, 'attack'); await delay(700); }
-    await owner.chat('fighter-down', from).catch(async error => { throw new Error(`${error.message}; trace: ${plain(await server.capture('animus behaviors trace cfrail', /Behavior trace[^\n]*/, 400)).split('\n').filter(l => /recent|trace/.test(l)).join(' / ').slice(0, 900)}`); });
+    await owner.chat('fighter-down', from).catch(async error => { throw new Error(`${error.message}; trace: ${plain(await server.capture('animus behaviors trace cfrail', /--- Trace [^\n]*/, 400)).split('\n').filter(l => /recent|trace/.test(l)).join(' / ').slice(0, 900)}`); });
     await owner.wait(e => e.event === 'remove' && e.ids.includes(first.id), from, 5000);
     const downAt = owner.events.length;
     await owner.chat('fighter-up', downAt, 8000);
@@ -1914,11 +1956,10 @@ async function packs() {
   const uuidOf = id => JSON.parse(readFileSync(path.join(data, 'npcs/examples', `${id}.json`), 'utf8')).uuid;
   let owner = await join(OWNER.name);
   await check('packs load and every pack NPC is active', async () => {
-    // The list pages at 20 rows; earlier scenarios' documents come first.
-    let list = '';
-    for (const page of [1, 2]) list += plain(await server.capture(`animus behaviors list page=${page}`, /Behaviors: \d+ documents[^\n]*/, 600));
+    // The console gets every row at once, one "⇀ id | path=..." line each.
+    const list = plain(await server.capture('animus behaviors list', /--- Behaviors ---/, 600));
     note(list);
-    const rows = list.split('\n').filter(line => /Behavior \S+ \| path=packs\//.test(line));
+    const rows = list.split('\n').filter(line => /⇀ \S+ \| path=packs\//.test(line));
     const problems = [];
     for (const id of ['greeter', 'patroller', 'innkeeper', 'quest-giver', 'harbour-master', 'shopkeeper', 'town-guard', 'bodyguard']) {
       const runtime = await inspect(id);
@@ -2008,7 +2049,7 @@ async function packs() {
     const seconds = ((Date.now() - started) / 1000).toFixed(0);
     // The closing say finishes on a later tick than its chat delivery, so the round may still read active for a moment.
     await until(async () => {
-      const trace = plain(await server.capture('animus behaviors trace patroller', /Behavior trace[^\n]*/, 400));
+      const trace = plain(await server.capture('animus behaviors trace patroller', /--- Trace [^\n]*/, 400));
       const line = trace.split('\n').find(text => /trigger=patrol:route#rounds/.test(text)) ?? trace.slice(0, 400);
       return { ok: /state=COMPLETED/.test(line), round: line };
     }, 10_000, 'round never completed');
@@ -2033,7 +2074,10 @@ async function packs() {
     assert(startup, 'startup did not report the broken pack document');
     const document = readFileSync(file, 'utf8').replace('"routines" broken', '"routines"').replace(/"revision": (\d+)/, (all, n) => `"revision": ${Number(n) + 1}`);
     writeFileSync(file, document);
-    assert.match((await server.reload())[0], /APPLIED/);
+    assert.match((await server.reload())[0], /Reloaded behaviors/);
+    // Earlier scenarios leave behaviors this server does not allow; only the repaired pack document counts here.
+    const row = plain(await server.capture('animus behaviors list', /--- Behaviors ---/, 600)).split('\n').find(line => /⇀ greeter:greeter \|/.test(line));
+    assert(row && /state=VALID \| available=true/.test(row), row);
     return startup.replace(/\[[^\]]*\]: /g, '').slice(0, 220);
   });
   const guard = uuidOf('town-guard');
@@ -2099,7 +2143,8 @@ async function packs() {
   });
   await check('the bakery shop and its counter GUI load from the shop pack', async () => {
     const status = plain(await server.capture('animus shop status', /Shops [^\n]*/, 600));
-    assert(/shops=1\b/.test(status) && /guis=1\b/.test(status) && /problems=0\b/.test(status), status);
+    // Earlier scenarios, such as the Citizens shop import, may have left shops of their own; the pack adds the bakery.
+    assert(/shops=[1-9]\d*\b/.test(status) && /guis=[1-9]\d*\b/.test(status) && /problems=0\b/.test(status), status);
     const listed = plain(await server.capture('animus shop list', /shop:bakery[^\n]*/, 600));
     assert(/shop:bakery/.test(listed), listed);
     return status;
@@ -2174,7 +2219,7 @@ async function building() {
       await server.npc(BUILD.npc, 'minecraft:player', 22.5, 61, 25.5, 'Mason');
       created = true;
       await until(async () => { const n = await inspect(BUILD.npc); return { ok: /: active/.test(n.line), line: n.line.slice(0, 160) }; }, 15_000, 'mason never became active');
-      const listed = plain(await server.capture('animus build schematics', /Schematics \(\d+\):[^\n]*|No schematics[^\n]*/));
+      const listed = plain(await server.capture('animus build schematics', /--- Schematics \(\d+\) ---|No schematics[^\n]*/, 400));
       assert(listed.includes(BUILD.file), listed);
       const from = logText().length;
       const startPattern = new RegExp(`Started build ${BUILD.npc}[^\\n]*|Cannot start build ${BUILD.npc}[^\\n]*|Animus build: [^\\n]*|Builds unavailable: [^\\n]*`);
@@ -2327,9 +2372,9 @@ async function shops() {
       mkdirSync(path.dirname(file), { recursive: true });
       writeFileSync(file, JSON.stringify(swapShop(), null, 1) + '\n');
       const reloaded = plain((await server.cmd('animus shop reload', /Reloaded \d+ shops and \d+ GUIs; \d+ problems/))[0]);
-      const listed = plain(await server.capture('animus shop list', /Shops: \d+/, 400));
-      assert(new RegExp(`${SHOP.id} \\| [^|]*Swap \\| pages=1`).test(listed), listed);
-      const problems = plain(await server.capture('animus shop problems', /Shop and GUI problems: \d+/, 400));
+      const listed = plain(await server.capture('animus shop list', /--- Shops \(\d+\) ---/, 400));
+      assert(new RegExp(`${SHOP.id} \\| Swap \\| 1 pages`).test(listed), listed);
+      const problems = plain(await server.capture('animus shop problems', /--- Shop and GUI problems \(\d+\) ---/, 400));
       // The hotload line for the new file can land in the same capture; only the problem rows count.
       assert(!/live[:/]swap/.test(problems.split('\n').filter(line => !/Hotloaded/.test(line)).join('\n')), problems);
       const uuid = await server.npc(SHOP.npc, 'minecraft:player', ...SHOP.at, 'Swapper', { modules: { 'animus:shop': { shop: SHOP.id, openOn: 'right' } } });
@@ -2604,7 +2649,8 @@ async function foliaBuilds(owner, at) {
       assert.match(added, /Added fhelper to build rigger; team=rigger,fhelper/);
       const routed = await until(async () => {
         const line = plain(await server.capture('animus navigation status fhelper', /Navigation fhelper:[^\n]*/)).match(/Navigation fhelper:[^\n]*/)?.[0] ?? '';
-        return { ok: /route=/.test(line), line };
+        // Status reads "moving, region owner to <x y z>, now at ..." once the build gave the helper a route.
+        return { ok: /: (moving|planning)\b/.test(line), line };
       }, 30_000, 'the helper never got a route from the build');
       const cancel = await foliaLog(`animus build cancel ${SCAFFOLD.npc}`, /Cancelled build rigger[^\n]*|Animus build: [^\n]*/);
       assert.match(cancel, /^Cancelled build rigger/);
@@ -2628,6 +2674,8 @@ async function smoke() {
   });
   await server.reload();
   let owner = await join(OWNER.name, 'survival');
+  // A wand an earlier scenario left in the hand would turn the ride click into a selection.
+  await server.cmd(`clear ${OWNER.name}`, /Removed|No items/);
   await owner.tp(0, 61, 0);
   const uuid = await server.npc('smoke', 'minecraft:player', 0, 61, 6, 'Smoke', { behaviors: ['live:smoke'] });
   let body = null;
@@ -2739,7 +2787,7 @@ async function worlds() {
     await delay(1000);
     await server.cmd('execute in minecraft:the_nether run fill -3 99 -3 3 99 3 minecraft:netherrack', /Successfully filled|No blocks were filled/);
     await server.cmd('execute in minecraft:the_nether run fill -3 100 -3 3 103 3 minecraft:air', /Successfully filled|No blocks were filled/);
-    await server.cmd('animus create wnether type=minecraft:player world=minecraft:the_nether x=2 y=100 z=2 folder=live name=Netherling', /Created dormant wnether/);
+    await server.cmd('animus create wnether type=minecraft:player world=minecraft:the_nether x=2 y=100 z=2 folder=live name=Netherling', /Created (dormant )?wnether\b/);
     await server.cmd('animus spawn wnether', /Spawning wnether/);
     const nether = JSON.parse(readFileSync(path.join(data, 'npcs/live', 'wnether.json'), 'utf8')).uuid;
     await delay(800);
@@ -2914,14 +2962,39 @@ async function guardsoak() {
   server.floor = null;
 }
 
+/**
+ * The y 60 stone platform with clear air above that Paper's start() fills from the console. Folia runs console fills
+ * on the global region, which owns no chunks, so there the player fills it from its own region instead.
+ */
+async function floor(owner) {
+  if (project !== 'folia') return;
+  await owner.tp(0.5, 65, 0.5);
+  for (const [box, block] of [['-40 60 -40 40 60 40', 'minecraft:stone'], ['-40 61 -40 40 64 40', 'minecraft:air'], ['-40 65 -40 40 68 40', 'minecraft:air']]) {
+    const reply = await owner.command(`fill ${box} ${block}`, /Successfully filled|No blocks were filled|[Cc]annot|[Uu]nknown|rror|not loaded/);
+    assert.match(plain(reply.text), /Successfully filled|No blocks were filled/, `fill ${box}`);
+  }
+  await owner.tp(0.5, 61, 0.5);
+}
+
 const combatedges = () => combatEdges({ server, join, check, combatNpc, inspect, combatOf, combatCommand, click, until, summon, sturdy, plain, entityCount, folia: project === 'folia', OWNER });
 const swinglook = () => swingLook({ server, join, check, combatNpc, summon, sturdy, plain, folia: project === 'folia', OWNER });
 const npckeys = () => npcKeys({ server, join, check, sayTo, data, OWNER });
 const toolkitScenario = () => toolkit({ server, join, check, data, OWNER });
 const movestyles = () => movementStyles({ server, join, check, inspect, until, OWNER });
+const schedulesScenario = () => schedules({ server, join, check, inspect, until, data, floor, OWNER });
 const commandfeel = () => commandFeel({ server, join, check, data, results, OWNER });
 const placeholdersScenario = () => placeholders({ server, join, check, data, instance, expansions: papiExpansions, OWNER });
-const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, combatedges, swinglook, npckeys, movestyles, toolkit: toolkitScenario, commandfeel, placeholders: placeholdersScenario, packs, appearance, building, scaffolding, shops, folia, smoke, worlds, guardsoak };
+const questHostsScenario = () => questHosts({ server, join, check, instance, OWNER, click, logText, typewriterExtensions });
+const questsScenario = flavor => () => questPlugins({ server, join, check, data, instance, results, flavor, OWNER });
+const mythicScenario = () => mythic({ server, join, check, data, instance, OWNER });
+const czshop = () => citizensEconomy({ server, join, check, data, click, windowOpened, clickSlot, closeWindow, itemCount, entityCount, until, plain, OWNER });
+const nativequests = () => nativeQuests({ server, join, check, data, results, mod: MOD, OWNER });
+const motionScenario = () => motion({ server, join, check, inspect, until, floor, folia: project === 'folia', OWNER, PEER });
+const presentationScenario = () => presentation({ server, join, check, OWNER, PEER });
+const looksScenario = () => looks({ server, join, check, instance, model: path.resolve(args.get('model') ?? ''), OWNER });
+// Each integration command shows exactly when its plugin enabled on this server.
+const gatedScenario = () => gatedCommands({ join, check, OWNER }, plugin => new RegExp(`\\[${plugin}\\] Enabling ${plugin} v`).test(logText()));
+const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, combatedges, swinglook, npckeys, movestyles, schedules: schedulesScenario, toolkit: toolkitScenario, commandfeel, placeholders: placeholdersScenario, motion: motionScenario, czshop, quests: questsScenario('quests'), beautyquests: questsScenario('beautyquests'), betonquest: questHostsScenario, packs, appearance, building, scaffolding, shops, folia, smoke, worlds, guardsoak, mythic: mythicScenario, nativequests, presentation: presentationScenario, looks: looksScenario, gated: gatedScenario };
 function finalLogReview(text, label) {
   const lines = text.split('\n');
   const bad = lines.filter(line => /\b(ERROR|SEVERE)\b|Exception|Nag author|Could not pass event/.test(line) || (MOD && /[Mm]ixin[^\n]*(?:fail|error|could not|not applied)/i.test(line)));

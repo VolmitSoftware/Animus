@@ -51,6 +51,10 @@ public interface RuntimeHost<P, I> extends TerrainReader {
     int entityId(P player);
     WorldPosition position(P player);
     Vec3 eye(P player);
+    /** The player's own signed skin, for NPCs that mirror their viewer; empty in offline mode or when it cannot be read. */
+    default Optional<art.arcane.animus.core.presentation.BodySkin> skin(P player) { return Optional.empty(); }
+    /** Copies of what the player holds and wears, for NPCs that mirror their viewer's equipment. */
+    default java.util.Map<art.arcane.animus.core.npc.EquipmentSlot, I> equipment(P player) { return java.util.Map.of(); }
     /** Unit look direction. */
     Vec3 direction(P player);
     float yaw(P player);

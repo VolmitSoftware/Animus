@@ -22,20 +22,18 @@
     "/traits/gravity/enabled": "CONVERTED",
     "/traits/horsemodifiers/saddle/type": "CONVERTED",
     "/traits/horsemodifiers/saddle/amount": "CONVERTED",
-    "/traits/horsemodifiers/color": "REQUIRES_REVIEW",
+    "/traits/horsemodifiers/color": "CONVERTED",
     "/traits/targetable/targetable": "CONVERTED",
     "/traits/spawned": "CONVERTED",
     "/traits/controllable/enabled": "CONVERTED",
     "/traits/mounttrait/mountedon": "CONVERTED",
     "/traits/poses/list/0": "CONVERTED",
     "/traits/lookclose/enabled": "CONVERTED",
-    "/traits/lookclose/perplayer": "REQUIRES_REVIEW",
+    "/traits/lookclose/perplayer": "CONVERTED",
     "/traits/sneak": "CONVERTED"
   },
   "reasons": {
-    "/metadata/minecraft-ai": "vanilla AI becomes walking around within 10 blocks, or the NPC's own route; vanilla attacking and fleeing do not run",
-    "/traits/horsemodifiers/color": "horse colours, markings and chests are not shown",
-    "/traits/lookclose/perplayer": "every viewer sees the NPC look at the same target"
+    "/metadata/minecraft-ai": "vanilla AI becomes walking around within 10 blocks, or the NPC's own route; vanilla attacking and fleeing do not run"
   },
   "worldRemaps": [],
   "references": [

@@ -91,12 +91,12 @@ void main() {
     test('patrols, look-close, text and commands are counted in the review aggregate', () {
       final CitizensReview review = CitizensReview.of(convertCitizens(_source('runtime.yml'), const <String, String>{'old_town': 'town'}));
       final Map<String, Object?> aggregate = review.aggregate();
-      expect(aggregate['behaviors'], 3);
+      expect(aggregate['behaviors'], 4);
       expect(aggregate['conversions'], <String, int>{
         'commandBehaviors': 1, 'lookClose': 2, 'routeGuides': 1, 'routePoints': 6, 'routes': 3, 'skinsKept': 0, 'textBehaviors': 2, //
       });
       expect(review.preview.files.keys.where((String path) => path.startsWith('behaviors/citizens/')).toList()..sort(),
-          <String>['behaviors/citizens/commands-3.json', 'behaviors/citizens/text-2.json', 'behaviors/citizens/text-3.json']);
+          <String>['behaviors/citizens/commands-3.json', 'behaviors/citizens/text-2.json', 'behaviors/citizens/text-3.json', 'behaviors/citizens/waypoints-0.json']);
     });
 
     test('a mob body keeps its Citizens skin for review and the preview applies the activation rules', () {

@@ -20,11 +20,16 @@ import org.bukkit.plugin.ServicePriority;
 import art.arcane.animus.core.migration.CitizensDropIn;
 import art.arcane.animus.core.migration.CitizensGuard;
 import art.arcane.animus.core.hire.HireService;
+import art.arcane.animus.core.schedule.RuntimeScheduleWorld;
+import art.arcane.animus.core.schedule.ScheduleService;
+import art.arcane.animus.bukkit.schedule.BukkitScheduleHost;
+import java.util.random.RandomGenerator;
 import art.arcane.animus.api.Capabilities;
 import art.arcane.animus.api.NpcHandle;
 import art.arcane.animus.api.Platform;
 import art.arcane.animus.core.rig.AnimationEventRunner;
 import art.arcane.animus.bukkit.event.VirtualNpcDialogueChoiceEvent;
+import art.arcane.animus.bukkit.integration.libsdisguises.LibsDisguisesIntegration;
 import art.arcane.animus.bukkit.folia.FoliaRegions;
 import art.arcane.animus.bukkit.folia.FoliaStationaryProofService;
 import art.arcane.animus.bukkit.gui.BukkitGlossBridge;
@@ -99,6 +104,8 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.Level;
+import art.arcane.animus.bukkit.integration.mythic.LookHooks;
+import art.arcane.animus.bukkit.integration.mythic.MythicSupport;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -125,7 +132,9 @@ public final class AnimusPlugin extends JavaPlugin {
     private BukkitToolkit toolkit;
     private volatile ShopService<Player, ItemStack> shops;
     private volatile HoloService<Player, ItemStack> guis;
-    private AutoCloseable screenTicks, hireTicks, triggerTicks;
+    private volatile art.arcane.animus.bukkit.quest.BukkitQuests quests;
+    private AutoCloseable screenTicks, hireTicks, scheduleTicks, triggerTicks, bossBarTicks;
+    private art.arcane.animus.bukkit.runtime.BukkitBossBars bossBars;
     private final DialogueTriggers dialogueTriggers = new DialogueTriggers(() -> {
         BehaviorCommands current = behaviors;
         return current == null ? null : current.triggers();
@@ -143,7 +152,11 @@ public final class AnimusPlugin extends JavaPlugin {
     private AnimusBStats bStats;
     private HotloadService hotload;
     private BukkitServerBehaviors serverBehaviors;
+    private AutoCloseable mythic;
 
+
+    @Override
+    public void onLoad() { art.arcane.animus.bukkit.integration.quests.QuestIntegrations.load(this); }
 
     @Override
     public void onEnable() {
@@ -157,9 +170,10 @@ public final class AnimusPlugin extends JavaPlugin {
             Path data = RuntimeEnvironment.resolveDataDirectory(getDataFolder().toPath());
             RuntimeEnvironment environment = RuntimeEnvironment.bukkit(getServer().getBukkitVersion(), data, serverName());
             runtime = new AnimusRuntime(environment, failure -> getLogger().log(Level.SEVERE, "Animus file cleanup failed", failure));
+            LibsDisguisesIntegration.install(getServer().getPluginManager(), getLogger());
             runtime.start();
-            getServer().getServicesManager().register(art.arcane.animus.bukkit.api.AnimusNpcs.class,
-                    new art.arcane.animus.bukkit.runtime.BukkitNpcLookup(runtime.npcs()::snapshot), this, ServicePriority.Normal);
+            art.arcane.animus.bukkit.api.AnimusNpcs lookup = new art.arcane.animus.bukkit.runtime.BukkitNpcLookup(runtime.npcs()::snapshot);
+            getServer().getServicesManager().register(art.arcane.animus.bukkit.api.AnimusNpcs.class, lookup, this, ServicePriority.Normal);
             CachedPlaceholders placeholders = BukkitPlaceholders.install(this);
             placeholders.refreshTicks(runtime.placeholderSettings().refreshTicks());
             runtime.onSettings((art.arcane.animus.core.config.PluginSettings next) -> placeholders.refreshTicks(next.placeholders().refreshTicks()));
@@ -179,6 +193,9 @@ public final class AnimusPlugin extends JavaPlugin {
             runtime.importHost(new CitizensDropIn.Host(Optional.ofNullable(getDataFolder().getAbsoluteFile().getParentFile()).map(java.io.File::toPath), citizens, shopkeepers, denizen));
             CitizensGuard.install(citizens);
             replies = new ReplyScheduler(this);
+            LibsDisguisesIntegration.serverThread((Runnable task) -> {
+                if (!replies.reply(getServer().getConsoleSender(), task)) throw new RejectedExecutionException("the server refused console work");
+            });
             commands = runtime.fileExecutor((task, event, failure) -> {
                 // Services retire their pending callbacks before this lane is closed.
                 if (event == MutationLane.EngineTaskEvent.FAILED)
@@ -208,14 +225,24 @@ public final class AnimusPlugin extends JavaPlugin {
             guis = new HoloService<>(runtime, shops, displays, living, commands, BukkitGlossBridge.load(this), message -> getLogger().info(message));
             getServer().getPluginManager().registerEvents(new BukkitHoloEvents(guis), this);
             getServer().getPluginManager().registerEvents(new NpcKeyPresses(living), this);
+            quests = new art.arcane.animus.bukkit.quest.BukkitQuests(this, runtime, shops.screens(), living, displays, guis::watch, commands,
+                    () -> { BehaviorCommands current = behaviors; return current == null ? null : current.servers(); }, message -> getLogger().info(message));
+            art.arcane.animus.core.quest.QuestService<Player, ItemStack> questService = quests.service();
             HireService<Player, ItemStack> hireDesk = new HireService<>(runtime, shops.screens(), living, commands, combat.hireGuarding(), message -> getLogger().info(message));
             hireTicks = ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, hireDesk::tick));
+            AnimusRuntime scheduled = runtime;
+            ScheduleService schedules = new ScheduleService(() -> scheduled.npcs().snapshot(), new RuntimeScheduleWorld<>(living, new BukkitScheduleHost(getServer(), living)),
+                    () -> scheduled.behaviorSettings().actions().commandNamespaces(), RandomGenerator.getDefault(), message -> getLogger().info(message));
+            scheduleTicks = ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, schedules::tick));
+            bossBars = new art.arcane.animus.bukkit.runtime.BukkitBossBars(runtime::npcs, living);
+            bossBarTicks = ownerTicks.apply(measured.timed(Subsystem.PRESENTATION, bossBars::tick));
             ShopService<Player, ItemStack> screenService = shops;
             HoloService<Player, ItemStack> holoService = guis;
             toolkit = new BukkitToolkit(this, runtime, shops.screens(), living, commands, (Player player) -> { BukkitRecordings current = recordings; return current == null ? Optional.empty() : current.skin(player); }, mainThread, ownerTicks);
             BukkitToolkit tools = toolkit;
             living.interactions((Player player, UUID npc, boolean attack, boolean sneaking) -> tools.interacted(player, npc, attack, sneaking) ||
-                    hireDesk.interacted(player, npc, attack, sneaking) || screenService.interacted(player, npc, attack, sneaking) || holoService.interacted(player, npc, attack, sneaking));
+                    hireDesk.interacted(player, npc, attack, sneaking) || questService.interacted(player, npc, attack, sneaking)
+                    || screenService.interacted(player, npc, attack, sneaking) || holoService.interacted(player, npc, attack, sneaking));
             NpcRuntime<Player, ItemStack> owners = living;
             screenTicks = ownerTicks.apply(measured.timed(Subsystem.GUI, () -> {
                 for (UUID viewer : screenService.screens().viewing()) owners.players().deliver(viewer, screenService.screens()::tick);
@@ -223,12 +250,14 @@ public final class AnimusPlugin extends JavaPlugin {
             }));
             shops.reload(catalog -> {});
             guis.reload(catalog -> {});
+            quests.start(ownerTicks);
             startBuilds(mainThread, living instanceof RegionNpcRuntime regionized ? regionized : null, regions);
             BukkitOwners scheduling = new BukkitOwners(this, regions);
             builtins = new BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, builds, this::buildsRefusal,
-                    (Runnable tick) -> ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, tick)), () -> guis, scheduling, mainThread, runtime.placeholders()),
+                    (Runnable tick) -> ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, tick)), () -> guis, scheduling, mainThread, runtime.placeholders(), () -> ShopService.economy(runtime.shopSettings(), vault)),
                     runtime.behaviorState(), this::publishChoice,
                     runtime.behaviorSettings().actions(), message -> getLogger().info(message));
+            builtins.quests(questService);
             extensions = new ExtensionRuntime(runtime.documents().resolve("modules"),
                     modulePlatform, runtime.definitionGateway(), runtime.moduleSettings(), message -> getLogger().info(message), initialized -> {
                         BehaviorCommands current = behaviors;
@@ -236,8 +265,13 @@ public final class AnimusPlugin extends JavaPlugin {
                     }, builtins);
             extensions.connectHooks(runtime.moduleHooks());
             extensions.follow(runtime);
+            mythic = MythicSupport.start(new MythicSupport.Parts(this, runtime, extensions, living::state, MythicSupport.owners(this, regions), ownerTicks,
+                    LookHooks.DEFAULT, (String message) -> getLogger().info(message))).orElse(null);
             ExtensionRuntime modules = extensions;
             living.observeInteractions(modules::interacted);
+            art.arcane.animus.bukkit.integration.quests.RuntimeQuestNpcHost questNpcs = new art.arcane.animus.bukkit.integration.quests.RuntimeQuestNpcHost(runtime, living, lookup, commands, getLogger()::warning);
+            getServer().getPluginManager().registerEvents(questNpcs, this);
+            art.arcane.animus.bukkit.integration.quests.QuestIntegrations.start(this, questNpcs);
             living.animationEvents(new AnimationEventRunner((Capabilities.Key key, NpcHandle npc, String arguments) -> modules.action(key, npc, Optional.empty(), arguments),
                     (String message) -> getLogger().info(message)));
             proof.observeInteractions(modules::interacted);
@@ -247,7 +281,10 @@ public final class AnimusPlugin extends JavaPlugin {
             });
             runtime.catalogs(new RuntimeCatalogs(new RuntimeCatalogs.Parts(runtime, owners::refresh, () -> behaviors,
                     () -> screenService.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {}),
-                    () -> holoService.reload((art.arcane.animus.core.gui.HoloCatalog catalog) -> {}), (String message) -> getLogger().info(message))));
+                    () -> holoService.reload((art.arcane.animus.core.gui.HoloCatalog catalog) -> {}),
+                    () -> questService.reload((art.arcane.animus.core.quest.QuestCatalog catalog) -> {}), (String message) -> getLogger().info(message))));
+            LibsDisguisesIntegration.reloadWith(() -> commands.execute(() -> runtime.catalogs().reload(
+                    new art.arcane.animus.core.CatalogChange(java.util.Set.of(art.arcane.animus.core.editor.DocumentKind.NPC), java.util.Set.of(), false), (String problem) -> {})));
             BuiltinCapabilities actions = builtins;
             runtime.onSettings((PluginSettings next) -> actions.settings(next.behaviors().actions()));
             hotload = new HotloadService(new HotloadService.Parts(runtime, commands, (Runnable task) -> {
@@ -263,15 +300,17 @@ public final class AnimusPlugin extends JavaPlugin {
             SnapshotFacts facts = new SnapshotFacts(SnapshotFacts.npcs(() -> definitions.npcs().snapshot(), states));
             serverBehaviors = new BukkitServerBehaviors(this, scheduling, servers, facts, (String message) -> getLogger().info(message));
             behaviors.facts(facts);
+            quests.facts(facts);
             serverBehaviors.start();
             recordings = new BukkitRecordings(this, runtime, commands, regions, environment.minecraftVersion());
             AnimusRuntime measuredRuntime = runtime;
             DebugCommands debugCommands = new DebugCommands(() -> metrics, debugWatch,
                     (String id) -> measuredRuntime.isRunning() ? measuredRuntime.npcs().find(id).map(NpcDefinition::uuid) : Optional.empty(),
                     () -> { EditorService active = editor; return active == null ? List.of("Editor: off") : active.status(); });
-            CommandServices commandServices = new CommandServices(runtime, commands, living, () -> behaviors, extensions, builtins, combat.control(), shops, guis,
+            CommandServices commandServices = new CommandServices(runtime, commands, living, () -> behaviors, extensions, builtins, combat.control(), shops, guis, questService,
                     new BuildCommands(() -> builds, () -> Optional.ofNullable(buildsRefusal())), new EditorCommands(() -> editor, commands), debugCommands,
-                    new BukkitProof(), recordings.sessions(), () -> getServer().getOnlinePlayers().stream().map(Player::getName).toList(), () -> stopping);
+                    new BukkitProof(), recordings.sessions(), () -> getServer().getOnlinePlayers().stream().map(Player::getName).toList(), () -> stopping,
+                    this::integrationRunning);
             measured.extra("combat.waiting", combat::waiting);
             measured.extra("combat.load", combat::load);
             measured.extra("editor.streams", () -> { EditorService active = editor; return active == null ? 0 : active.eventStreams(); });
@@ -321,6 +360,7 @@ public final class AnimusPlugin extends JavaPlugin {
         // Stop bStats first so no chart callable reads a runtime that is shutting down.
         updateMetrics(false);
         if (hotload != null) { hotload.close(); hotload = null; }
+        LibsDisguisesIntegration.uninstall();
         CitizensGuard.clear();
         EditorService activeEditor = editor;
         editor = null;
@@ -331,16 +371,23 @@ public final class AnimusPlugin extends JavaPlugin {
         react = null;
         if (bridge != null) bridge.close();
         debugWatch.clear();
+        if (mythic != null) {
+            try { mythic.close(); }
+            catch (Exception ignored) { /* Its listeners and ticks stop with the plugin. */ }
+            mythic = null;
+        }
         if (serverBehaviors != null) { serverBehaviors.close(); serverBehaviors = null; }
         if (behaviors != null) behaviors.close();
         if (builtins != null) builtins.close();
-        for (AutoCloseable ticks : java.util.Arrays.asList(hireTicks, screenTicks, triggerTicks, metricsTicks)) {
+        for (AutoCloseable ticks : java.util.Arrays.asList(hireTicks, scheduleTicks, screenTicks, triggerTicks, metricsTicks, bossBarTicks)) {
             if (ticks == null) continue;
             try { ticks.close(); }
             catch (Exception ignored) { /* The scheduler stops with the plugin. */ }
         }
+        if (bossBars != null) { bossBars.close(); bossBars = null; }
         if (toolkit != null) { toolkit.close(); toolkit = null; }
         if (screens != null) screens.closeAll();
+        if (quests != null) { quests.close(); quests = null; }
         if (guis != null) guis.close();
         if (shops != null) shops.close();
         if (extensions != null) extensions.close();
@@ -476,6 +523,9 @@ public final class AnimusPlugin extends JavaPlugin {
             available.put("builds", buildsRefused == null ? EditorHost.Feature.yes() : EditorHost.Feature.no(buildsRefused));
             available.put("gloss", getServer().getPluginManager().isPluginEnabled("Gloss") ? EditorHost.Feature.yes() : EditorHost.Feature.no("Gloss is not installed"));
             available.put("placeholderapi", getServer().getPluginManager().isPluginEnabled("PlaceholderAPI") ? EditorHost.Feature.yes() : EditorHost.Feature.no("PlaceholderAPI is not installed"));
+            // The web editor offers the model, disguise and Mythic fields only while their plugin runs.
+            for (Map.Entry<String, String> plugin : Map.of("modelengine", "ModelEngine", "libsdisguises", "LibsDisguises", "mythicmobs", "MythicMobs").entrySet())
+                available.put(plugin.getKey(), integrationRunning(plugin.getValue()) ? EditorHost.Feature.yes() : EditorHost.Feature.no(plugin.getValue() + " is not installed"));
             return available;
         };
         EditorService service = new EditorService(runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(runtime, commands, owners, extensions,
@@ -522,6 +572,13 @@ public final class AnimusPlugin extends JavaPlugin {
     }
 
     /** Why builds cannot run now, or null; follows {@code builds.enabled} in config.toml live. */
+    /** Whether the plugin an integration command needs runs; a plugin named Quests counts only when it is Quests by PikaMug. */
+    private boolean integrationRunning(String name) {
+        org.bukkit.plugin.Plugin plugin = getServer().getPluginManager().getPlugin(name);
+        return plugin != null && plugin.isEnabled()
+                && (!name.equals("Quests") || art.arcane.animus.bukkit.integration.quests.QuestIntegrations.bridge(name, plugin.getClass().getName()) != null);
+    }
+
     private String buildsRefusal() {
         BuildService<Player, ItemStack> service = builds;
         return service != null ? service.unavailable().orElse(null) : "not started";

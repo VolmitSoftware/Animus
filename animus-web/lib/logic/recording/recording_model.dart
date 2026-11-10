@@ -1,7 +1,6 @@
 /// Performance recordings (`recordings/<id>.json`), read for display: the
-/// frames as poses in world space, the events, and a summary. The format is
-/// dev/recording-groups-routes.md section 1; the Java `RecordingDocument`
-/// stays authoritative, so this reader is lenient and skips what it cannot
+/// frames as poses in world space, the events, and a summary. The Java
+/// `RecordingDocument` defines the format and stays authoritative, so this reader is lenient and skips what it cannot
 /// read instead of refusing the file.
 library;
 

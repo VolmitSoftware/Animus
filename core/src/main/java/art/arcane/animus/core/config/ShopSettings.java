@@ -48,6 +48,7 @@ public record ShopSettings(boolean enabled, String economy, String style, String
         texts.put("outOfStock", "&c{item} is out of stock.");
         texts.put("economyUnavailable", "&cMoney trades are unavailable: {reason}");
         texts.put("insufficientFunds", "&cYou need {price} for that.");
+        texts.put("notEnoughLevels", "&cYou need {levels} levels for that.");
         texts.put("inventoryFull", "&cYour inventory has no room for {item}.");
         texts.put("notEnoughItems", "&cYou do not have the items for that.");
         texts.put("nothingToSell", "&cYou have no {item} to sell.");
@@ -62,6 +63,7 @@ public record ShopSettings(boolean enabled, String economy, String style, String
         texts.put("emptyHint", "&7No offers have been added to this shop");
         texts.put("priceLine", "&7Price: &f{price}");
         texts.put("payLine", "&7Pays: &f{price}");
+        texts.put("levelsLine", "&7Levels: &f{levels}");
         texts.put("freeLine", "&7Free");
         texts.put("needsLine", "&7Needs:");
         texts.put("givesLine", "&7Gives:");

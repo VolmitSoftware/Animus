@@ -28,11 +28,13 @@ class CommandTreeHintsTest {
         @Override public boolean reply(Runnable action) { action.run(); return true; }
     }
 
-    private static CommandDispatcher<Object> client(CommandActor actor) throws ReflectiveOperationException {
+    private static CommandDispatcher<Object> client(CommandActor actor) throws ReflectiveOperationException { return client(actor, (String plugin) -> true); }
+
+    private static CommandDispatcher<Object> client(CommandActor actor, java.util.function.Predicate<String> plugins) throws ReflectiveOperationException {
         CommandDispatcher<Object> dispatcher = new CommandDispatcher<>();
         dispatcher.register(LiteralArgumentBuilder.literal("animus").then(RequiredArgumentBuilder.argument("args", StringArgumentType.greedyString())));
-        AnimusDirector director = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor who) -> List.of());
-        CommandTreeHints.rewrite(dispatcher.getRoot(), List.of("animus", "animus:animus"), director.engine().getRoot(), actor);
+        AnimusDirector director = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor who) -> List.of(), plugins);
+        CommandTreeHints.rewrite(dispatcher.getRoot(), List.of("animus", "animus:animus"), director, actor);
         return dispatcher;
     }
 
@@ -60,5 +62,17 @@ class CommandTreeHintsTest {
         assertNotNull(visitor.getRoot().getChild("animus").getChild("status"));
         assertNull(visitor.getRoot().getChild("animus").getChild("edit"));
         assertTrue(parses(visitor, "animus choice sometoken 1"), "dialogue choice chips run a hidden command");
+    }
+
+    @Test void integrationCommandsReachTheClientOnlyWithTheirPlugin() throws ReflectiveOperationException {
+        Actor admin = new Actor(Set.of(AnimusDirector.ADMIN));
+        CommandDispatcher<Object> without = client(admin, (String plugin) -> false);
+        assertFalse(parses(without, "animus npc model guard"));
+        assertFalse(parses(without, "animus import betonquest preview"));
+        assertFalse(parses(without, "animus mythic boss SkeletonKing"));
+        CommandDispatcher<Object> with = client(admin, (String plugin) -> true);
+        assertTrue(parses(with, "animus npc model guard"));
+        assertTrue(parses(with, "animus import betonquest preview"));
+        assertTrue(parses(with, "animus mythic boss SkeletonKing"));
     }
 }

@@ -1,0 +1,30 @@
+{
+  "citizensId": 5,
+  "presentationWarnings": [],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/uuid": "CONVERTED",
+    "/name": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/npcdestinations/0": "UNSUPPORTED_PRESERVED",
+    "/traits/npcdestinations/1": "UNSUPPORTED_PRESERVED"
+  },
+  "reasons": {
+    "/traits/npcdestinations/0": "trait npcdestinations has no Animus equivalent; kept in citizens:review",
+    "/traits/npcdestinations/1": "trait npcdestinations has no Animus equivalent; kept in citizens:review"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "old_town",
+      "to": "town"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

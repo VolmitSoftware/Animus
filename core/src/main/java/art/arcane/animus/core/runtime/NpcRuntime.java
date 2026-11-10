@@ -5,6 +5,7 @@ import art.arcane.animus.core.behavior.trigger.TriggerEvent;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.npc.NpcPose;
 import art.arcane.animus.core.virtual.VirtualNpcState;
 import art.arcane.animus.core.virtual.WorldPosition;
 import java.util.List;
@@ -111,6 +112,10 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     void lookAt(String id, WorldPosition target);
     /** Turns the NPC to one of its definition's named poses. @throws IllegalArgumentException for a pose it does not declare */
     void pose(String id, String pose);
+    /** Shows a vanilla animation on the NPC to everyone who sees it; a pose animation lasts until something changes it. */
+    default void animate(String id, art.arcane.animus.core.npc.NpcAnimation animation) { throw new IllegalStateException("Animations are unavailable"); }
+    /** The active NPC's anchor by name; refused when it has none. */
+    default art.arcane.animus.core.npc.NpcAnchors.Anchor anchor(String id, String name) { throw new IllegalStateException("Anchors are unavailable"); }
     void followRoute(String id, String route);
     CompletableFuture<Void> awaitRoute(String id);
     /**
@@ -125,6 +130,14 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
      */
     boolean resumePatrol(String id);
     void setAppearance(String id, Optional<String> name, Optional<String> skin, boolean reset);
+    /**
+     * Shows the NPC resting in a pose, such as lying down where its schedule put it, until it moves again or its
+     * definition is applied again. Poses other than standing need a player body, and a sitting NPC cannot ride another.
+     */
+    default void rest(String id, NpcPose pose) { throw new IllegalStateException("Resting poses are not available on this runtime"); }
+
+    /** A speech bubble: {@code text} as the top hologram line for {@code ticks} ticks, replacing any bubble shown. Runtime-only. */
+    void bubble(String id, String text, int ticks);
     void setEquipment(String id, EquipmentSlot slot, I item);
     /**
      * Sets one vanilla attribute for the running NPC, or with an empty value returns it to the definition's value. The

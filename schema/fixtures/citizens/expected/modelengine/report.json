@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "converterVersion": 16,
+  "fieldPathFormat": "json-pointer",
+  "importId": "8052ce6cf1ebea6a52e492926bbae33141853ec87a339ae9af7301a5d2bf4667",
+  "sourceSha256": "1827e2dafd60cacfbefff7fb19ff934c24dd2e8ef51b8f9c96e55fcd35f9ada8",
+  "worldMap": {},
+  "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.",
+  "records": 3,
+  "valid": 3,
+  "skins": 0,
+  "behaviors": 0,
+  "shops": 0,
+  "conversions": {
+    "routes": 0,
+    "routePoints": 0,
+    "routeGuides": 0,
+    "lookClose": 0,
+    "textBehaviors": 0,
+    "commandBehaviors": 0,
+    "skinsKept": 0
+  },
+  "citizensDefaults": {
+    "lookclose": {
+      "enabled": false,
+      "realisticlooking": false,
+      "disablewhilenavigating": true
+    },
+    "inferred": []
+  },
+  "traits": {
+    "type": 3,
+    "location": 3,
+    "meg_model": 3
+  },
+  "types": {
+    "player": 3
+  },
+  "sentinelFields": {},
+  "sentinelMapping": {},
+  "issues": [],
+  "migrationWarnings": [
+    "citizens-0: Model Engine showed 2 models (drake, drake_saddle); Animus shows the first, drake",
+    "citizens-2: Model Engine data names no model this converter can read; kept in citizens:review"
+  ],
+  "remappedLocations": 0,
+  "resolvedReferences": 0,
+  "unresolvedReferences": 0,
+  "sourceFields": {},
+  "idMap": {
+    "0": "0a1b2c3d-0000-4000-8000-000000000300",
+    "1": "0a1b2c3d-0000-4000-8000-000000000301",
+    "2": "0a1b2c3d-0000-4000-8000-000000000302"
+  },
+  "documents": {
+    "npcs/world/citizens-0.json": "012cf354a564a04f9ca91150fd7eda13c8e01777a3839537e6d1c10a35294fd6",
+    "npcs/world/citizens-1.json": "4e1a859df20948174424a9b223812b3a7180a688876a0d9b477bcae48861a89e",
+    "npcs/world/citizens-2.json": "8912452ceadf6dac52bea1e3e8afa2b24ad1a899bb83bf6fae304f174fccbecf"
+  }
+}

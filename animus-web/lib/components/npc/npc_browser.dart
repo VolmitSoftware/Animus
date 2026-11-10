@@ -15,6 +15,7 @@ import '../../logic/gui/gui_json.dart';
 import '../../logic/npc/group_model.dart';
 import '../../logic/npc/npc_bulk.dart';
 import '../../logic/npc/npc_catalog.dart';
+import '../../logic/npc/npc_integrations.dart';
 import '../../logic/npc/npc_paths.dart';
 import '../../model/document_kind.dart';
 import '../../services/skin_images.dart';
@@ -417,7 +418,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
 
   Widget _bulkBar(List<NpcEntry> all, List<NpcEntry> selected, Set<String> keys) {
     final List<String> selectedTags = npcTags(selected).map(((String, int) tag) => tag.$1).toList();
-    final List<String> modules = moduleKeys(selected);
+    final List<String> modules = moduleKeys(selected, plugins: reportedPlugins(component.session?.connection.capabilities));
     final String? module = _module != null && modules.contains(_module) ? _module : null;
     final LiveSession? session = component.session;
     final bool canSpawn = session?.connection.token?.has('spawn') ?? false;

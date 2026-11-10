@@ -1,0 +1,22 @@
+{
+  "citizensId": 2,
+  "presentationWarnings": [],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/meg_model/cache": "REQUIRES_REVIEW"
+  },
+  "reasons": {
+    "/traits/meg_model/cache": "Model Engine data names no model this converter can read; kept in citizens:review"
+  },
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": []
+}

@@ -16,6 +16,7 @@ import art.arcane.animus.core.presentation.BodyTransport;
 import art.arcane.animus.core.control.ControlInput;
 import art.arcane.animus.core.control.ControlInbox;
 import art.arcane.animus.core.mount.SeatGeometry;
+import art.arcane.animus.core.presentation.VariantWire;
 import art.arcane.animus.core.virtual.DragonBody;
 import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.Load;
@@ -127,7 +128,17 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         if (nativeApi.equipment != null) operations.add("equipment");
         if (nativeApi.presentation != null) operations.add("presentation");
         if (nativeApi.bones != null) operations.add("rig-bones");
-        capabilities = new Capabilities(version, BodyRules.TYPES, operations, "explicit-packets/no-native-entity-bodies; signature binding is not gameplay certification");
+        capabilities = new Capabilities(version, bodyTypes(nativeApi), operations, "explicit-packets/no-native-entity-bodies; signature binding is not gameplay certification");
+    }
+
+    /** The shared body types this server registers. */
+    private static Set<String> bodyTypes(NativeBindings bindings) {
+        Set<String> types = new HashSet<>();
+        for (String key : BodyRules.TYPES) {
+            try { bindings.entityType(key); types.add(key); }
+            catch (ReflectiveOperationException | RuntimeException unavailable) { /* A type the server does not register is not offered. */ }
+        }
+        return types;
     }
     /** For callers that always pass their own scheduler to {@link #watch(Player, Scheduler, Consumer)}. */
     public static NativePacketAdapter bind(Plugin plugin, String exactMinecraftVersion) throws ReflectiveOperationException {
@@ -193,12 +204,12 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
     private Body bindBody(UUID uuid, String typeKey, BodyLook look, BodySkin skin) throws ReflectiveOperationException {
         ensureOpen();
         Objects.requireNonNull(uuid);
-        if (!BodyRules.TYPES.contains(typeKey)) throw new IllegalArgumentException("Body type is not enabled by the proof adapter: " + typeKey);
+        if (!capabilities.entityTypes().contains(typeKey)) throw new IllegalArgumentException("Body type is not enabled by the proof adapter: " + typeKey);
         if (typeKey.equals("minecraft:player")) BodyRules.validateProfileName(look.profileName());
         if (!typeKey.equals("minecraft:player") && skin != null) throw new IllegalArgumentException("Skin textures apply only to player bodies");
         Object type = nativeApi.entityType(typeKey);
         int reserved = BodyRules.reservedIds(typeKey);
-        Object playerInfo = typeKey.equals("minecraft:player") ? nativeApi.playerInfo(uuid, look.profileName(), skin, look.traits().listed()) : null;
+        Object playerInfo = typeKey.equals("minecraft:player") ? nativeApi.playerInfo(uuid, look.profileName(), skin, look.traits().listed(), look.traits().variant().choices().getOrDefault("gameMode", "survival")) : null;
         int entityId = nativeApi.ids.reserve(reserved + look.extraIds());
         Object[] team = look.team() && nativeApi.presentation != null
                 ? nativeApi.presentation.bodyTeam(entityId, typeKey.equals("minecraft:player") ? look.profileName() : uuid.toString(), look) : null;
@@ -282,7 +293,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             // A seated body follows its seat on the client, so the seat carries the movement.
             if (body.seatId >= 0) packets.add(nativeApi.seatMove(body, pose));
             packets.add(nativeApi.move(body, pose));
-            packets.add(nativeApi.rotateHead(body.entityId, BodyRules.wireYaw(body.typeKey, pose.yaw())));
+            packets.add(nativeApi.rotateHead(body.entityId, BodyRules.wireYaw(body.typeKey, pose.headYaw())));
             write(session, body, PacketKind.MOVE, packets).whenComplete((nothing, failure) -> complete(result, failure));
         });
         return result;
@@ -344,7 +355,10 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
     }
 
     /** The main-arm swing a player shows when placing a block. */
-    @Override public CompletionStage<Void> swing(Player viewer, BodyTransport.Body presented) {
+    @Override public CompletionStage<Void> swing(Player viewer, BodyTransport.Body presented) { return gesture(viewer, presented, 0); }
+
+    /** One vanilla animate action: an arm swing, waking up or a critical hit. */
+    @Override public CompletionStage<Void> gesture(Player viewer, BodyTransport.Body presented, int action) {
         Body body = checkBody(presented);
         Session session = sessions.get(viewer.getUniqueId());
         if (session == null || session.viewer != viewer || !current(session)) return unwatched("Viewer is not watched");
@@ -353,7 +367,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         CompletableFuture<Void> result = new CompletableFuture<>();
         submit(session, result, false, () -> {
             if (session.visible.get(body.entityId) != presentation) throw new CancellationException("Body was despawned");
-            write(session, body, PacketKind.METADATA, List.of(nativeApi.swing(body.entityId))).whenComplete((nothing, failure) -> complete(result, failure));
+            write(session, body, PacketKind.METADATA, List.of(nativeApi.swing(body.entityId, action))).whenComplete((nothing, failure) -> complete(result, failure));
         });
         return result;
     }
@@ -364,7 +378,8 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
     }
     /** The death event and zero health: the body falls over and plays its own type's death sound. */
     @Override public CompletionStage<Void> die(Player viewer, BodyTransport.Body presented) {
-        return feedback(viewer, presented, "death", (int id) -> nativeApi.die(id));
+        boolean living = presented instanceof Body body && VariantWire.living(body.typeKey);
+        return feedback(viewer, presented, "death", (int id) -> nativeApi.die(id, living));
     }
     @FunctionalInterface private interface Feedback { List<Object> packets(int id) throws ReflectiveOperationException; }
     private CompletionStage<Void> feedback(Player viewer, BodyTransport.Body presented, String label, Feedback feedback) {
@@ -395,10 +410,29 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         Presentation presentation = session.visible.get(body.entityId);
         if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
         Object packet;
-        try { packet = nativeApi.metadataPacket.newInstance(body.entityId, nativeApi.presentation.lookValues(look)); }
+        try { packet = nativeApi.metadataPacket.newInstance(body.entityId, nativeApi.presentation.lookValues(look, VariantWire.living(body.typeKey))); }
         catch (ReflectiveOperationException | RuntimeException failure) { return failed("Body look update failed: " + failure.getClass().getSimpleName()); }
         CompletableFuture<Void> result = new CompletableFuture<>();
         submit(session, result, false, () -> {
+            if (session.visible.get(body.entityId) != presentation) throw new CancellationException("Body was despawned");
+            write(session, body, PacketKind.METADATA, List.of(packet)).whenComplete((nothing, failure) -> complete(result, failure));
+        });
+        return result;
+    }
+
+    /** One metadata packet with the body's shared flags, invisible or as its look has them. */
+    @Override public CompletionStage<Void> conceal(Player viewer, BodyTransport.Body presented, boolean hidden) {
+        Body body = checkBody(presented);
+        if (nativeApi.presentation == null) return failed("Bodies cannot be hidden on this server build");
+        Session session = sessions.get(viewer.getUniqueId());
+        if (session == null || session.viewer != viewer || !current(session)) return unwatched("Viewer is not watched");
+        Presentation presentation = session.visible.get(body.entityId);
+        if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
+        Object packet;
+        try { packet = nativeApi.metadataPacket.newInstance(body.entityId, List.of(nativeApi.presentation.visibility(body.look, hidden))); }
+        catch (ReflectiveOperationException | RuntimeException failure) { return failed("Body visibility update failed: " + failure.getClass().getSimpleName()); }
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        submit(session, result, true, () -> {
             if (session.visible.get(body.entityId) != presentation) throw new CancellationException("Body was despawned");
             write(session, body, PacketKind.METADATA, List.of(packet)).whenComplete((nothing, failure) -> complete(result, failure));
         });
@@ -843,7 +877,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         private final NativePresentation presentation;
         private final NativeBones bones;
         private final NativeAttributes attributes;
-        private final NativeBodyVariants variants;
+        private final art.arcane.animus.core.presentation.BodyVariantValues variants;
         private final Object textDisplayType, seatType;
         private final NativeEntityIds ids;
         private final Object entityRegistry, zeroVelocity, survival, playerSkinAccessor;
@@ -973,9 +1007,29 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             try { boundAttributes = new NativeAttributes(identifierParse); }
             catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC attributes unavailable: " + missing.getClass().getSimpleName()); }
             attributes = boundAttributes;
-            NativeBodyVariants boundVariants = null;
-            try { boundVariants = new NativeBodyVariants(dataValueCreate, plugin.getServer().getClass().getMethod("getServer").invoke(plugin.getServer())); }
-            catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC horse, llama, frog and armadillo looks unavailable: " + missing.getClass().getSimpleName()); }
+            art.arcane.animus.core.presentation.BodyVariantValues boundVariants = null;
+            try {
+                NativePresentation texts = presentation;
+                Method nativeStack = Class.forName(craftPackage + ".inventory.CraftItemStack").getMethod("asNMSCopy", ItemStack.class);
+                Method blockState = Class.forName(craftPackage + ".block.data.CraftBlockData").getMethod("getState");
+                Method create = dataValueCreate;
+                Object server = plugin.getServer().getClass().getMethod("getServer").invoke(plugin.getServer());
+                boundVariants = new art.arcane.animus.core.presentation.BodyVariantValues(new art.arcane.animus.core.presentation.BodyVariantValues.Natives() {
+                    @Override public Object value(Object accessor, Object value) throws ReflectiveOperationException { return create.invoke(null, accessor, value); }
+                    @Override public Object item(art.arcane.animus.core.npc.NpcItem item) throws ReflectiveOperationException {
+                        List<String> errors = new ArrayList<>();
+                        ItemStack stack = art.arcane.animus.bukkit.runtime.DefinitionItems.stack(item, "$.item", errors);
+                        return stack == null || !errors.isEmpty() ? null : nativeStack.invoke(null, stack);
+                    }
+                    @Override public Object blockState(String state) throws ReflectiveOperationException {
+                        try { return blockState.invoke(org.bukkit.Bukkit.createBlockData(state)); }
+                        catch (IllegalArgumentException unknown) { return null; }
+                    }
+                    @Override public Object component(String text) throws ReflectiveOperationException { return texts == null ? null : texts.component(text); }
+                }, server.getClass().getMethod("registryAccess").invoke(server));
+                boundVariants.report(plugin.getLogger()::warning);
+            }
+            catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC body settings unavailable: " + missing.getClass().getSimpleName()); }
             variants = boundVariants;
             playerConnection = type("net.minecraft.server.level.ServerPlayer").getField("connection");
             networkConnection = field(type("net.minecraft.server.network.ServerCommonPacketListenerImpl"), "connection");
@@ -1046,11 +1100,11 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             return result;
         }
         @SuppressWarnings({"unchecked", "rawtypes"})
-        private Object playerInfo(UUID uuid, String name, BodySkin skin, boolean listed) throws ReflectiveOperationException {
+        private Object playerInfo(UUID uuid, String name, BodySkin skin, boolean listed, String gameMode) throws ReflectiveOperationException {
             Object values = multimapCreate.invoke(null);
             if (skin != null) multimapPut.invoke(values, "textures", property.newInstance("textures", skin.textureValue(), skin.signature()));
             Object gameProfile = profile.newInstance(uuid, name, propertyMap.newInstance(values));
-            Object entry = playerInfoEntry.newInstance(uuid, gameProfile, listed, 0, survival, null, true, 0, null);
+            Object entry = playerInfoEntry.newInstance(uuid, gameProfile, listed, 0, Enum.valueOf((Class<Enum>) survival.getClass(), gameMode.toUpperCase(java.util.Locale.ROOT)), null, true, 0, null);
             EnumSet actions = EnumSet.noneOf(playerInfoAction);
             for (String action : List.of("ADD_PLAYER", "UPDATE_GAME_MODE", "UPDATE_LISTED", "UPDATE_LATENCY", "UPDATE_DISPLAY_NAME", "UPDATE_HAT", "UPDATE_LIST_ORDER"))
                 actions.add(Enum.valueOf(playerInfoAction, action));
@@ -1061,7 +1115,9 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         }
         private Object spawn(Body body, BodyPose pose) throws ReflectiveOperationException {
             float yaw = BodyRules.wireYaw(body.typeKey, pose.yaw());
-            return addEntity.newInstance(body.entityId, body.uuid, pose.x(), pose.y(), pose.z(), pose.pitch(), yaw, body.nativeType, 0, zeroVelocity, (double) yaw);
+            int data = variants == null ? 0 : variants.spawnData(body.typeKey, body.look.traits().variant());
+            return addEntity.newInstance(body.entityId, body.uuid, pose.x(), pose.y(), pose.z(), pose.pitch(), yaw, body.nativeType, data, zeroVelocity,
+                    (double) BodyRules.wireYaw(body.typeKey, pose.headYaw()));
         }
         /** Every packet that presents a body, in the order the client must receive them. */
         private List<Object> spawnPackets(Body body, BodyPose pose) throws ReflectiveOperationException {
@@ -1075,9 +1131,9 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                 packets.add(metadataPacket.newInstance(body.seatId, presentation.seatValues()));
             }
             packets.add(spawn(body, pose));
-            packets.add(rotateHead(body.entityId, yaw));
+            packets.add(rotateHead(body.entityId, BodyRules.wireYaw(body.typeKey, pose.headYaw())));
             List<Object> values = new ArrayList<>();
-            if (body.playerInfo != null) values.add(dataValueCreate.invoke(null, playerSkinAccessor, (byte) 0x7f));
+            if (body.playerInfo != null) values.add(dataValueCreate.invoke(null, playerSkinAccessor, VariantWire.skinParts(look.traits().variant())));
             if (presentation != null) values.addAll(presentation.bodyValues(look, body.typeKey));
             if (variants != null) values.addAll(variants.values(body.typeKey, look.traits().variant()));
             if (!values.isEmpty()) packets.add(metadataPacket.newInstance(body.entityId, values));
@@ -1121,7 +1177,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             return List.of(damageEvent.newInstance(id, damageType, -1, -1, Optional.empty()));
         }
         /** Entity event 3 plays the death sound and, for every body but a player's, the fall; zero health makes a player fall too. */
-        private List<Object> die(int id) throws ReflectiveOperationException {
+        private List<Object> die(int id, boolean living) throws ReflectiveOperationException {
             ByteBuf bytes = Unpooled.buffer(8);
             Object event;
             try {
@@ -1130,15 +1186,16 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                 bytes.writeByte(3);
                 event = entityEvent.newInstance(buffer);
             } finally { bytes.release(); }
-            return List.of(event, metadataPacket.newInstance(id, List.of(dataValueCreate.invoke(null, healthAccessor, 0f))));
+            // A body that is not a living entity has no health for the client to set.
+            return living ? List.of(event, metadataPacket.newInstance(id, List.of(dataValueCreate.invoke(null, healthAccessor, 0f)))) : List.of(event);
         }
         /** Animation 0 swings the main arm. */
-        private Object swing(int id) throws ReflectiveOperationException {
+        private Object swing(int id, int action) throws ReflectiveOperationException {
             ByteBuf bytes = Unpooled.buffer(8);
             try {
                 Object buffer = friendlyBuffer.newInstance(bytes);
                 writeVarInt.invoke(buffer, id);
-                bytes.writeByte(0);
+                bytes.writeByte(action);
                 return animate.newInstance(buffer);
             } finally { bytes.release(); }
         }

@@ -480,6 +480,19 @@ public final class HoloService<P, S> implements AutoCloseable {
         return bindings;
     }
 
+    /**
+     * On the player's owner: makes the display transport send this player's displays and report their clicks here,
+     * so another feature can draw through it, as quest markers do. Clicks on displays no hologram owns are ignored.
+     */
+    public void watch(P player) {
+        if (closed || transport.unavailable() != null) return;
+        Viewer viewer = viewers.computeIfAbsent(host.id(player), (UUID ignored) -> new Viewer(player));
+        viewer.player = player;
+        if (viewer.watched) return;
+        viewer.watched = true;
+        transport.watch(player, (DisplayTransport.Click click) -> click(player, click));
+    }
+
     /** The player left; nothing more is sent to them. */
     public void quit(P player) {
         Viewer viewer = viewers.remove(host.id(player));

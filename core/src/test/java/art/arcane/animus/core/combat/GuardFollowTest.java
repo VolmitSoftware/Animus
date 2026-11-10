@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class GuardFollowTest {
-    static final CombatSettings.Guard GUARD = new CombatSettings.Guard(Optional.empty(), Optional.empty(), 4, 2, false, 24, 1.5);
+    static final CombatSettings.Guard GUARD = new CombatSettings.Guard(Optional.empty(), Optional.empty(), 4, 2, false, 24, 1.5, true);
     static WorldPosition at(double x, double z) { return new WorldPosition("world", new Vec3(x, 1, z)); }
 
     @Test void holdsWithinFollowDistanceAndWalksToAPointBehindTheMovingCharge() {
@@ -38,7 +38,7 @@ class GuardFollowTest {
         assertEquals(GuardFollow.Action.CATCH_UP, crossed.action());
         assertEquals("nether", crossed.goal().world());
         assertEquals(70, crossed.goal().point().y());
-        CombatSettings.Guard noTeleport = new CombatSettings.Guard(Optional.empty(), Optional.empty(), 4, 2, false, 0, 1.5);
+        CombatSettings.Guard noTeleport = new CombatSettings.Guard(Optional.empty(), Optional.empty(), 4, 2, false, 0, 1.5, true);
         assertEquals(GuardFollow.Action.WALK, new GuardFollow().next(0, at(0, 0), at(30, 0), noTeleport, 20).action());
         assertEquals(new Vec3(30, 1, 0), GuardFollow.catchUpSpots(crossed.goal(), at(30, 0)).getLast());
     }

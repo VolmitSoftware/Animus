@@ -1,0 +1,17 @@
+{
+  "name": "Statue Marker",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000607",
+  "traits": {
+    "type": "ARMOR_STAND",
+    "location": {
+      "world": "world",
+      "x": 14.5,
+      "y": 64,
+      "z": 0.5
+    },
+    "armorstandtrait": {
+      "marker": true,
+      "visible": true
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "Quiet Clerk",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000401",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "harbor",
+      "x": 4.5,
+      "y": 64.0,
+      "z": 0.5
+    },
+    "dropstrait": {
+      "drops": {
+        "0": {
+          "chance": 0.5,
+          "drop": {
+            "type": "PAPER",
+            "amount": 2
+          }
+        }
+      }
+    },
+    "commandtrait": {
+      "hideErrorMessages": true,
+      "cost": 1.0E-4,
+      "itemRequirements": {
+        "0": {
+          "type": "IRON_INGOT",
+          "amount": 2
+        }
+      },
+      "commands": {
+        "0": {
+          "command": "warp docks",
+          "hand": "SHIFT_RIGHT",
+          "player": true,
+          "permissions": [
+            "harbor.docks"
+          ]
+        }
+      }
+    }
+  }
+}

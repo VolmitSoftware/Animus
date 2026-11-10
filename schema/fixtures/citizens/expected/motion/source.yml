@@ -1,0 +1,64 @@
+# Synthetic Citizens saves.yml for movement and looking: waypoint triggers, look-close extras, gradual rotation, follow,
+# home and pause-pathfinding. Every name, UUID and world is invented.
+npc:
+  '0':
+    name: Ferryman
+    uuid: 0a1b2c3d-0000-4000-8000-000000000600
+    navigator: {speedmodifier: 1.0}
+    traits:
+      type: PLAYER
+      location: {world: old_harbor, x: 0.5, y: 64.0, z: 0.5}
+      lookclose: {enabled: true, range: 8.0, headonly: true, perplayer: true, randomSwitchTargets: true, randomlookdelay: 80, filter: 'type=PLAYER permission=harbor.pass group=Sailors'}
+      rotationtrait:
+        globalParameters: {headOnly: true, maxYawPerTick: 6.0, maxPitchPerTick: 3.0}
+      pausepathfinding: {playerrange: 4.0, rightclick: true, pauseticks: 60, lockoutduration: 100}
+      waypoints:
+        provider: linear
+        linear:
+          points:
+            '0':
+              location: {world: old_harbor, x: 2.0, y: 63.0, z: 2.0}
+              triggers:
+                '0': {type: speed, speed: 0.5}
+            '1':
+              location: {world: old_harbor, x: 20.0, y: 63.0, z: 2.0}
+              triggers:
+                '0': {type: chat, radius: 12.0, lines: ['&bAll aboard!', 'Next stop <npc>']}
+                '1': {type: teleport, location: {world: old_harbor, x: 80.5, y: 64.0, z: 2.5, yaw: -90.0, pitch: 0.0}}
+                '2': {type: command, commands: ['/say ferry <id> crossed']}
+                '3': {type: speed, speed: 1.25}
+            '2':
+              location: {world: old_harbor, x: 90.0, y: 63.0, z: 2.0}
+              triggers:
+                '0': {type: animation, animations: [ARM_SWING, SLEEP, START_ELYTRA], at: {world: old_harbor, x: 91.5, y: 63.0, z: 4.5, yaw: 90.0, pitch: 0.0}}
+            '3':
+              location: {world: old_harbor, x: 95.0, y: 63.0, z: 2.0}
+              triggers:
+                '0': {type: teleport, location: {world: far_isle, x: 0.0, y: 64.0, z: 0.0}}
+  '1':
+    name: Hound
+    uuid: 0a1b2c3d-0000-4000-8000-000000000601
+    traits:
+      type: WOLF
+      location: {world: old_harbor, x: 5.5, y: 64.0, z: 5.5}
+      followtrait: {followingUUID: 0a1b2c3d-0000-4000-8000-000000000600, margin: 3.0, protect: true}
+      lookclose: {enabled: true, linkedbody: true, headonly: true}
+  '2':
+    name: Lookout
+    uuid: 0a1b2c3d-0000-4000-8000-000000000602
+    traits:
+      type: PLAYER
+      location: {world: old_harbor, x: -10.5, y: 70.0, z: 4.5}
+      followtrait: {followingUUID: 0a1b2c3d-0000-4000-8000-0000000006ff}
+      hometrait: {location: {world: old_harbor, x: -10.5, y: 70.0, z: 4.5, yaw: 180.0, pitch: 0.0}, delay: 100, distance: 2.0, strategy: PATHFIND}
+      anchors: {list: {'0': 'dock;old_harbor;3.0;64.0;3.0', '1': 'Isle Pier;far_isle;10.5;65.0;-2.5', '2': 'broken;old_harbor;x'}}
+      mirrortrait: {enabled: true, mirrorName: true, mirrorEquipment: true}
+  '3':
+    name: Harbor Clerk
+    uuid: 0a1b2c3d-0000-4000-8000-000000000603
+    traits:
+      type: PLAYER
+      location: {world: old_harbor, x: 30.5, y: 64.0, z: -6.5}
+      hometrait: {location: {world: far_isle, x: 0.0, y: 64.0, z: 0.0}, strategy: TELEPORT}
+      pausepathfinding: {rightclick: true}
+      lookclose: {enabled: true, filter: 'type=ZOMBIE'}

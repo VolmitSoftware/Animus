@@ -43,7 +43,7 @@ final class CitizensPresentation {
 
     static Result map(String type, JsonObject traits, JsonObject record) {
         CitizensPresentation mapping = new CitizensPresentation(type, traits, record);
-        mapping.equipment(); mapping.inventory(); mapping.hologram(); mapping.pose(); mapping.armorStand(); mapping.facing(); mapping.owner(); mapping.nameplate();
+        mapping.equipment(); mapping.inventory(); mapping.hologram(); mapping.pose(); mapping.sleep(); mapping.contents(); mapping.armorStand(); mapping.facing(); mapping.owner(); mapping.nameplate();
         List<String> sorted = new ArrayList<>(mapping.warnings);
         Collections.sort(sorted);
         return new Result(mapping.fields, Optional.ofNullable(mapping.facing), sorted, mapping.converted, mapping.notes);
@@ -60,7 +60,7 @@ final class CitizensPresentation {
             if (slot == null) { warnings.add(path + ": unknown Citizens equipment slot; kept for review"); continue; }
             String realKey = cosmetic ? key.substring("cosmetic_".length()) : key;
             if (!cosmetic && equipment.has("cosmetic_" + key) && item(equipment.get("cosmetic_" + key), "/traits/equipment/cosmetic_" + key, new ArrayList<>(), new HashSet<>()).isPresent()) continue;
-            Optional<JsonObject> item = item(entry.getValue(), path, warnings, converted);
+            Optional<JsonObject> item = shown(entry.getValue(), path, slot);
             if (item.isEmpty()) continue;
             if (cosmetic) warnings.add(path + ": cosmetic item shown in " + slot.key() + (equipment.has(realKey) ? " instead of /traits/equipment/" + realKey : ""));
             shown.put(slot, item.get());
@@ -76,8 +76,16 @@ final class CitizensPresentation {
         fields.add("equipment", result);
     }
 
-    /** A horse's saddle and armour from HorseModifiers fill the saddle and body slots that Equipment left empty. */
+    /** A horse's saddle and armour from HorseModifiers, and Citizens' saddle trait, fill the slots that Equipment left empty. */
     private void horse(Map<EquipmentSlot, JsonObject> shown) {
+        Boolean saddled = bool(traits.get("saddle"));
+        if (Boolean.TRUE.equals(saddled) && !shown.containsKey(EquipmentSlot.SADDLE)) {
+            JsonObject saddle = new JsonObject();
+            saddle.addProperty("id", "minecraft:saddle");
+            saddle.addProperty("count", 1);
+            if (art.arcane.animus.core.presentation.BodyRules.equipmentSlots(type).contains(EquipmentSlot.SADDLE)) { shown.put(EquipmentSlot.SADDLE, saddle); converted.add("/traits/saddle"); }
+            else notes.put("/traits/saddle", new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED, "a " + type + " body does not show a saddle"));
+        } else if (saddled != null) converted.add("/traits/saddle");
         JsonObject horse = object(traits.get("horsemodifiers"));
         if (horse == null) return;
         for (Map.Entry<String, EquipmentSlot> part : List.of(Map.entry("saddle", EquipmentSlot.SADDLE), Map.entry("armor", EquipmentSlot.BODY))) {
@@ -87,8 +95,22 @@ final class CitizensPresentation {
                 notes.put(path, new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED, "the Equipment trait already fills this slot"));
                 continue;
             }
-            item(horse.get(part.getKey()), path, warnings, converted).ifPresent((JsonObject item) -> shown.put(part.getValue(), item));
+            shown(horse.get(part.getKey()), path, part.getValue()).ifPresent((JsonObject item) -> shown.put(part.getValue(), item));
         }
+    }
+
+    /** The item for {@code slot}, or empty with the item kept when this body does not show that slot. */
+    private Optional<JsonObject> shown(JsonElement value, String path, EquipmentSlot slot) {
+        List<String> problems = new ArrayList<>();
+        Set<String> paths = new HashSet<>();
+        Optional<JsonObject> item = item(value, path, problems, paths);
+        if (item.isPresent() && !art.arcane.animus.core.presentation.BodyRules.equipmentSlots(type).contains(slot)) {
+            notes.put(path, new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED, "a " + type + " body does not show the " + slot.key() + " slot"));
+            return Optional.empty();
+        }
+        warnings.addAll(problems);
+        converted.addAll(paths);
+        return item;
     }
 
     private void inventory() {
@@ -331,6 +353,95 @@ final class CitizensPresentation {
         }
     }
 
+    /** Citizens' entity pose and sleep traits, on a player body that neither sits nor sneaks. */
+    private void sleep() {
+        boolean player = type.equals("minecraft:player");
+        JsonObject sleep = object(traits.get("sleeptrait"));
+        if (sleep != null && sleep.has("at") && !sleep.get("at").isJsonNull()) {
+            if (!player) notes.put("/traits/sleeptrait", new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED, "sleeping shows only on player bodies"));
+            else if (fields.has("pose")) notes.put("/traits/sleeptrait", new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED, "the NPC already sits or sneaks"));
+            else {
+                fields.addProperty("pose", "sleeping");
+                notes.put("/traits/sleeptrait/at", new CitizensImporter.Note(CitizensImporter.Status.CONVERTED, "the NPC sleeps where it stands"));
+            }
+        }
+        JsonObject entity = object(traits.get("entitypose"));
+        if (entity == null || !entity.has("pose")) return;
+        String path = "/traits/entitypose/pose";
+        String pose = Objects.requireNonNullElse(text(entity.get("pose")), "").toLowerCase(Locale.ROOT);
+        String shown = switch (pose) {
+            case "crouching", "sneaking" -> "sneaking";
+            case "sleeping" -> "sleeping";
+            case "swimming" -> "swimming";
+            case "sitting" -> "sitting";
+            case "standing" -> "standing";
+            default -> null;
+        };
+        if (shown == null) { notes.put(path, new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED, "pose " + pose + " has no Animus equivalent")); return; }
+        if (shown.equals("standing")) { converted.add(path); return; }
+        if (!player) { notes.put(path, new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED, "poses other than standing show only on player bodies")); return; }
+        if (fields.has("pose")) { notes.put(path, new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED, "another trait already sets the pose")); return; }
+        fields.addProperty("pose", shown);
+        converted.add(path);
+    }
+
+    private static final List<String> ROTATIONS = List.of("none", "clockwise_45", "clockwise", "clockwise_135", "flipped", "flipped_45", "counter_clockwise", "counter_clockwise_45");
+
+    /**
+     * What a block or item body shows: an item frame's item, rotation and facing, and the block or item Citizens keeps in
+     * the NPC's item metadata for falling blocks, dropped items and block and item displays.
+     */
+    private void contents() {
+        JsonObject frame = object(traits.get("itemframe"));
+        if (frame != null) {
+            String field = type.equals("minecraft:item_frame") ? "itemFrame" : type.equals("minecraft:glow_item_frame") ? "glowItemFrame" : null;
+            if (field == null) notes.put("/traits/itemframe", new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED, "applies only to item frame bodies, so Citizens did not show it either"));
+            else {
+                JsonObject settings = new JsonObject();
+                if (frame.has("item") && !frame.get("item").isJsonNull()) item(frame.get("item"), "/traits/itemframe/item", warnings, converted).ifPresent((JsonObject item) -> settings.add("item", item));
+                String rotation = Objects.requireNonNullElse(text(frame.get("rotation")), "").toLowerCase(Locale.ROOT);
+                if (ROTATIONS.contains(rotation)) {
+                    if (ROTATIONS.indexOf(rotation) > 0) settings.addProperty("rotation", ROTATIONS.indexOf(rotation));
+                    converted.add("/traits/itemframe/rotation");
+                }
+                String facing = Objects.requireNonNullElse(text(frame.get("facing")), "").toLowerCase(Locale.ROOT);
+                if (List.of("down", "up", "north", "south", "west", "east").contains(facing)) { settings.addProperty("facing", facing); converted.add("/traits/itemframe/facing"); }
+                if (frame.has("fixed")) notes.put("/traits/itemframe/fixed", new CitizensImporter.Note(CitizensImporter.Status.CONVERTED, "NPC frames never drop their item"));
+                if (!settings.isEmpty()) fields.add(field, settings);
+            }
+        }
+        JsonObject metadata = object(record.get("metadata"));
+        String material = metadata == null ? null : text(metadata.get("item-type-id"));
+        if (material == null) return;
+        String path = "/metadata/item-type-id";
+        String id = material.toLowerCase(Locale.ROOT);
+        if (!id.contains(":")) id = "minecraft:" + id;
+        String key = switch (type) {
+            case "minecraft:falling_block" -> "fallingBlock";
+            case "minecraft:block_display" -> "blockDisplay";
+            case "minecraft:item_display" -> "itemDisplay";
+            case "minecraft:item" -> "droppedItem";
+            default -> null;
+        };
+        if (key == null || !id.matches(art.arcane.animus.core.npc.BodyVariant.ID)) {
+            notes.put(path, new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED, key == null ? "only block and item bodies show an item" : material + " is not an id"));
+            return;
+        }
+        JsonObject settings = new JsonObject();
+        if (key.equals("fallingBlock") || key.equals("blockDisplay")) settings.addProperty("block", id);
+        else {
+            JsonObject item = new JsonObject();
+            item.addProperty("id", id);
+            long count = Math.max(1, Math.min(NpcItem.MAX_COUNT, integer(metadata.get("item-type-amount"), 1)));
+            item.addProperty("count", count);
+            settings.add("item", item);
+            if (metadata.has("item-type-amount")) converted.add("/metadata/item-type-amount");
+        }
+        converted.add(path);
+        if (metadata.has("item-type-data")) notes.put("/metadata/item-type-data", new CitizensImporter.Note(CitizensImporter.Status.CONVERTED, "legacy data values have no meaning on current versions"));
+        fields.add(key, settings);
+    }
+
     private void armorStand() {
         JsonObject stand = object(traits.get("armorstandtrait"));
         if (stand == null) return;
@@ -357,7 +468,11 @@ final class CitizensPresentation {
             if (!gravity) fields.addProperty("gravity", false);
             converted.add("/traits/armorstandtrait/gravity");
         }
-        if (stand.has("marker")) warnings.add("/traits/armorstandtrait: marker is kept for review");
+        Boolean marker = bool(stand.get("marker"));
+        if (marker != null) {
+            if (marker) look.addProperty("marker", true);
+            converted.add("/traits/armorstandtrait/marker");
+        }
         fields.add("armorStand", look);
     }
 

@@ -1,0 +1,26 @@
+{
+  "name": "Herald",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000606",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "world",
+      "x": 12.5,
+      "y": 64,
+      "z": 0.5
+    },
+    "playerfilter": {
+      "players": [
+        "8667BA71-B85A-4004-AF54-457A9734EED7",
+        "not-a-uuid"
+      ]
+    },
+    "text": {
+      "text": [
+        "Show me your pass."
+      ],
+      "talkitem": "PAPER,minecraft:map",
+      "delay": 60
+    }
+  }
+}

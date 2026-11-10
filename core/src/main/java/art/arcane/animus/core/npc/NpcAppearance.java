@@ -37,6 +37,17 @@ public record NpcAppearance(Map<EquipmentSlot, NpcItem> equipment, List<String> 
         return new NpcAppearance(equipment, lines, nameplateVisible, pose, armorStand, hologramStyle, traits);
     }
 
+    /** The same appearance with a speech bubble: {@code text} as the top hologram line. */
+    public NpcAppearance withBubble(String text) {
+        List<String> lines = new ArrayList<>();
+        lines.add(text);
+        lines.addAll(hologram);
+        List<HologramStyle.Margin> margins = new ArrayList<>();
+        margins.add(HologramStyle.Margin.NONE);
+        margins.addAll(hologramStyle.margins().size() == hologram.size() ? hologramStyle.margins() : java.util.Collections.nCopies(hologram.size(), HologramStyle.Margin.NONE));
+        return new NpcAppearance(equipment, lines, nameplateVisible, pose, armorStand, hologramStyle.withMargins(margins), traits);
+    }
+
     public NpcAppearance withAttributes(NpcAttributes attributes) {
         return new NpcAppearance(equipment, hologram, nameplateVisible, pose, armorStand, hologramStyle, traits.withAttributes(attributes));
     }

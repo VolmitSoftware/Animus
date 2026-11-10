@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "citizens:builder-20",
+  "entry": "resume",
+  "routines": {
+    "resume": {
+      "type": "condition",
+      "capability": "animus:flag-state",
+      "arguments": {
+        "name": "builder-20-resumed",
+        "scope": "npc"
+      },
+      "then": {
+        "type": "sequence",
+        "steps": []
+      },
+      "else": {
+        "type": "sequence",
+        "steps": [
+          {
+            "type": "action",
+            "capability": "animus:build",
+            "arguments": {
+              "operation": "start"
+            }
+          },
+          {
+            "type": "action",
+            "capability": "animus:set-flag",
+            "arguments": {
+              "name": "builder-20-resumed",
+              "scope": "npc"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "spawn",
+      "event": "spawn",
+      "routine": "resume"
+    }
+  ]
+}

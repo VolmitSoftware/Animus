@@ -1,4 +1,4 @@
-/// Port of core's `NpcDefinition.validate` with `NpcAppearance`, `HologramStyle`, `BodyTraits`, `NpcAttributes`, `NpcItem`, `ArmorStandLook`,
+/// Port of core's `NpcDefinition.validate` with `NpcAppearance`, `NpcDisguise`, `HologramStyle`, `BodyTraits`, `NpcAttributes`, `NpcItem`, `ArmorStandLook`,
 /// `NpcInventory` and `MovementSettings`.
 ///
 /// The module validators (`WaypointSettings`, `CombatSettings`, `MountDeclaration`, `RideSettings`, `ShopBinding`,
@@ -23,7 +23,7 @@ import 'presentation.dart';
 
 const List<String> _poses = <String>['standing', 'sneaking', 'sleeping', 'swimming', 'sitting'];
 const List<String> _parts = <String>['head', 'body', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'];
-const Set<String> _lookFlags = <String>{'small', 'arms', 'basePlate', 'invisible'};
+const Set<String> _lookFlags = <String>{'small', 'arms', 'basePlate', 'invisible', 'marker'};
 const Set<String> _itemFields = <String>{'id', 'count', 'components', 'imported'};
 const Set<String> _hologramFields = <String>{'lines', 'lineHeight', 'viewRange', 'billboard', 'shadowed', 'seeThrough', 'interpolationDelay', 'interpolationDuration'};
 const Set<String> _lineFields = <String>{'text', 'marginTop', 'marginBottom'};
@@ -85,6 +85,12 @@ List<String> validateDefinition(JObject object) {
     if (!canonicalUuid(owner is JString ? owner.value : '')) errors.add(r'$.owner: expected canonical player UUID');
   }
   _appearance(object, errors);
+  if (object.has('disguise')) {
+    final JElement? disguise = object.get('disguise');
+    if (disguise is! JString || disguise.value.trim().isEmpty || disguise.value.length > 8192 || disguise.value.runes.any(javaIsIsoControl)) {
+      errors.add(r'$.disguise: expected disguise text of 1-8192 characters without control characters');
+    }
+  }
   _inventory(object, errors);
   _movement(object, errors);
   _namedPoses(object, errors);
@@ -102,6 +108,10 @@ List<String> definitionActivationErrors(JsonMap definition) {
   if (definition.containsKey('skin') && definition['type'] != 'minecraft:player') errors.add(r'$.skin: textures require a player body');
   if (definition['pose'] == 'sitting' && _declaresMount(definition)) {
     errors.add(r'$.pose: a sitting NPC cannot also ride another NPC; remove the pose or the mount');
+  }
+  final Object? model = asMap(definition['modules'])['animus:modelengine'];
+  if (definition.containsKey('rig') && model is Map && model['enabled'] != false) {
+    errors.add(r'$.modules.animus:modelengine: an NPC shows either a rig or a Model Engine model; remove one');
   }
   return errors;
 }

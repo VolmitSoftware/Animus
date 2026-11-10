@@ -3,6 +3,7 @@ package art.arcane.animus.core.command;
 import art.arcane.animus.core.control.LookClose;
 import art.arcane.animus.core.npc.GroupMerge;
 import art.arcane.animus.core.runtime.HealthRecords;
+import art.arcane.animus.core.npc.NpcAnchors;
 import art.arcane.animus.core.npc.NpcAttributes;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
@@ -164,6 +165,21 @@ final class NpcCommands extends CommandGroup {
         return id + ": " + known.id() + (reset ? " reset" : " = " + NpcAttributes.format(number)) + "; tx " + transaction;
     }
 
+    @Director(description = "Show, set or reset an NPC's LibsDisguises disguise, such as \"zombie setBaby true\" or a custom disguise name")
+    @NeedsPlugin("LibsDisguises")
+    @Positional("disguise")
+    void disguise(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
+                  @Param(name = "disguise", defaultValue = "", description = "Disguise text as /disguise takes it, quoted when it has spaces; reset to remove it; nothing to show it") String disguise) {
+        CommandActor actor = actor();
+        NpcRepository repository = runtime().npcs();
+        npc(actor, npc).ifPresent((String id) -> files(actor, () -> {
+            if (disguise.isEmpty()) return DisguiseSetting.show(repository, id);
+            List<String> lines = DisguiseSetting.set(repository, id, disguise);
+            living().refresh();
+            return lines;
+        }));
+    }
+
     @Director(description = "Bring a dead NPC back: clears a permadeath, or respawns it now")
     void revive(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
         CommandActor actor = actor();
@@ -191,6 +207,22 @@ final class NpcCommands extends CommandGroup {
         npc(actor, npc).ifPresent((String id) -> files(actor, () -> {
             if (setting.isEmpty() || value.isEmpty()) return List.of(HealthSetting.show(repository, id, setting));
             String line = HealthSetting.set(repository, id, setting, value);
+            living().refresh();
+            return List.of(Palette.success(line));
+        }));
+    }
+
+    @Director(description = "Show or set the Model Engine model an NPC shows: model, scale, show-body, hitbox, nametag-bone or a state's animation")
+    @NeedsPlugin("ModelEngine")
+    @Positional({"part", "to"})
+    void model(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
+               @Param(name = "part", defaultValue = "", description = "model, scale, show-body, hitbox, nametag-bone, idle, walk, attack, hurt, death or interact; nothing shows them all") String part,
+               @Param(name = "to", defaultValue = "", description = "The new value, or reset; resetting model removes the model") String to) {
+        CommandActor actor = actor();
+        NpcRepository repository = runtime().npcs();
+        npc(actor, npc).ifPresent((String id) -> files(actor, () -> {
+            if (part.isEmpty() || to.isEmpty()) return List.of(ModelSetting.show(repository, id));
+            String line = ModelSetting.set(repository, id, part, to);
             living().refresh();
             return List.of(Palette.success(line));
         }));
@@ -225,6 +257,63 @@ final class NpcCommands extends CommandGroup {
         document.add("modules", modules);
         String transaction = repository.apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
         return id + ": look-close " + (on ? "on" : "off") + "; tx " + transaction;
+    }
+
+    @Director(description = "List an NPC's anchors, add one where you stand or at x y z, or remove one")
+    @Positional({"action", "name"})
+    void anchor(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
+                @Param(name = "action", defaultValue = "list", description = "list, add or remove") String action,
+                @Param(name = "name", defaultValue = "", description = "The anchor's name: 1-32 lowercase letters, digits, _ or -") String name,
+                @Param(name = "x", defaultValue = "", description = "X position: a number, ~ or ~N; yours when left out") String x,
+                @Param(name = "y", defaultValue = "", description = "Y position: a number, ~ or ~N; yours when left out") String y,
+                @Param(name = "z", defaultValue = "", description = "Z position: a number, ~ or ~N; yours when left out") String z,
+                @Param(name = "world", defaultValue = "", description = "The anchor's world; yours when left out") String world) {
+        CommandActor actor = actor();
+        NpcRepository repository = runtime().npcs();
+        AnimusCommandTree.Placement placement;
+        if (action.equalsIgnoreCase("add")) {
+            try { placement = AnimusCommandTree.placement(actor, world, x, y, z); }
+            catch (IllegalArgumentException missing) { actor.tell(Palette.error(missing.getMessage())); return; }
+        } else placement = null;
+        npc(actor, npc).ifPresent((String id) -> files(actor, () -> {
+            String line = anchor(repository, id, action, name, placement);
+            living().refresh();
+            return List.of(Palette.success(line));
+        }));
+    }
+
+    /** Lists, adds or removes one of the NPC's {@code anchors}; an anchor in the NPC's own world is saved without a world. */
+    static String anchor(NpcRepository repository, String id, String action, String name, AnimusCommandTree.Placement placement) throws IOException {
+        NpcRepository.Draft draft = repository.draft(id);
+        JsonObject document = draft.document();
+        NpcAnchors current = NpcAnchors.parse(document);
+        String verb = action.toLowerCase(Locale.ROOT);
+        if (verb.equals("list")) {
+            if (current.anchors().isEmpty()) return id + " has no anchors; /animus npc anchor " + id + " add <name> saves one where you stand";
+            List<String> shown = new ArrayList<>();
+            current.anchors().forEach((String key, NpcAnchors.Anchor anchor) -> shown.add(key + " " + anchor.world().map((String w) -> w + " ").orElse("")
+                    + art.arcane.animus.core.command.Coordinates.shown(anchor.position())));
+            return id + " anchors: " + String.join(", ", shown);
+        }
+        if (!name.matches(NpcAnchors.NAME)) throw new IllegalArgumentException("An anchor name is 1-32 lowercase letters, digits, _ or -");
+        JsonObject anchors = document.has(NpcAnchors.FIELD) && document.get(NpcAnchors.FIELD).isJsonObject() ? document.getAsJsonObject(NpcAnchors.FIELD) : new JsonObject();
+        switch (verb) {
+            case "add" -> {
+                if (!anchors.has(name) && anchors.size() >= NpcAnchors.MAXIMUM_ANCHORS) throw new IllegalArgumentException("An NPC keeps at most " + NpcAnchors.MAXIMUM_ANCHORS + " anchors");
+                JsonObject anchor = new JsonObject();
+                anchor.addProperty("x", placement.point().x()); anchor.addProperty("y", placement.point().y()); anchor.addProperty("z", placement.point().z());
+                JsonElement position = document.get("position");
+                String own = position != null && position.isJsonObject() && position.getAsJsonObject().has("world") ? position.getAsJsonObject().get("world").getAsString() : "";
+                if (!placement.world().equals(own)) anchor.addProperty("world", placement.world());
+                anchors.add(name, anchor);
+            }
+            case "remove" -> { if (anchors.remove(name) == null) throw new IllegalArgumentException(id + " has no anchor named " + name); }
+            default -> throw new IllegalArgumentException("action must be list, add or remove");
+        }
+        if (anchors.isEmpty()) document.remove(NpcAnchors.FIELD);
+        else document.add(NpcAnchors.FIELD, anchors);
+        String transaction = repository.apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
+        return id + ": " + (verb.equals("add") ? "saved" : "removed") + " anchor " + name + "; tx " + transaction;
     }
 
     /** Attribute ids for completion, bare. */

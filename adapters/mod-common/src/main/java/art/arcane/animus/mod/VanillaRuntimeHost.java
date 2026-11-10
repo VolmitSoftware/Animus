@@ -69,6 +69,31 @@ final class VanillaRuntimeHost implements RuntimeHost<ServerPlayer, ItemStack> {
     @Override public Optional<ServerPlayer> player(UUID id) { return Optional.ofNullable(server.getPlayerList().getPlayer(id)); }
     @Override public UUID id(ServerPlayer player) { return player.getUUID(); }
     @Override public String name(ServerPlayer player) { return player.getGameProfile().name(); }
+    @Override public java.util.Map<art.arcane.animus.core.npc.EquipmentSlot, net.minecraft.world.item.ItemStack> equipment(ServerPlayer player) {
+        java.util.Map<art.arcane.animus.core.npc.EquipmentSlot, net.minecraft.world.item.ItemStack> items = new java.util.EnumMap<>(art.arcane.animus.core.npc.EquipmentSlot.class);
+        for (art.arcane.animus.core.npc.EquipmentSlot slot : java.util.List.of(art.arcane.animus.core.npc.EquipmentSlot.MAIN_HAND, art.arcane.animus.core.npc.EquipmentSlot.OFF_HAND,
+                art.arcane.animus.core.npc.EquipmentSlot.HEAD, art.arcane.animus.core.npc.EquipmentSlot.CHEST, art.arcane.animus.core.npc.EquipmentSlot.LEGS, art.arcane.animus.core.npc.EquipmentSlot.FEET)) {
+            net.minecraft.world.item.ItemStack item = player.getItemBySlot(switch (slot) {
+                case MAIN_HAND -> net.minecraft.world.entity.EquipmentSlot.MAINHAND;
+                case OFF_HAND -> net.minecraft.world.entity.EquipmentSlot.OFFHAND;
+                case HEAD -> net.minecraft.world.entity.EquipmentSlot.HEAD;
+                case CHEST -> net.minecraft.world.entity.EquipmentSlot.CHEST;
+                case LEGS -> net.minecraft.world.entity.EquipmentSlot.LEGS;
+                default -> net.minecraft.world.entity.EquipmentSlot.FEET;
+            });
+            if (!item.isEmpty()) items.put(slot, item.copy());
+        }
+        return items;
+    }
+    /** The signed {@code textures} property of the vanilla game profile; empty in offline mode. */
+    @Override public java.util.Optional<art.arcane.animus.core.presentation.BodySkin> skin(ServerPlayer player) {
+        for (com.mojang.authlib.properties.Property property : player.getGameProfile().properties().get("textures")) {
+            if (property.value() == null || property.value().isBlank() || property.signature() == null || property.signature().isBlank()) return java.util.Optional.empty();
+            try { return java.util.Optional.of(new art.arcane.animus.core.presentation.BodySkin(property.value(), property.signature())); }
+            catch (IllegalArgumentException invalid) { return java.util.Optional.empty(); }
+        }
+        return java.util.Optional.empty();
+    }
     @Override public boolean online(ServerPlayer player) { return !player.hasDisconnected() && server.getPlayerList().getPlayer(player.getUUID()) == player; }
     @Override public boolean dead(ServerPlayer player) { return !player.isAlive(); }
     @Override public boolean sleeping(ServerPlayer player) { return player.isSleeping(); }
@@ -141,14 +166,16 @@ final class VanillaRuntimeHost implements RuntimeHost<ServerPlayer, ItemStack> {
     }
 
     /** A server item for a definition item, read like the text after {@code /give}; null after adding the field error. */
-    static ItemStack stack(MinecraftServer server, NpcItem item, String path, List<String> errors) {
+    static ItemStack stack(MinecraftServer server, NpcItem item, String path, List<String> errors) { return stack(server.registryAccess(), item, path, errors); }
+
+    static ItemStack stack(net.minecraft.core.HolderLookup.Provider registries, NpcItem item, String path, List<String> errors) {
         Identifier id = Identifier.tryParse(item.id());
         if (id == null || !BuiltInRegistries.ITEM.containsKey(id) || BuiltInRegistries.ITEM.getValue(id) == Items.AIR) {
             errors.add(path + ".id: unknown item " + item.id() + " on this server");
             return null;
         }
         try {
-            return new ItemParser(server.registryAccess()).parse(new StringReader(item.id() + item.components().orElse(""))).createItemStack(item.count());
+            return new ItemParser(registries).parse(new StringReader(item.id() + item.components().orElse(""))).createItemStack(item.count());
         } catch (CommandSyntaxException invalid) {
             errors.add(path + (item.components().isPresent() ? ".components: " : ".id: ") + invalid.getMessage());
             return null;

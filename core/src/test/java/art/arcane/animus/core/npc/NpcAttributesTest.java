@@ -31,9 +31,11 @@ class NpcAttributesTest {
         com.google.gson.JsonObject properties = art.arcane.animus.core.behavior.schema.NpcSchemaGenerator.schema().getAsJsonObject("properties")
                 .getAsJsonObject("attributes").getAsJsonObject("properties");
         java.util.List<String> scale = properties.getAsJsonObject("scale").getAsJsonArray("x-bodies").asList().stream().map(com.google.gson.JsonElement::getAsString).toList();
-        assertEquals(art.arcane.animus.core.presentation.BodyRules.TYPES.stream().sorted().toList(), scale);
+        assertEquals(art.arcane.animus.core.presentation.BodyRules.TYPES.stream().filter(art.arcane.animus.core.presentation.VariantWire::living).sorted().toList(), scale, "every living body carries scale");
+        assertTrue(VanillaAttributes.BODIES.keySet().containsAll(art.arcane.animus.core.presentation.BodyRules.LIVING), "every living body has its vanilla attribute table");
         java.util.List<String> damage = properties.getAsJsonObject("minecraft:attack_damage").getAsJsonArray("x-bodies").asList().stream().map(com.google.gson.JsonElement::getAsString).toList();
-        assertEquals(java.util.List.of("minecraft:frog", "minecraft:player"), damage);
+        assertTrue(damage.containsAll(java.util.List.of("minecraft:frog", "minecraft:player", "minecraft:wolf")), damage.toString());
+        assertFalse(damage.contains("minecraft:villager"), "a villager body has no attack_damage");
         assertEquals(java.util.List.of("minecraft:player"), properties.getAsJsonObject("luck").getAsJsonArray("x-bodies").asList().stream().map(com.google.gson.JsonElement::getAsString).toList());
     }
 

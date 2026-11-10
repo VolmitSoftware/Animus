@@ -1,0 +1,19 @@
+{
+  "name": "Stable Horse",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000602",
+  "traits": {
+    "type": "HORSE",
+    "location": {
+      "world": "world",
+      "x": 4.5,
+      "y": 64,
+      "z": 0.5
+    },
+    "horsemodifiers": {
+      "color": "DARK_BROWN",
+      "style": "WHITE_DOTS",
+      "tamed": true,
+      "carryingChest": false
+    }
+  }
+}

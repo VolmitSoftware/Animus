@@ -35,7 +35,12 @@ List<String> traitsFor(String type) => <String>[
     ];
 
 /// Presented bodies with a baby form (`BodyRules.babyFlag`).
-const Set<String> _babies = <String>{'minecraft:horse', 'minecraft:turtle', 'minecraft:frog', 'minecraft:llama', 'minecraft:armadillo'};
+const Set<String> _babies = <String>{
+  'minecraft:horse', 'minecraft:turtle', 'minecraft:frog', 'minecraft:llama', 'minecraft:armadillo', 'minecraft:sheep', 'minecraft:wolf', //
+  'minecraft:cat', 'minecraft:parrot', 'minecraft:fox', 'minecraft:axolotl', 'minecraft:rabbit', 'minecraft:villager', 'minecraft:zombie_villager', //
+  'minecraft:mooshroom', 'minecraft:panda', 'minecraft:goat', 'minecraft:pig', 'minecraft:cow', 'minecraft:chicken', 'minecraft:polar_bear', //
+  'minecraft:piglin', 'minecraft:bee', 'minecraft:sniffer', 'minecraft:donkey', 'minecraft:mule', 'minecraft:camel',
+};
 
 /// A definition field a body of another type cannot show, and why.
 final class MisplacedField {
@@ -73,6 +78,53 @@ const Map<String, String> bodySettingsTypes = <String, String>{
   'frog': 'minecraft:frog',
   'armadillo': 'minecraft:armadillo',
   'dragon': 'minecraft:ender_dragon',
+  'player': 'minecraft:player',
+  'sheep': 'minecraft:sheep',
+  'wolf': 'minecraft:wolf',
+  'cat': 'minecraft:cat',
+  'parrot': 'minecraft:parrot',
+  'fox': 'minecraft:fox',
+  'axolotl': 'minecraft:axolotl',
+  'rabbit': 'minecraft:rabbit',
+  'villager': 'minecraft:villager',
+  'zombieVillager': 'minecraft:zombie_villager',
+  'creeper': 'minecraft:creeper',
+  'slime': 'minecraft:slime',
+  'magmaCube': 'minecraft:magma_cube',
+  'phantom': 'minecraft:phantom',
+  'mooshroom': 'minecraft:mooshroom',
+  'panda': 'minecraft:panda',
+  'goat': 'minecraft:goat',
+  'pig': 'minecraft:pig',
+  'cow': 'minecraft:cow',
+  'chicken': 'minecraft:chicken',
+  'shulker': 'minecraft:shulker',
+  'pufferfish': 'minecraft:pufferfish',
+  'tropicalFish': 'minecraft:tropical_fish',
+  'snowGolem': 'minecraft:snow_golem',
+  'polarBear': 'minecraft:polar_bear',
+  'piglin': 'minecraft:piglin',
+  'allay': 'minecraft:allay',
+  'bee': 'minecraft:bee',
+  'vex': 'minecraft:vex',
+  'evoker': 'minecraft:evoker',
+  'sniffer': 'minecraft:sniffer',
+  'bat': 'minecraft:bat',
+  'copperGolem': 'minecraft:copper_golem',
+  'donkey': 'minecraft:donkey',
+  'mule': 'minecraft:mule',
+  'enderman': 'minecraft:enderman',
+  'wither': 'minecraft:wither',
+  'camel': 'minecraft:camel',
+  'painting': 'minecraft:painting',
+  'itemFrame': 'minecraft:item_frame',
+  'glowItemFrame': 'minecraft:glow_item_frame',
+  'fallingBlock': 'minecraft:falling_block',
+  'endCrystal': 'minecraft:end_crystal',
+  'blockDisplay': 'minecraft:block_display',
+  'itemDisplay': 'minecraft:item_display',
+  'textDisplay': 'minecraft:text_display',
+  'droppedItem': 'minecraft:item',
 };
 
 /// The field holding [type]'s own settings, or null for bodies without any.

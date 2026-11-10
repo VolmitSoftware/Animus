@@ -1,0 +1,38 @@
+{
+  "citizensId": 1,
+  "presentationWarnings": [],
+  "runtimeWarnings": [
+    "/traits/commandtrait: commands stay denied until citizens:commands-1 is on the [behaviors.actions] commandBehaviors list in config.toml"
+  ],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/dropstrait/drops/0/chance": "UNSUPPORTED_PRESERVED",
+    "/traits/dropstrait/drops/0/drop/type": "UNSUPPORTED_PRESERVED",
+    "/traits/dropstrait/drops/0/drop/amount": "UNSUPPORTED_PRESERVED",
+    "/traits/commandtrait/hideErrorMessages": "CONVERTED",
+    "/traits/commandtrait/cost": "CONVERTED",
+    "/traits/commandtrait/itemRequirements/0/type": "UNSUPPORTED_PRESERVED",
+    "/traits/commandtrait/itemRequirements/0/amount": "UNSUPPORTED_PRESERVED",
+    "/traits/commandtrait/commands/0/command": "CONVERTED",
+    "/traits/commandtrait/commands/0/hand": "CONVERTED",
+    "/traits/commandtrait/commands/0/player": "CONVERTED",
+    "/traits/commandtrait/commands/0/permissions/0": "CONVERTED"
+  },
+  "reasons": {
+    "/traits/dropstrait/drops/0/chance": "trait dropstrait has no Animus equivalent; kept in citizens:review",
+    "/traits/dropstrait/drops/0/drop/type": "trait dropstrait has no Animus equivalent; kept in citizens:review",
+    "/traits/dropstrait/drops/0/drop/amount": "trait dropstrait has no Animus equivalent; kept in citizens:review",
+    "/traits/commandtrait/itemRequirements/0/type": "trait commandtrait has no Animus equivalent; kept in citizens:review",
+    "/traits/commandtrait/itemRequirements/0/amount": "trait commandtrait has no Animus equivalent; kept in citizens:review"
+  },
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": []
+}

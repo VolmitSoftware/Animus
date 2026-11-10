@@ -801,6 +801,16 @@ class _RouteEditorState extends State<RouteEditor> {
               onChanged: (String? value) => set('style', value),
             ),
           ),
+        if (!step && (spec.order != 'wander' || node.containsKey('speed')))
+          InspectRow(
+            label: 'Speed from here',
+            labelFor: '$_gridId-point-speed',
+            tip: 'The route walks at this speed from this arrival on, until another point sets one.',
+            help: 'Blocks a second, 1-5. Empty keeps the current speed.',
+            problems: _inline('$field.speed'),
+            child: GuiNumberInput(id: '$_gridId-point-speed', value: asDouble(node['speed']), integer: false, label: '$label speed', placeholder: 'route', onChanged: (num? value) => set('speed', value)),
+          ),
+        if (!step && (spec.order != 'wander' || node.containsKey('teleport'))) _teleport(node, label, field, set),
         if (spec.order == 'random' || node.containsKey('weight'))
           InspectRow(
             label: 'Weight',
@@ -812,7 +822,7 @@ class _RouteEditorState extends State<RouteEditor> {
         if (spec.order == 'sequence' || node.containsKey('next')) _junctions(node, index, label, field),
       ],
       for (final Diagnostic problem in _inlineWithin(field))
-        if (!<String>['waitTicks', 'jitter', 'weight', 'next', 'style'].any((String covered) => problem.path == '$field.$covered' || problem.path.startsWith('$field.next')))
+        if (!<String>['waitTicks', 'jitter', 'weight', 'next', 'style', 'speed', 'teleport'].any((String covered) => problem.path == '$field.$covered' || problem.path.startsWith('$field.next')))
           dom.span(classes: 'animus-gui-problem is-error', <Widget>[dom.code(<Widget>[Component.text(problem.path)]), Component.text(' ${problem.message}')]),
       dom.div(classes: 'animus-row', <Widget>[
         if (!guide) ...<Widget>[
@@ -1002,9 +1012,43 @@ class _RouteEditorState extends State<RouteEditor> {
     ]);
   }
 
+  /// Where arriving at a point teleports the NPC: x, y and z, with an optional facing. Clearing x removes it.
+  Widget _teleport(JsonMap node, String label, String field, void Function(String, Object?) set) {
+    final JsonMap teleport = asMap(node['teleport']);
+    void axis(String key, Object? value) {
+      final JsonMap next = <String, Object?>{...teleport};
+      if (value == null || value == '') {
+        next.remove(key);
+      } else {
+        next[key] = value;
+      }
+      final bool empty = !next.containsKey('x') && !next.containsKey('y') && !next.containsKey('z');
+      set('teleport', empty ? null : <String, Object?>{'x': next['x'] ?? 0, 'y': next['y'] ?? 0, 'z': next['z'] ?? 0, ...next});
+    }
+
+    return InspectRow(
+      label: 'Teleport to',
+      tip: 'On arrival the NPC moves here at once, before its wait. A world name moves it to that world, where the route goes on.',
+      help: 'Empty: no teleport. World empty: the route\'s world.',
+      problems: _inline('$field.teleport'),
+      child: dom.div(classes: 'animus-route-coords', <Widget>[
+        for (final String key in const <String>['x', 'y', 'z', 'yaw', 'pitch'])
+          dom.label(<Widget>[
+            dom.span(<Widget>[Component.text(key)]),
+            GuiNumberInput(value: asDouble(teleport[key]), integer: false, label: '$label teleport $key', onChanged: (num? value) => axis(key, value)),
+          ]),
+        dom.label(<Widget>[
+          const dom.span(<Widget>[Component.text('world')]),
+          GuiTextInput(value: asString(teleport['world']) ?? '', label: '$label teleport world', placeholder: 'route world', onChanged: (String value) => axis('world', value.trim())),
+        ]),
+      ]),
+    );
+  }
+
   /// A point's weight, jitter, style and junctions for its list row.
   static String _extras(JsonMap point) => <String>[
-        if (point['weight'] != null) ', weight ${point['weight']}',
+        if (point['speed'] != null) ', speed ${point['speed']}',
+        if (point['teleport'] is Map<String, Object?>) ', teleports',
         if (point['jitter'] != null) ', jitter ${point['jitter']}',
         if (point['style'] != null) ', ${point['style']}',
         if (point['next'] is List<Object?>) ', next ${asList(point['next']).map((Object? junction) => asMap(junction)['to']).join(' or ')}',

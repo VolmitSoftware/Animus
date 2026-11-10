@@ -1,0 +1,20 @@
+{
+  "citizensId": 15,
+  "presentationWarnings": [],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/withertrait/arrowshield": "CONVERTED"
+  },
+  "reasons": {},
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": []
+}

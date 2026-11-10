@@ -131,7 +131,7 @@ class AnimusDirectorTest {
             case "setting" -> List.of("killable", "maximum");
             case "value" -> given.containsKey("setting") ? List.of("value-for-" + given.get("setting")) : List.of("reset");
             default -> List.of();
-        });
+        }, (String plugin) -> true);
         Actor admin = new Actor(false, AnimusDirector.ADMIN);
         assertEquals(List.of("killable", "maximum", "setting=", "value="), named.complete(admin, new String[]{"health", "guard", ""}));
         assertEquals(List.of("value-for-killable", "value="), named.complete(admin, new String[]{"health", "guard", "killable", ""}));
@@ -238,7 +238,7 @@ class AnimusDirectorTest {
         });
         Actor admin = new Actor(true, AnimusDirector.ADMIN);
         real.execute(admin, new String[]{"import"});
-        assertEquals(List.of("apply", "citizens", "denizen", "gloss", "plan", "preview", "shops", "stage"), admin.entries(), "every import lives under /animus import");
+        assertEquals(List.of("apply", "beautyquests", "betonquest", "citizens", "denizen", "gloss", "plan", "preview", "quests", "shops", "stage", "typewriter"), admin.entries(), "every import lives under /animus import");
         real.execute(admin, new String[]{"shop"});
         assertFalse(admin.entries().contains("import"));
         real.execute(admin, new String[]{"gui"});
@@ -266,13 +266,13 @@ class AnimusDirectorTest {
                 else words.add(parameter.getName() + "=" + (parameter.getDefaultValue().isEmpty() ? sample(parameter.getType()) : parameter.getDefaultValue()));
             }
             Actor everything = new Actor(command.getDescriptor().getOrigin() != art.arcane.volmlib.util.director.DirectorOrigin.CONSOLE,
-                    AnimusDirector.ADMIN, "animus.status", "animus.debug", "animus.debug.mode", "animus.build.donate");
+                    AnimusDirector.ADMIN, "animus.status", "animus.debug", "animus.debug.mode", "animus.build.donate", PermissionNodes.QUESTS_USE);
             real.execute(everything, words.toArray(String[]::new));
             String text = everything.text();
             assertFalse(text.contains("Unexpected \"") || text.contains("Unknown parameter") || text.contains("Missing argument")
                     || text.contains("Cannot convert") || text.contains("Cannot parse default") || text.contains("Usage:") && !text.contains("Failed to execute"),
                     command.path() + " " + words + " -> " + text);
-            Actor stray = new Actor(true, AnimusDirector.ADMIN, "animus.status", "animus.debug", "animus.debug.mode", "animus.build.donate");
+            Actor stray = new Actor(true, AnimusDirector.ADMIN, "animus.status", "animus.debug", "animus.debug.mode", "animus.build.donate", PermissionNodes.QUESTS_USE);
             words.add("stray-word");
             real.execute(stray, words.toArray(String[]::new));
             if (!command.getDescriptor().isHidden()) assertTrue(stray.text().contains("Unexpected \"stray-word\"") && stray.text().contains("Usage: " + command.path()), command.path() + " -> " + stray.text());
@@ -347,5 +347,52 @@ class AnimusDirectorTest {
         if (type == UUID.class) return UUID.randomUUID().toString();
         if (type.isEnum()) return ((Enum<?>) type.getEnumConstants()[0]).name().toLowerCase(java.util.Locale.ROOT);
         return "sample";
+    }
+
+    private static final List<String> LINKS = List.of("beautyquests", "betonquest", "quests", "typewriter");
+
+    /** Integration commands show in help, completion and the client tree only while their plugin runs; typed anyway, they name it. */
+    @Test void integrationCommandsNeedTheirPlugin() {
+        AnimusDirector without = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of(), (String plugin) -> false);
+        Actor admin = new Actor(true, AnimusDirector.ADMIN);
+        without.execute(admin, new String[]{"import"});
+        assertTrue(admin.entries().stream().noneMatch(LINKS::contains), admin.entries().toString());
+        without.execute(admin, new String[]{"npc"});
+        assertFalse(admin.entries().contains("model"));
+        assertFalse(admin.entries().contains("disguise"));
+        without.execute(admin, new String[]{});
+        assertFalse(admin.entries().contains("mythic"));
+        assertTrue(without.complete(admin, new String[]{"import", ""}).stream().noneMatch(LINKS::contains));
+        assertFalse(without.complete(admin, new String[]{"npc", ""}).contains("model"));
+        assertFalse(without.complete(admin, new String[]{""}).contains("mythic"));
+        assertEquals(List.of(), without.complete(admin, new String[]{"npc", "model", ""}));
+        assertFalse(without.complete(admin, new String[]{"create", "guard", ""}).contains("mythic="), "create takes no Mythic mob");
+        for (String[] typed : List.of(new String[]{"npc", "model", "guard"}, new String[]{"npc", "disguise", "guard", "zombie"}, new String[]{"import", "quests", "preview"},
+                new String[]{"import", "beautyquests", "apply"}, new String[]{"import", "betonquest", "preview"}, new String[]{"import", "typewriter", "rollback"},
+                new String[]{"mythic", "boss", "SkeletonKing"})) {
+            admin.lines.clear();
+            without.execute(admin, typed);
+            assertEquals(1, admin.lines.size(), admin.text());
+            assertTrue(admin.lines.getFirst().matches(".* needs (ModelEngine|LibsDisguises|Quests|BeautyQuests|BetonQuest|Typewriter|MythicMobs)"), admin.text());
+        }
+        AnimusDirector with = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of(), (String plugin) -> true);
+        with.execute(admin, new String[]{"import"});
+        assertTrue(admin.entries().containsAll(LINKS), admin.entries().toString());
+        with.execute(admin, new String[]{"npc"});
+        assertTrue(admin.entries().containsAll(List.of("model", "disguise")));
+        with.execute(admin, new String[]{});
+        assertTrue(admin.entries().contains("mythic"));
+        assertTrue(with.complete(admin, new String[]{"import", ""}).containsAll(LINKS));
+        assertTrue(with.complete(admin, new String[]{""}).contains("mythic"));
+    }
+
+    @Test void eachIntegrationAnswersToItsOwnPlugin() {
+        AnimusDirector models = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of(), "ModelEngine"::equals);
+        Actor admin = new Actor(true, AnimusDirector.ADMIN);
+        models.execute(admin, new String[]{"npc"});
+        assertTrue(admin.entries().contains("model"));
+        assertFalse(admin.entries().contains("disguise"));
+        models.execute(admin, new String[]{"import"});
+        assertTrue(admin.entries().stream().noneMatch(LINKS::contains));
     }
 }

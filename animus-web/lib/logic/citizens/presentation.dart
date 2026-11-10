@@ -1,6 +1,7 @@
 /// Port of core's `CitizensPresentation`: equipment, inventory, hologram, pose, armor stand, facing, owner and nameplate.
 library;
 
+import '../../mc/npc/npc_look.dart' show NpcSlot, mcDrawnSlots;
 import 'citizens_items.dart';
 import 'field_notes.dart';
 import 'java_json.dart';
@@ -68,6 +69,8 @@ PresentationResult mapPresentation(String type, JObject traits, JObject record) 
   mapping.inventory();
   mapping.hologram();
   mapping.pose();
+  mapping.sleep();
+  mapping.contents();
   mapping.armorStand();
   mapping.facingFromPoses();
   mapping.owner();
@@ -77,6 +80,9 @@ PresentationResult mapPresentation(String type, JObject traits, JObject record) 
 }
 
 JObject? _object(JElement? value) => value is JObject ? value : null;
+
+/// `BodyVariant.ID`.
+final RegExp _id = RegExp(r'^([a-z0-9_.-]+:)?[a-z0-9_./-]+$');
 String? _text(JElement? value) => value is JPrimitive ? value.asString : null;
 
 bool? _bool(JElement? value) {
@@ -139,7 +145,7 @@ class _Presentation {
           _item(equipment.get('cosmetic_$key'), '/traits/equipment/cosmetic_$key', <String>[], <String>{}) != null) {
         continue;
       }
-      final JObject? item = _item(entry.value, path, warnings, converted);
+      final JObject? item = _shown(entry.value, path, slot);
       if (item == null) continue;
       if (cosmetic) warnings.add('$path: cosmetic item shown in $slot${equipment.has(realKey) ? ' instead of /traits/equipment/$realKey' : ''}');
       shown[slot] = item;
@@ -160,6 +166,20 @@ class _Presentation {
 
   /// A horse's saddle and armour from HorseModifiers fill the saddle and body slots that Equipment left empty.
   void _horse(Map<String, JObject> shown) {
+    final bool? saddled = _bool(traits.get('saddle'));
+    if (saddled == true && !shown.containsKey('saddle')) {
+      final JObject saddle = JObject()
+        ..addString('id', 'minecraft:saddle')
+        ..addInt('count', 1);
+      if (mcDrawnSlots(type).contains(NpcSlot.saddle)) {
+        shown['saddle'] = saddle;
+        converted.add('/traits/saddle');
+      } else {
+        notes['/traits/saddle'] = FieldNote(unsupportedPreserved, 'a $type body does not show a saddle');
+      }
+    } else if (saddled != null) {
+      converted.add('/traits/saddle');
+    }
     final JObject? horse = _object(traits.get('horsemodifiers'));
     if (horse == null) return;
     for (final MapEntry<String, String> part in const <MapEntry<String, String>>[MapEntry<String, String>('saddle', 'saddle'), MapEntry<String, String>('armor', 'body')]) {
@@ -169,9 +189,23 @@ class _Presentation {
         notes[path] = const FieldNote(unsupportedPreserved, 'the Equipment trait already fills this slot');
         continue;
       }
-      final JObject? item = _item(horse.get(part.key), path, warnings, converted);
+      final JObject? item = _shown(horse.get(part.key), path, part.value);
       if (item != null) shown[part.value] = item;
     }
+  }
+
+  /// The item for [slot], or null with the item kept when this body does not show that slot.
+  JObject? _shown(JElement? value, String path, String slot) {
+    final List<String> problems = <String>[];
+    final Set<String> paths = <String>{};
+    final JObject? item = _item(value, path, problems, paths);
+    if (item != null && !mcDrawnSlots(type).map((NpcSlot drawn) => drawn.key).contains(slot)) {
+      notes[path] = FieldNote(unsupportedPreserved, 'a $type body does not show the $slot slot');
+      return null;
+    }
+    warnings.addAll(problems);
+    converted.addAll(paths);
+    return item;
   }
 
   void inventory() {
@@ -483,6 +517,117 @@ class _Presentation {
     }
   }
 
+  /// Citizens' entity pose and sleep traits, on a player body that neither sits nor sneaks.
+  void sleep() {
+    final bool player = type == 'minecraft:player';
+    final JObject? sleep = _object(traits.get('sleeptrait'));
+    if (sleep != null && sleep.has('at') && !sleep.get('at')!.isNull) {
+      if (!player) {
+        notes['/traits/sleeptrait'] = const FieldNote(unsupportedPreserved, 'sleeping shows only on player bodies');
+      } else if (fields.has('pose')) {
+        notes['/traits/sleeptrait'] = const FieldNote(unsupportedPreserved, 'the NPC already sits or sneaks');
+      } else {
+        fields.addString('pose', 'sleeping');
+        notes['/traits/sleeptrait/at'] = const FieldNote(statusConverted, 'the NPC sleeps where it stands');
+      }
+    }
+    final JObject? entity = _object(traits.get('entitypose'));
+    if (entity == null || !entity.has('pose')) return;
+    const String path = '/traits/entitypose/pose';
+    final String pose = (_text(entity.get('pose')) ?? '').toLowerCase();
+    final String? shown = switch (pose) {
+      'crouching' || 'sneaking' => 'sneaking',
+      'sleeping' => 'sleeping',
+      'swimming' => 'swimming',
+      'sitting' => 'sitting',
+      'standing' => 'standing',
+      _ => null,
+    };
+    if (shown == null) {
+      notes[path] = FieldNote(unsupportedPreserved, 'pose $pose has no Animus equivalent');
+      return;
+    }
+    if (shown == 'standing') {
+      converted.add(path);
+      return;
+    }
+    if (!player) {
+      notes[path] = const FieldNote(unsupportedPreserved, 'poses other than standing show only on player bodies');
+      return;
+    }
+    if (fields.has('pose')) {
+      notes[path] = const FieldNote(unsupportedPreserved, 'another trait already sets the pose');
+      return;
+    }
+    fields.addString('pose', shown);
+    converted.add(path);
+  }
+
+  static const List<String> _rotations = <String>[
+    'none', 'clockwise_45', 'clockwise', 'clockwise_135', 'flipped', 'flipped_45', 'counter_clockwise', 'counter_clockwise_45', //
+  ];
+
+  /// What a block or item body shows: an item frame's item, rotation and
+  /// facing, and the block or item Citizens keeps in the NPC's item metadata.
+  void contents() {
+    final JObject? frame = _object(traits.get('itemframe'));
+    if (frame != null) {
+      final String? field = type == 'minecraft:item_frame' ? 'itemFrame' : (type == 'minecraft:glow_item_frame' ? 'glowItemFrame' : null);
+      if (field == null) {
+        notes['/traits/itemframe'] = const FieldNote(unsupportedPreserved, 'applies only to item frame bodies, so Citizens did not show it either');
+      } else {
+        final JObject settings = JObject();
+        if (frame.has('item') && !frame.get('item')!.isNull) {
+          final JObject? item = _item(frame.get('item'), '/traits/itemframe/item', warnings, converted);
+          if (item != null) settings.add('item', item);
+        }
+        final String rotation = (_text(frame.get('rotation')) ?? '').toLowerCase();
+        if (_rotations.contains(rotation)) {
+          if (_rotations.indexOf(rotation) > 0) settings.addInt('rotation', _rotations.indexOf(rotation));
+          converted.add('/traits/itemframe/rotation');
+        }
+        final String facing = (_text(frame.get('facing')) ?? '').toLowerCase();
+        if (const <String>['down', 'up', 'north', 'south', 'west', 'east'].contains(facing)) {
+          settings.addString('facing', facing);
+          converted.add('/traits/itemframe/facing');
+        }
+        if (frame.has('fixed')) notes['/traits/itemframe/fixed'] = const FieldNote(statusConverted, 'NPC frames never drop their item');
+        if (settings.isNotEmpty) fields.add(field, settings);
+      }
+    }
+    final JObject? metadata = _object(record.get('metadata'));
+    final String? material = metadata == null ? null : _text(metadata.get('item-type-id'));
+    if (material == null) return;
+    const String path = '/metadata/item-type-id';
+    String id = material.toLowerCase();
+    if (!id.contains(':')) id = 'minecraft:$id';
+    final String? key = switch (type) {
+      'minecraft:falling_block' => 'fallingBlock',
+      'minecraft:block_display' => 'blockDisplay',
+      'minecraft:item_display' => 'itemDisplay',
+      'minecraft:item' => 'droppedItem',
+      _ => null,
+    };
+    if (key == null || !_id.hasMatch(id)) {
+      notes[path] = FieldNote(unsupportedPreserved, key == null ? 'only block and item bodies show an item' : '$material is not an id');
+      return;
+    }
+    final JObject settings = JObject();
+    if (key == 'fallingBlock' || key == 'blockDisplay') {
+      settings.addString('block', id);
+    } else {
+      final BigInt amount = _integer(metadata!.get('item-type-amount'), 1);
+      final BigInt count = amount < BigInt.one ? BigInt.one : (amount > BigInt.from(maxItemCount) ? BigInt.from(maxItemCount) : amount);
+      settings.add('item', JObject()
+        ..addString('id', id)
+        ..addBig('count', count));
+      if (metadata.has('item-type-amount')) converted.add('/metadata/item-type-amount');
+    }
+    converted.add(path);
+    if (metadata!.has('item-type-data')) notes['/metadata/item-type-data'] = const FieldNote(statusConverted, 'legacy data values have no meaning on current versions');
+    fields.add(key, settings);
+  }
+
   void armorStand() {
     final JObject? stand = _object(traits.get('armorstandtrait'));
     if (stand == null) return;
@@ -523,7 +668,11 @@ class _Presentation {
       if (!gravity) fields.addBool('gravity', false);
       converted.add('/traits/armorstandtrait/gravity');
     }
-    if (stand.has('marker')) warnings.add('/traits/armorstandtrait: marker is kept for review');
+    final bool? marker = _bool(stand.get('marker'));
+    if (marker != null) {
+      if (marker) look.addBool('marker', true);
+      converted.add('/traits/armorstandtrait/marker');
+    }
     fields.add('armorStand', look);
   }
 

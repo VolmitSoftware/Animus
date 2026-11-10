@@ -38,6 +38,8 @@ public final class WaypointProgress {
     private Leg current;
     private boolean complete;
     private int next, step = 1, node = -1, wanderCentre;
+    /** The speed the last point that sets one gave the route; null keeps the route's own. */
+    private Double speed;
     private final ArrayDeque<Integer> path = new ArrayDeque<>();
     private int[][] links;
     private RouteRecordings recordings;
@@ -68,7 +70,9 @@ public final class WaypointProgress {
         if (settings.equals(replacement)) return false;
         settings = replacement; links = null; reset(); complete = false; return true;
     }
-    private void reset() { current = null; next = 0; step = 1; node = -1; path.clear(); }
+    private void reset() { current = null; next = 0; step = 1; node = -1; path.clear(); speed = null; }
+    /** The route's speed now: that of the last point reached that sets one, else {@code fallback}. */
+    public double speed(double fallback) { return speed == null ? fallback : speed; }
 
     /** The first leg from the NPC's position; restarts an unfinished route. Empty once a once route is complete. */
     public Optional<Leg> start(Vec3 position) {
@@ -85,6 +89,8 @@ public final class WaypointProgress {
     /** The leg after the current one arrived; empty when the route is complete. */
     public Optional<Leg> arrived(Leg leg, Vec3 position) {
         if (complete || leg == null || leg != current || leg.pause()) throw new IllegalStateException("Waypoint arrival is no longer current");
+        if (leg.arrival() >= 0 && leg.arrival() < settings.points().size() && settings.points().get(leg.arrival()).speed() != null)
+            speed = settings.points().get(leg.arrival()).speed();
         WaypointSettings.Order order = settings.order();
         if (order == WaypointSettings.Order.SEQUENCE) {
             int wait = draw(settings.waitAfter(next));

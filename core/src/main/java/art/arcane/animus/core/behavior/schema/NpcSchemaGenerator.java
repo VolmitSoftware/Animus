@@ -3,27 +3,35 @@ package art.arcane.animus.core.behavior.schema;
 import art.arcane.animus.core.platform.MinecraftIds;
 import art.arcane.animus.core.combat.FightKind;
 import art.arcane.animus.core.combat.HealthSettings;
+import art.arcane.animus.core.integration.ModelEngineModule;
 import art.arcane.animus.core.combat.RangedWeapon;
 import art.arcane.animus.core.combat.TargetCategory;
 import art.arcane.animus.core.control.LookClose;
 import art.arcane.animus.core.control.RideSettings;
 import art.arcane.animus.core.gui.GuiBinding;
 import art.arcane.animus.core.hire.HireTerms;
+import art.arcane.animus.core.schedule.ScheduleSettings;
 import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.navigation.MovementSettings;
 import art.arcane.animus.core.navigation.MovementStyle;
+import art.arcane.animus.core.navigation.HomeSettings;
+import art.arcane.animus.core.navigation.RoutePause;
 import art.arcane.animus.core.navigation.WaypointSettings;
 import art.arcane.animus.core.npc.ArmorStandLook;
 import art.arcane.animus.core.npc.BodyVariant;
+import art.arcane.animus.core.npc.BossBarSettings;
+import art.arcane.animus.core.npc.ViewerFilter;
 import art.arcane.animus.core.npc.BodyTraits;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.HologramStyle;
 import art.arcane.animus.core.npc.NamedPoses;
+import art.arcane.animus.core.npc.NpcAnchors;
 import art.arcane.animus.core.npc.NpcAppearance;
 import art.arcane.animus.core.npc.NpcAttributes;
 import art.arcane.animus.core.npc.VanillaAttributes;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.npc.NpcDisguise;
 import art.arcane.animus.core.npc.NpcInventory;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.npc.NpcPose;
@@ -88,16 +96,20 @@ public final class NpcSchemaGenerator {
         nameplate.add("properties", property("visible", described(type("boolean"), "True by default.")).getAsJsonObject("properties"));
         properties.add("nameplate", nameplate);
         properties.add("armorStand", armorStand());
-        for (BodyVariant.Field field : BodyVariant.FIELDS.values()) properties.add(field.field(), variant(field));
         properties.add("glowing", described(type("boolean"), "An outline glow in the team colour."));
         properties.add("teamColor", described(choices(BodyTraits.TEAM_COLORS), "The colour of the glow and the name."));
         properties.add("baby", described(type("boolean"), "A baby body, for types that have one."));
         properties.add("usingItem", described(type("boolean"), "Holds the main-hand item raised."));
         properties.add("listed", described(type("boolean"), "Player bodies only: show an entry in the tab list."));
         properties.add("gravity", described(type("boolean"), "False keeps the body where it is placed, whatever the gravity attribute says. True by default."));
+        for (BodyVariant.Field field : BodyVariant.FIELDS.values()) properties.add(field.field(), variant(field));
+        properties.add(BossBarSettings.FIELD, bossBar());
+        properties.add(ViewerFilter.FIELD, viewers());
+        properties.add(NpcDefinition.CLICK_REDIRECT, described(pattern(UUID), "The UUID of another NPC: clicking this NPC counts as clicking that one while it is active."));
         properties.add(NpcAttributes.FIELD, attributes());
         properties.add("inventory", inventory());
         properties.add("poses", poses());
+        properties.add(NpcAnchors.FIELD, anchors());
         properties.add("movement", movement());
         JsonObject behaviors = described(type("array"), "Behaviors whose triggers this NPC runs.");
         behaviors.add("items", pattern("^[a-z0-9_-]+:[a-z0-9_/-]+$"));
@@ -119,6 +131,9 @@ public final class NpcSchemaGenerator {
         rigId.addProperty("maxLength", 256);
         rig.add("properties", property("id", rigId).getAsJsonObject("properties"));
         properties.add("rig", rig);
+        JsonObject disguise = described(text(NpcDisguise.MAX_LENGTH), "A LibsDisguises disguise, as /disguise takes it or the name of a custom disguise, such as zombie setBaby true. "
+                + "With LibsDisguises installed the NPC shows that body; /animus npc disguise lists the options it leaves out.");
+        properties.add(NpcDisguise.FIELD, disguise);
         JsonObject modules = described(type("object"), "Per-NPC module settings, keyed by namespace:name. Unknown modules are kept.");
         JsonObject known = new JsonObject();
         known.add("animus:navigation", navigation());
@@ -130,6 +145,11 @@ public final class NpcSchemaGenerator {
         known.add(MountDeclaration.MODULE, mount());
         known.add(RideSettings.MODULE, riding());
         known.add(LookClose.MODULE, lookClose());
+        known.add(ScheduleSettings.MODULE, schedule());
+        known.add(ModelEngineModule.MODULE, modelEngine());
+        known.add(art.arcane.animus.core.integration.MythicBinding.MODULE, mythic());
+        known.add(HomeSettings.MODULE, home());
+        known.add(art.arcane.animus.core.presentation.MirrorSettings.MODULE, mirror());
         modules.add("properties", known);
         properties.add("modules", modules);
         root.add("properties", properties);
@@ -253,6 +273,7 @@ public final class NpcSchemaGenerator {
         fields.add("arms", described(type("boolean"), "Show arms."));
         fields.add("basePlate", described(type("boolean"), "Show the base plate. True by default."));
         fields.add("invisible", described(type("boolean"), "Hide the stand and show only what it wears."));
+        fields.add("marker", described(type("boolean"), "No hitbox: players cannot click the stand."));
         for (ArmorStandLook.Part part : ArmorStandLook.Part.values()) {
             JsonObject angles = list(range("number", -360, 360), 3, 3, "[x, y, z] degrees; omit for the default pose.");
             fields.add(part.key(), angles);
@@ -265,9 +286,56 @@ public final class NpcSchemaGenerator {
         JsonObject variant = described(closed(), field.description());
         JsonObject fields = new JsonObject();
         for (BodyVariant.Setting setting : field.settings())
-            fields.add(setting.key(), described(setting.flag() ? type("boolean") : choices(setting.values()), setting.description()));
+            fields.add(setting.key(), described(switch (setting.kind()) {
+                case NUMBER -> range("integer", setting.minimum(), setting.maximum());
+                case FLAG -> type("boolean");
+                case CHOICE -> choices(setting.values());
+                case ITEM -> reference("item");
+                case BLOCK -> pattern("^" + BodyVariant.BLOCK_STATE + "$");
+                case ID -> pattern("^" + BodyVariant.ID + "$");
+                case TEXT -> lineText();
+            }, setting.description()));
         variant.add("properties", fields);
         return variant;
+    }
+
+    private static JsonObject bossBar() {
+        JsonObject bar = described(closed(), "A boss bar shown to players near the NPC.");
+        JsonObject fields = new JsonObject();
+        fields.add("title", described(text(NpcAppearance.MAX_TEXT), "The bar's text; & colour codes apply. The NPC's name by default."));
+        fields.add("color", described(choices(BossBarSettings.COLORS), "purple by default."));
+        fields.add("style", described(choices(BossBarSettings.STYLES), "solid by default, or the bar split into notches."));
+        JsonObject flags = list(choices(BossBarSettings.FLAGS), 0, BossBarSettings.FLAGS.size(), "Sky and music effects while the bar shows.");
+        flags.addProperty("uniqueItems", true);
+        fields.add("flags", flags);
+        fields.add("range", described(range("number", 1, BossBarSettings.MAX_RANGE), "Blocks from the NPC within which players see it. 64 by default."));
+        JsonObject fill = new JsonObject();
+        JsonArray forms = new JsonArray();
+        forms.add(range("number", 0, 1));
+        forms.add(choices(List.of("health")));
+        fill.add("anyOf", forms);
+        fields.add("progress", described(fill, "How full the bar is, from 0 to 1, or health to follow the NPC's health. Full by default."));
+        fields.add("permission", described(pattern("^[A-Za-z0-9_.*-]{1,128}$"), "Only players with this permission see the bar."));
+        bar.add("properties", fields);
+        return bar;
+    }
+
+    private static JsonObject viewers() {
+        JsonObject viewers = described(closed(), "Which players see the NPC. Others are never sent its body.");
+        JsonObject fields = new JsonObject();
+        fields.add("mode", described(choices(List.of("deny", "allow")), "deny (default) hides the NPC from the players, groups and permissions listed; allow shows it only to players who match every list."));
+        JsonObject players = list(pattern(UUID), 0, ViewerFilter.MAX_ENTRIES, "Player UUIDs.");
+        players.addProperty("uniqueItems", true);
+        fields.add("players", players);
+        JsonObject groups = list(pattern("^[A-Za-z0-9_.*-]{1,128}$"), 0, ViewerFilter.MAX_ENTRIES, "Permission groups; a player is in one when they have group.<name>.");
+        groups.addProperty("uniqueItems", true);
+        fields.add("groups", groups);
+        JsonObject permissions = list(pattern("^[A-Za-z0-9_.*-]{1,128}$"), 0, ViewerFilter.MAX_ENTRIES, "Permission nodes; any one matches.");
+        permissions.addProperty("uniqueItems", true);
+        fields.add("permissions", permissions);
+        fields.add("range", described(range("number", 1, ViewerFilter.MAX_RANGE), "Players farther than this are not filtered."));
+        viewers.add("properties", fields);
+        return viewers;
     }
 
     private static JsonObject inventory() {
@@ -285,6 +353,20 @@ public final class NpcSchemaGenerator {
         fields.add("slots", slots);
         inventory.add("properties", fields);
         return inventory;
+    }
+
+    private static JsonObject anchors() {
+        JsonObject anchors = described(type("object"), "Named places animus:navigate and animus:teleport take the NPC to.");
+        anchors.addProperty("maxProperties", NpcAnchors.MAXIMUM_ANCHORS);
+        anchors.add("propertyNames", pattern("^" + NpcAnchors.NAME + "$"));
+        JsonObject place = closed();
+        place.add("required", strings("x", "y", "z"));
+        JsonObject fields = new JsonObject();
+        for (String axis : List.of("x", "y", "z")) fields.add(axis, range("number", -29_999_984, 29_999_984));
+        fields.add("world", described(pattern("^" + NpcAnchors.WORLD + "$"), "Another world by name. Unset: the NPC's own world."));
+        place.add("properties", fields);
+        anchors.add("additionalProperties", place);
+        return anchors;
     }
 
     private static JsonObject poses() {
@@ -445,6 +527,14 @@ public final class NpcSchemaGenerator {
         properties.add("recording", described(recording, "A recording under recordings/ to play instead of a route."));
         properties.add("playback", described(choices(List.of("once", "loop", "pingpong")), "Recording only: once, loop or pingpong. Unset plays the recording's own playback, else loop."));
         routeFields(properties);
+        JsonObject pause = described(closed(), "The route stands still for ticks when a player comes within playerRange, or with onClick when one right-clicks the NPC.");
+        JsonObject pauseFields = new JsonObject();
+        pauseFields.add("playerRange", described(range("number", 0, RoutePause.MAXIMUM_RANGE), "Blocks. 0 or unset: players nearby never pause the route."));
+        pauseFields.add("onClick", described(type("boolean"), "A right-click pauses the route."));
+        pauseFields.add("ticks", described(range("integer", 1, RoutePause.MAXIMUM_TICKS), "How long a pause lasts. 20 by default."));
+        pauseFields.add("lockoutTicks", described(range("integer", 0, RoutePause.MAXIMUM_LOCKOUT), "After a pause starts, no new one starts for this long. 0 by default."));
+        pause.add("properties", pauseFields);
+        properties.add("pause", pause);
         navigation.add("properties", properties);
         JsonObject routed = new JsonObject();
         routed.add("if", required("route"));
@@ -513,6 +603,14 @@ public final class NpcSchemaGenerator {
         pointFields.add("waitTicks", described(waitTicks(), "Wait after arriving here, instead of the route's."));
         pointFields.add("jitter", described(range("integer", 0, WaypointSettings.MAXIMUM_JITTER), "Jitter radius of this point, instead of the route's."));
         pointFields.add("weight", described(range("integer", 1, WaypointSettings.MAXIMUM_WEIGHT), "Order random only: how often this point is chosen."));
+        pointFields.add("speed", described(range("number", 1, 5), "Not order wander: the route's speed in blocks per second from this arrival on."));
+        JsonObject teleport = described(coordinate(), "Not order wander: on arrival the NPC teleports here, in the route's world, before the wait.");
+        teleport.getAsJsonObject("properties").add("yaw", range("number", -360, 360));
+        teleport.getAsJsonObject("properties").add("pitch", range("number", -90, 90));
+        JsonObject world = described(pattern("^[^\\s/\\\\]{1,64}$"), "Another loaded world by name; the route goes on there. Unset: the route's world.");
+        teleport.getAsJsonObject("properties").add("world", world);
+        teleport.addProperty("additionalProperties", false);
+        pointFields.add("teleport", teleport);
         JsonObject junction = closed();
         junction.add("required", strings("to"));
         JsonObject way = new JsonObject();
@@ -534,7 +632,7 @@ public final class NpcSchemaGenerator {
         stepFields.add("weight", pointFields.get("weight"));
         stepFields.add("next", pointFields.get("next"));
         step.add("properties", stepFields);
-        step.add("not", anyRequired(List.of("x", "y", "z", "jitter", "style")));
+        step.add("not", anyRequired(List.of("x", "y", "z", "jitter", "style", "speed", "teleport")));
         JsonArray kinds = new JsonArray();
         kinds.add(point);
         kinds.add(step);
@@ -655,6 +753,16 @@ public final class NpcSchemaGenerator {
         return rule;
     }
 
+    private static JsonObject mythic() {
+        JsonObject mythic = described(closed(), "The MythicMobs mob type this NPC was made from. Its skills run on the NPC's matching events.");
+        mythic.add("required", strings("mob"));
+        JsonObject properties = new JsonObject();
+        properties.add("enabled", described(type("boolean"), "False stops the mob's skills from running. True by default."));
+        properties.add("mob", described(pattern("^" + art.arcane.animus.core.integration.MythicBinding.MOB_NAME + "$"), "The Mythic mob type, such as SkeletonKing."));
+        mythic.add("properties", properties);
+        return mythic;
+    }
+
     private static JsonObject lookClose() {
         JsonObject look = described(closed(), "Turns the NPC toward the nearest player in range while it is spawned.");
         JsonObject properties = new JsonObject();
@@ -663,6 +771,17 @@ public final class NpcSchemaGenerator {
         properties.add("lineOfSight", described(type("boolean"), "Only look at players it can see."));
         properties.add("whileNavigating", described(type("boolean"), "Also look while following a route."));
         properties.add("npcs", described(type("boolean"), "Also look at the nearest other NPC when no player is in range."));
+        properties.add("headOnly", described(type("boolean"), "Turn only the head; the body keeps its facing."));
+        properties.add("perPlayer", described(type("boolean"), "Each player in range sees the NPC look at them."));
+        JsonObject permission = pattern("^[A-Za-z0-9_.*-]{1,128}$");
+        properties.add("permissions", list(permission, 0, LookClose.MAXIMUM_PERMISSIONS, "Only players holding every one of these permissions are looked at."));
+        JsonObject turn = described(closed(), "Turn at most this many degrees a tick instead of at once.");
+        JsonObject turnProperties = new JsonObject();
+        turnProperties.add("yaw", described(range("number", 0, 360), "Degrees a tick. 40 by default."));
+        turnProperties.add("pitch", described(range("number", 0, 180), "Degrees a tick; 0 keeps the pitch. 10 by default."));
+        turn.add("properties", turnProperties);
+        properties.add("turnRate", turn);
+        properties.add("switchTicks", described(range("integer", 1, LookClose.MAXIMUM_RANDOM_DELAY), "Look at a random player in range every this many ticks instead of the nearest."));
         JsonObject random = described(closed(), "With nobody to look at, turn to a random facing every delayTicks.");
         JsonObject randomProperties = new JsonObject();
         randomProperties.add("enabled", described(type("boolean"), "True by default."));
@@ -673,6 +792,109 @@ public final class NpcSchemaGenerator {
         properties.add("randomLook", random);
         look.add("properties", properties);
         return look;
+    }
+
+    private static JsonObject schedule() {
+        JsonObject schedule = described(closed(), "Where the NPC spends each part of the Minecraft day: it walks to the location whose time has passed last.");
+        schedule.add("required", strings("locations"));
+        JsonObject properties = new JsonObject();
+        properties.add("enabled", described(type("boolean"), "True when the object is present."));
+        properties.add("reviewAccepted", described(type("boolean"), "An imported schedule runs only once this is true."));
+        properties.add("speed", described(range("number", 1, 10), "Blocks per second. The NPC's movement.speed by default, else 2."));
+        JsonObject location = described(closed(), "A place and the world time the NPC goes there.");
+        location.add("required", strings("time", "x", "y", "z"));
+        JsonObject fields = new JsonObject();
+        fields.add("name", described(pattern("^" + ScheduleSettings.NAME + "$"), "A name for replies and commands."));
+        fields.add("time", described(range("integer", 0, ScheduleSettings.DAY_TICKS - 1), "World time the NPC sets out: 0 is sunrise, 6000 noon, 13000 night."));
+        for (String axis : List.of("x", "y", "z")) fields.add(axis, described(range("integer", -30_000_000, 30_000_000), "Block " + axis + " in the NPC's world."));
+        fields.add("yaw", described(range("number", -360, 360), "Facing on arrival."));
+        fields.add("pitch", described(range("number", -90, 90), "Head pitch on arrival."));
+        fields.add("chance", described(range("integer", 1, 100), "Draw weight among locations with the same time. 100 by default."));
+        fields.add("weather", described(choices(List.of("any", "clear", "storm")), "Only in this weather. any by default."));
+        fields.add("staySeconds", described(seconds(1), "How long it stays before drawing again among locations with the same time: seconds, or [min, max]."));
+        JsonObject wander = described(closed(), "Walks to random blocks around the location: within radius, or inside area.");
+        JsonObject wanderFields = new JsonObject();
+        wanderFields.add("radius", described(range("integer", 1, ScheduleSettings.MAXIMUM_WANDER), "Blocks on x and z."));
+        wanderFields.add("area", described(list(range("integer", -30_000_000, 30_000_000), 6, 6, ""), "[x1, y1, z1, x2, y2, z2], both corners included."));
+        wanderFields.add("waitSeconds", described(seconds(0), "Wait between wander legs: seconds, or [min, max]. 1 by default."));
+        wander.add("properties", wanderFields);
+        JsonArray either = new JsonArray();
+        either.add(required("radius"));
+        either.add(required("area"));
+        wander.add("oneOf", either);
+        fields.add("wander", wander);
+        fields.add("pose", described(choices(List.of("standing", "sneaking", "sleeping", "sitting")), "Pose on arrival, player bodies only."));
+        JsonObject equipment = described(closed(), "Items put on at arrival, by slot.");
+        JsonObject slots = new JsonObject();
+        for (EquipmentSlot slot : EquipmentSlot.values()) slots.add(slot.key(), reference("item"));
+        equipment.add("properties", slots);
+        fields.add("equipment", equipment);
+        fields.add("clearEquipment", described(type("boolean"), "Empty the other slots on arrival."));
+        fields.add("skin", described(pattern("^[a-f0-9]{64}$"), "A skin file under skins/, player bodies only."));
+        fields.add("skinOnDeparture", described(type("boolean"), "Show the skin as the NPC sets out instead of on arrival."));
+        JsonObject command = described(pattern("^[^/].*$"), "A console command without the slash.");
+        command.addProperty("maxLength", ScheduleSettings.MAXIMUM_COMMAND);
+        fields.add("commands", list(command, 0, ScheduleSettings.MAXIMUM_COMMANDS, "Console commands run on arrival."));
+        location.add("properties", fields);
+        properties.add("locations", list(location, 1, ScheduleSettings.MAXIMUM_LOCATIONS, "1-" + ScheduleSettings.MAXIMUM_LOCATIONS + " locations."));
+        schedule.add("properties", properties);
+        return schedule;
+    }
+
+    private static JsonObject seconds(int minimum) {
+        JsonArray either = new JsonArray();
+        either.add(range("integer", minimum, ScheduleSettings.MAXIMUM_SECONDS));
+        either.add(list(range("integer", minimum, ScheduleSettings.MAXIMUM_SECONDS), 2, 2, "[min, max], min not above max."));
+        JsonObject seconds = new JsonObject();
+        seconds.add("oneOf", either);
+        return seconds;
+    }
+
+    private static JsonObject modelEngine() {
+        JsonObject model = described(closed(), "A Model Engine model shown in place of the body. Needs Model Engine on the server; without it the body shows.");
+        model.add("required", strings("model"));
+        JsonObject properties = new JsonObject();
+        properties.add("enabled", described(type("boolean"), "True when the object is present."));
+        JsonObject id = pattern("^" + ModelEngineModule.MODEL_PATTERN + "$");
+        properties.add("model", described(id, "The Model Engine model id."));
+        properties.add("scale", described(range("number", ModelEngineModule.MINIMUM_SCALE, ModelEngineModule.MAXIMUM_SCALE), "Size of the model. 1 by default."));
+        properties.add("showBody", described(type("boolean"), "Also show the NPC's own body. False by default."));
+        properties.add("hitbox", described(type("boolean"), "Clicks on the model's hitbox count as clicks on the NPC. True by default."));
+        properties.add("nametagBone", described(text(64), "A bone of the model that shows the NPC's name."));
+        JsonObject states = described(closed(), "Animations played for each state, by name in the model. A state left out plays its usual animation.");
+        JsonObject named = new JsonObject();
+        for (ModelEngineModule.State state : ModelEngineModule.State.values())
+            named.add(state.key(), described(text(64), state.fallback() == null ? "Played when a player clicks the NPC. Nothing by default." : state.fallback() + " by default."));
+        states.add("properties", named);
+        properties.add("states", states);
+        model.add("properties", properties);
+        return model;
+    }
+
+    private static JsonObject mirror() {
+        JsonObject mirror = described(closed(), "Each viewer sees this NPC with their own skin, name or equipment.");
+        JsonObject properties = new JsonObject();
+        properties.add("enabled", described(type("boolean"), "True when the object is present."));
+        properties.add("skin", described(type("boolean"), "The viewer's own skin on a player body. True by default."));
+        properties.add("name", described(type("boolean"), "The viewer's own name."));
+        properties.add("equipment", described(type("boolean"), "What the viewer holds and wears when the NPC comes into view."));
+        mirror.add("properties", properties);
+        return mirror;
+    }
+
+    private static JsonObject home() {
+        JsonObject home = described(closed(), "Returns the NPC home once it has stood idle away from it, in its own world.");
+        home.add("required", strings("x", "y", "z"));
+        JsonObject properties = new JsonObject();
+        properties.add("enabled", described(type("boolean"), "True when the object is present."));
+        for (String axis : List.of("x", "y", "z")) properties.add(axis, range("number", -29_999_984, 29_999_984));
+        properties.add("yaw", described(range("number", -360, 360), "Facing after a teleport home."));
+        properties.add("pitch", described(range("number", -90, 90), "Facing after a teleport home."));
+        properties.add("delayTicks", described(range("integer", 0, HomeSettings.MAXIMUM_DELAY), "Idle ticks before going home. 0 by default."));
+        properties.add("distance", described(range("number", 0, HomeSettings.MAXIMUM_DISTANCE), "Only from at least this far. 0 by default: any distance."));
+        properties.add("return", described(choices(List.of("teleport", "walk")), "teleport by default."));
+        home.add("properties", properties);
+        return home;
     }
 
     private static JsonObject mount() {
@@ -754,7 +976,8 @@ public final class NpcSchemaGenerator {
                     "pointRange", described(range("number", 0, 16), "4 by default."),
                     "assist", described(type("boolean"), "Attack whatever the guarded player or NPC attacks."),
                     "catchUpDistance", described(range("number", 0, 256), "Teleport near the charge beyond this; 0 never teleports. 24 by default."),
-                    "replanDistance", described(range("number", 0.25, 16), "1.5 by default."));
+                    "replanDistance", described(range("number", 0.25, 16), "1.5 by default."),
+                    "protect", described(type("boolean"), "Attack whatever hurts the charge. True by default; false only follows."));
             guard.add("not", requiredAll("player", "npc"));
             fields.add("guard", guard);
             JsonObject region = pattern("^[A-Za-z0-9_,'+/-]{1,64}$");

@@ -62,7 +62,7 @@ final class CitizensTraits {
     static Result map(String type, JsonObject record, JsonObject traits, boolean combat, boolean health, boolean routed, boolean patrolled, JsonArray references) {
         CitizensTraits mapping = new CitizensTraits(type, record, traits, combat, health, routed, patrolled, references);
         mapping.metadata(); mapping.movement(); mapping.age(); mapping.gravity(); mapping.scoreboard(); mapping.attributes(); mapping.rotation();
-        mapping.targetable(); mapping.spawned(); mapping.mount(); mapping.controllable(); mapping.poses(); mapping.horse();
+        mapping.targetable(); mapping.follow(); mapping.home(); mapping.pause(); mapping.kept(); mapping.spawned(); mapping.mount(); mapping.controllable(); mapping.poses();
         mapping.note("/traitnames", CitizensImporter.Status.UNSUPPORTED_PRESERVED, "Citizens bookkeeping of the traits the NPC had; nothing to convert");
         List<String> sorted = new ArrayList<>(mapping.warnings);
         Collections.sort(sorted);
@@ -237,8 +237,7 @@ final class CitizensTraits {
 
     private void attributes() {
         JsonObject trait = object(traits.get("attributetrait"));
-        JsonObject attributes = trait == null ? null : object(trait.get("attributes"));
-        if (attributes == null) return;
+        JsonObject attributes = trait == null ? new JsonObject() : Objects.requireNonNullElseGet(object(trait.get("attributes")), JsonObject::new);
         JsonObject values = new JsonObject();
         for (Map.Entry<String, JsonElement> entry : attributes.entrySet()) {
             String path = "/traits/attributetrait/attributes/" + CitizensBehaviors.pointer(entry.getKey());
@@ -254,7 +253,23 @@ final class CitizensTraits {
                 note(path, CitizensImporter.Status.CONVERTED, "Animus steps up at most 1.5 blocks without a jump, so higher steps are jumped");
             else converted.add(path);
         }
+        scaledHealth(values);
         if (!values.isEmpty()) fields.add(NpcAttributes.FIELD, values);
+    }
+
+    /** ScaledMaxHealthTrait's maximum health becomes the max_health attribute, unless the attribute trait sets one. */
+    private void scaledHealth(JsonObject values) {
+        JsonObject scaled = object(traits.get("scaledhealthtrait"));
+        if (scaled == null || !scaled.has("maxHealth")) return;
+        String path = "/traits/scaledhealthtrait/maxHealth";
+        if (!number(scaled.get("maxHealth"))) { kept(path, "the value is not a number"); return; }
+        if (values.has("max_health")) { note(path, CitizensImporter.Status.CONVERTED, "the attribute trait's max_health is used"); return; }
+        VanillaAttributes.Attribute known = NpcAttributes.attribute("max_health").orElseThrow();
+        double value = scaled.get("maxHealth").getAsDouble(), clamped = Math.max(known.minimum(), Math.min(known.maximum(), value));
+        if (clamped != value) warnings.add(path + ": " + NpcAttributes.format(value) + " is outside " + NpcAttributes.format(known.minimum()) + ".."
+                + NpcAttributes.format(known.maximum()) + " for max_health and became " + NpcAttributes.format(clamped));
+        values.add("max_health", clamped == value ? scaled.get("maxHealth") : new JsonPrimitive(clamped));
+        converted.add(path);
     }
 
     /** A Citizens attribute key as a vanilla id: {@code minecraft:scale}, and the older {@code generic_scale}, {@code generic.scale} and {@code zombie_spawn_reinforcements} forms. */
@@ -270,13 +285,62 @@ final class CitizensTraits {
         JsonObject rotation = object(traits.get("rotationtrait"));
         JsonObject parameters = rotation == null ? null : object(rotation.get("globalParameters"));
         if (parameters == null) return;
+        boolean looks = traits.has("lookclose");
         for (Map.Entry<String, JsonElement> entry : parameters.entrySet()) {
             String path = "/traits/rotationtrait/globalParameters/" + CitizensBehaviors.pointer(entry.getKey());
             String value = entry.getValue().isJsonPrimitive() ? entry.getValue().getAsString() : "";
-            // Animus turns heads and bodies at once, the way Citizens' immediate rotation does.
             if (entry.getKey().equals("immediate") || value.equals(ROTATION_DEFAULTS.get(entry.getKey()))) converted.add(path);
-            else review(path, "Animus turns NPCs at once; gradual or head-only rotation is not available");
+            // Look-close sets head-only and linked body itself each time it turns the NPC.
+            else if (entry.getKey().equals("headOnly") || entry.getKey().equals("linkedBody"))
+                note(path, CitizensImporter.Status.CONVERTED, "look-close's own head-only and linked-body settings apply");
+            else if (!ROTATION_DEFAULTS.containsKey(entry.getKey())) kept(path, "rotation setting this converter does not know");
+            else if (looks) note(path, CitizensImporter.Status.CONVERTED, "became turnRate in animus:look-close");
+            else note(path, CitizensImporter.Status.CONVERTED, "only look-close turns gradually, and this NPC has no look-close");
         }
+    }
+
+    /** Citizens' {@code name;world;x;y;z} anchors become the definition's named {@code anchors}; one in the NPC's world names no world. */
+    private void anchors() {
+        JsonObject anchors = object(traits.get("anchors"));
+        if (anchors == null) return;
+        JsonObject location = object(traits.get("location"));
+        String own = location == null ? "" : text(location.get("world"));
+        JsonObject named = new JsonObject();
+        for (Map.Entry<String, JsonElement> entry : CitizensBehaviors.entries(anchors.get("list"))) {
+            String path = "/traits/anchors/list/" + entry.getKey();
+            String[] parts = entry.getValue().isJsonPrimitive() ? entry.getValue().getAsString().split(";") : new String[0];
+            Double x = parts.length == 5 ? decimal(parts[2]) : null, y = parts.length == 5 ? decimal(parts[3]) : null, z = parts.length == 5 ? decimal(parts[4]) : null;
+            if (x == null || y == null || z == null || parts[1].isBlank() || Math.abs(x) > 29_999_984 || Math.abs(y) > 29_999_984 || Math.abs(z) > 29_999_984) {
+                kept(path, "not a name;world;x;y;z anchor"); continue;
+            }
+            String name = parts[0].toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]+", "-").replaceAll("^[^a-z0-9]+", "");
+            if (name.length() > 32) name = name.substring(0, 32);
+            if (name.isEmpty()) { kept(path, "the anchor name has no letters or digits to keep"); continue; }
+            if (named.has(name)) { kept(path, "another anchor already uses the name " + name); continue; }
+            if (named.size() == art.arcane.animus.core.npc.NpcAnchors.MAXIMUM_ANCHORS) { kept(path, "an NPC keeps at most 64 anchors"); continue; }
+            JsonObject anchor = new JsonObject();
+            anchor.addProperty("x", x); anchor.addProperty("y", y); anchor.addProperty("z", z);
+            if (!parts[1].equals(own)) anchor.addProperty("world", parts[1]);
+            named.add(name, anchor);
+            converted.add(path);
+        }
+        if (!named.isEmpty()) fields.add("anchors", named);
+    }
+
+    /** Citizens' mirror trait as {@code animus:mirror}: each viewer sees their own skin, and with its options their name and equipment. */
+    static Optional<JsonObject> mirror(JsonObject traits) {
+        JsonObject trait = object(traits.get("mirrortrait"));
+        if (trait == null || !Boolean.TRUE.equals(bool(trait.get("enabled")))) return Optional.empty();
+        JsonObject mirror = new JsonObject();
+        mirror.addProperty("skin", true);
+        if (Boolean.TRUE.equals(bool(trait.get("mirrorName")))) mirror.addProperty("name", true);
+        if (Boolean.TRUE.equals(bool(trait.get("mirrorEquipment")))) mirror.addProperty("equipment", true);
+        return Optional.of(mirror);
+    }
+
+    private void kept() {
+        anchors();
+        if (traits.has("mirrortrait")) note("/traits/mirrortrait", CitizensImporter.Status.CONVERTED, mirror(traits).isPresent() ? "became animus:mirror" : "");
     }
 
     private void targetable() {
@@ -313,6 +377,110 @@ final class CitizensTraits {
         JsonObject module = new JsonObject();
         module.addProperty("killable", Boolean.FALSE.equals(metadata == null ? null : bool(metadata.get("protected"))));
         return module;
+    }
+
+    /**
+     * Citizens' follow trait as an {@code animus:combat} guard: the NPC walks after the player or NPC it follows and, with
+     * {@code protect}, fights whatever hurts it. Empty when the trait follows nobody.
+     */
+    static Optional<JsonObject> follow(JsonObject traits, Set<String> npcUuids) {
+        JsonObject follow = object(traits.get("followtrait"));
+        UUID target = follow == null ? null : uuid(follow.get("followingUUID"));
+        if (target == null) return Optional.empty();
+        JsonObject guard = new JsonObject();
+        guard.addProperty(npcUuids.contains(target.toString()) ? "npc" : "player", target.toString());
+        JsonElement margin = follow.get("margin");
+        double distance = positive(margin) ? Math.max(1, Math.min(64, margin.getAsDouble())) : FOLLOW_DISTANCE;
+        guard.addProperty("followDistance", distance);
+        guard.addProperty("pointRange", Math.min(FOLLOW_POINT, distance));
+        guard.addProperty("protect", Boolean.TRUE.equals(bool(follow.get("protect"))));
+        return Optional.of(guard);
+    }
+    /** How close a Citizens follower stays when it sets no margin, and how far behind its charge it aims. */
+    static final double FOLLOW_DISTANCE = 2, FOLLOW_POINT = 1;
+
+    private void follow() {
+        JsonObject follow = object(traits.get("followtrait"));
+        if (follow == null) return;
+        if (uuid(follow.get("followingUUID")) == null) {
+            if (follow.has("followingUUID")) kept("/traits/followtrait/followingUUID", "not a UUID, so the NPC follows nobody");
+            for (String field : List.of("margin", "protect")) if (follow.has(field)) converted.add("/traits/followtrait/" + field);
+            return;
+        }
+        for (String field : List.of("followingUUID", "margin", "protect")) if (follow.has(field)) converted.add("/traits/followtrait/" + field);
+        if (follow.has("followingUUID")) note("/traits/followtrait/followingUUID", CitizensImporter.Status.CONVERTED,
+                "became the guard of animus:combat, which runs after accept combat");
+    }
+
+    private static UUID uuid(JsonElement value) {
+        String text = text(value);
+        return text.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}") ? UUID.fromString(text) : null;
+    }
+
+    /**
+     * Citizens' home trait as {@code animus:home} when its home is in the NPC's world. A delay or distance of -1, Citizens'
+     * "none", becomes 0; {@code PATHFIND} walks home and {@code TELEPORT} teleports.
+     */
+    static Optional<JsonObject> home(JsonObject traits, String world) {
+        JsonObject trait = object(traits.get("hometrait"));
+        JsonObject location = trait == null ? null : object(trait.get("location"));
+        if (location == null || world.isEmpty() || !world.equals(text(location.get("world")))
+                || !number(location.get("x")) || !number(location.get("y")) || !number(location.get("z"))) return Optional.empty();
+        JsonObject home = new JsonObject();
+        for (String axis : List.of("x", "y", "z")) {
+            if (Math.abs(location.get(axis).getAsDouble()) > 29_999_984) return Optional.empty();
+            home.addProperty(axis, location.get(axis).getAsDouble());
+        }
+        if (number(location.get("yaw"))) home.addProperty("yaw", degrees(location.get("yaw").getAsDouble() % 360));
+        if (number(location.get("pitch"))) home.addProperty("pitch", degrees(Math.max(-90, Math.min(90, location.get("pitch").getAsDouble()))));
+        JsonElement delay = trait.get("delay"), distance = trait.get("distance");
+        if (number(delay) && delay.getAsDouble() > 0) home.addProperty("delayTicks", Math.min(72_000, (long) Math.floor(delay.getAsDouble())));
+        if (number(distance) && distance.getAsDouble() > 0) home.addProperty("distance", Math.min(256, distance.getAsDouble()));
+        home.addProperty("return", text(trait.get("strategy")).equals("PATHFIND") ? "walk" : "teleport");
+        return Optional.of(home);
+    }
+
+    private void home() {
+        JsonObject trait = object(traits.get("hometrait"));
+        if (trait == null) return;
+        JsonObject location = object(traits.get("location"));
+        if (home(traits, location == null ? "" : text(location.get("world"))).isPresent()) note("/traits/hometrait", CitizensImporter.Status.CONVERTED, "");
+        else kept("/traits/hometrait", "the home is missing or in another world than the NPC; set animus:home by hand");
+    }
+
+    /** Citizens' pause-pathfinding trait as the {@code pause} of the NPC's route. */
+    static Optional<JsonObject> pause(JsonObject traits) {
+        JsonObject trait = object(traits.get("pausepathfinding"));
+        if (trait == null) return Optional.empty();
+        JsonObject pause = new JsonObject();
+        JsonElement range = trait.get("playerrange"), ticks = trait.get("pauseticks"), lockout = trait.get("lockoutduration");
+        if (positive(range)) pause.addProperty("playerRange", Math.min(64, range.getAsDouble()));
+        if (Boolean.TRUE.equals(bool(trait.get("rightclick")))) pause.addProperty("onClick", true);
+        if (!pause.has("playerRange") && !pause.has("onClick")) return Optional.empty();
+        pause.addProperty("ticks", positive(ticks) ? Math.min(12_000, Math.max(1, (long) Math.floor(ticks.getAsDouble()))) : 20);
+        if (positive(lockout)) pause.addProperty("lockoutTicks", Math.min(72_000, (long) Math.floor(lockout.getAsDouble())));
+        return Optional.of(pause);
+    }
+
+    private void pause() {
+        JsonObject trait = object(traits.get("pausepathfinding"));
+        if (trait == null) return;
+        Optional<JsonObject> pause = pause(traits);
+        // A trait that pauses for nothing changes nothing.
+        if (routed || pause.isEmpty()) note("/traits/pausepathfinding", CitizensImporter.Status.CONVERTED, "");
+        else kept("/traits/pausepathfinding", "the NPC has no route to pause");
+        if (routed && pause.isPresent() && positive(trait.get("playerrange")) && trait.get("playerrange").getAsDouble() > 64)
+            warnings.add("/traits/pausepathfinding/playerrange: pause ranges above 64 blocks became 64");
+    }
+
+    /** A JSON string's text, or empty for anything else. */
+    private static String text(JsonElement value) { return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString() ? value.getAsString() : ""; }
+    private static double degrees(double value) { return BigDecimal.valueOf(value).setScale(3, RoundingMode.HALF_UP).doubleValue(); }
+
+    /** Whether the NPC's metadata turns Citizens' protection off. */
+    static boolean unprotected(JsonObject record) {
+        JsonObject metadata = object(record.get("metadata"));
+        return metadata != null && Boolean.FALSE.equals(bool(metadata.get("protected")));
     }
 
     /** Whether Citizens ran vanilla AI on this NPC's body: player bodies have none. */
@@ -390,13 +558,6 @@ final class CitizensTraits {
             double value = Double.parseDouble(text);
             return Double.isFinite(value) ? value : null;
         } catch (NumberFormatException invalid) { return null; }
-    }
-
-    private void horse() {
-        JsonObject horse = object(traits.get("horsemodifiers"));
-        if (horse == null) return;
-        for (String key : List.of("color", "style", "carryingChest", "tamed"))
-            if (horse.has(key)) review("/traits/horsemodifiers/" + key, "horse colours, markings and chests are not shown");
     }
 
     private static JsonObject object(JsonElement value) { return value != null && value.isJsonObject() ? value.getAsJsonObject() : null; }

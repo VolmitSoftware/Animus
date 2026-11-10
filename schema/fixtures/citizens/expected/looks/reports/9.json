@@ -1,0 +1,26 @@
+{
+  "citizensId": 9,
+  "presentationWarnings": [],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/sheeptrait/color": "UNSUPPORTED_PRESERVED",
+    "/traits/bossbar/visible": "CONVERTED",
+    "/traits/bossbar/title": "CONVERTED"
+  },
+  "reasons": {
+    "/traits/sheeptrait/color": "applies only to minecraft:sheep bodies, so Citizens did not show it either",
+    "/traits/bossbar/visible": "the bar was hidden, so the NPC shows none",
+    "/traits/bossbar/title": "the bar was hidden, so the NPC shows none"
+  },
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": []
+}

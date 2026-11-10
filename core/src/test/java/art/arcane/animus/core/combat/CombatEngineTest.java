@@ -275,6 +275,17 @@ class CombatEngineTest {
         run(1);
         assertEquals(mob(attacker), status(npc).target().orElseThrow());
     }
+    @Test void aGuardThatDoesNotProtectOnlyFollows() {
+        UUID charge = world.player("Alice", 20, 0);
+        UUID npc = combatant(0, 0, "{\"guard\":{\"player\":\"" + charge + "\",\"followDistance\":2,\"pointRange\":1,\"protect\":false},\"targeting\":{\"scanIntervalTicks\":1,\"fightBack\":false}}");
+        run(1);
+        assertEquals(CombatState.GUARDING, status(npc).state());
+        assertTrue(world.moves.getLast().point().distance(new Vec3(20, 64, 0)) <= 1.01, "Walks to just behind the followed player");
+        UUID attacker = world.monster("minecraft:zombie", 3, 0);
+        engine().realDamaged(player(charge), mob(attacker));
+        run(1);
+        assertTrue(status(npc).target().isEmpty(), "never fights for its charge");
+    }
     @Test void aGuardDefendsItsChargeAgainstAnNpc() {
         UUID charge = world.player("Alice", 4, 0);
         UUID guard = combatant(0, 0, "{\"guard\":{\"player\":\"" + charge + "\"},\"targeting\":{\"scanIntervalTicks\":200}}");

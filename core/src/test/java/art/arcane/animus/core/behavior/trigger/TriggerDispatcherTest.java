@@ -304,6 +304,14 @@ class TriggerDispatcherTest {
         dispatcher.publish(new TriggerEvent.Proximity(npc,viewer,"example:greeter#far"));pump();
         assertEquals(List.of("example:greeter#far"),started.stream().map(request->request.binding().key()).toList());assertEquals(Optional.of(viewer),started.getFirst().player());
     }
+    @Test void proximityPlayerCooldownHoldsBackOnlyThatPlayer()throws Exception{
+        behavior("[{\"id\":\"near\",\"event\":\"proximity\",\"phase\":\"enter\",\"radius\":8,\"playerCooldownTicks\":100}]");npc(true);dispatcher.activated(npc);pump();
+        UUID other=UUID.randomUUID();
+        dispatcher.publish(new TriggerEvent.Proximity(npc,viewer,"example:greeter#near"));pump();
+        dispatcher.publish(new TriggerEvent.Proximity(npc,viewer,"example:greeter#near"));dispatcher.publish(new TriggerEvent.Proximity(npc,other,"example:greeter#near"));pump();
+        assertEquals(1,dispatcher.snapshot().suppressed(),"the same player waits out their cooldown");
+        assertEquals(2,dispatcher.snapshot().queued()+started.size(),"another player is not held back");
+    }
     @Test void attachingABehaviorTwiceBindsOnce()throws Exception{
         behavior("[{\"id\":\"click\",\"event\":\"interaction\"}]");definitions.set(Map.of("test",definition("test",npc,true,"[\""+BEHAVIOR+"\",\""+BEHAVIOR+"\"]")));dispatcher.activated(npc);pump();
         assertEquals(1,dispatcher.snapshot().bindings());

@@ -13,6 +13,7 @@ public enum DocumentKind {
     BEHAVIOR("behavior", "behaviors", EditorScope.APPLY_BEHAVIORS),
     PACK("pack", "packs", EditorScope.APPLY_BEHAVIORS),
     SHOP("shop", "shops", EditorScope.APPLY_GUI),
+    QUEST("quest", "quests", EditorScope.APPLY_BEHAVIORS),
     INVENTORY("inventory", "gui/inventories", EditorScope.APPLY_GUI),
     MENU("menu", "gui/menus", EditorScope.APPLY_GUI),
     HOLOGRAM("hologram", "gui/holograms", EditorScope.APPLY_GUI),

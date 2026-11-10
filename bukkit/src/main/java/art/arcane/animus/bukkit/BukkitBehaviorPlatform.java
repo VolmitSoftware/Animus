@@ -1,5 +1,7 @@
 package art.arcane.animus.bukkit;
 
+import art.arcane.animus.bukkit.gui.BukkitCharges;
+import art.arcane.animus.core.inventory.Economy;
 import art.arcane.animus.core.behavior.ServerNpc;
 import art.arcane.animus.core.behavior.builtin.DialogueFormat;
 import art.arcane.animus.core.runtime.PersistedNpcService;
@@ -62,12 +64,14 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     private final BukkitOwners owners;
     private final PersistedNpcService<Player, ItemStack> relocator;
     private final Placeholders placeholders;
+    private final Supplier<Economy> economy;
 
     /** {@code relocator} is the main-thread runtime that can move NPCs; null on Folia. */
     BukkitBehaviorPlatform(JavaPlugin plugin, NpcRuntime<Player, ItemStack> living, RuntimeCombatService combat, BuildService<Player, ItemStack> builds,
                            Supplier<String> buildsUnavailable, Function<Runnable, AutoCloseable> ticks, Supplier<HoloService<Player, ItemStack>> guis,
-                           BukkitOwners owners, PersistedNpcService<Player, ItemStack> relocator, Placeholders placeholders) {
+                           BukkitOwners owners, PersistedNpcService<Player, ItemStack> relocator, Placeholders placeholders, Supplier<Economy> economy) {
         this.placeholders = placeholders;
+        this.economy = economy;
         this.guis = guis;
         server = plugin.getServer();
         this.living = living;
@@ -201,6 +205,15 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         PlatformRefusals.mapped(() -> { living.lookAt(active.id(), new WorldPosition(active.state().position().world(), target)); return true; });
     }
 
+    @Override public Point anchor(NpcHandle npc, String name) {
+        NpcRuntime.ActiveNpc active = require(npc);
+        art.arcane.animus.core.npc.NpcAnchors.Anchor anchor = PlatformRefusals.mapped(() -> living.anchor(active.id(), name));
+        return new Point(anchor.world(), anchor.position(), java.util.OptionalDouble.empty(), java.util.OptionalDouble.empty());
+    }
+    @Override public void animate(NpcHandle npc, art.arcane.animus.core.npc.NpcAnimation animation) {
+        NpcRuntime.ActiveNpc active = require(npc);
+        PlatformRefusals.mapped(() -> { living.animate(active.id(), animation); return true; });
+    }
     @Override public void pose(NpcHandle npc, String pose) {
         NpcRuntime.ActiveNpc active = require(npc);
         PlatformRefusals.mapped(() -> { living.pose(active.id(), pose); return true; });
@@ -218,6 +231,10 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     @Override public void setAppearance(NpcHandle npc, AppearanceChange change) {
         NpcRuntime.ActiveNpc active = require(npc);
         PlatformRefusals.mapped(() -> { living.setAppearance(active.id(), change.name(), change.skin(), change.reset()); return true; });
+    }
+    @Override public void bubble(NpcHandle npc, String text, int ticks) {
+        NpcRuntime.ActiveNpc active = require(npc);
+        PlatformRefusals.mapped(() -> { living.bubble(active.id(), text, ticks); return true; });
     }
 
     @Override public void playAnimation(NpcHandle npc, String animation, double speed, Optional<String> loop, int layer) {
@@ -382,6 +399,14 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
      * One broadcast line. Text with a placeholder is filled on the recipient's own owner, since PlaceholderAPI may read
      * the player's state; on Folia that is the player's region, which may not be this thread.
      */
+    @Override public int messageNearby(NpcHandle npc, double radius, String text) {
+        NpcRuntime.ActiveNpc active = requireVoice(npc);
+        String line = RichText.colorize(text);
+        boolean personal = personal(text);
+        return deliver(living.players(), living.previews(), active, new Audience(Optional.empty(), radius), active.state().position(), false,
+                (Player viewer) -> viewer.sendMessage(personal ? RichText.colorize(fill(viewer, text)) : line));
+    }
+
     private boolean send(Player recipient, String text, String line, boolean personal) {
         if (!personal) { recipient.sendMessage(line); return true; }
         return living.players().deliver(recipient.getUniqueId(), (Player owned) -> owned.sendMessage(RichText.colorize(fill(owned, text))));
@@ -533,6 +558,16 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         }
         online.get().getInventory().setStorageContents(slots);
         return taken;
+    }
+
+    @Override public boolean affordable(UUID player, Cost cost) {
+        Optional<Player> online = here(player);
+        return online.isPresent() && BukkitCharges.affordable(online.get(), cost, economy.get());
+    }
+
+    @Override public boolean charge(UUID player, Cost cost) {
+        Optional<Player> online = here(player);
+        return online.isPresent() && BukkitCharges.charge(online.get(), cost, economy.get());
     }
 
     @Override public int giveBook(UUID player, Book book) {

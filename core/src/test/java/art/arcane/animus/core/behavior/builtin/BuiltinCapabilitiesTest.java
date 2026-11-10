@@ -43,10 +43,11 @@ class BuiltinCapabilitiesTest {
         @Override public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
         @Override public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
     };
-    private static final Set<String> ACTIONS = Set.of("say", "choices", "command", "navigate", "stop-navigation", "play-recording", "resume-patrol", "look", "pose", "set-appearance",
+    private static final Set<String> ACTIONS = Set.of("say", "choices", "command", "navigate", "stop-navigation", "play-recording", "resume-patrol", "look", "pose", "animate", "set-appearance",
             "set-equipment", "set-attribute", "play-sound", "spawn-particle", "combat-control", "build", "set-flag", "set-quest-state", "advance-quest-state", "open-shop", "open-gui",
-            "play-animation", "stop-animation", "message", "title", "actionbar", "teleport", "give-item", "take-item", "give-book");
-    private static final Set<String> CONDITIONS = Set.of("has-permission", "npc-state", "player-in-range", "flag-state", "quest-state");
+            "play-animation", "stop-animation", "message", "title", "actionbar", "teleport", "give-item", "take-item", "give-book", "charge",
+            "start-quest", "advance-quest", "complete-quest", "quest-objective");
+    private static final Set<String> CONDITIONS = Set.of("has-permission", "npc-state", "player-in-range", "flag-state", "quest-state", "quest-status", "can-afford");
 
     private final RecordingPlatform platform = new RecordingPlatform();
     private final List<String> log = new ArrayList<>();
@@ -118,6 +119,23 @@ class BuiltinCapabilitiesTest {
         Outcome<String> outcome = settle(handle.result());
         assertEquals(Outcome.Status.OK, outcome.status(), outcome.diagnostics().toString());
         assertEquals(List.of("say:true:0.0:Hello"), platform.calls);
+    }
+
+    @Test void animateShowsAVanillaAnimationOnTheOwner() throws Exception {
+        start();
+        assertEquals(Outcome.Status.OK, action("animate", "{\"animation\":\"swing_offhand\"}").status());
+        assertEquals(Outcome.Status.OK, action("animate", "{\"animation\":\"sleep\"}").status());
+        assertEquals(List.of("animate:swing_offhand", "animate:sleep"), platform.calls);
+        assertFalse(builtins.validate(key("animate"), "{\"animation\":\"dab\"}").isEmpty());
+    }
+
+    @Test void aNearbyMessageReachesPlayersAroundTheNpcWithoutASpeaker() throws Exception {
+        start();
+        assertEquals(Outcome.Status.OK, action("message", "{\"text\":\"All aboard\",\"to\":\"nearby\",\"radius\":12}", Optional.empty(), false, false, Optional.empty()).status());
+        assertEquals(Outcome.Status.OK, action("message", "{\"text\":\"Hi\",\"to\":\"nearby\"}").status());
+        assertEquals(List.of("message-nearby:12.0:All aboard", "message-nearby:16.0:Hi"), platform.calls);
+        assertFalse(builtins.validate(key("message"), "{\"text\":\"Hi\",\"radius\":4}").isEmpty(), "radius needs nearby");
+        assertFalse(builtins.validate(key("message"), "{\"text\":\"Hi\",\"to\":\"nearby\",\"radius\":65}").isEmpty());
     }
 
     @Test void openShopOpensForTheTriggeringPlayerOnTheOwner() throws Exception {
@@ -400,6 +418,33 @@ class BuiltinCapabilitiesTest {
         assertTrue(host.capabilityAvailable(key("set-quest-state"), Kind.ACTION, false, false));
         assertEquals(Outcome.Status.OK, action("set-quest-state", "{\"name\":\"main\",\"value\":2}").status());
         assertEquals(Optional.of(true), condition("quest-state", "{\"name\":\"main\",\"equals\":2}", Optional.of(PLAYER)).value());
+    }
+
+    @Test void questActionsReachTheQuestServiceInTheBehaviorsNamespace() throws Exception {
+        start();
+        assertEquals("quests-unavailable", code(action("start-quest", "{\"quest\":\"herbs\"}")), "until quests are connected the actions refuse");
+        List<String> calls = new ArrayList<>();
+        builtins.quests(new art.arcane.animus.core.quest.QuestControl() {
+            @Override public Optional<String> unavailable() { return Optional.empty(); }
+            @Override public long start(UUID player, String quest, boolean force) { calls.add("start " + quest + " " + force); return 1; }
+            @Override public long advance(UUID player, String quest, java.util.OptionalInt stage) { calls.add("advance " + quest + " " + stage); return 2; }
+            @Override public long complete(UUID player, String quest, boolean rewards) { calls.add("complete " + quest + " " + rewards); return 3; }
+            @Override public int objective(UUID player, String quest, String objective, int amount) {
+                throw new art.arcane.animus.core.quest.QuestControl.Refused("objective-unknown", "no " + objective);
+            }
+            @Override public String status(UUID player, String quest) { calls.add("status " + quest); return "ready"; }
+        });
+        Outcome<String> started = action("start-quest", "{\"quest\":\"herbs\",\"force\":true}");
+        assertEquals(Outcome.Status.OK, started.status(), started.diagnostics().toString());
+        assertEquals(Optional.of("{\"stage\":1}"), started.value());
+        assertEquals(Outcome.Status.OK, action("advance-quest", "{\"quest\":\"harbor:nets\",\"stage\":2}").status());
+        assertEquals(Outcome.Status.OK, action("complete-quest", "{\"quest\":\"herbs\",\"rewards\":false}").status());
+        Outcome<String> objective = action("quest-objective", "{\"quest\":\"herbs\",\"objective\":\"lever\"}");
+        assertEquals(Outcome.Status.NOT_FOUND, objective.status());
+        assertEquals("objective-unknown", code(objective));
+        assertEquals(Optional.of(true), condition("quest-status", "{\"quest\":\"herbs\",\"status\":\"ready\"}", Optional.of(PLAYER)).value());
+        assertEquals(List.of("start town:herbs true", "advance harbor:nets OptionalInt[2]", "complete town:herbs false", "status town:herbs"), calls,
+                "a bare quest name belongs to the behavior's namespace");
     }
 
     @Test void setQuestStateRandomPicksAStageBelowTheBound() throws Exception {
@@ -695,6 +740,17 @@ class BuiltinCapabilitiesTest {
                 "the author's placeholder stays; the interpolated one cannot reach the placeholder plugin");
     }
 
+    @Test void sayShowsASpeechBubbleAndMayStayOutOfChat() throws Exception {
+        start();
+        BehaviorEngine.Report both = run(program("{\"type\":\"action\",\"capability\":\"animus:say\",\"arguments\":{\"text\":\"Hello\",\"bubbleTicks\":60}}"), false, behavior -> false);
+        assertEquals(BehaviorEngine.State.COMPLETED, both.state(), both.toString());
+        assertEquals(List.of("bubble:Hello:60", "say:true:0.0:Hello"), platform.calls);
+        platform.calls.clear();
+        BehaviorEngine.Report quiet = run(program("{\"type\":\"action\",\"capability\":\"animus:say\",\"arguments\":{\"text\":\"Psst\",\"bubbleTicks\":20,\"chat\":false}}"), false, behavior -> false);
+        assertEquals(BehaviorEngine.State.COMPLETED, quiet.state(), quiet.toString());
+        assertEquals(List.of("bubble:Psst:20"), platform.calls, "a bubble without chat sends no message");
+    }
+
     @Test void rawCommandTextKeepsItsPercentSigns() throws Exception {
         start(Platform.PAPER, 5000, grants(List.of("town:greeter"), List.of()));
         BehaviorProgram templated = program("{\"type\":\"action\",\"capability\":\"animus:command\",\"arguments\":{\"command\":null},\"templates\":{\"/command\":\"say {{ '50%' }}\"}}");
@@ -709,5 +765,24 @@ class BuiltinCapabilitiesTest {
         Outcome<String> refused = action("command", "{\"command\":\"give {player_name} minecraft:bread\"}", Optional.of(PLAYER), false, true, Optional.of("town:greeter"));
         assertEquals(Outcome.Status.INVALID, refused.status(), refused.diagnostics().toString());
         assertTrue(platform.calls.isEmpty());
+    }
+
+    @Test void chargeTakesTheWholeCostOrRefusesAndCanAffordReadsIt() throws Exception {
+        start();
+        String cost = "{\"money\":2.5,\"levels\":3,\"items\":[{\"item\":{\"id\":\"minecraft:emerald\",\"components\":\"[custom_name='Coin']\"},\"amount\":4}]}";
+        Outcome<Boolean> affordable = condition("can-afford", cost, Optional.of(PLAYER));
+        assertEquals(Optional.of(true), affordable.value(), affordable.diagnostics().toString());
+        Outcome<String> charged = action("charge", cost);
+        assertEquals(Outcome.Status.OK, charged.status(), charged.diagnostics().toString());
+        assertEquals(Optional.of("{\"charged\":true}"), charged.value());
+        assertEquals(List.of("afford:2.5:3:minecraft:emerald[custom_name='Coin']x4:STRICT", "charge:2.5:3:minecraft:emerald[custom_name='Coin']x4:STRICT"), platform.calls);
+        platform.affordable = false;
+        assertEquals(Optional.of(false), condition("can-afford", cost, Optional.of(PLAYER)).value());
+        assertEquals("cannot-afford", code(action("charge", cost)));
+        assertEquals(Optional.of(false), condition("can-afford", "{\"levels\":1}", Optional.empty()).value(), "no triggering player cannot pay");
+        assertEquals("preview-refused", code(action("charge", "{\"levels\":1}", Optional.of(PLAYER), true, false, Optional.empty())));
+        assertFalse(builtins.validate(key("charge"), "{}").isEmpty(), "a charge needs money, levels or items");
+        assertFalse(builtins.validate(key("charge"), "{\"items\":[{\"item\":{\"id\":\"Not An Id\"},\"amount\":1}]}").isEmpty(), "item ids are checked");
+        assertTrue(builtins.validate(key("charge"), "{\"items\":[{\"item\":{\"id\":\"minecraft:dirt\"},\"amount\":2}],\"match\":\"material\"}").isEmpty());
     }
 }

@@ -60,6 +60,16 @@ class DefinitionSpecTest {
         assertEquals(List.of("$.pose: a sitting NPC cannot also ride another NPC; remove the pose or the mount"), DefinitionSpec.validate(definition, TYPES, ignored -> WORLD, ITEMS));
     }
 
+    @Test void aMalformedModelEngineModuleRefusesTheSpawn() throws Exception {
+        var definition = NpcDefinition.parse("""
+                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"guard",
+                 "group":"test","name":"Guard","type":"minecraft:player","spawned":true,
+                 "modules":{"animus:modelengine":{"model":"drake","scale":99}},
+                 "position":{"world":"world","x":1,"y":64,"z":2,"yaw":0,"pitch":0}}
+                """);
+        assertEquals(List.of("$.modules.animus:modelengine.scale: expected 0.0625..16"), DefinitionSpec.validate(definition, TYPES, ignored -> WORLD, ITEMS));
+    }
+
     @Test void activationWarningsLogEachFailureOnceUntilItChangesOrClears() {
         art.arcane.animus.core.AnimusLog.shared().debug(true);
         try { activationWarningsInDebugMode(); }

@@ -33,11 +33,20 @@ final class PropertyScreen<P, S> extends ToolScreen<P, S> {
             new Section("Identity", "minecraft:name_tag", "Id, name, type, owner, tags, behaviors, groups", 10, List.of(),
                     List.of("id", "name", "type", "spawned", "owner", "tags", "behaviors", "groups")),
             new Section("Body", "minecraft:armor_stand", "Pose, glow, baby, gravity, look directions", 11, List.of(),
-                    List.of("pose", "baby", "glowing", "teamColor", "usingItem", "listed", "gravity", "armorStand", "horse", "llama", "frog", "armadillo", "dragon", "inventory", "poses")),
+                    bodyKeys()),
             new Section("Position", "minecraft:compass", "World, x, y, z, yaw and pitch", 12, List.of("position"), List.of()),
-            new Section("Appearance", "minecraft:painting", "Hologram, nameplate, rig", 13, List.of(), List.of("hologram", "nameplate", "rig")),
+            new Section("Appearance", "minecraft:painting", "Hologram, nameplate, rig, disguise, boss bar, viewers", 13, List.of(),
+                    List.of("hologram", "nameplate", "rig", "disguise", "bossBar", "viewers", "clickRedirect")),
             new Section("Movement", "minecraft:leather_boots", "Style, speed, doors, water, falls, getting stuck", 14, List.of("movement"), List.of()));
     static final int ATTRIBUTES = 15, MODULES = 16;
+
+    /** The Body section's root fields: pose and flags, then every body's own settings field. */
+    private static List<String> bodyKeys() {
+        List<String> keys = new ArrayList<>(List.of("pose", "baby", "glowing", "teamColor", "usingItem", "listed", "gravity", "armorStand"));
+        keys.addAll(art.arcane.animus.core.npc.BodyVariant.FIELDS.keySet());
+        keys.addAll(List.of("inventory", "poses"));
+        return List.copyOf(keys);
+    }
 
     private final List<UUID> npcs;
 

@@ -4,6 +4,7 @@ import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.admin.Administration;
 import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
 import art.arcane.animus.core.behavior.builtin.PendingChoices;
+import art.arcane.animus.core.integration.NpcTemplates;
 import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.npc.NpcDefinition;
@@ -40,6 +41,7 @@ public final class AnimusCommandTree extends CommandGroup {
     NpcCommands npc;
     WorldCommands.Navigation navigation;
     WorldCommands.Ride ride;
+    ScheduleCommands schedule;
     WorldCommands.Combat combat;
     ContentCommands.Modules modules;
     ContentCommands.Rigs rigs;
@@ -49,6 +51,7 @@ public final class AnimusCommandTree extends CommandGroup {
     ServiceCommands.Shop shop;
     ServiceCommands.Gui gui;
     ServiceCommands.Hologram hologram;
+    QuestCommands quest;
     ServiceCommands.Build build;
     ServiceCommands.Editor editor;
     BehaviorTree.Behaviors behaviors;
@@ -63,6 +66,7 @@ public final class AnimusCommandTree extends CommandGroup {
         npc = new NpcCommands(services);
         navigation = new WorldCommands.Navigation(services);
         ride = new WorldCommands.Ride(services);
+        schedule = new ScheduleCommands(services);
         combat = new WorldCommands.Combat(services);
         modules = new ContentCommands.Modules(services);
         rigs = new ContentCommands.Rigs(services);
@@ -72,6 +76,7 @@ public final class AnimusCommandTree extends CommandGroup {
         shop = new ServiceCommands.Shop(services);
         gui = new ServiceCommands.Gui(services);
         hologram = new ServiceCommands.Hologram(services);
+        quest = new QuestCommands(services);
         build = new ServiceCommands.Build(services);
         editor = new ServiceCommands.Editor(services);
         behaviors = new BehaviorTree.Behaviors(services);
@@ -86,8 +91,8 @@ public final class AnimusCommandTree extends CommandGroup {
     @AnimusPermission(PermissionNodes.TOOLS)
     void setup(@Param(name = "dismiss", defaultValue = "false", description = "Turn the join hint off for every admin") boolean dismiss) { setup.run(actor(), dismiss); }
 
-    /** The engine for this tree, with completion values from the running services. */
-    public AnimusDirector director() { return new AnimusDirector(this, this::values); }
+    /** The engine for this tree, with completion values and running plugins from the services; a tree without services runs every plugin. */
+    public AnimusDirector director() { return new AnimusDirector(this, this::values, services == null ? (String plugin) -> true : services.plugins()); }
 
     /** Completion values by parameter name; {@code given} holds the values already typed. */
     Collection<String> values(String parameter, CommandActor actor, Map<String, String> given) { return new CommandCompletions(this).values(parameter, actor, given); }
@@ -153,21 +158,49 @@ public final class AnimusCommandTree extends CommandGroup {
                 @Param(name = "y", defaultValue = "", description = "Y position: a number, ~ or ~N; yours when left out") String y,
                 @Param(name = "z", defaultValue = "", description = "Z position: a number, ~ or ~N; yours when left out") String z,
                 @Param(name = "spawned", defaultValue = "true", description = "false saves it despawned") boolean spawned) {
+        create(id, type, name, folder, world, x, y, z, spawned, "");
+    }
+
+    @Director(description = "Save and spawn a new NPC with a MythicMobs mob's look and skills, where you stand or at x y z")
+    @AnimusPermission(PermissionNodes.NPC_CREATE)
+    @NeedsPlugin("MythicMobs")
+    void mythic(@Param(name = "id", description = "The new NPC id; its file is npcs/<folder>/<id>.json") String id,
+                @Param(name = "mythic-mob", description = "The MythicMobs mob type it takes its look and skills from, such as SkeletonKing") String mob,
+                @Param(name = "name", defaultValue = "", description = "Its display name, the mob's when left out; quote it to use spaces") String name,
+                @Param(name = "folder", defaultValue = "", description = "The folder under npcs/ it lives in, such as world/town; npcs/ itself when left out") String folder,
+                @Param(name = "world", defaultValue = "", description = "The world it stands in; yours when left out") String world,
+                @Param(name = "x", defaultValue = "", description = "X position: a number, ~ or ~N; yours when left out") String x,
+                @Param(name = "y", defaultValue = "", description = "Y position: a number, ~ or ~N; yours when left out") String y,
+                @Param(name = "z", defaultValue = "", description = "Z position: a number, ~ or ~N; yours when left out") String z,
+                @Param(name = "spawned", defaultValue = "true", description = "false saves it despawned") boolean spawned) {
+        create(id, DEFAULT_TYPE, name, folder, world, x, y, z, spawned, mob);
+    }
+
+    /** Creates the NPC, laying the Mythic mob {@code mythic} names over it unless that is empty. */
+    private void create(String id, String type, String name, String folder, String world, String x, String y, String z, boolean spawned, String mythic) {
         CommandActor actor = actor();
         Placement placement;
         try { placement = placement(actor, world, x, y, z); }
         catch (IllegalArgumentException missing) { actor.tell(Palette.error(missing.getMessage())); return; }
+        Optional<NpcTemplates.Template> look;
+        try { look = mythic.isEmpty() ? Optional.empty() : Optional.of(services.runtime().templates().template(NpcTemplates.MYTHIC, mythic)); }
+        catch (IllegalArgumentException refused) { actor.tell(Palette.error(refused.getMessage())); return; }
+        String body = look.map((NpcTemplates.Template chosen) -> chosen.fields().get("type").getAsString()).orElse(type);
         String shown = name.isEmpty() ? id : name;
         float yaw = actor.facing().map(Coordinates.Facing::yaw).orElse(0f);
         Administration administration = administration();
         try {
             services.files().execute(() -> {
                 Administration.Creation creation;
-                try { creation = administration.creation(id, type, placement.world(), placement.point(), yaw, folder, shown, actor.player(), spawned); }
+                try {
+                    Administration.Creation plain = administration.creation(id, body, placement.world(), placement.point(), yaw, folder, shown, actor.player(), spawned);
+                    creation = look.isEmpty() ? plain : administration.templated(plain, look.get().fields(), !name.isEmpty());
+                }
                 catch (IOException | RuntimeException failure) { reply(actor, Palette.error(reason(failure))); return; }
                 String where = placement.world() + " " + Coordinates.shown(placement.point());
+                String notes = look.map((NpcTemplates.Template chosen) -> chosen.notes().isEmpty() ? "" : "; " + String.join("; ", chosen.notes())).orElse("");
                 if (!stopping()) actor.reply(() -> commit(actor, creation.definition(), creation.draft(), PermissionNodes.NPC_CREATE, "create",
-                        (String tx) -> "Created " + id + " at " + where + (spawned ? "" : ", despawned") + "; tx " + tx
+                        (String tx) -> "Created " + id + (look.isPresent() ? " from Mythic mob " + mythic : "") + " at " + where + (spawned ? "" : ", despawned") + notes + "; tx " + tx
                                 + (spawned ? "; /" + BuildIdentity.ID + " npc skin " + id + " <player> sets its skin" : "; /" + BuildIdentity.ID + " spawn " + id + " shows it")));
             });
         } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
@@ -369,7 +402,7 @@ public final class AnimusCommandTree extends CommandGroup {
                     List<String> changes = List.of();
                     if (fields == null) document.addProperty("spawned", true);
                     else {
-                        Optional<String> problem = Administration.patchProblem(runtime().documents(), fields);
+                        Optional<String> problem = Administration.patchProblem(runtime(), fields);
                         if (problem.isPresent()) { reply(actor, Palette.error("Cannot save " + id + ": " + problem.get())); return; }
                         changes = Administration.merge(document, fields);
                     }

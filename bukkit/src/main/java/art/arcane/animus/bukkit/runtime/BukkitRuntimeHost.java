@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.bukkit.integration.modelengine.ModelEngineIntegration;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.bukkit.BukkitWorldLookup;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
@@ -49,6 +50,7 @@ import org.bukkit.util.Vector;
 /** The Bukkit and Paper main thread as the single owner of every persisted NPC. World keys are world UUIDs. */
 public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, Listener {
     private final JavaPlugin plugin;
+    private java.util.function.Supplier<java.util.Map<String, art.arcane.animus.core.npc.NpcDefinition>> definitions = java.util.Map::of;
     private final String minecraftVersion;
     private final NativePacketAdapter.Scheduler replies;
     private final BukkitTerrain terrain;
@@ -71,6 +73,7 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
             @Override public void run(World world, int chunkX, int chunkZ, Runnable work) { if (plugin.isEnabled()) plugin.getServer().getScheduler().runTask(plugin, work); }
         });
         host.rideEntry = RegionRideEntry.bind(plugin.getServer());
+        host.definitions = runtime.npcs()::snapshot;
         host.service = new PersistedNpcService<>(host, runtime, io, settings);
         // Registered even while disabled: every handler checks availability, and a hotload may enable the runtime.
         plugin.getServer().getPluginManager().registerEvents(host, plugin);
@@ -87,7 +90,7 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
     @Override public void warn(String message) { plugin.getLogger().warning(message); }
     @Override public BodyTransport<Player, ItemStack> openTransport() throws ReflectiveOperationException {
         chunks = ChunkDelivery.bind(plugin, minecraftVersion);
-        return NativePacketAdapter.bind(plugin, minecraftVersion, replies);
+        return ModelEngineIntegration.wrap(plugin, NativePacketAdapter.bind(plugin, minecraftVersion, replies), definitions);
     }
     @Override public String chunkDelivery() { return chunks == null ? "unbound" : chunks.implementation(); }
 
@@ -95,6 +98,8 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
     @Override public Optional<Player> player(UUID id) { return Optional.ofNullable(plugin.getServer().getPlayer(id)); }
     @Override public UUID id(Player player) { return player.getUniqueId(); }
     @Override public String name(Player player) { return player.getName(); }
+    @Override public java.util.Optional<art.arcane.animus.core.presentation.BodySkin> skin(Player player) { return art.arcane.animus.bukkit.recording.RecorderLook.skin(player); }
+    @Override public java.util.Map<art.arcane.animus.core.npc.EquipmentSlot, ItemStack> equipment(Player player) { return BukkitMirror.equipment(player); }
     @Override public boolean online(Player player) { return player.isOnline(); }
     @Override public boolean dead(Player player) { return player.isDead(); }
     @Override public boolean sleeping(Player player) { return player.isSleeping(); }

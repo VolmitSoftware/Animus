@@ -101,6 +101,12 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
         };
     }
     @Override public boolean permitted(ServerPlayer player, String node) { return VanillaRuntimeHost.permitted(player.permissions(), node); }
+    @Override public boolean takeLevels(ServerPlayer player, int levels) {
+        if (player.experienceLevel < levels) return false;
+        player.giveExperienceLevels(-levels);
+        return true;
+    }
+    @Override public void giveLevels(ServerPlayer player, int levels) { player.giveExperienceLevels(levels); }
 
     @Override public Optional<Object> show(ServerPlayer player, ScreenFrame frame, Object window) {
         if (frame.merchant().isPresent()) return merchant(player, frame, window);
@@ -354,6 +360,8 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
     @Override public void chat(ServerPlayer player, ChatLine line) {
         player.sendSystemMessage(line.interactive() ? ModText.adventure(line.component()) : ModText.component(line.console()));
     }
+    @Override public void parts(ServerPlayer player, List<art.arcane.animus.core.text.TextPart> parts) { player.sendSystemMessage(ModText.parts(parts)); }
+    @Override public boolean experience(ServerPlayer player, int points) { player.giveExperiencePoints(points); return true; }
 
     /** Server shutdown: closes every Animus window on the server thread. */
     void closeAll() {

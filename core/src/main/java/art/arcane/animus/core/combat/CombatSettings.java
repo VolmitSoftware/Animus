@@ -55,9 +55,10 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
      * @param assist          attack whatever the guarded player or NPC attacks
      * @param catchUpDistance teleport near the charge beyond this distance or across worlds; 0 never teleports
      * @param replanDistance  how far the charge moves before the guard replans its walk
+     * @param protect         attack whatever hurts the charge; false only follows it
      */
     public record Guard(Optional<UUID> player, Optional<UUID> npc, double followDistance, double pointRange, boolean assist,
-                        double catchUpDistance, double replanDistance) {}
+                        double catchUpDistance, double replanDistance, boolean protect) {}
     /** @param region a protection region the fight must stay inside, where a protection plugin provides regions */
     public record Pursuit(boolean closeChase, boolean rangedChase, double speed, double giveUpRange, double leashRange, boolean returnToPost, boolean teleportWhenStuck,
                           int replanTicks, Optional<String> region) {}
@@ -240,12 +241,12 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
         return new Squad(reader.has("name") ? Optional.of(reader.string("name", "")) : Optional.empty(), reader.number("alertRange", 16, 1, 64));
     }
     private static Guard guard(Reader reader) {
-        reader.known("player", "npc", "followDistance", "pointRange", "assist", "catchUpDistance", "replanDistance");
+        reader.known("player", "npc", "followDistance", "pointRange", "assist", "catchUpDistance", "replanDistance", "protect");
         Optional<UUID> player = reader.uuid("player");
         Optional<UUID> npc = reader.uuid("npc");
         if (player.isPresent() && npc.isPresent()) throw new IllegalArgumentException(reader.path() + ": guard either a player or an npc");
         return new Guard(player, npc, reader.number("followDistance", 7, 1, 64), reader.number("pointRange", 4, 0, 16), reader.bool("assist", false),
-                reader.number("catchUpDistance", 24, 0, 256), reader.number("replanDistance", 1.5, 0.25, 16));
+                reader.number("catchUpDistance", 24, 0, 256), reader.number("replanDistance", 1.5, 0.25, 16), reader.bool("protect", true));
     }
     private static Pursuit pursuit(Reader reader) {
         reader.known("closeChase", "rangedChase", "speed", "giveUpRange", "leashRange", "returnToPost", "teleportWhenStuck", "replanTicks", "region");

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000606",
+  "id": "citizens-6",
+  "group": "world",
+  "name": "Herald",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "851ceffdf2b438f2987502d4250c12fdde95b8cb2caf090a47d291b0a9c4be75",
+    "citizensId": 6,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 12.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "viewers": {
+    "players": [
+      "8667ba71-b85a-4004-af54-457a9734eed7"
+    ]
+  },
+  "behaviors": [
+    "citizens:text-6"
+  ],
+  "modules": {
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "world",
+        "x": 12.5,
+        "y": 64,
+        "z": 0.5
+      },
+      "playerfilter": {
+        "players": [
+          "8667BA71-B85A-4004-AF54-457A9734EED7",
+          "not-a-uuid"
+        ]
+      },
+      "text": {
+        "text": [
+          "Show me your pass."
+        ],
+        "talkitem": "PAPER,minecraft:map",
+        "delay": 60
+      }
+    }
+  }
+}

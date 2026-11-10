@@ -136,6 +136,8 @@ class ViewerWatchRaceTest {
         art.arcane.animus.core.navigation.DoorPassage.Doors doors = art.arcane.animus.core.navigation.DoorPassage.NONE;
         /** What {@code item} answers for each definition item. */
         java.util.function.Function<NpcItem, Object> items = (NpcItem item) -> new Object();
+        /** What {@code interactionAllowed} answers; it runs where the platform's interaction event and its listeners run. */
+        java.util.function.BiPredicate<UUID, RuntimeHost.Interaction> allowed = (UUID npc, RuntimeHost.Interaction action) -> true;
         PersistedNpcService<Player, Object> service;
         /** Whether the calling thread counts as the owner; while false, {@code execute} queues work in {@link #scheduled}. */
         volatile boolean ownerThread = true;
@@ -186,6 +188,9 @@ class ViewerWatchRaceTest {
         final List<String> sent = new ArrayList<>();
         volatile boolean watched, connected = true, equipment, presentation;
         volatile String spawnFailure;
+        /** The runtime's click handler from the last watch, and the last body spawned. */
+        volatile Consumer<Interaction> interactions;
+        volatile Body lastSpawned;
         final AtomicInteger swings = new AtomicInteger(), equipped = new AtomicInteger();
         /** While set, moves stay unfinished in {@link #held}, as on a slow connection. */
         volatile boolean holdMoves;
@@ -211,12 +216,13 @@ class ViewerWatchRaceTest {
             watches.incrementAndGet();
             if (!connected) throw new BodyTransport.ViewerUnwatched("Viewer is not connected");
             watched = true;
+            this.interactions = interactions;
             return CompletableFuture.completedFuture(null);
         }
         @Override public CompletionStage<Void> spawn(Player viewer, Body body, BodyPose pose) {
             requireWatch();
             if (spawnFailure != null) return CompletableFuture.failedFuture(new IllegalStateException(spawnFailure));
-            spawned.incrementAndGet(); sent.add("spawn " + body.uuid());
+            spawned.incrementAndGet(); sent.add("spawn " + body.uuid()); lastSpawned = body;
             return CompletableFuture.completedFuture(null);
         }
         @Override public CompletionStage<Void> move(Player viewer, Body body, BodyPose pose) {
@@ -279,7 +285,7 @@ class ViewerWatchRaceTest {
         @Override public boolean registeredEntity(UUID uuid) { return false; }
         @Override public Object item(NpcItem item, String path, List<String> errors) { return harness.items.apply(item); }
         @Override public Object copy(Object item) { return item; }
-        @Override public boolean interactionAllowed(Player player, UUID npc, Interaction action, double distance) { return true; }
+        @Override public boolean interactionAllowed(Player player, UUID npc, Interaction action, double distance) { return harness.allowed.test(npc, action); }
         @Override public void waypointReached(UUID npc, String id, UUID route, int waypoint, WorldPosition at) { harness.reached.add(waypoint); }
         @Override public void npcSpawned(UUID npc, String id, WorldPosition at) { harness.lifecycle.add("spawned " + id); }
         @Override public void npcDespawned(UUID npc, String id) { harness.lifecycle.add("despawned " + id); }

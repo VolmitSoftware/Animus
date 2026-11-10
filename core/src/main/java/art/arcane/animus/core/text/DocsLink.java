@@ -10,6 +10,7 @@ public enum DocsLink {
     COMBAT("02-commands-permissions", "combat"),
     CONTENT("02-commands-permissions", "rigs-and-resource-pack"),
     SERVICES("02-commands-permissions", "shops-and-guis"),
+    QUESTS("02-commands-permissions", "quests"),
     BEHAVIORS("02-commands-permissions", "behaviors"),
     GROUPS("02-commands-permissions", "trait-groups"),
     DIAGNOSTICS("02-commands-permissions", "diagnostics"),

@@ -14,7 +14,7 @@ import java.util.Map;
 
 /**
  * {@code GET /v1/schemas}: the generated NPC, behavior, pack and completion documents for the live capability registry,
- * and the hand-written shop, chest GUI, rig, animation and Gloss schemas bundled from the repository's {@code schema/}.
+ * and the hand-written shop, quest, chest GUI, rig, animation and Gloss schemas bundled from the repository's {@code schema/}.
  */
 public final class EditorSchemas {
     /** Schema name to bundled resource. */
@@ -26,6 +26,7 @@ public final class EditorSchemas {
     private static Map<String, String> bundled() {
         Map<String, String> names = new LinkedHashMap<>();
         names.put("shop", "shop-v1.schema.json");
+        names.put("quest", "quest-v1.schema.json");
         names.put("inventory", "gui-inventory-v1.schema.json");
         names.put("rig", "rig-v1.schema.json");
         names.put("animation", "animation-v1.schema.json");

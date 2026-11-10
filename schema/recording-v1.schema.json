@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://animus.volmitsoftware.com/schema/recording-v1.schema.json",
   "title": "Animus performance recording",
-  "description": "recordings/<id>.json. A player's movement captured as frames relative to origin, plus arm swings, equipment changes and door uses. Rules a schema cannot express (frame ticks strictly increasing from 0 to durationTicks, at most durationTicks / sampleTicks + 1 frames, event ticks at most durationTicks, events sorted by tick then type, the id matching the file name, the file at most [recordings] maximumFileBytes) are checked by RecordingDocument; see dev/recording-groups-routes.md.",
+  "description": "recordings/<id>.json. A player's movement captured as frames relative to origin, plus arm swings, equipment changes and door uses. Rules a schema cannot express (frame ticks strictly increasing from 0 to durationTicks, at most durationTicks / sampleTicks + 1 frames, event ticks at most durationTicks, events sorted by tick then type, the id matching the file name, the file at most [recordings] maximumFileBytes) are checked by RecordingDocument.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "revision", "id", "recordedBy", "world", "origin", "sampleTicks", "durationTicks", "frames", "events"],

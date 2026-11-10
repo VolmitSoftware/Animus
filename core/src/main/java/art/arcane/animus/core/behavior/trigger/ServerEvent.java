@@ -34,6 +34,7 @@ public record ServerEvent(TriggerKind kind, Optional<UUID> player, Map<String, O
             case PROJECTILE_LAUNCH -> List.of("projectile", "projectile_uuid", "shooter", "shooter_uuid", "location", "world", "x", "y", "z");
             case PROJECTILE_HIT -> List.of("projectile", "projectile_uuid", "shooter", "shooter_uuid", "entity", "entity_uuid", "block", "location", "world", "x", "y", "z");
             case ENTITY_SHOOT_BOW -> List.of("shooter", "shooter_uuid", "bow", "projectile", "projectile_uuid", "force", "hand", "location", "world", "x", "y", "z");
+            case QUEST_STARTED, QUEST_STAGE, QUEST_COMPLETED -> List.of("quest", "stage", "title");
             default -> List.of();
         };
     }
@@ -133,6 +134,11 @@ public record ServerEvent(TriggerKind kind, Optional<UUID> player, Map<String, O
     }
     private static Map<String, Object> projectile(String projectile, UUID projectileId, String shooter, String shooterId) {
         return Map.of("projectile", projectile, "projectile_uuid", projectileId.toString(), "shooter", shooter, "shooter_uuid", shooterId);
+    }
+    /** An Animus quest of {@code kind} for the player: its id, its behavior stage value and its title. */
+    public static ServerEvent quest(TriggerKind kind, UUID player, String quest, long stage, String title) {
+        if (kind != TriggerKind.QUEST_STARTED && kind != TriggerKind.QUEST_STAGE && kind != TriggerKind.QUEST_COMPLETED) throw new IllegalArgumentException(kind.jsonName() + " is not a quest event");
+        return of(kind, player, Map.of("quest", quest, "stage", stage, "title", bounded(title)));
     }
     public static ServerEvent serverStart() { return new ServerEvent(TriggerKind.SERVER_START, Optional.empty(), Map.of(), Optional.empty()); }
     public static ServerEvent timer() { return new ServerEvent(TriggerKind.TIMER, Optional.empty(), Map.of(), Optional.empty()); }

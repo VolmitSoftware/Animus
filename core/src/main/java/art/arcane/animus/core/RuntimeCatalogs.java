@@ -18,7 +18,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * The catalog reloads every platform shares: NPCs, behaviors, shops and chest GUIs, holograms and menus, and rigs, each
+ * The catalog reloads every platform shares: NPCs, behaviors, shops and chest GUIs, holograms and menus, quests and rigs, each
  * only when a change touched its kind. Runs on the file lane; the behavior, shop and hologram reloads queue their own file
  * work, which {@link #reloaded} waits for without blocking the lane.
  */
@@ -27,12 +27,13 @@ public final class RuntimeCatalogs implements CatalogReloads {
      * @param refresh asks the NPC runtime to pick up changed definitions, on any thread
      * @param shops reloads shops and chest GUIs; completes once the new catalog is live
      * @param holograms reloads holograms, menus and text animations; completes once the new catalog is live
+     * @param quests reloads quests; completes once the new catalog is live
      */
     public record Parts(AnimusRuntime runtime, Runnable refresh, Supplier<BehaviorCommands> behaviors, Supplier<CompletableFuture<?>> shops,
-                        Supplier<CompletableFuture<?>> holograms, Consumer<String> log) {
+                        Supplier<CompletableFuture<?>> holograms, Supplier<CompletableFuture<?>> quests, Consumer<String> log) {
         public Parts {
             Objects.requireNonNull(runtime); Objects.requireNonNull(refresh); Objects.requireNonNull(behaviors);
-            Objects.requireNonNull(shops); Objects.requireNonNull(holograms); Objects.requireNonNull(log);
+            Objects.requireNonNull(shops); Objects.requireNonNull(holograms); Objects.requireNonNull(quests); Objects.requireNonNull(log);
         }
     }
 
@@ -76,6 +77,7 @@ public final class RuntimeCatalogs implements CatalogReloads {
         }
         if (touches(change, SHOPS)) queued.add(parts.shops().get());
         if (touches(change, HOLOGRAMS)) queued.add(parts.holograms().get());
+        if (touches(change, Set.of(DocumentKind.QUEST))) queued.add(parts.quests().get());
         if (touches(change, RIGS)) {
             RigCatalog rigs = parts.runtime().rigs().reload();
             if (!rigs.problems().isEmpty()) parts.log().accept("Catalog reload: " + rigs.problems().size() + " rig problems; see /animus rigs problems");

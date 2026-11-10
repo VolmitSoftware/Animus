@@ -141,6 +141,23 @@ class EditorCommandScopeTest {
     }
 
     @Test
+    void apply_questThatPaysItems_needsApplyCommands_andAPlainQuestDoesNot() throws Exception {
+        Path here = Path.of("").toAbsolutePath();
+        String herbs = java.nio.file.Files.readString((java.nio.file.Files.isDirectory(here.resolve("examples")) ? here : here.getParent()).resolve("examples/quests/town/herbs.json"));
+        JsonObject paying = JsonDocuments.object(herbs);
+        refused(harness.send("POST", "/v1/changes", plain, set("key-0000000000000210", change("quest", "town:herbs", null, paying))));
+        JsonObject plainQuest = paying.deepCopy();
+        plainQuest.getAsJsonObject("rewards").remove("items");
+        plainQuest.getAsJsonObject("rewards").remove("money");
+        EditorResponse applied = harness.send("POST", "/v1/changes", plain, set("key-0000000000000211", change("quest", "town:herbs", null, plainQuest)));
+        assertEquals(200, applied.status(), () -> applied.body().toString());
+        JsonObject broken = plainQuest.deepCopy();
+        broken.addProperty("id", "town:other");
+        EditorResponse refused = harness.send("POST", "/v1/changes", commands, set("key-0000000000000212", change("quest", "town:herbs", stored("quest", "town:herbs"), broken)));
+        assertEquals(422, refused.status(), "the quest parser checks editor applies: " + refused.body());
+    }
+
+    @Test
     void apply_behaviorThatGivesItems_needsApplyCommands() throws Exception {
         refused(harness.send("POST", "/v1/changes", plain, set("key-0000000000000205", change("behavior", "town:gift", null, say("town:gift", "animus:give-item")))));
     }

@@ -49,7 +49,7 @@ const Map<String, List<String>> combatSectionKeys = <String, List<String>>{
   'targeting': <String>['scanRange', 'scanIntervalTicks', 'reactionTicks', 'memoryTicks', 'retainTarget', 'fightBack', 'lineOfSight'],
   'avoidance': <String>['range', 'fleeWhenAttacked', 'returnPoint'],
   'squad': <String>['name', 'alertRange'],
-  'guard': <String>['player', 'npc', 'followDistance', 'pointRange', 'assist', 'catchUpDistance', 'replanDistance'],
+  'guard': <String>['player', 'npc', 'followDistance', 'pointRange', 'assist', 'catchUpDistance', 'replanDistance', 'protect'],
   'pursuit': <String>['closeChase', 'rangedChase', 'speed', 'giveUpRange', 'leashRange', 'returnToPost', 'teleportWhenStuck', 'replanTicks', 'region'],
   'melee': <String>['enabled', 'damage', 'reach', 'cooldownTicks', 'knockback', 'fromEquipment', 'weaponDamage'],
   'ranged': <String>[
@@ -224,7 +224,7 @@ const List<CombatRange> combatRanges = <CombatRange>[
 const Map<String, Map<String, bool>> combatBooleans = <String, Map<String, bool>>{
   'targeting': <String, bool>{'retainTarget': false, 'fightBack': true},
   'avoidance': <String, bool>{'fleeWhenAttacked': false},
-  'guard': <String, bool>{'assist': false},
+  'guard': <String, bool>{'assist': false, 'protect': true},
   'pursuit': <String, bool>{'closeChase': true, 'rangedChase': false, 'returnToPost': true, 'teleportWhenStuck': false},
   'melee': <String, bool>{'enabled': true, 'fromEquipment': false},
   'ranged': <String, bool>{'enabled': false, 'safeShot': true, 'fromEquipment': false, 'useAmmo': false},

@@ -1,0 +1,41 @@
+{
+  "name": "Lookout",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000602",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "old_harbor",
+      "x": -10.5,
+      "y": 70.0,
+      "z": 4.5
+    },
+    "followtrait": {
+      "followingUUID": "0a1b2c3d-0000-4000-8000-0000000006ff"
+    },
+    "hometrait": {
+      "location": {
+        "world": "old_harbor",
+        "x": -10.5,
+        "y": 70.0,
+        "z": 4.5,
+        "yaw": 180.0,
+        "pitch": 0.0
+      },
+      "delay": 100,
+      "distance": 2.0,
+      "strategy": "PATHFIND"
+    },
+    "anchors": {
+      "list": {
+        "0": "dock;old_harbor;3.0;64.0;3.0",
+        "1": "Isle Pier;far_isle;10.5;65.0;-2.5",
+        "2": "broken;old_harbor;x"
+      }
+    },
+    "mirrortrait": {
+      "enabled": true,
+      "mirrorName": true,
+      "mirrorEquipment": true
+    }
+  }
+}

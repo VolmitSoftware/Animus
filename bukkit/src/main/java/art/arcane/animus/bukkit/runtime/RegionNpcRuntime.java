@@ -1,6 +1,7 @@
 package art.arcane.animus.bukkit.runtime;
 
 import art.arcane.animus.bukkit.BukkitWorldLookup;
+import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.config.CombatBudgets;
 import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.RuntimeGauges;
@@ -36,6 +37,7 @@ import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerEvent;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.npc.NpcPose;
 import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.mount.MountRelations;
 import art.arcane.animus.core.virtual.ChunkPosition;
@@ -193,8 +195,10 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
             navigation = BukkitNavigationBridge.regionOwned(initial.navigation().limits());
             for (String type : packets.capabilities().entityTypes()) {
                 NativePacketAdapter.Body body = packets.createBody(UUID.randomUUID(), type, "Animus", null);
-                geometries.put(type, new Geometry(body.width(), body.height(), body.entityIds().length, body.seat()));
+                // Displays have no size of their own; their NPCs still need a hitbox to be placed and found.
+                geometries.put(type, new Geometry(Math.max(BodyRules.MINIMUM_SIZE, body.width()), Math.max(BodyRules.MINIMUM_SIZE, body.height()), body.entityIds().length, body.seat()));
             }
+            runtime.bodyTypes(packets.capabilities().entityTypes());
             plugin.getServer().getPluginManager().registerEvents(this, plugin);
             plugin.getServer().getPluginManager().registerEvents(new TerrainChanges(this::terrainChanged), plugin);
             control = regions.globalTicks(this::controlTick);
@@ -497,12 +501,19 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     }
     @Override public void lookAt(String id, WorldPosition target) { navigable(id).lookAt(Objects.requireNonNull(target)); }
     @Override public void pose(String id, String pose) { navigable(id).pose(Objects.requireNonNull(pose)); }
+    @Override public void animate(String id, art.arcane.animus.core.npc.NpcAnimation animation) { navigable(id).animate(Objects.requireNonNull(animation)); }
+    @Override public art.arcane.animus.core.npc.NpcAnchors.Anchor anchor(String id, String name) {
+        return art.arcane.animus.core.npc.NpcAnchors.parse(navigable(id).spec.definition().json()).find(name)
+                .orElseThrow(() -> new IllegalArgumentException("The NPC has no anchor named " + name));
+    }
     @Override public void followRoute(String id, String route) { navigable(id).followRoute(route); }
     @Override public CompletableFuture<Void> awaitRoute(String id) { return navigable(id).awaitRoute(); }
     @Override public void playRecording(String id, String recording, Optional<art.arcane.animus.core.recording.Playback> playback) { navigable(id).playRecording(recording, playback); }
     @Override public boolean resumePatrol(String id) { return navigable(id).resumePatrol(); }
     @Override public void setAppearance(String id, Optional<String> name, Optional<String> skin, boolean reset) { navigable(id).setAppearance(name, skin, reset); }
+    @Override public void bubble(String id, String text, int ticks) { navigable(id).bubble(text, ticks); }
     @Override public void setEquipment(String id, EquipmentSlot slot, ItemStack item) { navigable(id).setEquipment(slot, item); }
+    @Override public void rest(String id, NpcPose pose) { navigable(id).rest(pose); }
     @Override public void setAttribute(String id, String attribute, java.util.OptionalDouble value) { navigable(id).setAttribute(attribute, value); }
     @Override public void playAnimation(String id, String animation, double speed, Optional<String> loop, int layer) { navigable(id).playAnimation(animation, speed, loop, layer); }
     @Override public void stopAnimation(String id, java.util.OptionalInt layer, int fadeTicks) { navigable(id).stopAnimation(layer, fadeTicks); }

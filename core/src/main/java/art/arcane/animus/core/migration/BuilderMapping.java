@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -79,7 +80,7 @@ public final class BuilderMapping {
         }
         String state = text(source, "State");
         if (state != null && List.of("building", "collecting").contains(state.toLowerCase(Locale.ROOT)))
-            warnings.add("Builder was " + state.toLowerCase(Locale.ROOT) + " when saved; start the build again with /animus build start after review. Blocks already in place are skipped");
+            warnings.add("Builder was " + state.toLowerCase(Locale.ROOT) + " when saved; the build starts again on the NPC's first spawn after accept builder. Blocks already in place are skipped");
         for (String task : List.of("onstart", "oncomplete", "oncancel"))
             if (source.has(task)) warnings.add("builder " + task + " names a Denizen task; recreate it with a build_finished or build_paused trigger");
         List<String> unknown = new ArrayList<>();
@@ -93,6 +94,62 @@ public final class BuilderMapping {
         imported.add("notes", notes);
         module.add("imported", imported);
         return new Result(module, List.copyOf(warnings));
+    }
+
+    /**
+     * A behavior that starts the build again when Builder saved it in the middle of building or collecting materials.
+     * It runs on the NPC's first spawn after the builder review is accepted, once: the start refuses until then, and a
+     * flag remembers that it ran. Empty when Builder was not working.
+     */
+    public static Optional<JsonObject> resume(JsonElement trait, String key) {
+        if (trait == null || !trait.isJsonObject()) return Optional.empty();
+        String state = text(trait.getAsJsonObject(), "State");
+        if (state == null || !List.of("building", "collecting").contains(state.toLowerCase(Locale.ROOT))) return Optional.empty();
+        String flag = "builder-" + key + "-resumed";
+        JsonObject marker = new JsonObject();
+        marker.addProperty("name", flag);
+        marker.addProperty("scope", "npc");
+        JsonObject start = new JsonObject();
+        start.addProperty("operation", "start");
+        JsonObject resume = new JsonObject();
+        resume.addProperty("type", "condition");
+        resume.addProperty("capability", "animus:flag-state");
+        resume.add("arguments", marker.deepCopy());
+        JsonObject done = new JsonObject();
+        done.addProperty("type", "sequence");
+        done.add("steps", new JsonArray());
+        resume.add("then", done);
+        JsonObject steps = new JsonObject();
+        steps.addProperty("type", "sequence");
+        JsonArray list = new JsonArray();
+        list.add(step("animus:build", start));
+        list.add(step("animus:set-flag", marker));
+        steps.add("steps", list);
+        resume.add("else", steps);
+        JsonObject routines = new JsonObject();
+        routines.add("resume", resume);
+        JsonObject trigger = new JsonObject();
+        trigger.addProperty("id", "spawn");
+        trigger.addProperty("event", "spawn");
+        trigger.addProperty("routine", "resume");
+        JsonArray triggers = new JsonArray();
+        triggers.add(trigger);
+        JsonObject document = new JsonObject();
+        document.addProperty("schemaVersion", 1);
+        document.addProperty("revision", 1);
+        document.addProperty("id", CitizensBehaviors.NAMESPACE + ":builder-" + key);
+        document.addProperty("entry", "resume");
+        document.add("routines", routines);
+        document.add("triggers", triggers);
+        return Optional.of(document);
+    }
+
+    private static JsonObject step(String capability, JsonObject arguments) {
+        JsonObject node = new JsonObject();
+        node.addProperty("type", "action");
+        node.addProperty("capability", capability);
+        node.add("arguments", arguments);
+        return node;
     }
 
     /** What the importer reports for a Constructor trait. The trait itself stays in {@code citizens:review}. */

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://animus.volmitsoftware.com/schema/animation-v1.schema.json",
   "title": "Animus animation",
-  "description": "animations/<namespace>/<path>.json. Keyframe tracks over a rig's bones. Sampling is defined in dev/editor-contracts.md and pinned by schema/fixtures/animation/samples/. Validators also check that keyframe ticks strictly increase, stay within durationTicks, that track bones exist in the rig, and that values match the target.",
+  "description": "animations/<namespace>/<path>.json. Keyframe tracks over a rig's bones. Sampling is pinned by schema/fixtures/animation/samples/. Validators also check that keyframe ticks strictly increase, stay within durationTicks, that track bones exist in the rig, and that values match the target.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "revision", "id", "rig", "durationTicks", "tracks"],

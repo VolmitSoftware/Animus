@@ -64,6 +64,7 @@ class ExtensionRuntimeBuiltinsTest {
         @Override public void lookAtPlayer(NpcHandle npc, UUID player) { throw new AssertionError(); }
         @Override public void pose(NpcHandle npc, String pose) { throw new AssertionError(); }
         @Override public void setAppearance(NpcHandle npc, AppearanceChange change) { throw new AssertionError(); }
+        @Override public void bubble(NpcHandle npc, String text, int ticks) { throw new AssertionError(); }
         @Override public void setEquipment(NpcHandle npc, EquipmentSlot slot, Optional<String> item) { throw new AssertionError(); }
         @Override public void setAttribute(NpcHandle npc, String attribute, java.util.OptionalDouble value) { throw new AssertionError(); }
         @Override public int playSound(NpcHandle npc, Audience audience, SoundEffect sound) { throw new AssertionError(); }
@@ -73,10 +74,15 @@ class ExtensionRuntimeBuiltinsTest {
     private ExtensionRuntime runtime;
 
     private ExtensionRuntime start(boolean modulesEnabled, List<String> commandBehaviors) throws Exception {
+        return start(modulesEnabled, commandBehaviors, List.of());
+    }
+
+    private ExtensionRuntime start(boolean modulesEnabled, List<String> commandBehaviors, List<art.arcane.animus.api.TrustedModule> integrations) throws Exception {
         BuiltinActionSettings defaults = BuiltinActionSettings.DEFAULT;
         BuiltinActionSettings settings = new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), commandBehaviors, List.of(), defaults.navigationWaits(), List.of());
         BuiltinCapabilities builtins = new BuiltinCapabilities(UNAVAILABLE, new MemoryBehaviorState(), choice -> {}, settings, line -> {});
         runtime = new ExtensionRuntime(root.toRealPath().resolve("modules"), Platform.FOLIA, DEFINITIONS, new ModuleSettings(modulesEnabled, 8, 2000, 250), line -> {}, state -> {}, builtins);
+        for (art.arcane.animus.api.TrustedModule integration : integrations) runtime.integration(integration, OPEN);
         runtime.start();
         long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
         while (runtime.status().state() == ExtensionRuntime.State.STARTING && System.nanoTime() < until) Thread.sleep(2);
@@ -89,6 +95,46 @@ class ExtensionRuntimeBuiltinsTest {
     private static Outcome<String> run(BehaviorInvoker invoker, Key key, String behavior, boolean preview, String json) throws Exception {
         BehaviorInvoker.Call<String> call = invoker.action(new BehaviorInvoker.Invocation(key, NPC, Optional.of(UUID.randomUUID()), json, Map.of(), preview, () -> true, behavior));
         return call.result().toCompletableFuture().get(4, TimeUnit.SECONDS);
+    }
+
+    private static final BuiltinPolicy OPEN = new BuiltinPolicy() {
+        @Override public Optional<String> unavailable(Key key) { return Optional.empty(); }
+        @Override public List<Diagnostic> validate(Key key, String argumentsJson) { return List.of(); }
+    };
+    private static final Key CAST = new Key("mythic", "cast-skill");
+    private static art.arcane.animus.api.TrustedModule castIntegration() { return castIntegration(false); }
+
+    private static art.arcane.animus.api.TrustedModule castIntegration(boolean privileged) {
+        art.arcane.animus.api.ModuleManifest manifest = new art.arcane.animus.api.ModuleManifest("mythic", new art.arcane.animus.api.Version(1, 0, 0),
+                new art.arcane.animus.api.ApiRange(1, 1), java.util.Set.of(Platform.values()), List.of());
+        return new art.arcane.animus.api.TrustedModule() {
+            @Override public art.arcane.animus.api.ModuleManifest manifest() { return manifest; }
+            @Override public void enable(art.arcane.animus.api.ModuleContext context) {
+                context.registrations().action(new art.arcane.animus.api.Capabilities.Descriptor(CAST, Kind.ACTION, "Casts a skill.",
+                        "{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"skill\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":64}},\"required\":[\"skill\"]}",
+                        java.util.Set.of(Platform.values()), privileged), invocation -> java.util.concurrent.CompletableFuture.completedFuture("{\"cast\":true}"));
+            }
+            @Override public void disable() {}
+        };
+    }
+
+    @Test void integrationsBindLikeBuiltinsWhileJavaModulesAreDisabled() throws Exception {
+        ExtensionRuntime started = start(false, List.of(), List.of(castIntegration()));
+        assertEquals(ExtensionRuntime.State.DISABLED, started.status().state());
+        assertTrue(started.modules().isEmpty(), "an integration is not listed as a Java module");
+        assertTrue(started.capabilityAvailable(CAST, Kind.ACTION));
+        Outcome<String> cast = run(started.behaviorInvoker(), CAST, "town:greeter", false, "{\"skill\":\"Greet\"}");
+        assertEquals(Outcome.Status.OK, cast.status(), cast.diagnostics().toString());
+        assertEquals("{\"cast\":true}", cast.value().orElseThrow());
+        assertThrows(IllegalStateException.class, () -> started.integration(castIntegration(), OPEN));
+    }
+
+    @Test void aPrivilegedIntegrationRunsOnlyForBehaviorsOnTheCommandAllowList() throws Exception {
+        ExtensionRuntime started = start(false, List.of("town:allowed"), List.of(castIntegration(true)));
+        Outcome<String> refused = run(started.behaviorInvoker(), CAST, "town:greeter", false, "{\"skill\":\"Greet\"}");
+        assertEquals(Outcome.Status.UNAVAILABLE, refused.status());
+        Outcome<String> allowed = run(started.behaviorInvoker(), CAST, "town:allowed", false, "{\"skill\":\"Greet\"}");
+        assertEquals(Outcome.Status.OK, allowed.status(), allowed.diagnostics().toString());
     }
 
     @Test void builtinsBindAtStartupAlongsideDiscoveredModules() throws Exception {

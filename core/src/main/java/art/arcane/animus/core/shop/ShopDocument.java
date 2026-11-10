@@ -39,6 +39,8 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
     public static final String ID = "[a-z0-9_-]{1,64}:[a-z0-9_/-]{1,191}";
     private static final String PERMISSION = "[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*";
     private static final BigDecimal MAXIMUM_PRICE = new BigDecimal("1000000000000");
+    /** The most experience levels one entry costs. */
+    public static final int MAXIMUM_LEVELS = 100_000;
 
     public enum Mode {
         BUY, SELL, TRADE;
@@ -68,8 +70,11 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
     public record Display(Optional<String> name, List<String> lore, boolean showPrice, boolean showLimit) {
         public Display { lore = List.copyOf(lore); }
     }
-    /** One slot of one grid. {@code item} is the icon and, for buy and sell, the goods; {@code price} is for {@code item.count()} items. */
-    public record Entry(String id, Type type, NpcItem item, Display display, BigDecimal price, boolean allowStack, boolean sellPartial,
+    /**
+     * One slot of one grid. {@code item} is the icon and, for buy and sell, the goods; {@code price} is for {@code item.count()}
+     * items. {@code levels} is a cost in experience levels on buy, command and trade entries, taken with the price.
+     */
+    public record Entry(String id, Type type, NpcItem item, Display display, BigDecimal price, int levels, boolean allowStack, boolean sellPartial,
                         List<Goods> needs, List<Goods> gives, List<ShopCommand> commands, Limit limit, Optional<Stock> stock,
                         Optional<String> permission, Optional<String> broadcast, boolean closeAfterPurchase, boolean dropWhenFull,
                         Optional<Discount> discount, Optional<MatchRule> match) {
@@ -252,7 +257,7 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
         Optional<Entry> entry(JsonElement value, String path, Mode mode, Set<String> entryIds) {
             if (value == null || !value.isJsonObject()) { problem(path, "expected entry object"); return Optional.empty(); }
             JsonObject object = value.getAsJsonObject();
-            fields(object, Set.of("id", "type", "item", "display", "price", "allowStack", "sellPartial", "needs", "gives", "commands", "limit",
+            fields(object, Set.of("id", "type", "item", "display", "price", "levels", "allowStack", "sellPartial", "needs", "gives", "commands", "limit",
                     "stock", "permission", "broadcast", "closeAfterPurchase", "dropWhenFull", "discount", "match", "imported"), path);
             int before = problems.size();
             String id = string(object, "id", path, true).orElse("");
@@ -271,6 +276,8 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
             Display display = display(object.get("display"), path + ".display");
             BigDecimal price = object.has("price") ? price(object.get("price"), path + ".price") : BigDecimal.ZERO;
             if ((type == Type.BUY || type == Type.SELL || type == Type.COMMAND) && !object.has("price")) problem(path + ".price", "expected a price; use 0 for free");
+            int levels = levels(object.get("levels"), path + ".levels");
+            if (levels > 0 && type != Type.BUY && type != Type.COMMAND && type != Type.TRADE) problem(path + ".levels", "levels are a cost of buy, command and trade entries");
             boolean allowStack = bool(object, "allowStack", path, false);
             boolean sellPartial = bool(object, "sellPartial", path, false);
             if (sellPartial && type != Type.SELL) problem(path + ".sellPartial", "applies only to sell entries");
@@ -294,10 +301,11 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
             if (stocked) {
                 if (type != Type.TRADE && type != Type.STATIC) problem(path + ".type", "a container shop has only trade and static entries");
                 if (object.has("price") && price.signum() > 0) problem(path + ".price", "a container shop trades items for items; remove the price");
+                if (levels > 0) problem(path + ".levels", "a container shop trades items for items; remove the levels");
                 if (stock.isPresent()) problem(path + ".stock", "a container shop's stock is its containers");
             }
             if (problems.size() != before || item == null) return Optional.empty();
-            return Optional.of(new Entry(id, type, item, display, price, allowStack, sellPartial, needs, gives, commands, limit, stock, permission,
+            return Optional.of(new Entry(id, type, item, display, price, levels, allowStack, sellPartial, needs, gives, commands, limit, stock, permission,
                     broadcast, close, drop, discount, match));
         }
 
@@ -398,6 +406,17 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
             Optional<String> text = string(object, field, path, true);
             try { return text.map(Instant::parse); }
             catch (DateTimeParseException invalid) { problem(path + "." + field, "expected an ISO-8601 instant such as 2026-12-01T00:00:00Z"); return Optional.empty(); }
+        }
+
+        /** Whole experience levels, 0 when absent. */
+        int levels(JsonElement value, String path) {
+            if (value == null) return 0;
+            if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber()) {
+                double number = value.getAsDouble();
+                if (number >= 0 && number <= MAXIMUM_LEVELS && number == Math.floor(number)) return (int) number;
+            }
+            problem(path, "expected whole levels from 0 to " + MAXIMUM_LEVELS);
+            return 0;
         }
 
         BigDecimal price(JsonElement value, String path) {

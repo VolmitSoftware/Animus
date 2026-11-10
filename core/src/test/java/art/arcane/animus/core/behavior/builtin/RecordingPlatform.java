@@ -72,6 +72,7 @@ final class RecordingPlatform implements BehaviorPlatform {
     @Override public boolean onPlayerOwner(UUID player, Runnable work, java.util.function.Consumer<String> refused) { routes.add("player:" + player); work.run(); return true; }
     @Override public boolean onGlobalOwner(Runnable work, java.util.function.Consumer<String> refused) { routes.add("global"); work.run(); return true; }
     @Override public int message(NpcHandle npc, Optional<UUID> player, MessageTarget to, String text) { record("message:" + to + ":" + player.isPresent() + ":" + text); return delivered; }
+    @Override public int messageNearby(NpcHandle npc, double radius, String text) { record("message-nearby:" + radius + ":" + text); return delivered; }
     @Override public int title(UUID player, Title title) { record("title:" + title.title().orElse("") + ":" + title.subtitle().orElse("") + ":" + title.fadeIn() + ":" + title.stay() + ":" + title.fadeOut()); return delivered; }
     @Override public int actionbar(UUID player, String text) { record("actionbar:" + text); return delivered; }
     @Override public int playSoundAtPlayer(UUID player, Audience audience, SoundEffect sound) { record("sound-at-player:" + sound.sound()); return delivered; }
@@ -80,6 +81,14 @@ final class RecordingPlatform implements BehaviorPlatform {
     @Override public void teleportNpc(NpcHandle npc, Destination to) { record("teleport-npc:" + to.getClass().getSimpleName()); }
     @Override public int giveItem(UUID player, ItemGift gift) { record("give:" + gift.item() + ":" + gift.amount() + ":" + gift.name().orElse("") + ":" + gift.lore().size()); return gift.amount(); }
     @Override public int takeItem(UUID player, String item, int amount) { record("take:" + item + ":" + amount); return Math.min(amount, taken); }
+    volatile boolean affordable = true;
+    private static String describe(Cost cost) {
+        StringBuilder items = new StringBuilder();
+        for (CostItem item : cost.items()) items.append(item.item()).append(item.components().orElse("")).append('x').append(item.amount()).append(':').append(item.match());
+        return cost.money().toPlainString() + ":" + cost.levels() + ":" + items;
+    }
+    @Override public boolean affordable(UUID player, Cost cost) { record("afford:" + describe(cost)); return affordable; }
+    @Override public boolean charge(UUID player, Cost cost) { record("charge:" + describe(cost)); return affordable; }
     @Override public int giveBook(UUID player, Book book) { record("book:" + book.title() + ":" + book.pages().size()); return 1; }
     @Override public boolean hasPermission(UUID player, String node) { record("permission:" + node); return permission; }
     @Override public NpcStatus npcStatus(NpcHandle npc) { record("status"); return status; }
@@ -119,7 +128,9 @@ final class RecordingPlatform implements BehaviorPlatform {
     @Override public void look(NpcHandle npc, Vec3 target) { record("look-point"); }
     @Override public void lookAtPlayer(NpcHandle npc, UUID player) { record("look-player"); }
     @Override public void pose(NpcHandle npc, String pose) { record("pose:" + pose); }
+    @Override public void animate(NpcHandle npc, art.arcane.animus.core.npc.NpcAnimation animation) { record("animate:" + animation.key()); }
     @Override public void setAppearance(NpcHandle npc, AppearanceChange change) { record("appearance:" + change.name().orElse("") + ":" + change.reset()); }
+    @Override public void bubble(NpcHandle npc, String text, int ticks) { record("bubble:" + text + ":" + ticks); }
     @Override public void setEquipment(NpcHandle npc, EquipmentSlot slot, Optional<String> item) { record("equipment:" + slot + ":" + item.orElse("none")); }
     @Override public void setAttribute(NpcHandle npc, String attribute, java.util.OptionalDouble value) { record("attribute:" + attribute + ":" + (value.isPresent() ? String.valueOf(value.getAsDouble()) : "reset")); }
     @Override public void playAnimation(NpcHandle npc, String animation, double speed, Optional<String> loop, int layer) { record("animation:" + animation + ":" + speed + ":" + loop.orElse("clip") + ":" + layer); }

@@ -87,7 +87,9 @@ node test/terrain_browser.cjs   # --data=test/fixtures/terrain_view
 node test/sections_shortcuts_browser.cjs
 node test/field_feedback_browser.cjs
 node test/health_part_browser.cjs
+node test/modelengine_browser.cjs
 node test/stage_scroll_browser.cjs
+node test/quest_editor_browser.cjs   # default --data
 ```
 
 `home_browser.cjs` checks the home page (one primary action, the three ways to start, the empty list), the skip link, renaming a workspace with Enter and Escape (focus goes back to Rename), deleting with Escape and Restore, the routes to a missing workspace or document (each names the cause and links back), then opens `../schema/fixtures/export` as a data folder: the listing, arrow keys in the document list, the document title as the page heading, the view tablist with arrow keys, a broken Code draft named in the header, and Split and Preview.

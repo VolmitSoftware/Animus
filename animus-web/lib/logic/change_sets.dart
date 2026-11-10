@@ -296,6 +296,7 @@ const Set<DocumentKind> revisionedKinds = <DocumentKind>{
   DocumentKind.group,
   DocumentKind.behavior,
   DocumentKind.shop,
+  DocumentKind.quest,
   DocumentKind.inventory,
   DocumentKind.hologram,
   DocumentKind.presets,

@@ -34,6 +34,11 @@ public record HologramStyle(String billboard, boolean shadowed, boolean seeThrou
         margins = List.copyOf(margins);
     }
 
+    /** This style with other line margins, one per line. */
+    public HologramStyle withMargins(List<Margin> next) {
+        return new HologramStyle(billboard, shadowed, seeThrough, viewRange, lineHeight, interpolationDelay, interpolationDuration, next);
+    }
+
     /** True when the lines need one display each: a line height or any margin is set. */
     public boolean separateRows() { return lineHeight.isPresent() || margins.stream().anyMatch((Margin margin) -> !margin.equals(Margin.NONE)); }
 

@@ -97,16 +97,23 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
         return observe(plugin.getServer().getEntity(ref.id())).filter((CombatTarget target) -> target.ref().kind() == ref.kind());
     }
 
+    @Override public Optional<CombatTarget> charge(TargetRef ref) {
+        if (ref.kind() == TargetKind.NPC) return Optional.empty();
+        return observe(plugin.getServer().getEntity(ref.id()), this::helper, true).filter((CombatTarget target) -> target.ref().kind() == ref.kind());
+    }
+
     /** A combat observation of a living player or mob, or empty when it cannot be a participant. */
     public Optional<CombatTarget> observe(Entity entity) { return observe(entity, this::helper); }
     /** On the entity's owner: a combat observation, or empty when it cannot be a participant or is a helper. */
-    public static Optional<CombatTarget> observe(Entity entity, java.util.function.Predicate<Entity> helper) {
+    public static Optional<CombatTarget> observe(Entity entity, java.util.function.Predicate<Entity> helper) { return observe(entity, helper, false); }
+    /** As {@link #observe(Entity, java.util.function.Predicate)}; with {@code anyMode} a creative or spectator player counts, as a guard's charge. */
+    public static Optional<CombatTarget> observe(Entity entity, java.util.function.Predicate<Entity> helper, boolean anyMode) {
         if (!(entity instanceof LivingEntity creature) || !creature.isValid() || creature.isDead() || creature.getHealth() <= 0 || helper.test(entity)) return Optional.empty();
         TargetKind kind;
         Set<TargetCategory> categories;
         String name;
         if (creature instanceof Player player) {
-            if (player.getGameMode() == GameMode.CREATIVE || player.getGameMode() == GameMode.SPECTATOR) return Optional.empty();
+            if (!anyMode && (player.getGameMode() == GameMode.CREATIVE || player.getGameMode() == GameMode.SPECTATOR)) return Optional.empty();
             kind = TargetKind.PLAYER;
             categories = Set.of(TargetCategory.PLAYERS);
             name = player.getName();

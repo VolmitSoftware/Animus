@@ -103,7 +103,8 @@ public final class TriggerCompiler {
             case PROXIMITY -> {
                 if (!object.has("phase")) throw new Invalid(path + ".phase", "expected enter or leave");
                 TriggerBinding.Phase phase = named(TriggerBinding.Phase.class, text(object, "phase", path), path + ".phase", "enter or leave");
-                yield new TriggerBinding.Proximity(phase, radius(object, path));
+                yield new TriggerBinding.Proximity(phase, radius(object, path),
+                        object.has("playerCooldownTicks") ? OptionalInt.of(integer(object, "playerCooldownTicks", path, 0, MAX_COOLDOWN_TICKS)) : OptionalInt.empty());
             }
             case SPAWN, DESPAWN, DAMAGE, DEATH, BUILD_FINISHED, BUILD_PAUSED, PLAYER_QUIT, SERVER_START, PLAYER_DEATH, PLAYER_RESPAWN -> new TriggerBinding.Lifecycle(kind);
             case WAYPOINT -> new TriggerBinding.Waypoint(object.has("waypoint") ? OptionalInt.of(integer(object, "waypoint", path, -1, MAX_WAYPOINT)) : OptionalInt.empty());
@@ -115,7 +116,7 @@ public final class TriggerCompiler {
             case PLAYER_AREA -> area(object, path);
             case PLAYER_INVENTORY_OPEN, PLAYER_INVENTORY_CLOSE, PLAYER_INVENTORY_CLICK, PLAYER_ITEM_DROP, PLAYER_ITEM_PICKUP, PLAYER_ITEM_CONSUME,
                  PLAYER_BLOCK_CLICK, PLAYER_BLOCK_PLACE, PLAYER_BLOCK_BREAK, PLAYER_DAMAGED, PLAYER_DAMAGE_ENTITY, PLAYER_KILL,
-                 PROJECTILE_LAUNCH, PROJECTILE_HIT, ENTITY_SHOOT_BOW -> worldEvent(kind, object, path);
+                 PROJECTILE_LAUNCH, PROJECTILE_HIT, ENTITY_SHOOT_BOW, QUEST_STARTED, QUEST_STAGE, QUEST_COMPLETED -> worldEvent(kind, object, path);
             case DIALOGUE_CHOICE -> new TriggerBinding.DialogueChoice(identifier(object, "dialogue", path),
                     object.has("choice") ? Optional.of(identifier(object, "choice", path)) : Optional.empty());
             case MODULE -> new TriggerBinding.ModuleEvent(key(text(object, "key", path), path + ".key"));

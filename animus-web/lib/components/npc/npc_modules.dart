@@ -339,6 +339,54 @@ class NavigationEditor extends StatelessWidget {
             RouteEditor(value: module, origin: origin, world: world, path: path, diagnostics: diagnostics, recordings: recordings, ownStyle: ownStyle, onChanged: (JsonMap next, JsonMap from) => onChanged(next, from: from)),
           ],
       },
+      if (source != NavigationSource.recording) _pause(module, path),
+    ]);
+  }
+
+  /// The route's pause: it stands still when a player comes near or clicks the NPC.
+  Widget _pause(JsonMap module, String path) {
+    final JsonMap pause = asMap(module['pause']);
+    final String at = childPath(path, 'pause');
+    void put(String field, Object? value) {
+      final JsonMap next = <String, Object?>{...pause};
+      if (value == null || value == false) {
+        next.remove(field);
+      } else {
+        next[field] = value;
+      }
+      final JsonMap updated = <String, Object?>{...module};
+      if (next.isEmpty) {
+        updated.remove('pause');
+      } else {
+        updated['pause'] = next;
+      }
+      onChanged(updated);
+    }
+
+    return dom.div(classes: 'animus-npc-route-pause', <Widget>[
+      NpcSubhead('Pause', help: pause.isEmpty ? 'Never pauses.' : null, tip: 'The route stands still for a while when a player comes near or right-clicks the NPC, so it can talk to them.'),
+      InspectRow(
+        label: 'Player range',
+        labelFor: 'animus-npc-pause-range',
+        help: 'Blocks, up to 64. Empty: players nearby never pause it.',
+        problems: diagnosticsAt(diagnostics, childPath(at, 'playerRange')),
+        child: GuiNumberInput(id: 'animus-npc-pause-range', value: asDouble(pause['playerRange']), integer: false, label: 'Pause player range', placeholder: '0', onChanged: (num? value) => put('playerRange', value)),
+      ),
+      GuiSwitch(value: pause['onClick'] == true, label: 'Pause on right-click', onChanged: (bool on) => put('onClick', on)),
+      InspectRow(
+        label: 'Pause ticks',
+        labelFor: 'animus-npc-pause-ticks',
+        help: 'How long it stands still, 1-12000. 20 by default.',
+        problems: diagnosticsAt(diagnostics, childPath(at, 'ticks')),
+        child: GuiNumberInput(id: 'animus-npc-pause-ticks', value: asInt(pause['ticks']), label: 'Pause ticks', placeholder: '20', onChanged: (num? value) => put('ticks', value?.toInt())),
+      ),
+      InspectRow(
+        label: 'Lockout ticks',
+        labelFor: 'animus-npc-pause-lockout',
+        help: 'No new pause for this long after one starts.',
+        problems: diagnosticsAt(diagnostics, childPath(at, 'lockoutTicks')),
+        child: GuiNumberInput(id: 'animus-npc-pause-lockout', value: asInt(pause['lockoutTicks']), label: 'Pause lockout ticks', placeholder: '0', onChanged: (num? value) => put('lockoutTicks', value?.toInt())),
+      ),
     ]);
   }
 

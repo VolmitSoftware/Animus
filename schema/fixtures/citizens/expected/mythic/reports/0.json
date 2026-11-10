@@ -1,0 +1,39 @@
+{
+  "citizensId": 0,
+  "presentationWarnings": [],
+  "runtimeWarnings": [
+    "/traits/commandtrait/commands/0/command: the MythicMobs skill cast became mythic:cast-skill, which needs MythicMobs on the server",
+    "/traits/commandtrait/commands/1/command: the MythicMobs skill cast became mythic:cast-skill, which needs MythicMobs on the server",
+    "/traits/commandtrait: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones",
+    "/traits/commandtrait: commands stay denied until citizens:commands-0 is on the [behaviors.actions] commandBehaviors list in config.toml"
+  ],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/commandtrait/commands/0/command": "CONVERTED",
+    "/traits/commandtrait/commands/0/hand": "CONVERTED",
+    "/traits/commandtrait/commands/0/player": "CONVERTED",
+    "/traits/commandtrait/commands/1/command": "CONVERTED",
+    "/traits/commandtrait/commands/1/hand": "CONVERTED",
+    "/traits/commandtrait/commands/1/player": "CONVERTED",
+    "/traits/commandtrait/commands/1/op": "CONVERTED",
+    "/traits/commandtrait/commands/2/command": "CONVERTED",
+    "/traits/commandtrait/commands/2/hand": "CONVERTED"
+  },
+  "reasons": {},
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "temple",
+      "to": "world"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

@@ -1,0 +1,45 @@
+{
+  "name": "King",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000605",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "world",
+      "x": 10.5,
+      "y": 64,
+      "z": 0.5
+    },
+    "skinlayers": {
+      "cape": false,
+      "hat": true,
+      "left-sleeve": false
+    },
+    "bossbar": {
+      "title": "&6The King",
+      "color": "YELLOW",
+      "style": "SEGMENTED_6",
+      "flags": [
+        "DARKEN_SKY",
+        "CREATE_FOG"
+      ],
+      "range": 40,
+      "track": "health",
+      "viewPermission": "court.view"
+    },
+    "playerfilter": {
+      "mode": "ALLOWLIST",
+      "groups": [
+        "nobles"
+      ],
+      "permissions": [
+        "court.enter"
+      ]
+    },
+    "clickredirecttrait": {
+      "uuid": "0a1b2c3d-0000-4000-8000-000000000606"
+    },
+    "paintingtrait": {
+      "art": "KEBAB"
+    }
+  }
+}

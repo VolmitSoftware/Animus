@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000301",
+  "id": "citizens-1",
+  "group": "world",
+  "name": "Golem",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "8052ce6cf1ebea6a52e492926bbae33141853ec87a339ae9af7301a5d2bf4667",
+    "citizensId": 1,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 4.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "animus:modelengine": {
+      "model": "golem",
+      "showBody": true,
+      "states": {
+        "idle": "breathe",
+        "walk": "stomp"
+      }
+    },
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "world",
+        "x": 4.5,
+        "y": 64,
+        "z": 0.5
+      },
+      "meg_model": {
+        "model_data": "{\"isBaseEntityVisible\":true,\"models\":{\"golem\":{\"defaultStates\":{\"IDLE\":{\"stateId\":\"breathe\",\"lerpIn\":0.0,\"lerpOut\":0.0,\"speed\":1.0},\"WALK\":{\"stateId\":\"stomp\",\"lerpIn\":0.0,\"lerpOut\":0.0,\"speed\":1.0},\"DEATH\":{\"stateId\":\"death\",\"lerpIn\":0.0,\"lerpOut\":0.0,\"speed\":1.0}},\"states\":{}}}}"
+      }
+    }
+  }
+}

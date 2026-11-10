@@ -11,6 +11,7 @@ import '../logic/data_folder.dart';
 import '../logic/gui/gloss_bundle.dart';
 import '../logic/gui/gui_json.dart';
 import '../logic/gui/gui_text.dart';
+import '../logic/npc/npc_integrations.dart';
 import '../logic/offline/new_documents.dart';
 import '../logic/npc/skin_edits.dart';
 import '../logic/recording/rename_references.dart';
@@ -618,6 +619,7 @@ class _EditorShellState extends State<EditorShell> {
               for (final CatalogEntry entry in session?.catalog ?? const <CatalogEntry>[])
                 if (entry.kind == DocumentKind.behavior) entry.id,
             ],
+            serverPlugins: reportedPlugins(session?.connection.capabilities),
             skinEditing: SkinEditing(
               resources: workspace.resources,
               commit: (SkinChange change) => component.store.commit(documents: change.documents, resources: change.resources, label: change.label),

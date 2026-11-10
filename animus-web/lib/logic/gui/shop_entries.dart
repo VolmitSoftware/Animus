@@ -28,6 +28,7 @@ bool shopEntryKeeps(String type, String key, {bool container = false}) => switch
       'limit' => type != 'static',
       'stock' => !container && (type == 'buy' || type == 'command' || type == 'trade'),
       'price' => !container,
+      'levels' => !container && (type == 'buy' || type == 'command' || type == 'trade'),
       _ => true,
     };
 

@@ -37,7 +37,7 @@ class DocumentLocation {
 }
 
 /// Top-level folders that hold editable documents.
-const Set<String> documentRoots = <String>{'npcs', 'routes', 'recordings', 'skins', 'groups', 'behaviors', 'packs', 'shops', 'gui', 'rigs', 'animations'};
+const Set<String> documentRoots = <String>{'npcs', 'routes', 'recordings', 'skins', 'groups', 'behaviors', 'packs', 'shops', 'quests', 'gui', 'rigs', 'animations'};
 
 final RegExp _segment = RegExp(r'^[a-z0-9_-]{1,64}$');
 
@@ -74,6 +74,9 @@ DocumentLocation? locateDocument(String path) {
       return null;
     case 'shops':
       return parts.length >= 3 && valid(parts.sublist(1)) ? DocumentLocation(DocumentKind.shop, namespaced(parts.sublist(1))) : null;
+    case 'quests':
+      // The name is also the behavior quest-state name, so it has no folders.
+      return parts.length == 3 && valid(parts.sublist(1)) ? DocumentLocation(DocumentKind.quest, namespaced(parts.sublist(1))) : null;
     case 'rigs':
       return parts.length >= 3 && valid(parts.sublist(1)) ? DocumentLocation(DocumentKind.rig, namespaced(parts.sublist(1))) : null;
     case 'animations':
@@ -270,6 +273,7 @@ List<Diagnostic> _identity(DocumentLocation location, Object? json) {
       ];
     case DocumentKind.behavior:
     case DocumentKind.shop:
+    case DocumentKind.quest:
     case DocumentKind.rig:
     case DocumentKind.animation:
     case DocumentKind.pack:

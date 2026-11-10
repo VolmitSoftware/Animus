@@ -259,6 +259,12 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
         if (entity == null || !combat.owns(entity)) return Optional.empty();
         return BukkitCombatWorld.observe(entity, combat::helper).filter((CombatTarget target) -> target.ref().kind() == ref.kind());
     }
+    @Override public Optional<CombatTarget> charge(TargetRef ref) {
+        if (ref.kind() == TargetKind.NPC) return Optional.empty();
+        Entity entity = entity(ref.id());
+        if (entity == null || !combat.owns(entity)) return real(ref);
+        return BukkitCombatWorld.observe(entity, combat::helper, true).filter((CombatTarget target) -> target.ref().kind() == ref.kind());
+    }
     @Override public List<CombatTarget> nearbyReal(WorldPosition center, double radius, int limit) {
         World world = combat.world(center.world());
         if (world == null) return List.of();

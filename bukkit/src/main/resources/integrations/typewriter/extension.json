@@ -1,0 +1,343 @@
+{
+  "entries": [
+    {
+      "id": "animus_npc",
+      "name": "animus_npc",
+      "description": "An NPC managed by Animus",
+      "color": "#F57C00",
+      "icon": "fa-solid:user-tie",
+      "className": "art.arcane.animus.typewriter.AnimusNpcEntry",
+      "extension": "Animus",
+      "tags": [
+        "animus_npc",
+        "sound_source",
+        "speaker",
+        "static",
+        "entry",
+        "placeholder"
+      ],
+      "dataBlueprint": {
+        "kind": "object",
+        "fields": {
+          "id": {
+            "kind": "primitive",
+            "type": "string"
+          },
+          "name": {
+            "kind": "primitive",
+            "type": "string"
+          },
+          "displayName": {
+            "kind": "custom",
+            "modifiers": [
+              {
+                "name": "help",
+                "data": "The name of the entity that will be displayed in the chat (e.g. 'Steve' or 'Alex')."
+              }
+            ],
+            "default": "",
+            "editor": "var",
+            "shape": {
+              "kind": "primitive",
+              "modifiers": [
+                {
+                  "name": "colored",
+                  "data": null
+                },
+                {
+                  "name": "placeholder",
+                  "data": null
+                }
+              ],
+              "type": "string"
+            }
+          },
+          "sound": {
+            "kind": "custom",
+            "modifiers": [
+              {
+                "name": "help",
+                "data": "The sound that will be played when the entity speaks."
+              }
+            ],
+            "default": {},
+            "editor": "var",
+            "shape": {
+              "kind": "object",
+              "fields": {
+                "soundId": {
+                  "kind": "custom",
+                  "default": {
+                    "type": "default",
+                    "value": ""
+                  },
+                  "editor": "soundId",
+                  "shape": {
+                    "kind": "object",
+                    "fields": {
+                      "type": {
+                        "kind": "primitive",
+                        "type": "string"
+                      },
+                      "value": {
+                        "kind": "primitive",
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "soundSource": {
+                  "kind": "custom",
+                  "modifiers": [
+                    {
+                      "name": "help",
+                      "data": "The source of the location to play the sound from. (Defaults to player's location)"
+                    }
+                  ],
+                  "default": {
+                    "type": "self",
+                    "entryId": "",
+                    "location": {
+                      "world": "",
+                      "x": 0.0,
+                      "y": 0.0,
+                      "z": 0.0,
+                      "yaw": 0.0,
+                      "pitch": 0.0
+                    }
+                  },
+                  "editor": "soundSource",
+                  "shape": {
+                    "kind": "object",
+                    "fields": {
+                      "type": {
+                        "kind": "primitive",
+                        "type": "string"
+                      },
+                      "entryId": {
+                        "kind": "primitive",
+                        "type": "string"
+                      },
+                      "location": {
+                        "kind": "object",
+                        "fields": {
+                          "world": {
+                            "kind": "primitive",
+                            "type": "string"
+                          },
+                          "x": {
+                            "kind": "primitive",
+                            "type": "double"
+                          },
+                          "y": {
+                            "kind": "primitive",
+                            "type": "double"
+                          },
+                          "z": {
+                            "kind": "primitive",
+                            "type": "double"
+                          },
+                          "yaw": {
+                            "kind": "primitive",
+                            "type": "double"
+                          },
+                          "pitch": {
+                            "kind": "primitive",
+                            "type": "double"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "track": {
+                  "kind": "enum",
+                  "modifiers": [
+                    {
+                      "name": "help",
+                      "data": "Corresponds to the Minecraft sound category"
+                    }
+                  ],
+                  "values": [
+                    "MASTER",
+                    "MUSIC",
+                    "RECORD",
+                    "WEATHER",
+                    "BLOCK",
+                    "HOSTILE",
+                    "NEUTRAL",
+                    "PLAYER",
+                    "AMBIENT",
+                    "VOICE",
+                    "UI"
+                  ]
+                },
+                "volume": {
+                  "kind": "custom",
+                  "modifiers": [
+                    {
+                      "name": "help",
+                      "data": "A value of 1.0 is normal volume."
+                    }
+                  ],
+                  "default": 1.0,
+                  "editor": "var",
+                  "shape": {
+                    "kind": "primitive",
+                    "modifiers": [
+                      {
+                        "name": "min",
+                        "data": 0
+                      }
+                    ],
+                    "type": "double"
+                  }
+                },
+                "pitch": {
+                  "kind": "custom",
+                  "modifiers": [
+                    {
+                      "name": "help",
+                      "data": "A value of 1.0 is normal pitch."
+                    }
+                  ],
+                  "default": 1.0,
+                  "editor": "var",
+                  "shape": {
+                    "kind": "primitive",
+                    "modifiers": [
+                      {
+                        "name": "min",
+                        "data": 0
+                      },
+                      {
+                        "name": "max",
+                        "data": 2
+                      }
+                    ],
+                    "type": "double"
+                  }
+                }
+              }
+            }
+          },
+          "npc": {
+            "kind": "primitive",
+            "modifiers": [
+              {
+                "name": "help",
+                "data": "The Animus NPC id, such as guard."
+              }
+            ],
+            "type": "string"
+          }
+        }
+      },
+      "contextKeys": [],
+      "modifiers": []
+    },
+    {
+      "id": "on_animus_npc_interact",
+      "name": "on_animus_npc_interact",
+      "description": "When a player clicks an Animus NPC",
+      "color": "#FBB612",
+      "icon": "fa6-solid:people-robbery",
+      "className": "art.arcane.animus.typewriter.AnimusNpcInteractEventEntry",
+      "extension": "Animus",
+      "tags": [
+        "event",
+        "trigger",
+        "entry"
+      ],
+      "dataBlueprint": {
+        "kind": "object",
+        "fields": {
+          "id": {
+            "kind": "primitive",
+            "type": "string"
+          },
+          "name": {
+            "kind": "primitive",
+            "type": "string"
+          },
+          "triggers": {
+            "kind": "list",
+            "modifiers": [
+              {
+                "name": "help",
+                "data": "The entries that will be fired after this entry."
+              }
+            ],
+            "type": {
+              "kind": "custom",
+              "modifiers": [
+                {
+                  "name": "entry",
+                  "data": "triggerable"
+                }
+              ],
+              "editor": "ref",
+              "shape": {
+                "kind": "primitive",
+                "type": "string"
+              }
+            }
+          },
+          "identifier": {
+            "kind": "custom",
+            "modifiers": [
+              {
+                "name": "entry",
+                "data": "animus_npc"
+              },
+              {
+                "name": "help",
+                "data": "The Animus NPC entry."
+              }
+            ],
+            "editor": "ref",
+            "shape": {
+              "kind": "primitive",
+              "type": "string"
+            }
+          }
+        }
+      },
+      "contextKeys": [],
+      "modifiers": []
+    }
+  ],
+  "entryListeners": [
+    {
+      "entryBlueprintId": "on_animus_npc_interact",
+      "entryClassName": "art.arcane.animus.typewriter.AnimusNpcInteractEventEntry",
+      "className": "art.arcane.animus.typewriter.AnimusNpcListeners",
+      "methodName": "onAnimusNpcInteract",
+      "priority": "NORMAL",
+      "ignoreCancelled": false,
+      "arguments": [
+        "art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent",
+        "com.typewritermc.core.entries.Query"
+      ]
+    }
+  ],
+  "typewriterCommands": [],
+  "dependencyInjections": [],
+  "globalContextKeys": [],
+  "extension": {
+    "name": "Animus",
+    "shortDescription": "Use Animus NPCs as speakers and dialogue starters.",
+    "description": "Lets Typewriter dialogues use Animus NPCs as speakers and start when a player clicks one.",
+    "engineVersion": "@engineVersion@",
+    "channel": "NONE",
+    "paper": {
+      "dependencies": [
+        "Animus"
+      ]
+    },
+    "pluginVersion": "@version@",
+    "version": "@version@",
+    "namespace": "animus",
+    "dependencies": []
+  }
+}

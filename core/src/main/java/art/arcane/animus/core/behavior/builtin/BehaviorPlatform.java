@@ -2,10 +2,12 @@ package art.arcane.animus.core.behavior.builtin;
 
 import art.arcane.animus.api.NpcHandle;
 import art.arcane.animus.core.extension.CapabilityRefusal;
+import art.arcane.animus.core.inventory.MatchRule;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.recording.Playback;
 import art.arcane.animus.core.virtual.Vec3;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -51,7 +53,7 @@ public interface BehaviorPlatform {
         public ParticleEffect { Objects.requireNonNull(particle); }
     }
     /** Who an {@code animus:message} reaches: one player, everyone online, the players of a world, or the console. */
-    enum MessageTarget { PLAYER, ALL, WORLD, CONSOLE }
+    enum MessageTarget { PLAYER, ALL, WORLD, CONSOLE, NEARBY }
     /** Ticks are 0..72000. At least one of title and subtitle is present. Texts use the dialogue colour codes. */
     record Title(Optional<String> title, Optional<String> subtitle, int fadeIn, int stay, int fadeOut) {
         public Title { Objects.requireNonNull(title); Objects.requireNonNull(subtitle); }
@@ -63,6 +65,14 @@ public interface BehaviorPlatform {
     /** A written book. Pages use the dialogue colour codes. */
     record Book(String title, String author, List<String> pages) {
         public Book { Objects.requireNonNull(title); Objects.requireNonNull(author); pages = List.copyOf(pages); }
+    }
+    /** What one charge takes: money, experience levels and items, all or nothing. At least one part is present. */
+    record Cost(BigDecimal money, int levels, List<CostItem> items) {
+        public Cost { Objects.requireNonNull(money); items = List.copyOf(items); }
+    }
+    /** An item resource key, its optional component text in give syntax, how many, and how held items are compared. */
+    record CostItem(String item, Optional<String> components, int amount, MatchRule match) {
+        public CostItem { Objects.requireNonNull(item); Objects.requireNonNull(components); Objects.requireNonNull(match); }
     }
     /** Where {@code animus:teleport} sends its target. */
     sealed interface Destination permits Point, ToNpc, ToPlayer {}
@@ -122,7 +132,13 @@ public interface BehaviorPlatform {
     void lookAtPlayer(NpcHandle npc, UUID player);
     /** Turns the NPC to one of its definition's named poses; refuses a pose it does not declare. */
     void pose(NpcHandle npc, String pose);
+    /** The NPC's anchor by name as a teleport destination; its world is empty when the anchor is in the NPC's own world. */
+    default Point anchor(NpcHandle npc, String name) { throw refused("Anchors"); }
+    /** Shows a vanilla animation on the NPC to everyone who sees it. */
+    default void animate(NpcHandle npc, art.arcane.animus.core.npc.NpcAnimation animation) { throw refused("Animations"); }
     void setAppearance(NpcHandle npc, AppearanceChange change);
+    /** Shows {@code text} as a speech bubble, a hologram line over the NPC, for {@code ticks} ticks. */
+    void bubble(NpcHandle npc, String text, int ticks);
     /** An empty item clears the slot. */
     void setEquipment(NpcHandle npc, EquipmentSlot slot, Optional<String> item);
     /** Sets one vanilla attribute (a bare id) until the definition is applied again; an empty value returns it to the definition's. */
@@ -144,6 +160,8 @@ public interface BehaviorPlatform {
      * player's world in a server run; ALL and CONSOLE ignore both. Returns the number of receivers.
      */
     default int message(NpcHandle npc, Optional<UUID> player, MessageTarget to, String text) { throw refused("Messages"); }
+    /** Text with no speaker to the players within {@code radius} blocks of the NPC, on its owner. */
+    default int messageNearby(NpcHandle npc, double radius, String text) { throw refused("Messages"); }
     /** Shows a title to the player. Returns 1, or 0 when the player is offline. */
     default int title(UUID player, Title title) { throw refused("Titles"); }
     /** Shows action bar text to the player. Returns 1, or 0 when the player is offline. */
@@ -160,6 +178,10 @@ public interface BehaviorPlatform {
     default int giveItem(UUID player, ItemGift gift) { throw refused("Giving items"); }
     /** Removes up to amount matching items. Returns the amount taken, never more than the player held. */
     default int takeItem(UUID player, String item, int amount) { throw refused("Taking items"); }
+    /** Whether the player holds the whole cost now. An offline player holds nothing. */
+    default boolean affordable(UUID player, Cost cost) { throw refused("Charging players"); }
+    /** Takes the whole cost, or changes nothing and returns false. */
+    default boolean charge(UUID player, Cost cost) { throw refused("Charging players"); }
     /** Gives a written book. Returns 1, or 0 when the player is offline. */
     default int giveBook(UUID player, Book book) { throw refused("Giving books"); }
 

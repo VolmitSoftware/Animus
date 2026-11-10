@@ -91,8 +91,11 @@ public final class AnimusModRuntime {
         PersistedNpcService<ServerPlayer, ItemStack> living;
         ModCombat combat;
         ModScreens screens;
+        ModBossBars bossBars;
         ModToolkit toolkit;
         volatile art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> shops;
+        volatile art.arcane.animus.core.quest.QuestService<ServerPlayer, ItemStack> quests;
+        volatile art.arcane.animus.core.behavior.BehaviorFacts facts = art.arcane.animus.core.behavior.BehaviorFacts.NONE;
         VanillaDisplayTransport displays;
         volatile art.arcane.animus.core.gui.HoloService<ServerPlayer, ItemStack> guis;
         BuildService<ServerPlayer, ItemStack> builds;
@@ -149,13 +152,26 @@ public final class AnimusModRuntime {
             art.arcane.animus.core.hire.HireService<ServerPlayer, ItemStack> hires = new art.arcane.animus.core.hire.HireService<>(next.runtime, next.shops.screens(), next.living, files,
                     next.combat.hireGuarding(), LOGGER::info);
             next.ticks.every(measured.timed(Subsystem.BEHAVIORS, hires::tick));
+            art.arcane.animus.core.AnimusRuntime scheduled = next.runtime;
+            art.arcane.animus.core.schedule.ScheduleService schedules = new art.arcane.animus.core.schedule.ScheduleService(() -> scheduled.npcs().snapshot(),
+                    new art.arcane.animus.core.schedule.RuntimeScheduleWorld<>(next.living, new ModScheduleHost(server, next.living)),
+                    () -> scheduled.behaviorSettings().actions().commandNamespaces(), java.util.random.RandomGenerator.getDefault(), LOGGER::info);
+            next.ticks.every(measured.timed(Subsystem.BEHAVIORS, schedules::tick));
+            art.arcane.animus.core.AnimusRuntime presented = next.runtime;
+            next.bossBars = new ModBossBars(server, presented::npcs, next.living);
+            next.ticks.every(measured.timed(Subsystem.PRESENTATION, next.bossBars::tick));
+            next.quests = new art.arcane.animus.core.quest.QuestService<>(next.runtime, next.shops.screens(), next.living, next.displays, next.guis::watch, files,
+                    () -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.servers(); }, () -> owner.facts,
+                    (String name) -> Optional.ofNullable(server.getPlayerList().getPlayerByName(name)).map(ServerPlayer::getUUID), LOGGER::info);
+            art.arcane.animus.core.quest.QuestService<ServerPlayer, ItemStack> questService = next.quests;
             art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> screenService = next.shops;
             art.arcane.animus.core.gui.HoloService<ServerPlayer, ItemStack> holoService = next.guis;
             next.toolkit = new ModToolkit(server, next.runtime, next.shops.screens(), next.living, files,
                     (ServerPlayer player) -> { ModRecordings current = owner.recordings; return current == null ? Optional.empty() : current.skin(player); }, next.ticks::every);
             ModToolkit tools = next.toolkit;
             next.living.interactions((ServerPlayer player, UUID npc, boolean attack, boolean sneaking) -> tools.interacted(player, npc, attack, sneaking) ||
-                    hires.interacted(player, npc, attack, sneaking) || screenService.interacted(player, npc, attack, sneaking) || holoService.interacted(player, npc, attack, sneaking));
+                    hires.interacted(player, npc, attack, sneaking) || questService.interacted(player, npc, attack, sneaking)
+                    || screenService.interacted(player, npc, attack, sneaking) || holoService.interacted(player, npc, attack, sneaking));
             next.ticks.every(measured.timed(Subsystem.GUI, () -> {
                 for (UUID viewer : screenService.screens().viewing()) {
                     ServerPlayer online = server.getPlayerList().getPlayer(viewer);
@@ -163,8 +179,14 @@ public final class AnimusModRuntime {
                 }
                 for (ServerPlayer online : List.copyOf(server.getPlayerList().getPlayers())) holoService.tick(online);
             }));
+            long[] questTicks = {0};
+            next.ticks.every(measured.timed(Subsystem.BEHAVIORS, () -> {
+                if (++questTicks[0] % art.arcane.animus.core.quest.QuestService.CHECK_TICKS != 0) return;
+                for (ServerPlayer online : List.copyOf(server.getPlayerList().getPlayers())) questService.tick(online);
+            }));
             next.shops.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {});
             next.guis.reload((art.arcane.animus.core.gui.HoloCatalog catalog) -> {});
+            next.quests.reload((art.arcane.animus.core.quest.QuestCatalog catalog) -> {});
             next.builds = new BuildService<>(next.runtime, next.living, files, new VanillaBuildPlatform(server, next.host.terrain()), next.runtime.moduleHooks().buildProtection(BuildProtection.NONE),
                     "none (mod servers have no standard protection API; a module protection hook can deny block changes)", next.ticks::every,
                     () -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); }, LOGGER::info, null, null);
@@ -172,6 +194,7 @@ public final class AnimusModRuntime {
             DialogueTriggers dialogue = new DialogueTriggers(() -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); });
             next.builtins = new BuiltinCapabilities(new VanillaBehaviorPlatform(server, next.living, next.combat, next.builds, next.ticks, () -> owner.guis),
                     next.runtime.behaviorState(), dialogue::publish, next.runtime.behaviorSettings().actions(), LOGGER::info);
+            next.builtins.quests(questService);
             next.extensions = new ExtensionRuntime(next.runtime.documents().resolve("modules"), modulePlatform(), next.runtime.definitionGateway(),
                     next.runtime.moduleSettings(), LOGGER::info, (ExtensionRuntime.State initialized) -> {
                         BehaviorCommands current = owner.behaviors;
@@ -188,7 +211,8 @@ public final class AnimusModRuntime {
             });
             next.runtime.catalogs(new art.arcane.animus.core.RuntimeCatalogs(new art.arcane.animus.core.RuntimeCatalogs.Parts(next.runtime, next.living::refresh,
                     () -> owner.behaviors, () -> screenService.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {}),
-                    () -> holoService.reload((art.arcane.animus.core.gui.HoloCatalog catalog) -> {}), LOGGER::info)));
+                    () -> holoService.reload((art.arcane.animus.core.gui.HoloCatalog catalog) -> {}),
+                    () -> questService.reload((art.arcane.animus.core.quest.QuestCatalog catalog) -> {}), LOGGER::info)));
             BuiltinCapabilities actions = next.builtins;
             next.runtime.onSettings((art.arcane.animus.core.config.PluginSettings settingsNow) -> actions.settings(settingsNow.behaviors().actions()));
             next.hotload = new art.arcane.animus.core.hotload.HotloadService(new art.arcane.animus.core.hotload.HotloadService.Parts(next.runtime, files, server::execute, next.living,
@@ -201,6 +225,7 @@ public final class AnimusModRuntime {
             PersistedNpcService<ServerPlayer, ItemStack> npcs = next.living;
             SnapshotFacts facts = new SnapshotFacts(SnapshotFacts.npcs(definitions::snapshot, npcs::state));
             next.behaviors.facts(facts);
+            next.facts = facts;
             next.serverBehaviors = new ModServerBehaviors(server, servers, facts, LOGGER::info);
             next.ticks.every(measured.timed(Subsystem.BEHAVIORS, next.serverBehaviors::tick));
             next.recordings = new ModRecordings(server, next.ticks, next.runtime, files, LOGGER::info, LOGGER::warn);
@@ -208,8 +233,9 @@ public final class AnimusModRuntime {
                     (String id) -> owner.runtime.isRunning() ? owner.runtime.npcs().find(id).map(NpcDefinition::uuid) : Optional.empty(),
                     () -> { EditorService active = owner.editor; return active == null ? List.of("Editor: off") : active.status(); });
             next.commands = new AnimusCommandTree(new CommandServices(next.runtime, files, next.living, () -> owner.behaviors, next.extensions, next.builtins,
-                    next.combat.control(), next.shops, next.guis, new BuildCommands(() -> owner.builds, owner.builds::unavailable), new EditorCommands(() -> owner.editor, files),
-                    debugCommands, BUKKIT_ONLY, next.recordings.sessions(), () -> List.of(server.getPlayerNames()), () -> owner.stopping)).director();
+                    next.combat.control(), next.shops, next.guis, next.quests, new BuildCommands(() -> owner.builds, owner.builds::unavailable), new EditorCommands(() -> owner.editor, files),
+                    debugCommands, BUKKIT_ONLY, next.recordings.sessions(), () -> List.of(server.getPlayerNames()), () -> owner.stopping,
+                    (String plugin) -> false)).director();
             measured.extra("combat.waiting", next.combat::waiting);
             measured.extra("combat.load", next.combat::load);
             measured.extra("editor.streams", () -> { EditorService active = owner.editor; return active == null ? 0 : active.eventStreams(); });
@@ -277,6 +303,8 @@ public final class AnimusModRuntime {
         if (active.builtins != null) active.builtins.close();
         if (active.toolkit != null) active.toolkit.close();
         if (active.screens != null) active.screens.closeAll();
+        if (active.quests != null) active.quests.close();
+        if (active.bossBars != null) active.bossBars.close();
         if (active.guis != null) active.guis.close();
         if (active.shops != null) active.shops.close();
         if (active.extensions != null) active.extensions.close();
@@ -303,7 +331,10 @@ public final class AnimusModRuntime {
         java.util.function.Supplier<Map<String, EditorHost.Feature>> features = () -> Map.of(
                 "combat", EditorHost.Feature.yes(),
                 "gloss", EditorHost.Feature.no("Gloss is a Bukkit plugin"),
-                "placeholderapi", EditorHost.Feature.no("PlaceholderAPI is a Bukkit plugin"));
+                "placeholderapi", EditorHost.Feature.no("PlaceholderAPI is a Bukkit plugin"),
+                "modelengine", EditorHost.Feature.no("Model Engine is a Bukkit plugin"),
+                "libsdisguises", EditorHost.Feature.no("LibsDisguises is a Bukkit plugin"),
+                "mythicmobs", EditorHost.Feature.no("MythicMobs is a Bukkit plugin"));
         EditorService service = new EditorService(next.runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(next.runtime, files, next.living,
                 next.extensions, platform.name().toLowerCase(java.util.Locale.ROOT), "", features, new ModLookups(server)::read,
                 (ServerPlayer player, String node) -> VanillaRuntimeHost.permitted(player.permissions(), node), new ModEditorNotices(server), LOGGER::info,
@@ -419,6 +450,7 @@ public final class AnimusModRuntime {
         if (active.shops != null) active.shops.screens().quit(player);
         if (active.toolkit != null) active.toolkit.quit(player);
         if (active.guis != null) active.guis.quit(player);
+        if (active.quests != null) active.quests.quit(player);
         active.living.quit(player);
         if (active.serverBehaviors != null) active.serverBehaviors.quit(player);
     }
@@ -427,6 +459,7 @@ public final class AnimusModRuntime {
         if (active == null) return;
         if (active.shops != null) active.shops.screens().worldChanged(player);
         if (active.guis != null) active.guis.worldChanged(player);
+        if (active.quests != null) active.quests.worldChanged(player);
         active.living.respawned(player);
         if (active.serverBehaviors != null) {
             active.serverBehaviors.respawned(player);
@@ -436,6 +469,7 @@ public final class AnimusModRuntime {
     /** A teleport that ended in another dimension. */
     void worldChanged(ServerPlayer player, Level from) {
         Running active = running;
+        if (active != null && active.quests != null) active.quests.worldChanged(player);
         if (active != null && active.serverBehaviors != null) active.serverBehaviors.worldChanged(player, ModWorldKeys.key(from), ModWorldKeys.key(player.level()));
     }
     void died(ServerPlayer player) {
@@ -462,4 +496,5 @@ public final class AnimusModRuntime {
     boolean helper(Entity entity) { Running active = running; return active != null && active.combat.helper(entity); }
     /** Server behaviors of the running server, or null. */
     ModServerBehaviors serverBehaviors() { Running active = running; return active == null ? null : active.serverBehaviors; }
+    art.arcane.animus.core.quest.QuestService<ServerPlayer, ItemStack> quests() { Running active = running; return active == null ? null : active.quests; }
 }

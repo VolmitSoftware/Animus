@@ -321,12 +321,16 @@ class ShopOfferEditor extends StatelessWidget {
   Widget _money(String type, bool container) {
     final JsonMap discount = asMap(_entry['discount']);
     return GuiSection(
-      title: 'Money',
-      tip: 'Paid through Vault on Bukkit servers. Mod servers have no economy, so priced offers refuse there.',
+      title: 'Cost',
+      tip: 'Money is paid through Vault on Bukkit servers. Mod servers have no economy, so priced offers refuse there.',
       children: <Widget>[
         _row(type == 'trade' ? 'Also costs' : (type == 'sell' ? 'Pays' : 'Price'), 'price',
             (String id) => GuiNumberInput(id: id, value: asDouble(_entry['price']), integer: false, label: type == 'sell' ? 'Pays' : 'Price', placeholder: type == 'trade' ? 'none' : '0', onChanged: (num? v) => _set('price', v)),
             tip: type == 'trade' ? 'Money on top of the items. Empty for none.' : 'For the listed count, up to 4 decimals. 0 is free.'),
+        if (type != 'sell')
+          _row('Levels', 'levels',
+              (String id) => GuiNumberInput(id: id, value: asDouble(_entry['levels']), integer: true, label: 'Levels', placeholder: 'none', onChanged: (num? v) => _set('levels', v == null || v == 0 ? null : v.toInt())),
+              tip: 'Experience levels taken with the price. Empty for none.'),
         _row('Sale price', 'discount', (String id) => GuiNumberInput(id: id, value: asDouble(discount['price']), integer: false, label: 'Sale price', placeholder: 'none', onChanged: (num? v) {
               final JsonMap next = withField(discount, 'price', v);
               _set('discount', next['price'] == null ? null : next, coalesce: '${offer.ref.key}.discount.price');

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:herbs",
+  "title": "&aHerbs for the healer",
+  "description": "The healer is out of wheat for her poultices, and zombies keep trampling the fields.",
+  "icon": {"id": "minecraft:wheat"},
+  "givers": ["healer"],
+  "turnIn": "healer",
+  "repeat": {"mode": "daily"},
+  "stages": [
+    {
+      "description": "Ask the farmer where the wheat went.",
+      "objectives": [
+        {"type": "talk", "npc": "farmer", "description": "Talk to the farmer"}
+      ]
+    },
+    {
+      "description": "Bring wheat to the healer and clear the fields.",
+      "order": "any",
+      "objectives": [
+        {"type": "bring", "npc": "healer", "item": {"id": "minecraft:wheat"}, "amount": 3},
+        {"type": "kill", "entity": "minecraft:zombie", "amount": 2}
+      ]
+    }
+  ],
+  "rewards": {
+    "items": [{"item": {"id": "minecraft:bread"}, "amount": 5}],
+    "experience": 50,
+    "money": 25,
+    "flags": [{"name": "helped_healer"}]
+  },
+  "messages": {
+    "offer": "Could you help me with the harvest?",
+    "complete": "Thank you, {player}. The village is in your debt."
+  }
+}

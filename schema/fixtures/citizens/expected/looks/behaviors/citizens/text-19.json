@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "citizens:text-19",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Bubbles!",
+        "bubbleTicks": 80,
+        "chat": false
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "action": "interact",
+      "playerCooldownTicks": 100
+    }
+  ]
+}

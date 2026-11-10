@@ -8,7 +8,7 @@
   "type": "minecraft:horse",
   "spawned": false,
   "migration": {
-    "importId": "04400a2b1c130f7624888d255541071fb0dbebc74628fff53ce4ca620b8e83ff",
+    "importId": "e039eeecda7b1118e5cb80082e4522f10590c5ee04b002f8a7dffed09388659a",
     "citizensId": 1,
     "originalSpawned": false,
     "references": [
@@ -52,6 +52,9 @@
       "pitch": 0.0
     }
   },
+  "horse": {
+    "color": "white"
+  },
   "modules": {
     "animus:combat": {
       "enabled": false,
@@ -68,7 +71,8 @@
       "enabled": false,
       "range": 10.0,
       "lineOfSight": true,
-      "whileNavigating": false
+      "whileNavigating": false,
+      "perPlayer": true
     },
     "animus:navigation": {
       "enabled": false,

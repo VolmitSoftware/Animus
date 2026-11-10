@@ -32,12 +32,14 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiFunction;
+import java.util.function.Predicate;
 
 /**
  * Runs {@code /animus} through VolmLib's Director, the same on every platform. Bare words bind to required parameters,
  * then to the optional ones a command lists in {@link Positional}; any other optional one is {@code key=value}. Unknown
  * keys and leftover words fail with the command's usage and the key to write.
- * Commands carry their node in {@link AnimusPermission}; help and completion show only what the actor may run.
+ * Commands carry their node in {@link AnimusPermission}; help and completion show only what the actor may run, and only
+ * the {@link NeedsPlugin} commands whose plugin is running.
  * Call {@link #execute} and {@link #complete} on the actor's owner; commands read the actor with {@link #actor()}.
  */
 public final class AnimusDirector {
@@ -58,16 +60,19 @@ public final class AnimusDirector {
     private final String label;
     private final DirectorRuntimeEngine engine;
     private final Completer values;
+    private final Predicate<String> plugins;
 
     /** Completion values for a parameter name, such as NPC ids for {@code npc}; {@code given} holds the values already typed, by name. */
     @FunctionalInterface public interface Completer { Collection<String> values(String parameter, CommandActor actor, Map<String, String> given); }
 
     /**
-     * @param root   the {@code @Director} root command object
-     * @param values completion values for a parameter name
+     * @param root    the {@code @Director} root command object
+     * @param values  completion values for a parameter name
+     * @param plugins whether a server plugin a {@link NeedsPlugin} command names is running
      */
-    public AnimusDirector(Object root, Completer values) {
+    public AnimusDirector(Object root, Completer values, Predicate<String> plugins) {
         this.values = Objects.requireNonNull(values);
+        this.plugins = Objects.requireNonNull(plugins);
         engine = DirectorEngineFactory.create(Objects.requireNonNull(root), DirectorEngineOptions.builder()
                 .dispatcher((DirectorExecutionMode mode, Runnable task) -> task.run())
                 .textResolver(TEXT)
@@ -75,10 +80,13 @@ public final class AnimusDirector {
         label = engine.getRoot().getDescriptor().getName();
     }
 
-    /** As {@link #AnimusDirector(Object, Completer)}, for values that do not depend on what else was typed. */
-    public AnimusDirector(Object root, BiFunction<String, CommandActor, Collection<String>> values) {
-        this(root, (String parameter, CommandActor actor, Map<String, String> given) -> values.apply(parameter, actor));
+    /** As {@link #AnimusDirector(Object, Completer, Predicate)}, for values that do not depend on what else was typed. */
+    public AnimusDirector(Object root, BiFunction<String, CommandActor, Collection<String>> values, Predicate<String> plugins) {
+        this(root, (String parameter, CommandActor actor, Map<String, String> given) -> values.apply(parameter, actor), plugins);
     }
+
+    /** As {@link #AnimusDirector(Object, BiFunction, Predicate)} on a server running every plugin a command needs. */
+    public AnimusDirector(Object root, BiFunction<String, CommandActor, Collection<String>> values) { this(root, values, (String plugin) -> true); }
 
     public DirectorRuntimeEngine engine() { return engine; }
 
@@ -109,6 +117,7 @@ public final class AnimusDirector {
             if (group.isInvocable() || token.contains("=") || HELP.contains(token.toLowerCase(Locale.ROOT))) break;
             DirectorRuntimeNode next = named(group, token);
             if (next == null) return unknown(actor, group, token);
+            if (needs(next).isPresent()) return missing(actor, next);
             group = next;
         }
         Optional<DirectorMiniMenu.DirectorHelpPage> help = DirectorMiniMenu.resolveHelp(engine, tokens);
@@ -117,6 +126,7 @@ public final class AnimusDirector {
         DirectorRoute route = engine.route(DirectorInvocation.pretokenized(sender, label, tokens));
         if (!route.invocable()) return unknown(actor, route.node() == null ? engine.getRoot() : route.node(), String.join(" ", tokens));
         DirectorRuntimeNode node = route.node();
+        if (needs(node).isPresent()) return missing(actor, node);
         List<String> words = new ArrayList<>(tokens.subList(0, tokens.size() - route.remainingArgs().size()));
         words.addAll(positional(node, coordinates(node, route.remainingArgs())));
         DirectorInvocation invocation = DirectorInvocation.pretokenized(sender, label, words);
@@ -153,6 +163,22 @@ public final class AnimusDirector {
         actor.tell(Palette.error("Unknown command \"" + word + "\" in " + shown.path()));
         actor.rich(ChatLine.of(Palette.PREFIX + "&7Usage: &f" + shown.path() + " <command>").docs(DocsLink.COMMANDS));
         return false;
+    }
+
+    /** A command whose plugin is not running: only that it needs the plugin. */
+    private boolean missing(CommandActor actor, DirectorRuntimeNode node) {
+        actor.tell(Palette.error(node.path() + " needs " + needs(node).orElseThrow()));
+        return false;
+    }
+
+    /** The plugin the node or a group above it needs while that plugin is not running. */
+    public Optional<String> needs(DirectorRuntimeNode node) {
+        for (DirectorRuntimeNode cursor = node; cursor != null; cursor = cursor.getParent()) {
+            NeedsPlugin annotation = cursor.getMethod() != null ? cursor.getMethod().getAnnotation(NeedsPlugin.class)
+                    : cursor.getInstance().getClass().getAnnotation(NeedsPlugin.class);
+            if (annotation != null && !plugins.test(annotation.value())) return Optional.of(annotation.value());
+        }
+        return Optional.empty();
     }
 
     private static DirectorRuntimeNode named(DirectorRuntimeNode group, String word) {
@@ -420,9 +446,12 @@ public final class AnimusDirector {
         return permission.isEmpty() || actor.permitted(permission);
     }
 
-    /** Whether help and completion list the node: the actor may run it, or for a group, something inside it. */
-    public static boolean visible(CommandActor actor, DirectorRuntimeNode node) {
-        if (node.getDescriptor().isHidden()) return false;
+    /**
+     * Whether help and completion list the node: its plugin runs, and the actor may run it, or for a group, something
+     * inside it.
+     */
+    public boolean visible(CommandActor actor, DirectorRuntimeNode node) {
+        if (node.getDescriptor().isHidden() || needs(node).isPresent()) return false;
         if (allowed(actor, node)) return true;
         if (node.isInvocable()) return false;
         for (DirectorRuntimeNode child : node.getChildren()) if (visible(actor, child)) return true;

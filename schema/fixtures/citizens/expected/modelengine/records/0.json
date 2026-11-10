@@ -1,0 +1,17 @@
+{
+  "name": "Drake",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000300",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "world",
+      "x": 0.5,
+      "y": 64,
+      "z": 0.5,
+      "yaw": 90
+    },
+    "meg_model": {
+      "model_data": "{\"version\":\"R4.0.3\",\"base_visible\":false,\"models\":[{\"blueprint\":\"drake\",\"render_scale\":2.0,\"hitbox_scale\":2.0},{\"blueprint\":\"drake_saddle\",\"render_scale\":1.0}]}"
+    }
+  }
+}

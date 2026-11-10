@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "converterVersion": 16,
+  "fieldPathFormat": "json-pointer",
+  "importId": "f88238b8840aa1cb4d387bc24712f42db074713ab8721cb834a89bda5432b782",
+  "sourceSha256": "67a70353849d959cf73de2a56e2dcc384c115a6787a3f944ef309e8d0219739f",
+  "worldMap": {},
+  "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.",
+  "records": 2,
+  "valid": 2,
+  "skins": 0,
+  "behaviors": 2,
+  "shops": 0,
+  "conversions": {
+    "routes": 0,
+    "routePoints": 0,
+    "routeGuides": 0,
+    "lookClose": 0,
+    "textBehaviors": 0,
+    "commandBehaviors": 2,
+    "skinsKept": 0
+  },
+  "citizensDefaults": {
+    "lookclose": {
+      "enabled": false,
+      "realisticlooking": false,
+      "disablewhilenavigating": true
+    },
+    "inferred": []
+  },
+  "traits": {
+    "type": 2,
+    "location": 2,
+    "dropstrait": 2,
+    "shop": 1,
+    "commandtrait": 2
+  },
+  "types": {
+    "player": 2
+  },
+  "sentinelFields": {},
+  "sentinelMapping": {},
+  "issues": [],
+  "migrationWarnings": [
+    "citizens-0: /traits/shop/storage: the NPC's own money and item storage is not kept; the shop trades without limited stock",
+    "citizens-0: /traits/shop/rightClickShop: no shop named Harbor Goods converted; the NPC opens no shop",
+    "citizens-0: /traits/dropstrait/drops/2: not an item; not converted",
+    "citizens-0: /traits/commandtrait/commands/1/npc: the NPC's own player body ran the command; it now runs from the console, with the NPC's name for the player",
+    "citizens-0: /traits/commandtrait/commands/2/itemCost: an item cost cannot be matched exactly; not converted",
+    "citizens-0: /traits/commandtrait: commands stay denied until citizens:commands-0 is on the [behaviors.actions] commandBehaviors list in config.toml",
+    "citizens-1: /traits/commandtrait: commands stay denied until citizens:commands-1 is on the [behaviors.actions] commandBehaviors list in config.toml"
+  ],
+  "remappedLocations": 0,
+  "resolvedReferences": 0,
+  "unresolvedReferences": 0,
+  "sourceFields": {},
+  "idMap": {
+    "0": "0a1b2c3d-0000-4000-8000-000000000400",
+    "1": "0a1b2c3d-0000-4000-8000-000000000401"
+  },
+  "documents": {
+    "behaviors/citizens/commands-0.json": "216308f2270819d99ab1321b00761624ba9f7ba0fff827ad05a0a357ea68eca9",
+    "npcs/harbor/citizens-0.json": "c32667dc6f530d069fc85154bb3a723c72a8e82ecbf159958dab12ea78c476f9",
+    "behaviors/citizens/commands-1.json": "f16e14f576169249fce3cd574d73ca295afe2f7935cc875598311679b2fdde01",
+    "npcs/harbor/citizens-1.json": "cc28e38fa796b6abcc55f3c6553bbd7e45f16b020a53b214bba08f7f06605eba"
+  }
+}

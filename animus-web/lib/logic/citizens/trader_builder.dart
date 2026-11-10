@@ -162,7 +162,7 @@ BuilderResult convertBuilder(JElement? trait) {
   }
   final String? state = _text(source, 'State');
   if (state != null && (javaLower(state) == 'building' || javaLower(state) == 'collecting')) {
-    warnings.add('Builder was ${javaLower(state)} when saved; start the build again with /animus build start after review. Blocks already in place are skipped');
+    warnings.add("Builder was ${javaLower(state)} when saved; the build starts again on the NPC's first spawn after accept builder. Blocks already in place are skipped");
   }
   for (final String task in const <String>['onstart', 'oncomplete', 'oncancel']) {
     if (source.has(task)) warnings.add('builder $task names a Denizen task; recreate it with a build_finished or build_paused trigger');
@@ -178,6 +178,42 @@ BuilderResult convertBuilder(JElement? trait) {
   imported.add('notes', JArray(<JElement>[for (final String warning in warnings) JString(warning)]));
   module.add('imported', imported);
   return BuilderResult(module, List<String>.unmodifiable(warnings));
+}
+
+/// `BuilderMapping.resume`: a behavior that starts a build Builder saved mid-way once, after the builder review is accepted.
+JObject? builderResume(JElement? trait, String key) {
+  if (trait is! JObject) return null;
+  final String? state = _text(trait, 'State');
+  if (state == null || (javaLower(state) != 'building' && javaLower(state) != 'collecting')) return null;
+  JObject marker() => JObject()
+    ..addString('name', 'builder-$key-resumed')
+    ..addString('scope', 'npc');
+  JObject step(String capability, JObject arguments) => JObject()
+    ..addString('type', 'action')
+    ..addString('capability', capability)
+    ..add('arguments', arguments);
+  final JObject resume = JObject()
+    ..addString('type', 'condition')
+    ..addString('capability', 'animus:flag-state')
+    ..add('arguments', marker())
+    ..add('then', JObject()
+      ..addString('type', 'sequence')
+      ..add('steps', JArray()))
+    ..add('else', JObject()
+      ..addString('type', 'sequence')
+      ..add('steps', JArray(<JElement>[step('animus:build', JObject()..addString('operation', 'start')), step('animus:set-flag', marker())])));
+  return JObject()
+    ..addInt('schemaVersion', 1)
+    ..addInt('revision', 1)
+    ..addString('id', 'citizens:builder-$key')
+    ..addString('entry', 'resume')
+    ..add('routines', JObject()..add('resume', resume))
+    ..add('triggers', JArray(<JElement>[
+      JObject()
+        ..addString('id', 'spawn')
+        ..addString('event', 'spawn')
+        ..addString('routine', 'resume')
+    ]));
 }
 
 List<String> constructorWarnings(JElement? trait) {

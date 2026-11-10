@@ -1,0 +1,16 @@
+{
+  "name": "Golem",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000301",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "world",
+      "x": 4.5,
+      "y": 64,
+      "z": 0.5
+    },
+    "meg_model": {
+      "model_data": "{\"isBaseEntityVisible\":true,\"models\":{\"golem\":{\"defaultStates\":{\"IDLE\":{\"stateId\":\"breathe\",\"lerpIn\":0.0,\"lerpOut\":0.0,\"speed\":1.0},\"WALK\":{\"stateId\":\"stomp\",\"lerpIn\":0.0,\"lerpOut\":0.0,\"speed\":1.0},\"DEATH\":{\"stateId\":\"death\",\"lerpIn\":0.0,\"lerpOut\":0.0,\"speed\":1.0}},\"states\":{}}}}"
+    }
+  }
+}

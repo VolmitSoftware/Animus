@@ -1,0 +1,14 @@
+{
+  "name": "Crystal",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000614",
+  "traits": {
+    "type": "END_CRYSTAL",
+    "location": {
+      "world": "world",
+      "x": 28.5,
+      "y": 64,
+      "z": 0.5
+    },
+    "endercrystaltrait": {}
+  }
+}

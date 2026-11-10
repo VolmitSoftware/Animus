@@ -26,7 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SentinelMappingTest {
-    /** All 69 persisted keys at the pinned source; see dev/upstream-inventory.md. */
+    /** All 69 persisted keys of the pinned Sentinel source. */
     private static final Set<String> SETTINGS = Set.of("allTargets", "allIgnores", "allAvoids", "avoidRange", "range", "damage", "armor", "health", "ranged_chase", "close_chase",
             "invincible", "protected", "protectFromRange", "fightback", "runaway", "attackRate", "attackRateRanged", "healRate", "guardingUpper", "guardingLower", "guardedNPC", "needsAmmo",
             "safeShot", "respawnTime", "chaseRange", "spawnPoint", "avoidReturnPoint", "drops", "dropChances", "enemyDrops", "enemyTargetTime", "speed", "warning_text", "greeting_text",

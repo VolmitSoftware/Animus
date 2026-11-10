@@ -55,6 +55,7 @@
     "behavior": {"folder": "behaviors", "applyScope": "apply:behaviors", "schema": "generated/behavior.schema.json"},
     "pack": {"folder": "packs", "applyScope": "apply:behaviors", "schema": "generated/pack.schema.json"},
     "shop": {"folder": "shops", "applyScope": "apply:gui", "schema": "shop-v1.schema.json"},
+    "quest": {"folder": "quests", "applyScope": "apply:behaviors", "schema": "quest-v1.schema.json"},
     "inventory": {"folder": "gui/inventories", "applyScope": "apply:gui", "schema": "gui-inventory-v1.schema.json"},
     "menu": {"folder": "gui/menus", "applyScope": "apply:gui", "schema": "gloss/gloss.schema.json"},
     "hologram": {"folder": "gui/holograms", "applyScope": "apply:gui", "schema": "gloss/gloss-holograms.schema.json"},

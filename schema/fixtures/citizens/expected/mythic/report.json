@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "converterVersion": 16,
+  "fieldPathFormat": "json-pointer",
+  "importId": "dadfd414532c854e492a9d81afa39a059d64643c328d0e25abc7d4af1197e838",
+  "sourceSha256": "79245b14cf4104d0eb987a3ddf6c3030ba5634e1c8ba9c83188fc82a9fb1340b",
+  "worldMap": {
+    "temple": "world"
+  },
+  "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.",
+  "records": 1,
+  "valid": 1,
+  "skins": 0,
+  "behaviors": 1,
+  "shops": 0,
+  "conversions": {
+    "routes": 0,
+    "routePoints": 0,
+    "routeGuides": 0,
+    "lookClose": 0,
+    "textBehaviors": 0,
+    "commandBehaviors": 1,
+    "skinsKept": 0
+  },
+  "citizensDefaults": {
+    "lookclose": {
+      "enabled": false,
+      "realisticlooking": false,
+      "disablewhilenavigating": true
+    },
+    "inferred": []
+  },
+  "traits": {
+    "type": 1,
+    "location": 1,
+    "commandtrait": 1
+  },
+  "types": {
+    "player": 1
+  },
+  "sentinelFields": {},
+  "sentinelMapping": {},
+  "issues": [],
+  "migrationWarnings": [
+    "citizens-0: /traits/commandtrait/commands/0/command: the MythicMobs skill cast became mythic:cast-skill, which needs MythicMobs on the server",
+    "citizens-0: /traits/commandtrait/commands/1/command: the MythicMobs skill cast became mythic:cast-skill, which needs MythicMobs on the server",
+    "citizens-0: /traits/commandtrait: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones",
+    "citizens-0: /traits/commandtrait: commands stay denied until citizens:commands-0 is on the [behaviors.actions] commandBehaviors list in config.toml"
+  ],
+  "remappedLocations": 1,
+  "resolvedReferences": 0,
+  "unresolvedReferences": 0,
+  "sourceFields": {},
+  "idMap": {
+    "0": "0a1b2c3d-0000-4000-8000-000000000600"
+  },
+  "documents": {
+    "behaviors/citizens/commands-0.json": "bb0a9c82cc2da80f88c19cbdab1a83949b24d0421c99946330b5f14e6fd1bc0c",
+    "npcs/world/citizens-0.json": "bf3a45402b47076d0668e82b845970db0aee31fda0d143f7d34588648a89e4e7"
+  }
+}

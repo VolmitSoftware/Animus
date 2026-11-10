@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000401",
+  "id": "citizens-1",
+  "group": "harbor",
+  "name": "Quiet Clerk",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "f88238b8840aa1cb4d387bc24712f42db074713ab8721cb834a89bda5432b782",
+    "citizensId": 1,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "harbor",
+    "x": 4.5,
+    "y": 64.0,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "behaviors": [
+    "citizens:commands-1"
+  ],
+  "modules": {
+    "animus:health": {
+      "killable": false,
+      "death": {
+        "drops": [
+          {
+            "item": {
+              "id": "minecraft:paper",
+              "count": 2
+            },
+            "chance": 0.5
+          }
+        ]
+      }
+    },
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "harbor",
+        "x": 4.5,
+        "y": 64.0,
+        "z": 0.5
+      },
+      "dropstrait": {
+        "drops": {
+          "0": {
+            "chance": 0.5,
+            "drop": {
+              "type": "PAPER",
+              "amount": 2
+            }
+          }
+        }
+      },
+      "commandtrait": {
+        "hideErrorMessages": true,
+        "cost": 1.0E-4,
+        "itemRequirements": {
+          "0": {
+            "type": "IRON_INGOT",
+            "amount": 2
+          }
+        },
+        "commands": {
+          "0": {
+            "command": "warp docks",
+            "hand": "SHIFT_RIGHT",
+            "player": true,
+            "permissions": [
+              "harbor.docks"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

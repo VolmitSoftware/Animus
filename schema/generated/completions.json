@@ -25,6 +25,35 @@
       }
     },
     {
+      "id": "animus:advance-quest",
+      "kind": "action",
+      "description": "Moves the player's active Animus quest to its next stage, or to stage (from 1). Past the last stage it completes the quest with its rewards. Reports stage.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "quest": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 129
+        },
+        "stage": {
+          "type": "integer",
+          "required": false,
+          "minimum": 1,
+          "maximum": 33
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
       "id": "animus:advance-quest-state",
       "kind": "action",
       "description": "Advances a quest stage, by one unless by says otherwise, without passing maximum.",
@@ -60,6 +89,35 @@
           "required": false,
           "minimum": 0,
           "maximum": 1000000000000
+        }
+      }
+    },
+    {
+      "id": "animus:animate",
+      "kind": "action",
+      "description": "Shows a vanilla animation: an arm swing, the hurt flash or a critical hit once, or a pose or held-item use that lasts until something changes it.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "animation": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "swing",
+            "swing_offhand",
+            "hurt",
+            "crit",
+            "magic_crit",
+            "wake",
+            "sneak",
+            "sleep",
+            "sit",
+            "stand",
+            "use_item",
+            "stop_using_item"
+          ]
         }
       }
     },
@@ -164,6 +222,112 @@
       }
     },
     {
+      "id": "animus:can-afford",
+      "kind": "condition",
+      "description": "True when the triggering player, or the player named by player, holds the money, experience levels and items of the cost. False when there is no triggering player.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "money": {
+          "type": "number",
+          "required": false,
+          "minimum": 0,
+          "maximum": 1000000000000
+        },
+        "levels": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "items": {
+          "type": "array",
+          "required": false
+        },
+        "match": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "strict",
+            "legacy",
+            "material"
+          ]
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      },
+      "oneOfRequired": [
+        [
+          "money"
+        ],
+        [
+          "levels"
+        ],
+        [
+          "items"
+        ]
+      ]
+    },
+    {
+      "id": "animus:charge",
+      "kind": "action",
+      "description": "Takes money, experience levels and items from the triggering player, or the player named by player, all or nothing. Refuses with cannot-afford when they cannot pay, which ends the run.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "money": {
+          "type": "number",
+          "required": false,
+          "minimum": 0,
+          "maximum": 1000000000000
+        },
+        "levels": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "items": {
+          "type": "array",
+          "required": false
+        },
+        "match": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "strict",
+            "legacy",
+            "material"
+          ]
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      },
+      "oneOfRequired": [
+        [
+          "money"
+        ],
+        [
+          "levels"
+        ],
+        [
+          "items"
+        ]
+      ]
+    },
+    {
       "id": "animus:choices",
       "kind": "action",
       "description": "Presents clickable options to the triggering player and publishes the validated click.",
@@ -246,6 +410,33 @@
             "console",
             "player"
           ]
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
+      "id": "animus:complete-quest",
+      "kind": "action",
+      "description": "Completes the player's active Animus quest, with its rewards unless rewards is false. Reports stage.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "quest": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 129
+        },
+        "rewards": {
+          "type": "boolean",
+          "required": false
         },
         "player": {
           "type": "string",
@@ -423,7 +614,7 @@
     {
       "id": "animus:message",
       "kind": "action",
-      "description": "Sends formatted text without a speaker: to the triggering player (trigger, the default) or the player named by player, every online player (all), the players in the NPC's or triggering player's world (world), or the console. {player_name} becomes the player's name.",
+      "description": "Sends formatted text without a speaker: to the triggering player (trigger, the default) or the player named by player, every online player (all), the players in the NPC's or triggering player's world (world), the players within radius of the NPC (nearby), or the console. {player_name} becomes the player's name.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -442,8 +633,15 @@
             "trigger",
             "all",
             "world",
+            "nearby",
             "console"
           ]
+        },
+        "radius": {
+          "type": "number",
+          "required": false,
+          "minimum": 1.0,
+          "maximum": 64.0
         },
         "player": {
           "type": "string",
@@ -467,6 +665,12 @@
           "required": false,
           "minLength": 1,
           "maxLength": 64
+        },
+        "anchor": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 32
         },
         "x": {
           "type": "number",
@@ -515,6 +719,9 @@
       "oneOfRequired": [
         [
           "route"
+        ],
+        [
+          "anchor"
         ],
         [
           "x",
@@ -788,6 +995,41 @@
       }
     },
     {
+      "id": "animus:quest-objective",
+      "kind": "action",
+      "description": "Adds amount (1 by default) to a custom objective of the player's active Animus quest stage. Reports count.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "quest": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 129
+        },
+        "objective": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "amount": {
+          "type": "integer",
+          "required": false,
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
       "id": "animus:quest-state",
       "kind": "condition",
       "description": "Compares a quest stage. An unset quest is stage zero.",
@@ -844,6 +1086,39 @@
       ]
     },
     {
+      "id": "animus:quest-status",
+      "kind": "condition",
+      "description": "Compares where the player is in an Animus quest: none, active, ready (waiting for the turn-in NPC) or finished.",
+      "privileged": false,
+      "available": true,
+      "reason": "available",
+      "reach": "both",
+      "arguments": {
+        "quest": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 129
+        },
+        "status": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "none",
+            "active",
+            "ready",
+            "finished"
+          ]
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
       "id": "animus:resume-patrol",
       "kind": "action",
       "description": "Restarts the route or recording the NPC's definition declares; a stopped recording continues where it stopped. Reports resumed or nothing-to-resume.",
@@ -887,6 +1162,16 @@
           "required": false,
           "minLength": 1,
           "maxLength": 36
+        },
+        "bubbleTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 1,
+          "maximum": 1200
+        },
+        "chat": {
+          "type": "boolean",
+          "required": false
         }
       }
     },
@@ -1140,6 +1425,33 @@
       }
     },
     {
+      "id": "animus:start-quest",
+      "kind": "action",
+      "description": "Starts an Animus quest for the triggering player, or the player named by player. quest is namespace:name, or a name in this behavior's namespace; force: true skips its requirements and repeat rule. Reports stage.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
+      "arguments": {
+        "quest": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 129
+        },
+        "force": {
+          "type": "boolean",
+          "required": false
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
       "id": "animus:stop-animation",
       "kind": "action",
       "description": "Stops one animation layer, or every played layer, and returns to the rig's idle animation.",
@@ -1204,7 +1516,7 @@
     {
       "id": "animus:teleport",
       "kind": "action",
-      "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, or to the NPC or the player.",
+      "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, to the NPC or the player, or the NPC to one of its anchors.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -1262,6 +1574,12 @@
             "player"
           ]
         },
+        "anchor": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 32
+        },
         "player": {
           "type": "string",
           "required": false,
@@ -1277,6 +1595,9 @@
         ],
         [
           "to"
+        ],
+        [
+          "anchor"
         ]
       ]
     },
@@ -1447,6 +1768,13 @@
           "maximum": 64.0,
           "exclusiveMinimum": 0,
           "description": "Blocks, above 0."
+        },
+        "playerCooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one player's runs of this trigger. Without it the configured playerCooldownTicks applies, unless cooldownTicks is set; 0 turns it off."
         }
       }
     },
@@ -2885,6 +3213,126 @@
           "maxLength": 4096,
           "pattern": "\\S",
           "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "quest_started": {
+      "description": "A player starts an Animus quest. Runs read context.quest, context.stage (1) and context.title.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "context": [
+        "quest",
+        "stage",
+        "title"
+      ],
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "quest_started"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "quest": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."
+        }
+      }
+    },
+    "quest_stage": {
+      "description": "A player's Animus quest moves on to a later stage. Runs read context.quest, context.stage (from 1) and context.title.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "context": [
+        "quest",
+        "stage",
+        "title"
+      ],
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "quest_stage"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "quest": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."
+        }
+      }
+    },
+    "quest_completed": {
+      "description": "A player completes an Animus quest. Runs read context.quest, context.stage (the stage count plus one) and context.title.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "context": [
+        "quest",
+        "stage",
+        "title"
+      ],
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "quest_completed"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "quest": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."
         }
       }
     }

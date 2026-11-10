@@ -152,6 +152,21 @@ class ViewerPreviewsTest {
         assertFalse(previews.hides(ALEX, live), "leaving the server ends the hiding too");
     }
 
+    @Test void pluginHiding_hidesForItsViewerAlongsidePreviews() throws Exception {
+        UUID guard = UUID.randomUUID();
+        NpcRuntime.ActiveNpc live = new NpcRuntime.ActiveNpc("guard", "Guard", new art.arcane.animus.core.virtual.VirtualNpcState(guard, NEAR, 0.6, 1.8, 20).snapshot());
+        Set<UUID> hiddenFromAlex = new HashSet<>();
+        previews.alsoHide((UUID viewer, String id, UUID npc) -> viewer.equals(ALEX) && hiddenFromAlex.contains(npc));
+        assertFalse(previews.hides(ALEX, live));
+
+        hiddenFromAlex.add(guard);
+        assertTrue(previews.hides(ALEX, live), "a plugin's hiding applies with no preview staged");
+        assertFalse(previews.hides(BLAKE, live), "other viewers still see it");
+
+        hiddenFromAlex.clear();
+        assertFalse(previews.hides(ALEX, live), "showing it again restores it");
+    }
+
     @Test void endedBeforeStaging_neverShows() throws Exception {
         ViewerPreviews delayed = new ViewerPreviews((Runnable work) -> CompletableFuture.delayedExecutor(50, TimeUnit.MILLISECONDS).execute(work), store);
         CompletionStage<Void> presented = delayed.present("prev_a", ALEX, List.of(DefinitionQueueTest.definition("guard", "Guard", 1)), ending("prev_a"));

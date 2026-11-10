@@ -16,7 +16,7 @@
     "/traits/profession/profession": "UNSUPPORTED_PRESERVED"
   },
   "reasons": {
-    "/traits/profession/profession": "trait profession has no Animus equivalent; kept in citizens:review"
+    "/traits/profession/profession": "this value is not a profession Animus knows"
   },
   "worldRemaps": [
     {

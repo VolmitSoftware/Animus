@@ -75,7 +75,7 @@
       "event": "proximity",
       "phase": "enter",
       "radius": 5.0,
-      "cooldownTicks": 100
+      "playerCooldownTicks": 100
     }
   ]
 }

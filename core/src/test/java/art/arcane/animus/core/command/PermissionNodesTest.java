@@ -50,6 +50,8 @@ class PermissionNodesTest {
         assertEquals(PermissionNodes.IMPORT, AnimusDirector.permission(node("import", "gloss", "live")));
         assertEquals(PermissionNodes.SHOPS, AnimusDirector.permission(node("shop", "reset")));
         assertEquals(PermissionNodes.GUI, AnimusDirector.permission(node("gui", "open")));
+        assertEquals(PermissionNodes.QUESTS, AnimusDirector.permission(node("quest", "reset")));
+        assertEquals(PermissionNodes.QUESTS_USE, AnimusDirector.permission(node("quest", "journal")), "players open their journal without staff rights");
         assertEquals(PermissionNodes.EDITOR_PAIR, AnimusDirector.permission(node("editor", "revoke")));
         assertEquals(PermissionNodes.TOOLS, AnimusDirector.permission(node("tools", "wand")));
         assertEquals(PermissionNodes.TOOLS, AnimusDirector.permission(node("setup")));
@@ -76,7 +78,7 @@ class PermissionNodesTest {
         Set<String> used = new TreeSet<>();
         for (DirectorRuntimeNode command : commands) used.add(AnimusDirector.permission(command));
         Set<String> known = new TreeSet<>(PermissionNodes.CHILDREN);
-        known.addAll(List.of(PermissionNodes.ADMIN, "", "animus.status", "animus.debug", "animus.debug.mode", "animus.build.donate"));
+        known.addAll(List.of(PermissionNodes.ADMIN, "", "animus.status", "animus.debug", "animus.debug.mode", "animus.build.donate", PermissionNodes.QUESTS_USE));
         assertTrue(known.containsAll(used), "unknown nodes: " + used);
         Set<String> unused = new TreeSet<>(PermissionNodes.CHILDREN);
         unused.removeAll(used);

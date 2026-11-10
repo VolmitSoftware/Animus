@@ -10,10 +10,10 @@ import net.md_5.bungee.api.chat.TextComponent;
 import net.md_5.bungee.api.chat.hover.content.Text;
 
 /** Maps formatted chat parts onto BungeeCord components: section codes become styles, never commands. */
-final class BukkitChoiceMessages {
+public final class BukkitChoiceMessages {
     private BukkitChoiceMessages() {}
 
-    static BaseComponent[] components(List<TextPart> parts) {
+    public static BaseComponent[] components(List<TextPart> parts) {
         List<BaseComponent> components = new ArrayList<>(parts.size());
         for (TextPart part : parts) {
             TextComponent piece = new TextComponent(TextComponent.fromLegacyText(part.text()));

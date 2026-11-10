@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "citizens:commands-0",
+  "entry": "right",
+  "routines": {
+    "right": {
+      "type": "action",
+      "capability": "mythic:cast-skill",
+      "arguments": {
+        "skill": "BlessingSkill",
+        "caster": "player"
+      }
+    },
+    "left": {
+      "type": "action",
+      "capability": "mythic:cast-skill",
+      "arguments": {
+        "skill": "Fire_Burst",
+        "caster": "player"
+      }
+    },
+    "sneak-right": {
+      "type": "action",
+      "capability": "animus:command",
+      "arguments": {
+        "command": "mm test cast ConsoleSkill",
+        "as": "console"
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "right",
+      "event": "interaction",
+      "action": "interact",
+      "routine": "right"
+    },
+    {
+      "id": "left",
+      "event": "interaction",
+      "action": "attack",
+      "routine": "left"
+    },
+    {
+      "id": "sneak-right",
+      "event": "interaction",
+      "action": "sneak_interact",
+      "routine": "sneak-right"
+    }
+  ]
+}

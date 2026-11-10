@@ -1,7 +1,9 @@
 package art.arcane.animus.core.migration;
 
+import art.arcane.animus.core.integration.ModelEngineModule;
 import art.arcane.animus.core.npc.GroupDocument;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.npc.NpcDisguise;
 import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.runtime.DefinitionSpec;
 import art.arcane.animus.core.storage.*;
@@ -16,19 +18,21 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import art.arcane.animus.core.building.BuilderModule;
 import art.arcane.animus.core.combat.HealthSettings;
+import art.arcane.animus.core.schedule.ScheduleSettings;
+import art.arcane.animus.core.navigation.HomeSettings;
 import java.util.*;
 
 /** Local, loss-preserving conversion. Conversion status describes data, never gameplay parity. */
 public final class CitizensImporter {
-    public static final int CONVERTER_VERSION = 15;
+    public static final int CONVERTER_VERSION = 16;
     /**
      * A staged or installed imported definition path: {@code <source prefix>-<source number>}. Citizens uses the
      * {@code citizens} prefix; module converters use theirs. The folder is the NPC group, empty for {@code npcs/} itself.
      */
     static final String NPC_PATH = "npcs/(?:" + NpcPaths.SEGMENT + "/){0," + NpcPaths.MAX_FOLDERS + "}[a-z0-9][a-z0-9_-]{0,62}-[0-9]+\\.json";
-    static final String BUNDLE_PATH = "(?:npcs/(?:" + NpcPaths.SEGMENT + "/){0," + NpcPaths.MAX_FOLDERS + "}[a-z0-9][a-z0-9_-]{0,62}-[0-9]+|skins/[a-f0-9]{64}|behaviors/citizens/(?:text|commands)-[0-9]+|groups/citizens-[a-f0-9]{8})\\.json";
+    static final String BUNDLE_PATH = "(?:npcs/(?:" + NpcPaths.SEGMENT + "/){0," + NpcPaths.MAX_FOLDERS + "}[a-z0-9][a-z0-9_-]{0,62}-[0-9]+|skins/[a-f0-9]{64}|behaviors/citizens/(?:text|commands|builder|waypoints)-[0-9]+|shops/citizens/[a-z0-9_-]{1,64}|groups/citizens-[a-f0-9]{8})\\.json";
     /** A generated behavior of converter version 8 and later. */
-    static final String BEHAVIOR_PATH = "behaviors/citizens/(?:text|commands)-[0-9]+\\.json";
+    static final String BEHAVIOR_PATH = "behaviors/citizens/(?:text|commands|builder|waypoints)-[0-9]+\\.json";
     public enum Status { CONVERTED, REQUIRES_INTEGRATION, REQUIRES_REVIEW, UNSUPPORTED_PRESERVED }
     /** A mapper's decision for one report field and everything under it, with the one-line reason a report shows. */
     record Note(Status status, String reason) {}
@@ -39,6 +43,8 @@ public final class CitizensImporter {
         public int behaviors() { return summary.has("behaviors") ? summary.get("behaviors").getAsInt() : 0; }
         /** Trait groups factored out with the {@code factor-groups} option; none without it. */
         public int groups() { return summary.has("groups") ? summary.get("groups").getAsInt() : 0; }
+        /** Shops converted from Citizens' own shops file; none before converter version 16. */
+        public int shops() { return summary.has("shops") ? summary.get("shops").getAsInt() : 0; }
         /** Counts only: routes and their points, look-close and generated behaviors. */
         public String conversions() {
             if (!summary.has("conversions")) return "nothing (converter v" + converterVersion() + ")";
@@ -61,6 +67,11 @@ public final class CitizensImporter {
         return "Citizens draws skins only on player NPCs, so this " + body + " never showed it; kept for when the NPC becomes a player";
     }
 
+    private LibsDisguisesSaves.Result disguises = LibsDisguisesSaves.Result.NONE;
+
+    /** The LibsDisguises disguises Citizens NPCs wore, which the preview gives the NPCs they belong to. */
+    public CitizensImporter disguises(LibsDisguisesSaves.Result found) { disguises = Objects.requireNonNull(found); return this; }
+
     public Preview preview(Path source, Path destination, Map<String, String> worldMap) throws IOException { return preview(source, destination, worldMap, false); }
 
     public Preview preview(Path source, Path destination, Map<String, String> worldMap, boolean factorGroups) throws IOException {
@@ -72,13 +83,15 @@ public final class CitizensImporter {
     /** With {@code factorGroups}, NPCs that share their groupable fields are factored into trait groups ({@link GroupFactoring}). */
     public Preview preview(Path source, DocumentStore store, Map<String, String> worldMap, boolean factorGroups) throws IOException {
         String original = JsonDocuments.read(source);
+        CitizensCompanions companions = CitizensCompanions.find(source);
         JsonObject options = new JsonObject();
         for (var entry : new TreeMap<>(worldMap).entrySet()) {
             if (entry.getKey().isBlank() || entry.getValue() == null || entry.getValue().isBlank())
                 throw new IOException("World mappings require nonblank source and destination names");
             options.addProperty(entry.getKey(), entry.getValue());
         }
-        String id = JsonDocuments.hash("animus-citizens-v" + CONVERTER_VERSION + "\n" + JsonDocuments.hash(original) + "\n" + options + (factorGroups ? "\nfactor-groups" : ""));
+        String id = JsonDocuments.hash("animus-citizens-v" + CONVERTER_VERSION + "\n" + JsonDocuments.hash(original) + "\n" + options + (factorGroups ? "\nfactor-groups" : "")
+                + (disguises.found().isEmpty() ? "" : "\ndisguises " + new TreeMap<>(disguises.found())) + companions.digest());
         {
             Path imports = store.resolve("imports");
             Files.createDirectories(imports);
@@ -90,6 +103,7 @@ public final class CitizensImporter {
             boolean published = false;
             try {
                 DocumentStore.atomic(temporary.resolve("source.yml"), original);
+                companions.stage(temporary);
                 JsonObject summary = new JsonObject();
                 summary.addProperty("schemaVersion", 1);
                 summary.addProperty("converterVersion", CONVERTER_VERSION);
@@ -99,7 +113,10 @@ public final class CitizensImporter {
                 summary.add("worldMap", options);
                 summary.addProperty("notice", "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.");
                 JsonObject mapping = identityMap(root.getAsJsonObject("npc"));
+                CitizensShops.Converted citizensShops = CitizensShops.convert(companions.shops(), mapping);
                 JsonObject citizensDefaults = CitizensBehaviors.defaults(root.getAsJsonObject("npc"));
+                Set<String> npcUuids = new HashSet<>();
+                mapping.entrySet().forEach((Map.Entry<String, JsonElement> entry) -> npcUuids.add(entry.getValue().getAsString()));
                 JsonObject conversions = new JsonObject();
                 for (String counter : List.of("routes", "routePoints", "routeGuides", "lookClose", "textBehaviors", "commandBehaviors", "skinsKept")) conversions.addProperty(counter, 0);
                 int behaviorDocuments = 0;
@@ -121,6 +138,8 @@ public final class CitizensImporter {
                 int resolvedReferences = 0;
                 int unresolvedReferences = 0;
                 JsonObject manifest = new JsonObject();
+                for (Map.Entry<String, String> shop : citizensShops.documents().entrySet()) writeBundle(temporary, shop.getKey(), shop.getValue(), manifest);
+                for (String warning : citizensShops.warnings()) migrationWarnings.add("shops.yml" + warning);
                 Set<UUID> uuids = new HashSet<>();
                 Set<Integer> numericIds = new HashSet<>();
                 int valid = 0;
@@ -183,6 +202,12 @@ public final class CitizensImporter {
                     definition.add("position", position);
                     definition.addProperty("group", group(world));
                     for (Map.Entry<String, JsonElement> field : presentation.fields().entrySet()) definition.add(field.getKey(), field.getValue());
+                    try {
+                        LibsDisguisesSaves.of(disguises, UUID.fromString(uuid), definition.get("type").getAsString()).ifPresent((LibsDisguisesSaves.Found worn) -> {
+                            definition.addProperty(NpcDisguise.FIELD, worn.disguise());
+                            migrationWarnings.add("citizens-" + key + ": wears the LibsDisguises disguise '" + worn.disguise() + "' from " + worn.source() + "; it shows while LibsDisguises is installed");
+                        });
+                    } catch (IllegalArgumentException invalidUuid) { /* reported by the validator */ }
                     // A skin is only drawn on a player body; any other body keeps it under citizens:review.
                     boolean skinApplied = traits.has("skintrait") && definition.get("type").getAsString().equals(BodyRules.PLAYER);
                     List<String> presentationWarnings = new ArrayList<>(presentation.warnings());
@@ -216,15 +241,33 @@ public final class CitizensImporter {
                         modules.getAsJsonObject("animus:combat").addProperty("targetableByMobs", true);
                         if (!modules.has(HealthSettings.MODULE)) modules.add(HealthSettings.MODULE, CitizensTraits.targetableHealth(record));
                     }
+                    CitizensTraits.follow(reviewed, npcUuids).ifPresent((JsonObject guard) -> {
+                        if (!modules.has("animus:combat")) modules.add("animus:combat", CitizensTraits.targetableCombat());
+                        if (!modules.getAsJsonObject("animus:combat").has("guard")) modules.getAsJsonObject("animus:combat").add("guard", guard);
+                    });
                     riding(traits.get("controllable")).ifPresent((JsonObject riding) -> modules.add("animus:riding", riding));
+                    ModelEngineMapping.Result model = traits.has(ModelEngineMapping.TRAIT) ? ModelEngineMapping.map(reviewed.get(ModelEngineMapping.TRAIT)) : null;
+                    if (model != null) {
+                        model.module().ifPresent((JsonObject shown) -> modules.add(ModelEngineModule.MODULE, shown));
+                        for (String warning : model.warnings()) migrationWarnings.add("citizens-" + key + ": " + warning);
+                    }
+                    List<String> economyWarnings = new ArrayList<>();
+                    Set<String> economyConverted = new HashSet<>();
+                    if (!modules.has("animus:shop")) CitizensShops.module(traits.get("shop"), uuid, citizensShops, economyWarnings).ifPresent((JsonObject shop) -> {
+                        modules.add("animus:shop", shop);
+                        economyConverted.add("/traits/shop/rightClickShop");
+                    });
+                    CitizensDrops.apply(reviewed.get(CitizensDrops.TRAIT), record, modules, economyWarnings, economyConverted);
+                    for (String warning : economyWarnings) migrationWarnings.add("citizens-" + key + ": " + warning);
                     if (traits.has(BuilderMapping.BUILDER_TRAIT)) {
                         BuilderMapping.Result build = BuilderMapping.convert(reviewed.get(BuilderMapping.BUILDER_TRAIT));
                         modules.add(BuilderModule.MODULE, build.module());
                         for (String warning : build.warnings()) migrationWarnings.add("citizens-" + key + ": " + warning);
                     }
+                    Optional<JsonObject> resume = traits.has(BuilderMapping.BUILDER_TRAIT) ? BuilderMapping.resume(reviewed.get(BuilderMapping.BUILDER_TRAIT), key) : Optional.empty();
                     if (traits.has(BuilderMapping.CONSTRUCTOR_TRAIT))
                         for (String warning : BuilderMapping.constructor(reviewed.get(BuilderMapping.CONSTRUCTOR_TRAIT))) migrationWarnings.add("citizens-" + key + ": " + warning);
-                    CitizensBehaviors.Result runtime = CitizensBehaviors.map(key, definition.get("name").getAsString(), world, reviewed, record, citizensDefaults);
+                    CitizensBehaviors.Result runtime = CitizensBehaviors.map(key, definition.get("name").getAsString(), world, reviewed, record, citizensDefaults, companions.addons(key));
                     runtime.navigation().ifPresent((JsonObject navigation) -> {
                         modules.add("animus:navigation", navigation);
                         increment(conversions, "routes");
@@ -235,24 +278,50 @@ public final class CitizensImporter {
                         modules.add("animus:look-close", look);
                         if (look.get("enabled").getAsBoolean()) increment(conversions, "lookClose");
                     });
-                    for (String behavior : runtime.behaviors()) increment(conversions, behavior.startsWith("citizens:text-") ? "textBehaviors" : "commandBehaviors");
+                    // A route's waypoint behavior counts with its route.
+                    for (String behavior : runtime.behaviors())
+                        if (!behavior.startsWith("citizens:waypoints-")) increment(conversions, behavior.startsWith("citizens:text-") ? "textBehaviors" : "commandBehaviors");
                     for (CitizensBehaviors.Document document : runtime.documents()) { writeBundle(temporary, document.path(), document.content(), manifest); behaviorDocuments++; }
                     for (String warning : runtime.warnings()) migrationWarnings.add("citizens-" + key + ": " + warning);
-                    if (!modules.has("animus:navigation") && !world.isEmpty() && CitizensTraits.wanders(definition.get("type").getAsString(), record)) {
+                    DestinationsMapping.Result schedule = traits.has(DestinationsMapping.TRAIT)
+                            ? DestinationsMapping.convert(reviewed.get(DestinationsMapping.TRAIT), definition.get("type").getAsString(), world, worldMap) : null;
+                    if (schedule != null) {
+                        for (String warning : schedule.warnings()) migrationWarnings.add("citizens-" + key + ": " + warning);
+                        for (DestinationsMapping.Skin skin : schedule.skins()) { writeBundle(temporary, skin.path(), skin.content(), manifest); skins.add(skin.hash()); }
+                        schedule.module().ifPresent((JsonObject module) -> {
+                            if (modules.remove("animus:navigation") != null)
+                                migrationWarnings.add("citizens-" + key + ": NPC Destinations moved this NPC, so its Citizens route was left out; the schedule replaces it");
+                            modules.add(ScheduleSettings.MODULE, module);
+                        });
+                    }
+                    if (!modules.has("animus:navigation") && !modules.has(ScheduleSettings.MODULE) && !world.isEmpty() && CitizensTraits.wanders(definition.get("type").getAsString(), record)) {
                         modules.add("animus:navigation", CitizensTraits.vanillaWander(record));
                         increment(conversions, "routes");
                     }
+                    if (modules.has("animus:navigation")) CitizensTraits.pause(reviewed).ifPresent((JsonObject pause) -> modules.getAsJsonObject("animus:navigation").add("pause", pause));
+                    CitizensTraits.home(reviewed, world).ifPresent((JsonObject home) -> modules.add(HomeSettings.MODULE, home));
+                    CitizensTraits.mirror(reviewed).ifPresent((JsonObject mirror) -> modules.add("animus:mirror", mirror));
                     CitizensTraits.Result state = CitizensTraits.map(definition.get("type").getAsString(), record, reviewed, modules.has("animus:combat"),
                             modules.has(HealthSettings.MODULE), modules.has("animus:navigation"), runtime.navigation().isPresent(), references);
                     if (runtime.navigation().isPresent()) patrols++;
                     if (state.raisedFall()) raisedFalls++;
                     for (Map.Entry<String, JsonElement> field : state.fields().entrySet()) definition.add(field.getKey(), field.getValue());
+                    if (schedule != null) DestinationsMapping.movement(definition, schedule.movement());
                     if (!state.migration().isEmpty()) migration.add("skin", state.migration());
                     for (String warning : state.warnings()) migrationWarnings.add("citizens-" + key + ": " + warning);
+                    CitizensLooks.Result looks = CitizensLooks.map(definition.get("type").getAsString(), reviewed, uuid, !CitizensTraits.unprotected(record));
+                    for (Map.Entry<String, JsonElement> field : looks.fields().entrySet()) definition.add(field.getKey(), field.getValue());
+                    for (String warning : looks.warnings()) migrationWarnings.add("citizens-" + key + ": " + warning);
                     // This review copy applies only known location transformations. Exact originals stay in records/ and source.yml.
                     if (skinApplied) reviewed.remove("skintrait");
                     modules.add("citizens:review", reviewed);
-                    if (!runtime.behaviors().isEmpty()) definition.add("behaviors", GSON.toJsonTree(runtime.behaviors()));
+                    List<String> listed = new ArrayList<>(runtime.behaviors());
+                    if (resume.isPresent()) {
+                        writeBundle(temporary, "behaviors/citizens/builder-" + key + ".json", JsonDocuments.write(resume.get()), manifest);
+                        behaviorDocuments++;
+                        listed.add(resume.get().get("id").getAsString());
+                    }
+                    if (!listed.isEmpty()) definition.add("behaviors", GSON.toJsonTree(listed));
                     definition.add("modules", modules);
                     if (skinApplied) {
                         JsonElement skin = traits.get("skintrait");
@@ -268,9 +337,15 @@ public final class CitizensImporter {
                     Set<String> convertedFields = new HashSet<>(presentation.converted());
                     convertedFields.addAll(runtime.converted());
                     convertedFields.addAll(state.converted());
+                    if (schedule != null) convertedFields.addAll(schedule.converted());
+                    convertedFields.addAll(economyConverted);
+                    convertedFields.addAll(looks.converted());
                     Map<String, Note> notes = new HashMap<>(presentation.notes());
                     notes.putAll(runtime.notes());
                     notes.putAll(state.notes());
+                    if (schedule != null) notes.putAll(schedule.notes());
+                    if (model != null) notes.putAll(model.notes());
+                    notes.putAll(looks.notes());
                     if (traits.has("skintrait") && !skinApplied)
                         notes.put("/traits/skintrait", new Note(Status.UNSUPPORTED_PRESERVED, unusedSkin(definition.get("type").getAsString())));
                     JsonObject reasons = new JsonObject();
@@ -314,6 +389,8 @@ public final class CitizensImporter {
                 summary.addProperty("valid", valid);
                 summary.addProperty("skins", skins.size());
                 summary.addProperty("behaviors", behaviorDocuments);
+                summary.addProperty("shops", citizensShops.documents().size());
+                if (!companions.found().isEmpty()) summary.add("companions", GSON.toJsonTree(companions.found()));
                 summary.add("conversions", conversions);
                 summary.add("citizensDefaults", citizensDefaults);
                 summary.add("traits", counts);
@@ -323,6 +400,7 @@ public final class CitizensImporter {
                 summary.add("issues", issues);
                 if (patrols > 0) migrationWarnings.add("movement: " + patrols + " Citizens routes now open doors and drop at least " + CitizensTraits.ROUTE_FALL
                         + " blocks (openDoors, maximumFall), " + raisedFalls + " of them raised from a lower fall distance; lower these in the NPC's movement to undo");
+                for (String problem : disguises.problems()) migrationWarnings.add("libsdisguises: " + problem);
                 summary.add("migrationWarnings", migrationWarnings);
                 summary.addProperty("remappedLocations", remappedLocations);
                 summary.addProperty("resolvedReferences", resolvedReferences);
@@ -363,7 +441,8 @@ public final class CitizensImporter {
             int valid = summary.get("valid").getAsBigDecimal().intValueExact();
             int skins = summary.get("skins").getAsBigDecimal().intValueExact();
             int behaviors = summary.has("behaviors") ? summary.get("behaviors").getAsBigDecimal().intValueExact() : 0;
-            if (records < 0 || records > 10000 || valid < 0 || valid > records || skins < 0 || skins > records || behaviors < 0 || behaviors > 2 * records
+            int shops = summary.has("shops") ? summary.get("shops").getAsBigDecimal().intValueExact() : 0;
+            if (records < 0 || records > 10000 || valid < 0 || valid > records || skins < 0 || skins > records || behaviors < 0 || behaviors > 3 * records || shops < 0 || shops > 10_000
                     || !summary.get("documents").isJsonObject() || !summary.get("idMap").isJsonObject()
                     || summary.getAsJsonObject("idMap").size() != records)
                 throw new IOException("Invalid import report counts or manifest");
@@ -396,7 +475,7 @@ public final class CitizensImporter {
         int npcCount = 0;
         Set<String> requiredSkins = new HashSet<>();
         Set<String> bundledSkins = new HashSet<>();
-        int behaviorCount = 0, groupCount = 0;
+        int behaviorCount = 0, groupCount = 0, shopCount = 0;
         for (var document : documents.entrySet()) {
             String relative = document.getKey();
             if (!relative.matches(BUNDLE_PATH)) throw new IOException("Invalid bundle path: " + relative);
@@ -417,6 +496,10 @@ public final class CitizensImporter {
                 if (GroupDocument.parse(relative.substring(7, relative.length() - 5), content).group().isEmpty()) throw new IOException("Invalid factored group: " + relative);
                 if (before != null && !before.equals(content)) throw new IOException("Group collision: " + relative + " exists with other content");
                 if (before != null) continue;
+            } else if (relative.startsWith("shops/")) {
+                shopCount++;
+                if (before != null && !before.equals(content)) throw new IOException("Shop collision: " + relative + " exists with other content");
+                if (before != null) continue;
             } else if (relative.startsWith("behaviors/")) {
                 behaviorCount++;
                 if (before != null && !before.equals(content)) throw new IOException("Behavior collision: " + relative + " exists with other content");
@@ -429,7 +512,7 @@ public final class CitizensImporter {
             }
             changes.add(new DocumentStore.Change(relative, "missing", content));
         }
-        if (npcCount != preview.records() || bundledSkins.size() != preview.skins() || behaviorCount != preview.behaviors() || groupCount != preview.groups() || !bundledSkins.containsAll(requiredSkins))
+        if (npcCount != preview.records() || bundledSkins.size() != preview.skins() || behaviorCount != preview.behaviors() || groupCount != preview.groups() || shopCount != preview.shops() || !bundledSkins.containsAll(requiredSkins))
             throw new IOException("Incomplete import manifest or missing referenced skins");
         JsonObject receipt = new JsonObject();
         receipt.addProperty("importId", id);
@@ -597,8 +680,30 @@ public final class CitizensImporter {
             for (String key : List.of("spawnPoint", "avoidReturnPoint"))
                 remapLocation(traits.getAsJsonObject("sentinel").get(key), "/traits/sentinel/" + key, worlds, changes);
         }
+        remapAnchors(traits.get("anchors"), worlds, changes);
+        if (traits.has("hometrait") && traits.get("hometrait").isJsonObject())
+            remapLocation(traits.getAsJsonObject("hometrait").get("location"), "/traits/hometrait/location", worlds, changes);
         if (traits.has("sittrait") && traits.get("sittrait").isJsonObject())
             remapLocation(traits.getAsJsonObject("sittrait").get("sittingAt"), "/traits/sittrait/sittingAt", worlds, changes);
+    }
+
+    /** Anchors are {@code name;world;x;y;z} text; the world part takes the world mapping like any location. */
+    private static void remapAnchors(JsonElement value, Map<String, String> worlds, JsonArray changes) {
+        if (value == null || !value.isJsonObject() || !value.getAsJsonObject().has("list") || !value.getAsJsonObject().get("list").isJsonObject()) return;
+        JsonObject list = value.getAsJsonObject().getAsJsonObject("list");
+        for (String key : new ArrayList<>(list.keySet())) {
+            JsonElement entry = list.get(key);
+            if (!entry.isJsonPrimitive()) continue;
+            String[] parts = entry.getAsString().split(";", -1);
+            if (parts.length != 5 || !worlds.containsKey(parts[1]) || worlds.get(parts[1]).equals(parts[1])) continue;
+            JsonObject change = new JsonObject();
+            change.addProperty("source", "/traits/anchors/list/" + pointer(key));
+            change.addProperty("from", parts[1]);
+            change.addProperty("to", worlds.get(parts[1]));
+            parts[1] = worlds.get(parts[1]);
+            list.addProperty(key, String.join(";", parts));
+            changes.add(change);
+        }
     }
 
     private static void walkWaypointLocations(JsonElement value, String path, Map<String, String> worlds, JsonArray changes) {
@@ -606,7 +711,8 @@ public final class CitizensImporter {
         if (value.isJsonObject()) {
             for (var entry : value.getAsJsonObject().entrySet()) {
                 String child = path + "/" + pointer(entry.getKey());
-                if (entry.getKey().equals("location")) remapLocation(entry.getValue(), child, worlds, changes);
+                // An animation trigger's "at" is where Citizens moves the NPC before it animates.
+                if (entry.getKey().equals("location") || entry.getKey().equals("at")) remapLocation(entry.getValue(), child, worlds, changes);
                 else walkWaypointLocations(entry.getValue(), child, worlds, changes);
             }
         } else if (value.isJsonArray()) {
@@ -690,6 +796,12 @@ public final class CitizensImporter {
             if (!navigation.isJsonObject() || !new JsonPrimitive(false).equals(navigation.getAsJsonObject().get("enabled"))
                     || !new JsonPrimitive(false).equals(navigation.getAsJsonObject().get("reviewAccepted")))
                 throw new IOException("Imported patrols must remain disabled and unreviewed");
+        }
+        if (modules != null && modules.has(ScheduleSettings.MODULE)) {
+            JsonElement schedule = modules.get(ScheduleSettings.MODULE);
+            if (!schedule.isJsonObject() || !new JsonPrimitive(false).equals(schedule.getAsJsonObject().get("enabled"))
+                    || !new JsonPrimitive(false).equals(schedule.getAsJsonObject().get("reviewAccepted")))
+                throw new IOException("Imported schedules must remain disabled and unreviewed");
         }
     }
 

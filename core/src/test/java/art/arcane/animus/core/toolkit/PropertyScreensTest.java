@@ -181,7 +181,7 @@ class PropertyScreensTest {
         click("type", Click.LEFT);
         drain();
         JsonObject guard = guard();
-        assertEquals("minecraft:turtle", guard.get("type").getAsString(), "left moves to the next listed body");
+        assertEquals("minecraft:polar_bear", guard.get("type").getAsString(), "left moves to the next listed body");
         assertFalse(guard.has("pose"), "only player bodies take a pose other than standing");
     }
 

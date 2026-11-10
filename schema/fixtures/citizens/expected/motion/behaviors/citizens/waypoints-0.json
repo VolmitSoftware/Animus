@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "citizens:waypoints-0",
+  "entry": "point-1",
+  "routines": {
+    "point-1": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": "&bAll aboard!",
+            "to": "nearby",
+            "radius": 12.0
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": "Next stop Ferryman",
+            "to": "nearby",
+            "radius": 12.0
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "say ferry 0 crossed",
+            "as": "console"
+          }
+        }
+      ]
+    },
+    "point-2": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:animate",
+          "arguments": {
+            "animation": "swing"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:animate",
+          "arguments": {
+            "animation": "sleep"
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "point-1",
+      "event": "waypoint",
+      "waypoint": 1,
+      "routine": "point-1"
+    },
+    {
+      "id": "point-2",
+      "event": "waypoint",
+      "waypoint": 2,
+      "routine": "point-2"
+    }
+  ]
+}

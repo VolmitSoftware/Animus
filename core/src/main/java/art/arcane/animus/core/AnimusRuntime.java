@@ -52,6 +52,8 @@ public final class AnimusRuntime implements AutoCloseable {
     private RigLibrary rigs;
     private java.util.concurrent.ScheduledExecutorService maintenance;
     private final art.arcane.animus.core.extension.ModuleHooks moduleHooks = new art.arcane.animus.core.extension.ModuleHooks();
+    private final art.arcane.animus.core.integration.NpcTemplates templates = new art.arcane.animus.core.integration.NpcTemplates();
+    private volatile java.util.Set<String> bodyTypes = art.arcane.animus.core.presentation.BodyRules.TYPES;
     private volatile CatalogReloads catalogs = CatalogReloads.NONE;
     private volatile art.arcane.animus.core.text.Placeholders placeholders = art.arcane.animus.core.text.Placeholders.NONE;
     private final java.util.List<Consumer<PluginSettings>> settingsListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -330,6 +332,14 @@ public final class AnimusRuntime implements AutoCloseable {
     public RuntimeEnvironment environment() { return environment; }
     /** Module protection, economy and import converter registrations; platforms wrap their adapters with it. */
     public art.arcane.animus.core.extension.ModuleHooks moduleHooks() { return moduleHooks; }
+    /** Template sources a new NPC can take its starting look from, such as MythicMobs mob types on Bukkit. */
+    public art.arcane.animus.core.integration.NpcTemplates templates() { return templates; }
+
+    /** The body types this server's transport shows; the shared {@code BodyRules.TYPES} until a transport binds. */
+    public java.util.Set<String> bodyTypes() { return bodyTypes; }
+
+    /** Set by the NPC runtime once its transport binds. */
+    public void bodyTypes(java.util.Set<String> types) { bodyTypes = java.util.Set.copyOf(types); }
     /** The platform's plugins folder and Citizens check for the drop-in Citizens migration; mod servers keep the default. */
     public art.arcane.animus.core.migration.CitizensDropIn.Host importHost() { return importHost; }
     public void importHost(art.arcane.animus.core.migration.CitizensDropIn.Host host) { importHost = Objects.requireNonNull(host, "host"); }

@@ -161,7 +161,7 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
     }
 
     public static byte armorStandFlags(ArmorStandLook look) {
-        return (byte) ((look.small() ? 0x01 : 0) | (look.arms() ? 0x04 : 0) | (look.basePlate() ? 0 : 0x08));
+        return (byte) ((look.small() ? 0x01 : 0) | (look.arms() ? 0x04 : 0) | (look.basePlate() ? 0 : 0x08) | (look.marker() ? 0x10 : 0));
     }
 
     /**

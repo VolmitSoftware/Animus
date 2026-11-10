@@ -48,15 +48,29 @@ enum NpcSlot {
   }
 }
 
-/// The equipment slots the client draws on each body, in slot order. Other
-/// bodies (types Animus does not present) keep every slot.
+/// The equipment slots the client draws on each body, in slot order
+/// (`BodyRules.equipmentSlots`). Other bodies (types Animus does not
+/// present) keep every slot.
 List<NpcSlot> mcDrawnSlots(String type) => switch (type) {
-      'minecraft:player' || 'minecraft:armor_stand' => const <NpcSlot>[
+      'minecraft:player' || 'minecraft:armor_stand' || 'minecraft:zombie_villager' || 'minecraft:piglin' || 'minecraft:zombie' || 'minecraft:husk' ||
+      'minecraft:drowned' || 'minecraft:giant' || 'minecraft:zombified_piglin' || 'minecraft:skeleton' || 'minecraft:stray' || 'minecraft:bogged' ||
+      'minecraft:wither_skeleton' || 'minecraft:parched' || 'minecraft:piglin_brute' || 'minecraft:mannequin' => const <NpcSlot>[
           NpcSlot.mainHand, NpcSlot.offHand, NpcSlot.head, NpcSlot.chest, NpcSlot.legs, NpcSlot.feet, //
         ],
       'minecraft:horse' => const <NpcSlot>[NpcSlot.body, NpcSlot.saddle],
-      'minecraft:llama' => const <NpcSlot>[NpcSlot.body],
-      'minecraft:turtle' || 'minecraft:frog' || 'minecraft:armadillo' || 'minecraft:ender_dragon' => const <NpcSlot>[],
+      'minecraft:llama' || 'minecraft:wolf' => const <NpcSlot>[NpcSlot.body],
+      'minecraft:villager' => const <NpcSlot>[NpcSlot.mainHand, NpcSlot.head],
+      'minecraft:vex' => const <NpcSlot>[NpcSlot.mainHand, NpcSlot.offHand],
+      'minecraft:allay' || 'minecraft:fox' || 'minecraft:evoker' || 'minecraft:copper_golem' || 'minecraft:pillager' || 'minecraft:vindicator' ||
+      'minecraft:illusioner' || 'minecraft:witch' => const <NpcSlot>[NpcSlot.mainHand],
+      'minecraft:pig' || 'minecraft:donkey' || 'minecraft:mule' || 'minecraft:camel' => const <NpcSlot>[NpcSlot.saddle],
+      'minecraft:turtle' || 'minecraft:frog' || 'minecraft:armadillo' || 'minecraft:ender_dragon' || 'minecraft:sheep' || 'minecraft:cat' ||
+      'minecraft:parrot' || 'minecraft:axolotl' || 'minecraft:rabbit' || 'minecraft:creeper' || 'minecraft:slime' || 'minecraft:magma_cube' ||
+      'minecraft:phantom' || 'minecraft:mooshroom' || 'minecraft:panda' || 'minecraft:goat' || 'minecraft:cow' || 'minecraft:chicken' ||
+      'minecraft:shulker' || 'minecraft:pufferfish' || 'minecraft:tropical_fish' || 'minecraft:snow_golem' || 'minecraft:polar_bear' ||
+      'minecraft:bee' || 'minecraft:sniffer' || 'minecraft:bat' || 'minecraft:enderman' || 'minecraft:wither' || 'minecraft:painting' ||
+      'minecraft:item_frame' || 'minecraft:glow_item_frame' || 'minecraft:falling_block' || 'minecraft:end_crystal' || 'minecraft:block_display' ||
+      'minecraft:item_display' || 'minecraft:text_display' || 'minecraft:item' => const <NpcSlot>[],
       _ => NpcSlot.values,
     };
 

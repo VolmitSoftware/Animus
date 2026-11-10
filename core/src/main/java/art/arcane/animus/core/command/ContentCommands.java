@@ -239,13 +239,21 @@ final class ContentCommands {
         Denizen denizen;
         ServiceCommands.ShopImport shops;
         ServiceCommands.GuiImport gloss;
+        LinkCommands.Quests quests;
+        LinkCommands.BeautyQuests beautyquests;
+        LinkCommands.BetonQuest betonquest;
+        LinkCommands.Typewriter typewriter;
 
         Import(CommandServices services) {
             super(services);
             citizens = new Citizens(services);
+            quests = new LinkCommands.Quests(services);
+            beautyquests = new LinkCommands.BeautyQuests(services);
             denizen = new Denizen(services);
             shops = new ServiceCommands.ShopImport(services);
             gloss = new ServiceCommands.GuiImport(services);
+            betonquest = new LinkCommands.BetonQuest(services);
+            typewriter = new LinkCommands.Typewriter(services);
         }
 
         @Director(description = "Convert a file in imports/inbox/ into a reviewable preview")

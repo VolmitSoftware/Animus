@@ -47,7 +47,7 @@ class BodyEquipmentSchemaTest {
             String type = rule.getAsJsonObject("if").getAsJsonObject("properties").getAsJsonObject("type").get("const").getAsString();
             rules.put(type, rule.getAsJsonObject("then").getAsJsonObject("properties").getAsJsonObject("equipment"));
         }
-        assertEquals(BodyRules.TYPES, rules.keySet());
+        assertEquals(BodyRules.limitedEquipment().keySet(), rules.keySet(), "a body without slots of its own takes every slot");
         List<String> horse = new ArrayList<>();
         rules.get("minecraft:horse").getAsJsonObject("propertyNames").getAsJsonArray("enum").forEach((JsonElement slot) -> horse.add(slot.getAsString()));
         assertEquals(List.of("body", "saddle"), horse);

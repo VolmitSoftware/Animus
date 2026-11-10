@@ -28,10 +28,8 @@ final class CitizensBehaviors {
         LOOK_DEFAULTS.put("realisticlooking", false);
         LOOK_DEFAULTS.put("disablewhilenavigating", true);
     }
-    /** Look-close options Animus does not have, with what the NPC does instead. */
-    private static final Map<String, String> LOOK_UNSUPPORTED = Map.of("headonly", "Animus turns the whole body, not only the head",
-            "linkedbody", "Animus turns the whole body with the head", "perplayer", "every viewer sees the NPC look at the same target",
-            "randomSwitchTargets", "the NPC keeps looking at the nearest target");
+    /** Citizens' rotation defaults: 40 degrees of yaw and 10 of pitch a tick. */
+    static final double ROTATION_YAW = 40, ROTATION_PITCH = 10;
     /** Citizens' default random look delay in ticks. */
     static final int DEFAULT_RANDOM_LOOK_DELAY = 60;
 
@@ -53,6 +51,9 @@ final class CitizensBehaviors {
     private final List<String> behaviors = new ArrayList<>();
     private final List<Document> documents = new ArrayList<>();
     private int points, guides;
+    /** What each converted route point runs on arrival, by its index: chat and command waypoint triggers. */
+    private final SortedMap<Integer, JsonObject> arrivals = new TreeMap<>();
+    private boolean waypointCommands;
 
     private CitizensBehaviors(String key, String name, String world, JsonObject traits, JsonObject record, JsonObject defaults) {
         this.key = key; this.name = name; this.world = world; this.traits = traits; this.record = record; this.defaults = defaults;
@@ -63,11 +64,16 @@ final class CitizensBehaviors {
      * mapping and {@code defaults} the lookclose defaults from {@link #defaults}.
      */
     static Result map(String key, String name, String world, JsonObject traits, JsonObject record, JsonObject defaults) {
+        return map(key, name, world, traits, record, defaults, CitizensCommands.Addons.NONE);
+    }
+
+    /** {@code addons} are the CitizensCMD and CommandNPC commands saved for this NPC; they join its command behavior. */
+    static Result map(String key, String name, String world, JsonObject traits, JsonObject record, JsonObject defaults, CitizensCommands.Addons addons) {
         CitizensBehaviors mapping = new CitizensBehaviors(key, name, world, traits, record, defaults);
         Optional<JsonObject> navigation = Optional.ofNullable(mapping.navigation());
         Optional<JsonObject> look = Optional.ofNullable(mapping.lookClose());
         mapping.text();
-        mapping.commands();
+        mapping.commands(addons);
         List<String> sorted = new ArrayList<>(mapping.warnings);
         Collections.sort(sorted);
         return new Result(navigation, look, mapping.behaviors, mapping.documents, sorted, mapping.converted, mapping.notes, mapping.points, mapping.guides);
@@ -166,6 +172,10 @@ final class CitizensBehaviors {
                 wander.addProperty("radius", radius);
                 wander.addProperty("height", height);
             }
+            case DestinationsMapping.PROVIDER -> {
+                // NPC Destinations walks the NPC itself; its trait converts to animus:schedule.
+                return null;
+            }
             default -> {
                 warnings.add(base + "/provider: waypoint provider " + provider + " is not supported; kept in citizens:review");
                 return null;
@@ -179,6 +189,7 @@ final class CitizensBehaviors {
         }
         if (route.isEmpty() && !order.equals("wander")) return null;
         points = route.size(); guides = helpers.size();
+        arrivals();
         JsonObject module = new JsonObject();
         module.addProperty("enabled", false);
         module.addProperty("reviewAccepted", false);
@@ -219,6 +230,7 @@ final class CitizensBehaviors {
                 notes.put(at + "/triggers", new CitizensImporter.Note(CitizensImporter.Status.CONVERTED, "Citizens never runs triggers on guide waypoints"));
             if (triggers && item != null && item.has("triggers")) {
                 long delay = 0;
+                List<JsonObject> steps = new ArrayList<>();
                 for (Map.Entry<String, JsonElement> trigger : entries(item.get("triggers"))) {
                     JsonObject data = object(trigger.getValue());
                     String type = data == null ? "" : string(data.get("type"), "");
@@ -227,14 +239,139 @@ final class CitizensBehaviors {
                         // Citizens leaves out a delay of 0, its default.
                         if (data.has("delay")) delay = Math.min(MAX_WAIT + 1, delay + clamp((long) Math.floor(data.get("delay").getAsDouble()), 0, MAX_WAIT + 1));
                         converted.add(triggerPath + "/type"); converted.add(triggerPath + "/delay");
-                    } else unsupported.add((type.isEmpty() ? "unknown" : type) + " waypoint triggers are not supported; kept in citizens:review");
+                    } else if (type.equals("speed")) {
+                        // Citizens sets the navigator's speed for every later leg; a SpeedTrigger saves 1 when left at its default.
+                        point.addProperty("speed", speed(positive(data.get("speed")) ? data.get("speed").getAsDouble() : 1));
+                        converted.add(triggerPath + "/type"); converted.add(triggerPath + "/speed");
+                    } else if (type.equals("teleport")) teleportTrigger(data, triggerPath, point);
+                    else if (type.equals("chat")) chatTrigger(data, triggerPath, steps);
+                    else if (type.equals("command")) commandTrigger(data, triggerPath, steps);
+                    else if (type.equals("animation")) animationTrigger(data, triggerPath, point, steps);
+                    else unsupported.add((type.isEmpty() ? "unknown" : type) + " waypoint triggers are not supported; kept in citizens:review");
                 }
                 if (delay > MAX_WAIT) warnings.add(at + "/triggers: delays above 12000 ticks became 12000");
                 if (delay > 0) point.addProperty("waitTicks", clamp(delay, 0, MAX_WAIT));
+                if (!steps.isEmpty()) arrivals.put(out.size(), sequence(steps));
             }
             out.add(point);
         }
         return dropped;
+    }
+
+    /**
+     * A teleport trigger moves the NPC on arrival to the trigger's exact position and facing; one in another world names
+     * that world, and the route goes on there.
+     */
+    private void teleportTrigger(JsonObject data, String path, JsonObject point) {
+        if (teleportTo(object(data.get("location")), path + "/location", point)) converted.add(path + "/type");
+    }
+
+    /** Writes the point's teleport from a Citizens location; false, with a warning, when it has no usable position. */
+    private boolean teleportTo(JsonObject location, String path, JsonObject point) {
+        if (location == null || !number(location.get("x")) || !number(location.get("y")) || !number(location.get("z"))) {
+            warnings.add(path + ": a teleport without a location was left out"); return false;
+        }
+        String target = string(location.get("world"), "");
+        if (target.isEmpty()) { warnings.add(path + ": a teleport without a world was left out"); return false; }
+        JsonObject teleport = new JsonObject();
+        for (String axis : List.of("x", "y", "z")) {
+            double value = location.get(axis).getAsDouble();
+            if (Math.abs(value) > 29_999_984) { warnings.add(path + ": the teleport lies outside the world and was left out"); return false; }
+            teleport.addProperty(axis, value);
+        }
+        if (number(location.get("yaw"))) teleport.addProperty("yaw", degrees(location.get("yaw").getAsDouble() % 360));
+        if (number(location.get("pitch"))) teleport.addProperty("pitch", degrees(Math.max(-90, Math.min(90, location.get("pitch").getAsDouble()))));
+        if (!target.equals(world)) teleport.addProperty("world", target);
+        point.add("teleport", teleport);
+        for (String field : List.of("world", "x", "y", "z", "yaw", "pitch", "worldid")) if (location.has(field)) converted.add(path + "/" + field);
+        return true;
+    }
+
+    private static double degrees(double value) { return java.math.BigDecimal.valueOf(value).setScale(3, java.math.RoundingMode.HALF_UP).doubleValue(); }
+
+    /** Chat trigger lines go to players within its radius, or to the NPC's world when Citizens' radius is unset. */
+    private void chatTrigger(JsonObject data, String path, List<JsonObject> steps) {
+        double radius = number(data.get("radius")) ? data.get("radius").getAsDouble() : -1;
+        if (radius > MAX_LOOK_RANGE) { warnings.add(path + "/radius: chat radii above 64 blocks became 64"); radius = MAX_LOOK_RANGE; }
+        int before = steps.size();
+        for (Map.Entry<String, JsonElement> line : entries(data.get("lines"))) {
+            if (!line.getValue().isJsonPrimitive()) continue;
+            String text = line.getValue().getAsString();
+            if (text.contains("<p>") || text.contains("<player>")) { warnings.add(path + "/lines/" + line.getKey() + ": a waypoint has no player to name; left out"); continue; }
+            text = placeholders(text, path + "/lines/" + line.getKey());
+            if (text.isEmpty() || text.length() > MAX_TEXT) { warnings.add(path + "/lines/" + line.getKey() + ": empty or longer than 1024 characters; left out"); continue; }
+            JsonObject arguments = arguments("text", text);
+            arguments.addProperty("to", radius > 0 ? "nearby" : "world");
+            if (radius > 0) arguments.addProperty("radius", Math.max(1, radius));
+            steps.add(action("animus:message", arguments));
+            converted.add(path + "/lines/" + line.getKey());
+        }
+        if (steps.size() > before) { converted.add(path + "/type"); if (data.has("radius")) converted.add(path + "/radius"); }
+    }
+
+    /** Citizens' player animations as {@code animus:animate}; elytra flight has no Animus animation. */
+    private static final Map<String, String> ANIMATIONS = Map.ofEntries(Map.entry("ARM_SWING", "swing"), Map.entry("ARM_SWING_OFFHAND", "swing_offhand"),
+            Map.entry("HURT", "hurt"), Map.entry("CRIT", "crit"), Map.entry("MAGIC_CRIT", "magic_crit"), Map.entry("LEAVE_BED", "wake"), Map.entry("STOP_SLEEPING", "wake"),
+            Map.entry("SLEEP", "sleep"), Map.entry("SIT", "sit"), Map.entry("STOP_SITTING", "stand"), Map.entry("SNEAK", "sneak"), Map.entry("STOP_SNEAKING", "stand"),
+            Map.entry("EAT_FOOD", "use_item"), Map.entry("START_USE_MAINHAND_ITEM", "use_item"), Map.entry("START_USE_OFFHAND_ITEM", "use_item"),
+            Map.entry("STOP_USE_ITEM", "stop_using_item"));
+
+    /**
+     * Animation trigger animations run in order on arrival. Citizens first moves the NPC to the trigger's {@code at}, such
+     * as a bed to sleep in; that becomes the point's teleport when the point has none.
+     */
+    private void animationTrigger(JsonObject data, String path, JsonObject point, List<JsonObject> steps) {
+        int before = steps.size();
+        for (Map.Entry<String, JsonElement> line : entries(data.get("animations"))) {
+            String name = line.getValue().isJsonPrimitive() ? line.getValue().getAsString().toUpperCase(Locale.ROOT) : "";
+            String animation = ANIMATIONS.get(name);
+            if (animation == null) { warnings.add(path + "/animations/" + line.getKey() + ": the " + name + " animation has no Animus animation; left out"); continue; }
+            steps.add(action("animus:animate", arguments("animation", animation)));
+            converted.add(path + "/animations/" + line.getKey());
+        }
+        JsonObject at = object(data.get("at"));
+        if (at != null && !point.has("teleport")) teleportTo(at, path + "/at", point);
+        else if (at != null) warnings.add(path + "/at: the point already teleports; the animation's own position was left out");
+        if (steps.size() > before) converted.add(path + "/type");
+    }
+
+    /** Command trigger commands run from the console, as Citizens runs them with no player. */
+    private void commandTrigger(JsonObject data, String path, List<JsonObject> steps) {
+        int before = steps.size();
+        for (Map.Entry<String, JsonElement> line : entries(data.get("commands"))) {
+            if (!line.getValue().isJsonPrimitive()) continue;
+            String command = line.getValue().getAsString();
+            if (command.startsWith("/")) command = command.substring(1);
+            if (command.contains("<p>") || command.contains("<player>")) { warnings.add(path + "/commands/" + line.getKey() + ": a waypoint has no player to name; left out"); continue; }
+            command = placeholders(command, path + "/commands/" + line.getKey());
+            if (command.isEmpty() || command.length() > MAX_TEXT) { warnings.add(path + "/commands/" + line.getKey() + ": empty or longer than 1024 characters; left out"); continue; }
+            JsonObject arguments = arguments("command", command);
+            arguments.addProperty("as", "console");
+            steps.add(action("animus:command", arguments));
+            waypointCommands = true;
+            converted.add(path + "/commands/" + line.getKey());
+        }
+        if (steps.size() > before) converted.add(path + "/type");
+    }
+
+    /** The behavior {@code citizens:waypoints-<id>}: one routine per point with chat or command triggers, run on arrival. */
+    private void arrivals() {
+        if (arrivals.isEmpty()) return;
+        JsonObject routines = new JsonObject();
+        JsonArray triggers = new JsonArray();
+        for (Map.Entry<Integer, JsonObject> arrival : arrivals.entrySet()) {
+            String routine = "point-" + arrival.getKey();
+            routines.add(routine, arrival.getValue());
+            JsonObject trigger = new JsonObject();
+            trigger.addProperty("id", routine);
+            trigger.addProperty("event", "waypoint");
+            trigger.addProperty("waypoint", arrival.getKey());
+            trigger.addProperty("routine", routine);
+            triggers.add(trigger);
+        }
+        String id = "waypoints-" + key;
+        if (waypointCommands) warnings.add("/traits/waypoints: waypoint commands stay denied until " + NAMESPACE + ":" + id + " is on the [behaviors.actions] commandBehaviors list in config.toml");
+        behavior(id, routines.keySet().iterator().next(), routines, triggers);
     }
 
     private double speed() {
@@ -271,24 +408,81 @@ final class CitizensBehaviors {
         if (positive(look.get("range"))) { range = look.get("range").getAsDouble(); converted.add(base + "/range"); }
         if (range > MAX_LOOK_RANGE) { warnings.add(base + "/range: look ranges above 64 blocks became 64; lower it in animus:look-close if that is too far"); range = MAX_LOOK_RANGE; }
         if (range < 1) range = 1;
-        for (Map.Entry<String, String> option : new TreeMap<>(LOOK_UNSUPPORTED).entrySet()) {
-            JsonElement value = look.get(option.getKey());
-            if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean()) continue;
-            if (!value.getAsBoolean()) converted.add(base + "/" + option.getKey());
-            else notes.put(base + "/" + option.getKey(), new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW, option.getValue()));
-        }
-        if (look.has("filter") && look.get("filter").isJsonPrimitive())
-            notes.put(base + "/filter", new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW, "entity filters are not available; the NPC looks at the nearest target"));
         boolean npcs = flag(look, "targetnpcs", false, base);
+        // A linked body turns with the head, as Animus turns every NPC; head-only looking leaves the body where it stands.
+        boolean linked = flag(look, "linkedbody", false, base), headOnly = flag(look, "headonly", false, base) && !linked;
+        boolean perPlayer = flag(look, "perplayer", false, base);
         JsonObject module = new JsonObject();
         module.addProperty("enabled", enabled);
         module.addProperty("range", range);
         module.addProperty("lineOfSight", realistic);
         module.addProperty("whileNavigating", !disabled);
         if (npcs) module.addProperty("npcs", true);
+        if (headOnly) module.addProperty("headOnly", true);
+        if (perPlayer) module.addProperty("perPlayer", true);
+        JsonArray permissions = filter(look, base);
+        if (permissions == null) { module.addProperty("enabled", false); warnings.add(base + "/filter: the filter admits no players, so look-close is off"); }
+        else if (!permissions.isEmpty()) module.add("permissions", permissions);
+        JsonObject turn = turnRate();
+        if (turn != null) module.add("turnRate", turn);
+        // Citizens switches to a random player in range every random look delay.
+        if (flag(look, "randomSwitchTargets", false, base)) {
+            String delayKey = look.has("randomlookdelay") ? "randomlookdelay" : "randomLookDelay";
+            JsonElement delay = look.get(delayKey);
+            module.addProperty("switchTicks", number(delay) ? clamp((long) Math.floor(delay.getAsDouble()), 1, MAX_WAIT) : DEFAULT_RANDOM_LOOK_DELAY);
+            if (number(delay)) converted.add(base + "/" + delayKey);
+        }
         JsonObject random = randomLook(look, base);
         if (random != null) module.add("randomLook", random);
         return module;
+    }
+
+    /**
+     * Citizens' look-close filter, {@code type=...}, {@code permission=a,b} and {@code group=g} separated by spaces, as the
+     * permissions a player must hold; a group becomes the {@code group.<name>} permission. Null when no player passes.
+     */
+    private JsonArray filter(JsonObject look, String base) {
+        JsonArray permissions = new JsonArray();
+        JsonElement value = look.get("filter");
+        if (value == null || !value.isJsonPrimitive() || value.getAsString().isBlank()) return permissions;
+        String path = base + "/filter";
+        boolean groups = false, players = true;
+        for (String argument : value.getAsString().trim().split(" +")) {
+            String[] parts = argument.split("=", 2);
+            String[] values = parts.length < 2 ? new String[0] : parts[1].split(",");
+            switch (parts[0].toLowerCase(Locale.ROOT)) {
+                case "type" -> {
+                    boolean player = false;
+                    for (String type : values) player |= type.trim().equalsIgnoreCase("player") || type.trim().equalsIgnoreCase("minecraft:player");
+                    players &= player;
+                }
+                case "permission", "perm" -> { for (String node : values) if (!node.isBlank() && permissions.size() < 8) permissions.add(node.trim()); }
+                case "group" -> {
+                    for (String group : values)
+                        if (!group.isBlank() && permissions.size() < 8) { permissions.add("group." + group.trim().toLowerCase(Locale.ROOT)); groups = true; }
+                }
+                default -> { notes.put(path, new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW, "filter part " + parts[0] + " is not known; the NPC looks at any player")); return permissions; }
+            }
+        }
+        if (!players) { notes.put(path, new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW, "the filter admits no players, so look-close is off")); return null; }
+        notes.put(path, new CitizensImporter.Note(CitizensImporter.Status.CONVERTED, groups
+                ? "groups became group.<name> permissions, which LuckPerms and most permission plugins grant to group members" : ""));
+        return permissions;
+    }
+
+    /** Citizens' gradual rotation as the most a look turns each tick; null for its defaults or immediate turning. */
+    private JsonObject turnRate() {
+        JsonObject rotation = object(traits.get("rotationtrait"));
+        JsonObject parameters = rotation == null ? null : object(rotation.get("globalParameters"));
+        if (parameters == null || bool(parameters.get("immediate"), false)) return null;
+        double yaw = number(parameters.get("maxYawPerTick")) ? Math.max(0, Math.min(360, parameters.get("maxYawPerTick").getAsDouble())) : ROTATION_YAW;
+        double pitch = number(parameters.get("maxPitchPerTick")) ? Math.max(0, Math.min(180, parameters.get("maxPitchPerTick").getAsDouble())) : ROTATION_PITCH;
+        if (bool(parameters.get("lockPitch"), false)) pitch = 0;
+        if (yaw == ROTATION_YAW && pitch == ROTATION_PITCH) return null;
+        JsonObject rate = new JsonObject();
+        rate.addProperty("yaw", yaw);
+        rate.addProperty("pitch", pitch);
+        return rate;
     }
 
     /** Citizens' idle random looking, kept with its delay and ranges even while it is off. */
@@ -368,17 +562,33 @@ final class CitizensBehaviors {
         if (range > MAX_PROXIMITY) { warnings.add(base + "/range: talk ranges above 32 blocks became 32"); range = MAX_PROXIMITY; }
         long cooldown = number(text.get("delay")) && text.get("delay").getAsDouble() > 0 ? clamp((long) Math.floor(text.get("delay").getAsDouble()), 0, MAX_COOLDOWN) : 100;
         String item = string(text.get("talkitem"), "default");
-        if (!item.equals("default") && !item.equals("*")) warnings.add(base + "/talkitem: a required held item is not supported; any click talks");
-        if (bool(text.get("speech-bubbles"), false)) warnings.add(base + "/speech-bubbles: speech bubbles are not supported; the NPC speaks in chat");
-        if (!bool(text.get("send-text-to-chat"), true)) warnings.add(base + "/send-text-to-chat: the NPC speaks in chat");
+        Optional<String> held = close || item.equals("default") || item.contains("*") || item.isEmpty() ? Optional.empty() : heldItem(item);
+        if (text.has("talkitem")) converted.add(base + "/talkitem");
+        // Speech bubbles show each line over the NPC for Citizens' bubble duration, 50 ticks by default.
+        boolean bubbles = bool(text.get("speech-bubbles"), false), chat = !bubbles || bool(text.get("send-text-to-chat"), true);
+        long bubbleTicks = number(text.get("speech-bubble-duration")) && text.get("speech-bubble-duration").getAsDouble() > 0
+                ? clamp((long) Math.floor(text.get("speech-bubble-duration").getAsDouble()), 1, 1200) : 50;
+        for (String field : List.of("speech-bubbles", "send-text-to-chat", "speech-bubble-duration")) if (text.has(field)) converted.add(base + "/" + field);
         String quest = "text-" + key;
         List<JsonObject> choices = new ArrayList<>();
         for (List<String> parts : lines) {
             List<JsonObject> says = new ArrayList<>();
-            for (String part : parts) says.add(action("animus:say", arguments("text", part)));
+            for (String part : parts) {
+                JsonObject spoken = arguments("text", part);
+                if (bubbles) spoken.addProperty("bubbleTicks", bubbleTicks);
+                if (!chat) spoken.addProperty("chat", false);
+                says.add(action("animus:say", spoken));
+            }
             choices.add(sequence(says));
         }
         JsonObject main = select(choices, quest, "npc", random);
+        if (held.isPresent()) {
+            JsonObject guard = new JsonObject();
+            guard.addProperty("type", "condition");
+            guard.addProperty("expression", held.get());
+            guard.add("then", main);
+            main = guard;
+        }
         JsonObject trigger = new JsonObject();
         if (close) {
             trigger.addProperty("id", "near");
@@ -390,7 +600,8 @@ final class CitizensBehaviors {
             trigger.addProperty("event", "interaction");
             trigger.addProperty("action", "interact");
         }
-        trigger.addProperty("cooldownTicks", cooldown);
+        // Citizens spaces each player's lines on their own, so one player never holds back another.
+        trigger.addProperty("playerCooldownTicks", cooldown);
         JsonObject routines = new JsonObject();
         routines.add("main", main);
         JsonArray triggers = new JsonArray();
@@ -398,116 +609,23 @@ final class CitizensBehaviors {
         behavior("text-" + key, "main", routines, triggers);
     }
 
+    /** Citizens' talk item, a comma list of material names, as a check of the clicking player's held item. */
+    private static Optional<String> heldItem(String pattern) {
+        List<String> checks = new ArrayList<>();
+        for (String part : pattern.split(",")) {
+            String material = part.trim().toLowerCase(Locale.ROOT);
+            if (material.startsWith("minecraft:")) material = material.substring("minecraft:".length());
+            if (!material.matches("[a-z0-9_]+")) continue;
+            checks.add("same(player.item_in_hand, 'minecraft:" + material + "')");
+        }
+        return checks.isEmpty() ? Optional.empty() : Optional.of(String.join(" || ", checks));
+    }
+
     // ---- Commands ----
 
-    private record Command(int id, String hand, JsonObject node, long cooldown) {}
-
-    private void commands() {
-        JsonObject trait = object(traits.get("commandtrait"));
-        if (trait == null) return;
-        String base = "/traits/commandtrait";
-        if (positive(trait.get("cost")) || positive(trait.get("experienceCost")) || !entries(trait.get("itemRequirements")).isEmpty()) {
-            warnings.add(base + ": the commands cost money, experience or items, which Animus cannot charge, so none were converted");
-            return;
-        }
-        if (!entries(trait.get("temporaryPermissions")).isEmpty())
-            warnings.add(base + "/temporaryPermissions: temporary permissions are not granted; player commands run with the player's own permissions");
-        List<Command> commands = new ArrayList<>();
-        for (Map.Entry<String, JsonElement> entry : entries(trait.get("commands"))) {
-            String at = base + "/commands/" + entry.getKey();
-            JsonObject data = object(entry.getValue());
-            if (data == null || !data.has("command") || !data.get("command").isJsonPrimitive()) continue;
-            String hand = string(data.get("hand"), "BOTH").toUpperCase(Locale.ROOT);
-            if (!HANDS.contains(hand)) { warnings.add(at + "/hand: " + hand + " is not a Citizens click; not converted"); continue; }
-            if (bool(data.get("npc"), false)) { warnings.add(at + "/npc: commands run as the NPC are not supported; not converted"); continue; }
-            if (positive(data.get("cost")) || positive(data.get("experienceCost")) || !entries(data.get("itemCost")).isEmpty()) {
-                warnings.add(at + ": the command costs money, experience or items, which Animus cannot charge; not converted"); continue;
-            }
-            if (positive(data.get("n")) || positive(data.get("gn"))) { warnings.add(at + ": use limits are not supported; not converted"); continue; }
-            String text = data.get("command").getAsString();
-            if (text.startsWith("/")) text = text.substring(1);
-            text = placeholders(text, at + "/command");
-            if (text.isEmpty() || text.length() > MAX_TEXT) { warnings.add(at + "/command: empty or longer than 1024 characters; not converted"); continue; }
-            boolean player = bool(data.get("player"), false), op = bool(data.get("op"), false);
-            if (op) warnings.add(at + "/op: the command ran as an operator player; it now runs from the console");
-            JsonObject arguments = arguments("command", text);
-            arguments.addProperty("as", player && !op ? "player" : "console");
-            JsonObject node = action("animus:command", arguments);
-            if (number(data.get("delay")) && data.get("delay").getAsDouble() >= 1) {
-                JsonObject wait = new JsonObject();
-                wait.addProperty("type", "wait");
-                wait.addProperty("ticks", clamp((long) Math.floor(data.get("delay").getAsDouble()), 1, MAX_COOLDOWN));
-                node = sequence(List.of(wait, node));
-                converted.add(at + "/delay");
-            }
-            List<Map.Entry<String, JsonElement>> permissions = entries(data.get("permissions"));
-            for (int index = permissions.size() - 1; index >= 0; index--) {
-                JsonElement permission = permissions.get(index).getValue();
-                if (!permission.isJsonPrimitive()) continue;
-                JsonObject condition = new JsonObject();
-                condition.addProperty("type", "condition");
-                condition.addProperty("capability", "animus:has-permission");
-                condition.add("arguments", arguments("permission", permission.getAsString()));
-                condition.add("then", node);
-                node = condition;
-                converted.add(at + "/permissions/" + permissions.get(index).getKey());
-            }
-            long seconds = 0;
-            for (String field : List.of("cooldown", "globalcooldown"))
-                if (number(data.get(field))) { seconds = Math.max(seconds, clamp((long) Math.floor(data.get(field).getAsDouble()), 0, MAX_COOLDOWN)); converted.add(at + "/" + field); }
-            if (number(data.get("cooldown")) && data.get("cooldown").getAsDouble() > 0) warnings.add(at + "/cooldown: the per-player cooldown is one cooldown for the NPC");
-            for (String field : List.of("command", "hand", "player", "op")) if (data.has(field)) converted.add(at + "/" + field);
-            int id = Integer.parseInt(entry.getKey());
-            commands.add(new Command(id, hand, node, seconds));
-        }
-        if (commands.isEmpty()) return;
-        commands.sort(Comparator.comparingInt(Command::id));
-        String mode = string(trait.get("executionMode"), "LINEAR").toUpperCase(Locale.ROOT);
-        if (trait.has("executionMode")) converted.add(base + "/executionMode");
-        if (!Set.of("LINEAR", "RANDOM", "CYCLE", "SEQUENTIAL").contains(mode)) { warnings.add(base + "/executionMode: " + mode + " is not known; commands run in order"); mode = "LINEAR"; }
-        List<Command> right = clicks(commands, "RIGHT", "BOTH"), left = clicks(commands, "LEFT", "BOTH");
-        List<Command> sneakRight = clicks(commands, "SHIFT_RIGHT", "SHIFT_BOTH"), sneakLeft = clicks(commands, "SHIFT_LEFT", "SHIFT_BOTH");
-        JsonObject routines = new JsonObject();
-        JsonArray triggers = new JsonArray();
-        if (!right.isEmpty() && right.equals(left)) routine("click", "any", right, mode, routines, triggers);
-        else {
-            if (!right.isEmpty()) routine("right", "interact", right, mode, routines, triggers);
-            if (!left.isEmpty()) routine("left", "attack", left, mode, routines, triggers);
-        }
-        if (!sneakRight.isEmpty()) routine("sneak-right", "sneak_interact", sneakRight, mode, routines, triggers);
-        if (!sneakLeft.isEmpty()) routine("sneak-left", "sneak_attack", sneakLeft, mode, routines, triggers);
-        if ((!sneakRight.isEmpty() || !sneakLeft.isEmpty()) && commands.stream().anyMatch((Command command) -> !command.hand().startsWith("SHIFT_")))
-            warnings.add(base + ": LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones");
-        String id = "commands-" + key;
-        warnings.add(base + ": commands stay denied until " + NAMESPACE + ":" + id + " is on the [behaviors.actions] commandBehaviors list in config.toml");
-        behavior(id, routines.keySet().iterator().next(), routines, triggers);
-    }
-
-    private static final Set<String> HANDS = Set.of("LEFT", "RIGHT", "BOTH", "SHIFT_LEFT", "SHIFT_RIGHT", "SHIFT_BOTH");
-    /** The commands one click runs: those for that hand and those for both. */
-    private static List<Command> clicks(List<Command> commands, String hand, String both) {
-        return commands.stream().filter((Command command) -> command.hand().equals(hand) || command.hand().equals(both)).toList();
-    }
-
-    private void routine(String routine, String action, List<Command> commands, String mode, JsonObject routines, JsonArray triggers) {
-        List<JsonObject> nodes = new ArrayList<>();
-        long seconds = 0;
-        for (Command command : commands.subList(0, Math.min(commands.size(), MAX_CHOICES))) { nodes.add(command.node()); seconds = Math.max(seconds, command.cooldown()); }
-        if (commands.size() > MAX_CHOICES) warnings.add("/traits/commandtrait/commands: only the first " + MAX_CHOICES + " commands for one click were converted");
-        String quest = "commands-" + key + "-" + routine;
-        routines.add(routine, switch (mode) {
-            case "RANDOM" -> select(nodes, quest, "npc", true);
-            case "CYCLE" -> select(nodes, quest, "npc", false);
-            case "SEQUENTIAL" -> select(nodes, quest, "relationship", false);
-            default -> sequence(nodes);
-        });
-        JsonObject trigger = new JsonObject();
-        trigger.addProperty("id", routine);
-        trigger.addProperty("event", "interaction");
-        trigger.addProperty("action", action);
-        trigger.addProperty("routine", routine);
-        if (seconds > 0) trigger.addProperty("cooldownTicks", clamp(seconds * 20, 0, MAX_COOLDOWN));
-        triggers.add(trigger);
+    private void commands(CitizensCommands.Addons addons) {
+        CitizensCommands.Result result = CitizensCommands.map(key, name, traits, addons, warnings, converted);
+        result.entry().ifPresent((String entry) -> behavior("commands-" + key, entry, result.routines(), result.triggers()));
     }
 
     // ---- Behavior documents ----
@@ -516,7 +634,7 @@ final class CitizensBehaviors {
      * One of {@code choices} per run: chosen at random, or each in turn. The turn is a quest stage of the citizens
      * namespace, kept per NPC or per NPC and player.
      */
-    private static JsonObject select(List<JsonObject> choices, String quest, String scope, boolean random) {
+    static JsonObject select(List<JsonObject> choices, String quest, String scope, boolean random) {
         if (choices.size() == 1) return choices.getFirst();
         List<JsonObject> steps = new ArrayList<>();
         if (random) {
@@ -554,14 +672,14 @@ final class CitizensBehaviors {
         documents.add(new Document("behaviors/" + NAMESPACE + "/" + path + ".json", JsonDocuments.write(document)));
     }
 
-    private static JsonObject quest(String name, String scope) {
+    static JsonObject quest(String name, String scope) {
         JsonObject arguments = new JsonObject();
         arguments.addProperty("name", name);
         arguments.addProperty("scope", scope);
         return arguments;
     }
 
-    private static JsonObject action(String capability, JsonObject arguments) {
+    static JsonObject action(String capability, JsonObject arguments) {
         JsonObject node = new JsonObject();
         node.addProperty("type", "action");
         node.addProperty("capability", capability);
@@ -569,7 +687,7 @@ final class CitizensBehaviors {
         return node;
     }
 
-    private static JsonObject condition(String capability, JsonObject arguments, JsonObject then) {
+    static JsonObject condition(String capability, JsonObject arguments, JsonObject then) {
         JsonObject node = new JsonObject();
         node.addProperty("type", "condition");
         node.addProperty("capability", capability);
@@ -578,7 +696,7 @@ final class CitizensBehaviors {
         return node;
     }
 
-    private static JsonObject sequence(List<JsonObject> steps) {
+    static JsonObject sequence(List<JsonObject> steps) {
         if (steps.size() == 1) return steps.getFirst();
         JsonObject node = new JsonObject();
         node.addProperty("type", "sequence");
@@ -588,7 +706,7 @@ final class CitizensBehaviors {
         return node;
     }
 
-    private static JsonObject arguments(String field, String value) {
+    static JsonObject arguments(String field, String value) {
         JsonObject arguments = new JsonObject();
         arguments.addProperty(field, value);
         return arguments;
@@ -618,13 +736,13 @@ final class CitizensBehaviors {
     }
 
     static String pointer(String key) { return key.replace("~", "~0").replace("/", "~1"); }
-    private static JsonObject object(JsonElement value) { return value != null && value.isJsonObject() ? value.getAsJsonObject() : null; }
-    private static String string(JsonElement value, String fallback) { return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString() ? value.getAsString() : fallback; }
-    private static boolean bool(JsonElement value, boolean fallback) { return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isBoolean() ? value.getAsBoolean() : fallback; }
-    private static boolean number(JsonElement value) {
+    static JsonObject object(JsonElement value) { return value != null && value.isJsonObject() ? value.getAsJsonObject() : null; }
+    static String string(JsonElement value, String fallback) { return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString() ? value.getAsString() : fallback; }
+    static boolean bool(JsonElement value, boolean fallback) { return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isBoolean() ? value.getAsBoolean() : fallback; }
+    static boolean number(JsonElement value) {
         return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber() && Double.isFinite(value.getAsDouble());
     }
-    private static boolean positive(JsonElement value) { return number(value) && value.getAsDouble() > 0; }
-    private static long clamp(long value, long minimum, long maximum) { return Math.max(minimum, Math.min(maximum, value)); }
+    static boolean positive(JsonElement value) { return number(value) && value.getAsDouble() > 0; }
+    static long clamp(long value, long minimum, long maximum) { return Math.max(minimum, Math.min(maximum, value)); }
     private static long round(double value) { return Math.round(value); }
 }

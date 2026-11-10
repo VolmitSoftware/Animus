@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "citizens:text-6",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "condition",
+      "expression": "same(player.item_in_hand, 'minecraft:paper') || same(player.item_in_hand, 'minecraft:map')",
+      "then": {
+        "type": "action",
+        "capability": "animus:say",
+        "arguments": {
+          "text": "Show me your pass."
+        }
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "action": "interact",
+      "playerCooldownTicks": 60
+    }
+  ]
+}

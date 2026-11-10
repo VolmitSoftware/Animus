@@ -42,6 +42,9 @@ import 'gui/inventory_editor.dart';
 import 'gui/menu_editor.dart';
 import 'gui/shop_editor.dart';
 import 'gui/shop_previews.dart';
+import 'quest/quest_editor.dart';
+import 'quest/quest_fields.dart' show QuestNpcs;
+import 'quest/quest_preview.dart';
 import 'conversation/conversation_attach.dart';
 import 'conversation/conversation_view.dart';
 import 'inspect/behavior_editor.dart';
@@ -86,6 +89,7 @@ class DocumentPane extends StatefulWidget {
     this.newConversationHref,
     this.skinEditing,
     this.serverBehaviors = const <String>[],
+    this.serverPlugins = const <String>{},
     this.codeDraft,
     this.onCodeDraft,
     super.key,
@@ -113,6 +117,10 @@ class DocumentPane extends StatefulWidget {
 
   /// Behavior ids in the connected server's catalog, for an NPC's picker.
   final List<String> serverBehaviors;
+
+  /// The plugin integrations the connected server reports running; the NPC
+  /// editor offers their modules and fields only then.
+  final Set<String> serverPlugins;
 
   /// Opens another document of the workspace (a behavior, route or shop an
   /// NPC names).
@@ -520,6 +528,7 @@ class _DocumentPaneState extends State<DocumentPane> {
             onOpen: component.onOpen,
             onCommit: component.onCommit,
             serverBehaviors: component.serverBehaviors,
+            serverPlugins: component.serverPlugins,
           ),
           _preview(document),
         ]),
@@ -561,6 +570,7 @@ class _DocumentPaneState extends State<DocumentPane> {
         ),
       DocumentKind.inventory => InventoryEditor(document: document, onJson: onJson, presets: workspacePresets(workspace)),
       DocumentKind.shop => ShopEditor(document: document, onJson: onJson, workspaceDocuments: workspace, onCommit: component.onCommit, onOpen: component.onOpen),
+      DocumentKind.quest => QuestEditor(document: document, onJson: onJson, workspaceDocuments: workspace),
       DocumentKind.menu => MenuEditor(document: document, onJson: onJson, animations: workspaceAnimations(workspace)),
       DocumentKind.hologram => HologramEditor(document: document, onJson: onJson, animations: workspaceAnimations(workspace), presets: workspacePresets(workspace)),
       DocumentKind.textAnimation || DocumentKind.presets => guiDataEditor(document, onJson, workspace) ?? _form(document, json),
@@ -677,6 +687,9 @@ class _DocumentPaneState extends State<DocumentPane> {
       return RecordingView(key: ValueKey<String>('recording-preview:${document.id}'), document: document, facts: false);
     }
     final Object? json = document.json;
+    if (json is Map<String, Object?> && document.kind == DocumentKind.quest) {
+      return QuestPreview(key: ValueKey<String>('quest-preview:${document.id}'), document: document, npcs: QuestNpcs(component.workspaceDocuments));
+    }
     if (json is Map<String, Object?> && guiEditorKinds.contains(document.kind)) {
       return switch (document.kind) {
         DocumentKind.inventory => InventoryPreview(document: document),

@@ -76,7 +76,7 @@ class NpcAppearanceTest {
                 errors("minecraft:player", "\"equipment\":{\"saddle\":{\"id\":\"minecraft:saddle\"},\"body\":{\"id\":\"minecraft:diamond_horse_armor\"}}"));
         assertEquals(List.of("$.equipment.body: minecraft:turtle bodies show no equipment"), errors("minecraft:turtle", "\"equipment\":{\"body\":{\"id\":\"minecraft:stone\"}}"));
         assertEquals(List.of(), errors("minecraft:llama", "\"equipment\":{\"body\":{\"id\":\"minecraft:red_carpet\"}}"));
-        assertEquals(List.of(), errors("minecraft:zombie", horse), "a body Animus does not present keeps every slot");
+        assertEquals(List.of(), errors("minecraft:blaze", horse), "a living body without slots of its own keeps every slot");
     }
 
     @Test void equipmentErrorsNameTheExactField() {
@@ -133,7 +133,8 @@ class NpcAppearanceTest {
         assertEquals(List.of("$.armorStand.head: expected [x, y, z] degrees within -360..360"), errors("minecraft:armor_stand", "\"armorStand\":{\"head\":[1,2]}"));
         assertEquals(List.of("$.armorStand.leftLeg: expected [x, y, z] degrees within -360..360"), errors("minecraft:armor_stand", "\"armorStand\":{\"leftLeg\":[1,2,400]}"));
         assertEquals(List.of("$.armorStand.small: expected boolean"), errors("minecraft:armor_stand", "\"armorStand\":{\"small\":1}"));
-        assertEquals(List.of("$.armorStand.marker: unknown field"), errors("minecraft:armor_stand", "\"armorStand\":{\"marker\":true}"));
+        assertEquals(List.of("$.armorStand.glow: unknown field"), errors("minecraft:armor_stand", "\"armorStand\":{\"glow\":true}"));
+        assertTrue(NpcAppearance.of(NpcDefinition.parse(JsonDocuments.write(definition("minecraft:armor_stand", "\"armorStand\":{\"marker\":true}")))).armorStand().orElseThrow().marker());
     }
 
     @Test void inventoryKeepsSlotsExactlyAndValidatesThem() throws IOException {
@@ -216,5 +217,13 @@ class NpcAppearanceTest {
         assertEquals(BodyTraits.DEFAULT, NpcAppearance.PLAIN.traits());
         assertEquals(List.of("$.glowing: expected boolean", "$.teamColor: expected a team colour such as red, dark_aqua or gold"),
                 errors("minecraft:cow", "\"glowing\":1,\"teamColor\":\"pink\""));
+    }
+
+    @Test void aBubbleIsTheTopLineAndKeepsTheOtherLinesMargins() throws IOException {
+        NpcAppearance appearance = NpcAppearance.of(NpcDefinition.parse(JsonDocuments.write(definition("minecraft:player",
+                "\"hologram\":{\"lines\":[{\"text\":\"Shop\",\"marginTop\":0.5}]}"))));
+        NpcAppearance spoken = appearance.withBubble("Hello there");
+        assertEquals(List.of("Hello there", "Shop"), spoken.hologram());
+        assertEquals(List.of(HologramStyle.Margin.NONE, new HologramStyle.Margin(0.5, 0)), spoken.hologramStyle().margins());
     }
 }

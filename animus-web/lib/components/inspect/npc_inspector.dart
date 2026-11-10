@@ -21,6 +21,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 import '../../config/docs_links.dart';
 import '../../logic/citizens/definition_validation.dart' show effectiveActivationDiagnostics;
 import '../../logic/gui/gui_json.dart';
+import '../../logic/npc/npc_integrations.dart';
 import '../../logic/select/select_model.dart' show withDefault;
 import '../../logic/inspect/inspect_schemas.dart';
 import '../../logic/inspect/schema_fields.dart';
@@ -34,6 +35,7 @@ import '../../logic/npc/npc_appearance.dart';
 import '../../logic/npc/npc_attributes.dart';
 import '../../logic/npc/npc_catalog.dart';
 import '../../logic/npc/reference_options.dart';
+import '../../logic/npc/schedule_model.dart';
 import '../../logic/npc/route_copy.dart';
 import '../../logic/npc/route_model.dart';
 import '../../logic/npc/skin_edits.dart';
@@ -63,7 +65,7 @@ import 'typed_values_editor.dart';
 import '../select/suggest_input.dart';
 
 /// Keys the NPC inspector lays out itself; the rest show under kept fields.
-const Set<String> _laidOut = <String>{
+final Set<String> _laidOut = <String>{
   'schemaVersion',
   'revision',
   'uuid',
@@ -80,17 +82,18 @@ const Set<String> _laidOut = <String>{
   'equipment',
   'owner',
   'rig',
+  'disguise',
   'pose',
   'armorStand',
-  'horse',
-  'llama',
-  'frog',
-  'armadillo',
-  'dragon',
+  ...bodySettingsTypes.keys,
+  'bossBar',
+  'viewers',
+  clickRedirectField,
   'hologram',
   'nameplate',
   'inventory',
   'poses',
+  'anchors',
   'movement',
   'groups',
   'skins',
@@ -107,6 +110,14 @@ List<Diagnostic> _valuesDiagnostics(List<Diagnostic> diagnostics) => <Diagnostic
     else if (d.path.startsWith(r'$.values.') || d.path.startsWith(r'$.values['))
       Diagnostic(d.severity, '\$${d.path.substring(8)}', d.message, code: d.code),
 ];
+
+/// The object fields about who sees the NPC, laid out under Appearance.
+const List<(String, String, String)> _audience = <(String, String, String)>[
+  ('bossBar', 'Boss bar', 'A boss bar shown to players near the NPC.'),
+  ('viewers', 'Viewers', 'Which players see the NPC; others are never sent its body.'),
+];
+
+const String clickRedirectField = 'clickRedirect';
 
 /// Body traits drawn as plain schema fields.
 const List<String> _traits = <String>['glowing', 'teamColor', 'baby', 'usingItem', 'listed', 'gravity'];
@@ -125,6 +136,7 @@ class NpcInspector extends StatefulWidget {
     this.onOpen,
     this.onCommit,
     this.serverBehaviors = const <String>[],
+    this.serverPlugins = const <String>{},
     this.skinEditing,
     super.key,
   }) : forGroup = false;
@@ -140,6 +152,7 @@ class NpcInspector extends StatefulWidget {
     this.onOpen,
     this.onCommit,
     this.serverBehaviors = const <String>[],
+    this.serverPlugins = const <String>{},
     this.skinEditing,
     super.key,
   }) : forGroup = true;
@@ -172,6 +185,9 @@ class NpcInspector extends StatefulWidget {
   /// Behavior ids in the connected server's catalog, offered beside the
   /// workspace's.
   final List<String> serverBehaviors;
+
+  /// The plugin integrations the connected server reports running.
+  final Set<String> serverPlugins;
 
   /// Skin edits that write several documents (a new skin, a model change, a
   /// body type without its skin); null leaves those out.
@@ -521,6 +537,7 @@ class _NpcInspectorState extends State<NpcInspector> {
         ),
         if (rig != null && !rigs.contains(rig))
           const dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('Not in this workspace; may be on the server.')]),
+        if (doc.containsKey('disguise') || offersField('disguise', component.serverPlugins)) _field('disguise', label: 'Disguise'),
         if (_group || type == 'minecraft:player') InspectRow(
           label: 'Pose',
           labelFor: poseId,
@@ -639,6 +656,7 @@ class _NpcInspectorState extends State<NpcInspector> {
             onChanged: (JsonMap value) => _write(<JsonStep>['position'], value),
           ),
         _field('poses', label: 'Named facings'),
+        _field('anchors', label: 'Anchors'),
       ],
     );
   }
@@ -713,6 +731,21 @@ class _NpcInspectorState extends State<NpcInspector> {
             onChanged: (bool visible) => _write(<JsonStep>['nameplate'], visible ? null : <String, Object?>{'visible': false}),
           ),
         ),
+        for (final (String key, String title, String tip) in _audience) ...<Widget>[
+          NpcSubhead(title, tip: tip, docs: Docs.npcAppearance),
+          if (_spec(key).schema.isNotEmpty)
+            InspectObject(
+              key: ValueKey<String>('npc:$key'),
+              schema: _schema,
+              node: _spec(key).schema,
+              value: asMap(doc[key]),
+              path: childPath(r'$', key),
+              diagnostics: _diagnostics,
+              onChanged: (JsonMap value) => _write(<JsonStep>[key], value.isEmpty ? null : value),
+            ),
+        ],
+        const NpcSubhead('Click redirect', tip: 'Clicking this NPC counts as clicking the NPC with this UUID while it is active.', docs: Docs.npcAppearance),
+        _field(clickRedirectField, label: 'Redirect clicks to'),
       ],
     );
   }
@@ -873,7 +906,7 @@ class _NpcInspectorState extends State<NpcInspector> {
     final List<FieldSpec> known = spec.schema.isEmpty ? const <FieldSpec>[] : _schema.fields(spec.schema, modules);
     final List<String> addable = <String>[
       for (final FieldSpec field in known)
-        if (!modules.containsKey(field.key) && !_typedModules.contains(field.key)) field.key,
+        if (!modules.containsKey(field.key) && !_typedModules.contains(field.key) && offersModule(field.key, component.serverPlugins)) field.key,
     ];
     final List<MapEntry<String, Object?>> others = <MapEntry<String, Object?>>[
       for (final MapEntry<String, Object?> entry in modules.entries)
@@ -894,7 +927,7 @@ class _NpcInspectorState extends State<NpcInspector> {
             options: addable,
             noneLabel: 'Add a known module',
             onChanged: (String? key) {
-              if (key != null) _putModule(key, <String, Object?>{'enabled': true});
+              if (key != null) _putModule(key, key == scheduleModule ? scheduleStarter(_origin) : <String, Object?>{'enabled': true});
             },
           ),
         ],

@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://animus.volmitsoftware.com/schema/quest-v1.schema.json",
+  "title": "Animus quest",
+  "description": "quests/<namespace>/<name>.json. The id must equal the file location. The Java QuestDocument parser is authoritative; this schema checks structure for the editor.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "title", "stages"],
+  "properties": {
+    "schemaVersion": {"const": 1, "description": "Always 1."},
+    "revision": {"type": "integer", "minimum": 1, "description": "Raise this with every edit."},
+    "id": {"type": "string", "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9][a-z0-9_-]{0,63}$", "description": "namespace:name, matching this file's location. Behaviors of the same namespace read its stage as quest('player', name)."},
+    "title": {"type": "string", "minLength": 1, "maxLength": 128, "description": "Shown in offers, messages and the journal; & codes and MiniMessage."},
+    "description": {"type": "string", "maxLength": 1024, "description": "Offer text and journal lore."},
+    "icon": {"$ref": "#/$defs/item", "description": "Journal icon. Defaults to a writable book."},
+    "givers": {"type": "array", "maxItems": 16, "uniqueItems": true, "items": {"$ref": "#/$defs/npc"}, "description": "NPCs that offer the quest on right click. Without givers the quest starts only by command or behavior."},
+    "turnIn": {"$ref": "#/$defs/npc", "description": "NPC to return to after the last stage. Without it the quest completes as soon as the last stage is done."},
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "permission": {"$ref": "#/$defs/permission"},
+        "quests": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"$ref": "#/$defs/questId"}, "description": "Quests the player must have finished at least once."},
+        "condition": {"type": "string", "minLength": 1, "maxLength": 1024, "description": "A behavior expression that must be true, such as flag('player','helped_mayor') or quest('player','intro') >= 2. Flags and quests are those of this quest's namespace."}
+      }
+    },
+    "repeat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {"enum": ["never", "cooldown", "daily"], "description": "never: once per player. cooldown: again after seconds. daily: again after the server's local midnight."},
+        "seconds": {"type": "integer", "minimum": 1, "maximum": 31536000}
+      },
+      "if": {"properties": {"mode": {"const": "cooldown"}}},
+      "then": {"required": ["seconds"]},
+      "else": {"not": {"required": ["seconds"]}},
+      "description": "Defaults to never."
+    },
+    "stages": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"$ref": "#/$defs/stage"}},
+    "rewards": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 27,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["item"],
+            "properties": {
+              "item": {"$ref": "#/$defs/item"},
+              "amount": {"type": "integer", "minimum": 1, "maximum": 2304, "description": "Defaults to the item's count."}
+            }
+          },
+          "description": "Given on completion; what does not fit drops at the player's feet."
+        },
+        "money": {"type": "number", "exclusiveMinimum": 0, "maximum": 1000000000000, "description": "Paid through the server economy (Vault on Bukkit). At most 4 decimal places."},
+        "experience": {"type": "integer", "minimum": 1, "maximum": 1000000, "description": "Experience points."},
+        "commands": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["command"],
+            "properties": {
+              "command": {"type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^[^/]", "description": "Without the slash. {player} becomes the player's name."},
+              "as": {"enum": ["console", "player"], "description": "Defaults to console."}
+            }
+          },
+          "description": "Needs the quest id or its namespace on the command allow-list ([behaviors.actions] in config.toml), like behaviors and shops."
+        },
+        "flags": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name"],
+            "properties": {
+              "name": {"$ref": "#/$defs/stateName"},
+              "value": {"description": "Any JSON value. Defaults to true."},
+              "scope": {"enum": ["player", "global"], "description": "Defaults to player."}
+            }
+          },
+          "description": "Behavior flags of this quest's namespace."
+        }
+      }
+    },
+    "messages": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "offer": {"$ref": "#/$defs/message", "description": "Said by the giver before the accept and decline buttons."},
+        "accept": {"$ref": "#/$defs/message"},
+        "decline": {"$ref": "#/$defs/message"},
+        "complete": {"$ref": "#/$defs/message"}
+      },
+      "description": "Replace the default lines for this quest. {player} and {quest} are filled in."
+    },
+    "imported": {"type": "object", "description": "Preserved source data from an importer."}
+  },
+  "$defs": {
+    "npc": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$", "description": "An NPC id."},
+    "questId": {"type": "string", "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9][a-z0-9_-]{0,63}$"},
+    "stateName": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"},
+    "permission": {"type": "string", "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$"},
+    "message": {"type": "string", "minLength": 1, "maxLength": 512},
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"},
+        "count": {"type": "integer", "minimum": 1, "maximum": 99},
+        "components": {"type": "string", "maxLength": 4096, "pattern": "^\\[[\\s\\S]*\\]$", "description": "Item components in command syntax. When set, items must match them exactly; otherwise only the id is compared."}
+      }
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectives"],
+      "properties": {
+        "description": {"type": "string", "maxLength": 512, "description": "Journal and progress text for the stage."},
+        "order": {"enum": ["any", "ordered"], "description": "any: objectives count at once, in any order. ordered: one after another. Defaults to any."},
+        "objectives": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"$ref": "#/$defs/objective"}}
+      }
+    },
+    "objective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {"enum": ["talk", "bring", "kill", "reach", "collect", "custom"]},
+        "id": {"$ref": "#/$defs/stateName", "description": "Unique within the stage. Required for custom objectives, which behaviors and commands address by it."},
+        "description": {"type": "string", "maxLength": 256, "description": "Journal text. Defaults to a line built from the objective."},
+        "npc": {"$ref": "#/$defs/npc", "description": "talk and bring: the NPC to right click. kill: an NPC whose health can reach zero, instead of entity."},
+        "item": {"$ref": "#/$defs/item", "description": "bring and collect."},
+        "entity": {"type": "string", "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$", "description": "kill: an entity type such as minecraft:zombie."},
+        "amount": {"type": "integer", "minimum": 1, "maximum": 100000, "description": "bring, collect, kill and custom. Defaults to 1."},
+        "world": {"type": "string", "minLength": 1, "maxLength": 128, "description": "reach: world name or namespace:key."},
+        "x": {"type": "number", "minimum": -30000000, "maximum": 30000000},
+        "y": {"type": "number", "minimum": -2048, "maximum": 2048},
+        "z": {"type": "number", "minimum": -30000000, "maximum": 30000000},
+        "radius": {"type": "number", "minimum": 1, "maximum": 256, "description": "reach: blocks around the point. Defaults to 3."}
+      },
+      "allOf": [
+        {"if": {"properties": {"type": {"const": "talk"}}}, "then": {"required": ["npc"], "properties": {"item": false, "entity": false, "amount": false, "world": false, "x": false, "y": false, "z": false, "radius": false}}},
+        {"if": {"properties": {"type": {"const": "bring"}}}, "then": {"required": ["npc", "item"], "properties": {"entity": false, "world": false, "x": false, "y": false, "z": false, "radius": false}}},
+        {"if": {"properties": {"type": {"const": "kill"}}}, "then": {"oneOf": [{"required": ["entity"]}, {"required": ["npc"]}], "properties": {"item": false, "world": false, "x": false, "y": false, "z": false, "radius": false}}},
+        {"if": {"properties": {"type": {"const": "reach"}}}, "then": {"required": ["world", "x", "y", "z"], "properties": {"npc": false, "item": false, "entity": false, "amount": false}}},
+        {"if": {"properties": {"type": {"const": "collect"}}}, "then": {"required": ["item"], "properties": {"npc": false, "entity": false, "world": false, "x": false, "y": false, "z": false, "radius": false}}},
+        {"if": {"properties": {"type": {"const": "custom"}}}, "then": {"required": ["id"], "properties": {"npc": false, "item": false, "entity": false, "world": false, "x": false, "y": false, "z": false, "radius": false}}}
+      ]
+    }
+  }
+}

@@ -376,6 +376,9 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         return found;
     }
 
+    /** The participant a guard follows; a player in any game mode counts. */
+    Optional<CombatTarget> charge(TargetRef ref) { return ref.kind() == TargetKind.NPC ? resolve(ref) : world.charge(ref); }
+
     Optional<CombatTarget> resolve(TargetRef ref) {
         if (ref.kind() != TargetKind.NPC) return world.real(ref);
         CombatBrain brain = brains.get(ref.id());
@@ -428,13 +431,13 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
      */
     public void realDamaged(TargetRef victim, TargetRef attacker) {
         if (stopping) return;
-        for (CombatBrain guardian : guardians.getOrDefault(victim, List.of())) guardian.alerted(attacker);
+        for (CombatBrain guardian : guardians.getOrDefault(victim, List.of())) if (guardian.settings().guard().protect()) guardian.alerted(attacker);
         fought(attacker, victim);
     }
     /** A fight another engine saw or the platform reported for this engine only: it is not passed on again. */
     public void heardFight(TargetRef victim, TargetRef attacker) {
         if (closed || stopping) return;
-        for (CombatBrain guardian : guardians.getOrDefault(victim, List.of())) { guardian.alerted(attacker); wake(guardian); }
+        for (CombatBrain guardian : guardians.getOrDefault(victim, List.of())) if (guardian.settings().guard().protect()) { guardian.alerted(attacker); wake(guardian); }
         witnessed(attacker, victim);
     }
 
@@ -582,7 +585,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         }
         push(defender, from, target, knockback);
         defender.attacked(attacker);
-        for (CombatBrain guardian : guardians.getOrDefault(target.ref(), List.of())) guardian.alerted(attacker);
+        for (CombatBrain guardian : guardians.getOrDefault(target.ref(), List.of())) if (guardian.settings().guard().protect()) guardian.alerted(attacker);
     }
 
     /** Knocks the NPC away from {@code from}, less by its knockback resistance, when its defense allows knockback. */

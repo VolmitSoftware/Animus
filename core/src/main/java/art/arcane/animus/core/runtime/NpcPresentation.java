@@ -35,9 +35,15 @@ public final class NpcPresentation {
 
     /** Call on the viewer's owner. {@code attributes} are the definition's with any runtime change on top. */
     public static <I> Label label(DefinitionSpec<I> spec, String name, NpcAttributes attributes, Placeholders placeholders, UUID viewer) {
+        return label(spec, name, null, attributes, placeholders, viewer);
+    }
+
+    /** As {@link #label(DefinitionSpec, String, NpcAttributes, Placeholders, UUID)}, with a speech bubble line on top when {@code bubble} is set. */
+    public static <I> Label label(DefinitionSpec<I> spec, String name, String bubble, NpcAttributes attributes, Placeholders placeholders, UUID viewer) {
         NpcAppearance appearance = spec.appearance().withAttributes(attributes);
         List<String> lines = placeholders.fill(viewer, appearance.hologram());
         if (lines != appearance.hologram()) appearance = appearance.withHologram(lines);
+        if (bubble != null) appearance = appearance.withBubble(bubble);
         return new Label(spec.definition().uuid(), spec.type(), placeholders.fill(viewer, shownName(spec, name)), appearance);
     }
 

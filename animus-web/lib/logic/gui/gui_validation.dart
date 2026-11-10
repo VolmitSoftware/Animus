@@ -533,11 +533,15 @@ final class _Checker {
       if (type != 'trade' && type != 'static') error(childPath(path, 'type'), 'a container shop has only trade and static entries', code: layoutCode);
       if ((asDouble(entry['price']) ?? 0) > 0) error(childPath(path, 'price'), 'a container shop trades items for items; remove the price', code: layoutCode);
       if (entry.containsKey('stock')) error(childPath(path, 'stock'), "a container shop's stock is its containers", code: layoutCode);
+      if ((asInt(entry['levels']) ?? 0) > 0) error(childPath(path, 'levels'), 'a container shop trades items for items; remove the levels', code: layoutCode);
     } else if (entry.containsKey('stock') && !shopEntryKeeps(type, 'stock')) {
       error(childPath(path, 'stock'), 'stock applies to buy, command and trade entries', code: layoutCode);
     }
     if ((type == 'buy' || type == 'sell' || type == 'command') && entry['price'] == null) {
       error(childPath(path, 'price'), 'expected a price; use 0 for free', code: layoutCode);
+    }
+    if ((asInt(entry['levels']) ?? 0) > 0 && type != 'buy' && type != 'command' && type != 'trade') {
+      error(childPath(path, 'levels'), 'levels are a cost of buy, command and trade entries', code: layoutCode);
     }
     if (entry.containsKey('sellPartial') && type != 'sell') error(childPath(path, 'sellPartial'), 'applies only to sell entries', code: layoutCode);
     for (final String key in const <String>['needs', 'gives']) {

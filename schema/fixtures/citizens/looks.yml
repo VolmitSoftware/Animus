@@ -1,0 +1,160 @@
+# Synthetic: mob looks, skin layers, boss bars, player filters, click redirects and text the importer turns into settings.
+npc:
+  '0':
+    name: Shepherd Flock
+    uuid: 0a1b2c3d-0000-4000-8000-000000000600
+    traits:
+      type: SHEEP
+      location: {world: world, x: 0.5, y: 64, z: 0.5}
+      sheeptrait: {color: LIGHT_BLUE, sheared: true}
+  '1':
+    name: Librarian
+    uuid: 0a1b2c3d-0000-4000-8000-000000000601
+    traits:
+      type: VILLAGER
+      location: {world: world, x: 2.5, y: 64, z: 0.5}
+      profession: LIBRARIAN
+      villagertrait: {type: 'minecraft:snow', level: 4}
+      scaledhealthtrait: {maxHealth: 40.0}
+  '2':
+    name: Stable Horse
+    uuid: 0a1b2c3d-0000-4000-8000-000000000602
+    traits:
+      type: HORSE
+      location: {world: world, x: 4.5, y: 64, z: 0.5}
+      horsemodifiers: {color: DARK_BROWN, style: WHITE_DOTS, tamed: true, carryingChest: false}
+  '3':
+    name: Pack Mule
+    uuid: 0a1b2c3d-0000-4000-8000-000000000603
+    traits:
+      type: MULE
+      location: {world: world, x: 6.5, y: 64, z: 0.5}
+      horsemodifiers: {carryingChest: true}
+  '4':
+    name: Hound
+    uuid: 0a1b2c3d-0000-4000-8000-000000000604
+    traits:
+      type: WOLF
+      location: {world: world, x: 8.5, y: 64, z: 0.5}
+      wolfmodifiers: {variant: 'minecraft:ashen', collarColor: LIME, tamed: true, sitting: true, angry: false}
+  '5':
+    name: King
+    uuid: 0a1b2c3d-0000-4000-8000-000000000605
+    traits:
+      type: PLAYER
+      location: {world: world, x: 10.5, y: 64, z: 0.5}
+      skinlayers: {cape: false, hat: true, left-sleeve: false}
+      bossbar: {title: '&6The King', color: YELLOW, style: SEGMENTED_6, flags: [DARKEN_SKY, CREATE_FOG], range: 40, track: health, viewPermission: court.view}
+      playerfilter: {mode: ALLOWLIST, groups: [nobles], permissions: [court.enter]}
+      clickredirecttrait: {uuid: 0a1b2c3d-0000-4000-8000-000000000606}
+      paintingtrait: {art: KEBAB}
+  '6':
+    name: Herald
+    uuid: 0a1b2c3d-0000-4000-8000-000000000606
+    traits:
+      type: PLAYER
+      location: {world: world, x: 12.5, y: 64, z: 0.5}
+      playerfilter: {players: [8667BA71-B85A-4004-AF54-457A9734EED7, not-a-uuid]}
+      text:
+        text: ['Show me your pass.']
+        talkitem: 'PAPER,minecraft:map'
+        delay: 60
+  '7':
+    name: Statue Marker
+    uuid: 0a1b2c3d-0000-4000-8000-000000000607
+    traits:
+      type: ARMOR_STAND
+      location: {world: world, x: 14.5, y: 64, z: 0.5}
+      armorstandtrait: {marker: true, visible: true}
+  '8':
+    name: Big Slime
+    uuid: 0a1b2c3d-0000-4000-8000-000000000608
+    traits:
+      type: SLIME
+      location: {world: world, x: 16.5, y: 64, z: 0.5}
+      slimesize: {size: 300}
+  '9':
+    name: Misplaced
+    uuid: 0a1b2c3d-0000-4000-8000-000000000609
+    traits:
+      type: PLAYER
+      location: {world: world, x: 18.5, y: 64, z: 0.5}
+      sheeptrait: {color: RED}
+      bossbar: {visible: false, title: Hidden}
+  '10':
+    name: Gallery
+    uuid: 0a1b2c3d-0000-4000-8000-000000000610
+    traits:
+      type: PAINTING
+      location: {world: world, x: 20.5, y: 64, z: 0.5}
+      paintingtrait: {art: KEBAB}
+  '11':
+    name: Frame
+    uuid: 0a1b2c3d-0000-4000-8000-000000000611
+    traits:
+      type: GLOW_ITEM_FRAME
+      location: {world: world, x: 22.5, y: 64, z: 0.5}
+      itemframe: {item: {type: DIAMOND, amount: 1}, rotation: CLOCKWISE, facing: EAST, fixed: true}
+  '12':
+    name: Sandfall
+    uuid: 0a1b2c3d-0000-4000-8000-000000000612
+    metadata: {item-type-id: GOLD_BLOCK, item-type-data: 0}
+    traits:
+      type: FALLING_BLOCK
+      location: {world: world, x: 24.5, y: 64, z: 0.5}
+  '13':
+    name: Sign
+    uuid: 0a1b2c3d-0000-4000-8000-000000000613
+    traits:
+      type: TEXT_DISPLAY
+      location: {world: world, x: 26.5, y: 64, z: 0.5}
+      textdisplaytrait: {text: '&eWelcome', alignment: LEFT, shadowed: true}
+      displaytrait: {billboard: CENTER}
+  '14':
+    name: Crystal
+    uuid: 0a1b2c3d-0000-4000-8000-000000000614
+    traits:
+      type: END_CRYSTAL
+      location: {world: world, x: 28.5, y: 64, z: 0.5}
+      endercrystaltrait: {}
+  '15':
+    name: Wither
+    uuid: 0a1b2c3d-0000-4000-8000-000000000615
+    traits:
+      type: WITHER
+      location: {world: world, x: 30.5, y: 64, z: 0.5}
+      withertrait: {arrowshield: true}
+  '16':
+    name: Camel
+    uuid: 0a1b2c3d-0000-4000-8000-000000000616
+    traits:
+      type: CAMEL
+      location: {world: world, x: 32.5, y: 64, z: 0.5}
+      cameltrait: {pose: SITTING}
+  '17':
+    name: Saddled Pig
+    uuid: 0a1b2c3d-0000-4000-8000-000000000617
+    traits:
+      type: PIG
+      location: {world: world, x: 34.5, y: 64, z: 0.5}
+      saddle: true
+  '18':
+    name: Sleeper
+    uuid: 0a1b2c3d-0000-4000-8000-000000000618
+    traits:
+      type: PLAYER
+      location: {world: world, x: 36.5, y: 64, z: 0.5}
+      sleeptrait: {at: {world: world, x: 36.5, y: 64, z: 0.5}}
+      gamemodetrait: {mode: SPECTATOR}
+  '19':
+    name: Swimmer
+    uuid: 0a1b2c3d-0000-4000-8000-000000000619
+    traits:
+      type: PLAYER
+      location: {world: world, x: 38.5, y: 64, z: 0.5}
+      entitypose: {pose: SWIMMING}
+      text:
+        text: ['Bubbles!']
+        speech-bubbles: true
+        send-text-to-chat: false
+        speech-bubble-duration: 80

@@ -77,6 +77,15 @@ public interface BodyTransport<P, I> extends AutoCloseable {
     default CompletionStage<Void> die(P viewer, Body body) { return java.util.concurrent.CompletableFuture.completedFuture(null); }
     /** Swings the body's main arm once, as a player placing or breaking a block does. */
     default CompletionStage<Void> swing(P viewer, Body body) { return java.util.concurrent.CompletableFuture.completedFuture(null); }
+    /** A vanilla animate action: 0 swings the main arm, 2 wakes up, 3 swings the off hand, 4 and 5 show critical hits. */
+    default CompletionStage<Void> gesture(P viewer, Body body, int action) { return action == 0 ? swing(viewer, body) : java.util.concurrent.CompletableFuture.completedFuture(null); }
+    /**
+     * Makes a visible body invisible to one viewer, or visible again, as a model drawn in its place needs. Its passengers,
+     * name and text rows stay. A transport without metadata updates refuses it.
+     */
+    default CompletionStage<Void> conceal(P viewer, Body body, boolean hidden) {
+        return java.util.concurrent.CompletableFuture.failedFuture(new UnsupportedOperationException("Bodies cannot be hidden on this server"));
+    }
     /**
      * Updates the pose and motion flags of a visible body from {@code look} without respawning it, as a recording
      * playback does when the recorder sneaks, swims, sprints or glides. A transport without metadata updates ignores it.
@@ -96,6 +105,11 @@ public interface BodyTransport<P, I> extends AutoCloseable {
     default CompletionStage<Void> attributes(P viewer, Body body, art.arcane.animus.core.npc.NpcAttributes attributes) {
         return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
+    /**
+     * The shape clicks on this NPC are checked against when the transport draws something other than its body, such as a
+     * model with a larger hitbox; empty keeps the body's own bounds.
+     */
+    default java.util.Optional<art.arcane.animus.core.virtual.ViewerSession.HitShape> hitShape(UUID npc) { return java.util.Optional.empty(); }
     /** An empty stack clears its slot. */
     CompletionStage<Void> equipment(P viewer, Body body, Map<EquipmentSlot, I> items);
     /** Authoritative: bypasses the ordinary operation limit. */

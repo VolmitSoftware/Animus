@@ -52,9 +52,9 @@
     "/traits/disguise/value": "trait disguise has no Animus equivalent; kept in citizens:review",
     "/traits/disguise/list/0": "trait disguise has no Animus equivalent; kept in citizens:review",
     "/traits/dropstrait": "trait dropstrait has no Animus equivalent; kept in citizens:review",
-    "/traits/endercrystaltrait/nested/flag": "trait endercrystaltrait has no Animus equivalent; kept in citizens:review",
-    "/traits/endercrystaltrait/nested/count": "trait endercrystaltrait has no Animus equivalent; kept in citizens:review",
-    "/traits/endermantrait/enabled": "trait endermantrait has no Animus equivalent; kept in citizens:review",
+    "/traits/endercrystaltrait/nested/flag": "applies only to minecraft:end_crystal bodies, so Citizens did not show it either",
+    "/traits/endercrystaltrait/nested/count": "applies only to minecraft:end_crystal bodies, so Citizens did not show it either",
+    "/traits/endermantrait/enabled": "applies only to minecraft:enderman bodies, so Citizens did not show it either",
     "/traits/entitypose/0": "trait entitypose has no Animus equivalent; kept in citizens:review",
     "/traits/entitypose/1": "trait entitypose has no Animus equivalent; kept in citizens:review",
     "/traits/followtrait/value": "trait followtrait has no Animus equivalent; kept in citizens:review",
@@ -62,7 +62,7 @@
     "/traits/forcefieldtrait": "trait forcefieldtrait has no Animus equivalent; kept in citizens:review",
     "/traits/gamemodetrait/nested/flag": "trait gamemodetrait has no Animus equivalent; kept in citizens:review",
     "/traits/gamemodetrait/nested/count": "trait gamemodetrait has no Animus equivalent; kept in citizens:review",
-    "/traits/hometrait/enabled": "trait hometrait has no Animus equivalent; kept in citizens:review"
+    "/traits/hometrait/enabled": "the home is missing or in another world than the NPC; set animus:home by hand"
   },
   "worldRemaps": [],
   "references": [],

@@ -52,7 +52,7 @@ public final class ImportApplications {
         for(var skin:bundle.extras().entrySet()) {
             String before=store.read(skin.getKey());budget.charge(before);
             if(before==null && ++transactionEntries>10_000)throw new IOException("Application exceeds 10000 transaction entries including skins/checkpoints/receipt");
-            if(before!=null && !before.equals(skin.getValue()))throw new IOException((skin.getKey().startsWith("skins/")?"Skin":skin.getKey().startsWith("groups/")?"Group":"Behavior")+" collision: "+skin.getKey()+" exists with other content");
+            if(before!=null && !before.equals(skin.getValue()))throw new IOException((skin.getKey().startsWith("skins/")?"Skin":skin.getKey().startsWith("groups/")?"Group":skin.getKey().startsWith("shops/")?"Shop":"Behavior")+" collision: "+skin.getKey()+" exists with other content");
             SavedCandidate saved=saveCandidate(store,skin.getValue());candidateReadBytes+=saved.readBytes();
             add(documents,skin.getKey(),JsonDocuments.hash(before),saved.hash());
         }
@@ -154,7 +154,7 @@ public final class ImportApplications {
         Map<String,String> result=new TreeMap<>();
         for(var entry:documents.entrySet()) {
             String path=entry.getKey();
-            if(!NpcPaths.file(path) && !path.matches("skins/[a-f0-9]{64}\\.json") && !path.matches(CitizensImporter.BEHAVIOR_PATH) && !path.matches(GroupFactoring.GROUP_PATH))throw new IOException("Invalid application target: "+path);
+            if(!NpcPaths.file(path) && !path.matches("skins/[a-f0-9]{64}\\.json") && !path.matches(CitizensImporter.BEHAVIOR_PATH) && !path.matches(CitizensShops.PATH) && !path.matches(GroupFactoring.GROUP_PATH))throw new IOException("Invalid application target: "+path);
             JsonObject descriptor=object(documents,path);String hash=string(descriptor,"objectHash"), before=string(descriptor,"expectedHash");
             if(!before.equals("missing") && !before.matches("[a-f0-9]{64}"))throw new IOException("Invalid expected hash: "+path);
             String encoded=store.immutableJson(OBJECTS,hash);budget.charge(encoded);
@@ -185,8 +185,8 @@ public final class ImportApplications {
         String report=store.read(prefix+"report.json");budget.charge(report);JsonObject summary=preview.summary();
         if(integer(summary,"schemaVersion")!=1 || preview.records()==0 || preview.records()!=preview.valid())throw new IOException("Import has validation errors");
         JsonObject documents=object(summary,"documents"), ids=object(summary,"idMap");
-        if(documents.size()!=preview.records()+preview.skins()+preview.behaviors()+preview.groups() || documents.size()>9_999)throw new IOException("Invalid or oversized import manifest");
-        List<NpcDefinition> definitions=new ArrayList<>();Map<String,String> skins=new TreeMap<>(), behaviors=new TreeMap<>(), groups=new TreeMap<>();Set<String> required=new HashSet<>();
+        if(documents.size()!=preview.records()+preview.skins()+preview.behaviors()+preview.groups()+preview.shops() || documents.size()>9_999)throw new IOException("Invalid or oversized import manifest");
+        List<NpcDefinition> definitions=new ArrayList<>();Map<String,String> skins=new TreeMap<>(), behaviors=new TreeMap<>(), groups=new TreeMap<>(), shops=new TreeMap<>();Set<String> required=new HashSet<>();
         for(var entry:documents.entrySet()) {
             String path=entry.getKey();
             if(!path.matches(CitizensImporter.BUNDLE_PATH))throw new IOException("Invalid bundle path: "+path);
@@ -199,6 +199,7 @@ public final class ImportApplications {
                 if(!npc.uuid().toString().equals(string(ids,Integer.toString(oldId))))throw new IOException("Import identity map mismatch");
                 if(data.has("skin"))required.add("skins/"+string(data,"skin")+".json");definitions.add(npc);
             } else if(path.startsWith("behaviors/")) behaviors.put(path,value);
+            else if(path.startsWith("shops/")) shops.put(path,value);
             else if(path.startsWith("groups/")) {
                 if(art.arcane.animus.core.npc.GroupDocument.parse(path.substring(7,path.length()-5),value).group().isEmpty())throw new IOException("Invalid factored group: "+path);
                 groups.put(path,value);
@@ -208,8 +209,8 @@ public final class ImportApplications {
                 skins.put(path,value);
             }
         }
-        if(definitions.size()!=preview.records() || skins.size()!=preview.skins() || behaviors.size()!=preview.behaviors() || groups.size()!=preview.groups() || !skins.keySet().containsAll(required))throw new IOException("Incomplete import bundle");
-        Map<String,String> extras=new TreeMap<>(skins);extras.putAll(behaviors);extras.putAll(groups);
+        if(definitions.size()!=preview.records() || skins.size()!=preview.skins() || behaviors.size()!=preview.behaviors() || groups.size()!=preview.groups() || shops.size()!=preview.shops() || !skins.keySet().containsAll(required))throw new IOException("Incomplete import bundle");
+        Map<String,String> extras=new TreeMap<>(skins);extras.putAll(behaviors);extras.putAll(groups);extras.putAll(shops);
         return new Bundle(JsonDocuments.hash(report),List.copyOf(definitions),Map.copyOf(extras));
     }
     private record SavedCandidate(String hash,long readBytes) {}

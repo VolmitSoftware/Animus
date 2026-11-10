@@ -58,6 +58,7 @@ public final class ViewerPreviews implements HiddenNpcs, AutoCloseable {
     private final Map<UUID, Staged> byViewer = new ConcurrentHashMap<>();
     private final Map<String, Long> requests = new ConcurrentHashMap<>();
     private final AtomicLong sequence = new AtomicLong();
+    private volatile HiddenNpcs plugins = HiddenNpcs.NONE;
     private volatile boolean closed;
 
     /** Skins are read on {@code io}, never on a server thread. */
@@ -154,10 +155,14 @@ public final class ViewerPreviews implements HiddenNpcs, AutoCloseable {
 
     /** The live NPC is replaced by a preview candidate for this viewer. Cheap enough for every visibility check. */
     @Override public boolean hides(UUID viewer, String id, UUID uuid) {
+        if (plugins.hides(viewer, id, uuid)) return true;
         if (byViewer.isEmpty()) return false;
         Staged staged = byViewer.get(viewer);
         return staged != null && staged.hides(id, uuid);
     }
+
+    /** Live NPCs another plugin hides from single viewers, such as a quest plugin's per-player visibility; hidden the same way as a preview's. */
+    public void alsoHide(HiddenNpcs hidden) { plugins = Objects.requireNonNull(hidden); }
 
     /** The viewer is left out of this live NPC's speech, sounds and particles while a preview of theirs stands in for it. */
     public boolean hides(UUID viewer, NpcRuntime.ActiveNpc npc) { return hides(viewer, npc.id(), npc.state().npcId()); }

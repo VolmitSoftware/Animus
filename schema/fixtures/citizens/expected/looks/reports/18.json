@@ -1,0 +1,29 @@
+{
+  "citizensId": 18,
+  "presentationWarnings": [],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/sleeptrait/at/world": "CONVERTED",
+    "/traits/sleeptrait/at/x": "CONVERTED",
+    "/traits/sleeptrait/at/y": "CONVERTED",
+    "/traits/sleeptrait/at/z": "CONVERTED",
+    "/traits/gamemodetrait/mode": "CONVERTED"
+  },
+  "reasons": {
+    "/traits/sleeptrait/at/world": "the NPC sleeps where it stands",
+    "/traits/sleeptrait/at/x": "the NPC sleeps where it stands",
+    "/traits/sleeptrait/at/y": "the NPC sleeps where it stands",
+    "/traits/sleeptrait/at/z": "the NPC sleeps where it stands"
+  },
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": []
+}

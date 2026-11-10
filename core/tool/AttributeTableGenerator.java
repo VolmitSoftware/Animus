@@ -25,15 +25,20 @@ import java.util.zip.ZipFile;
  * Writes core/src/main/java/art/arcane/animus/core/npc/VanillaAttributes.java from the attribute registrations in each
  * target's server jar. Arguments: the output file, then version=jar pairs, oldest version first. It reads the static
  * initializer of net.minecraft.world.entity.ai.attributes.Attributes: every register(id, new RangedAttribute(name,
- * default, minimum, maximum)) call, and the attribute supplier each presented body type is built from, following its
+ * default, minimum, maximum)) call, and the attribute supplier every living entity type is built from: the
+ * create*Attributes method DefaultAttributes registers for it, unless BODIES names another, following its
  * create*Attributes calls up the class hierarchy, so no Minecraft code runs.
  */
 public final class AttributeTableGenerator {
     private static final String ATTRIBUTES = "net/minecraft/world/entity/ai/attributes/Attributes.class";
+    private static final String DEFAULTS = "net/minecraft/world/entity/ai/attributes/DefaultAttributes.class";
 
     record Attribute(String id, double fallback, double minimum, double maximum) {}
 
-    /** Each presented body type and the static method its vanilla attribute supplier comes from. */
+    /**
+     * Body types whose supplier Animus takes from another method than DefaultAttributes registers, such as a horse's base
+     * attributes without its random ones; a comma separates names the class has had.
+     */
     private static final Map<String, String[]> BODIES = new LinkedHashMap<>();
     static {
         BODIES.put("minecraft:player", new String[]{"net/minecraft/world/entity/player/Player", "createAttributes"});
@@ -44,6 +49,43 @@ public final class AttributeTableGenerator {
         BODIES.put("minecraft:frog", new String[]{"net/minecraft/world/entity/animal/frog/Frog", "createAttributes"});
         BODIES.put("minecraft:armadillo", new String[]{"net/minecraft/world/entity/animal/armadillo/Armadillo", "createAttributes"});
         BODIES.put("minecraft:ender_dragon", new String[]{"net/minecraft/world/entity/boss/enderdragon/EnderDragon", "createAttributes"});
+        BODIES.put("minecraft:sheep", new String[]{"net/minecraft/world/entity/animal/sheep/Sheep", "createAttributes"});
+        BODIES.put("minecraft:wolf", new String[]{"net/minecraft/world/entity/animal/wolf/Wolf", "createAttributes"});
+        BODIES.put("minecraft:cat", new String[]{"net/minecraft/world/entity/animal/feline/Cat", "createAttributes"});
+        BODIES.put("minecraft:parrot", new String[]{"net/minecraft/world/entity/animal/parrot/Parrot", "createAttributes"});
+        BODIES.put("minecraft:fox", new String[]{"net/minecraft/world/entity/animal/fox/Fox", "createAttributes"});
+        BODIES.put("minecraft:axolotl", new String[]{"net/minecraft/world/entity/animal/axolotl/Axolotl", "createAttributes"});
+        BODIES.put("minecraft:rabbit", new String[]{"net/minecraft/world/entity/animal/rabbit/Rabbit", "createAttributes"});
+        BODIES.put("minecraft:villager", new String[]{"net/minecraft/world/entity/npc/villager/Villager", "createAttributes"});
+        BODIES.put("minecraft:zombie_villager", new String[]{"net/minecraft/world/entity/monster/zombie/Zombie", "createAttributes"});
+        BODIES.put("minecraft:creeper", new String[]{"net/minecraft/world/entity/monster/Creeper", "createAttributes"});
+        BODIES.put("minecraft:slime", new String[]{"net/minecraft/world/entity/monster/Monster", "createMonsterAttributes"});
+        BODIES.put("minecraft:magma_cube", new String[]{"net/minecraft/world/entity/monster/cubemob/MagmaCube,net/minecraft/world/entity/monster/MagmaCube", "createAttributes"});
+        BODIES.put("minecraft:phantom", new String[]{"net/minecraft/world/entity/monster/Monster", "createMonsterAttributes"});
+        BODIES.put("minecraft:mooshroom", new String[]{"net/minecraft/world/entity/animal/cow/Cow", "createAttributes"});
+        BODIES.put("minecraft:panda", new String[]{"net/minecraft/world/entity/animal/panda/Panda", "createAttributes"});
+        BODIES.put("minecraft:goat", new String[]{"net/minecraft/world/entity/animal/goat/Goat", "createAttributes"});
+        BODIES.put("minecraft:pig", new String[]{"net/minecraft/world/entity/animal/pig/Pig", "createAttributes"});
+        BODIES.put("minecraft:cow", new String[]{"net/minecraft/world/entity/animal/cow/Cow", "createAttributes"});
+        BODIES.put("minecraft:chicken", new String[]{"net/minecraft/world/entity/animal/chicken/Chicken", "createAttributes"});
+        BODIES.put("minecraft:shulker", new String[]{"net/minecraft/world/entity/monster/Shulker", "createAttributes"});
+        BODIES.put("minecraft:pufferfish", new String[]{"net/minecraft/world/entity/animal/fish/AbstractFish", "createAttributes"});
+        BODIES.put("minecraft:tropical_fish", new String[]{"net/minecraft/world/entity/animal/fish/AbstractFish", "createAttributes"});
+        BODIES.put("minecraft:snow_golem", new String[]{"net/minecraft/world/entity/animal/golem/SnowGolem", "createAttributes"});
+        BODIES.put("minecraft:polar_bear", new String[]{"net/minecraft/world/entity/animal/polarbear/PolarBear", "createAttributes"});
+        BODIES.put("minecraft:piglin", new String[]{"net/minecraft/world/entity/monster/piglin/Piglin", "createAttributes"});
+        BODIES.put("minecraft:allay", new String[]{"net/minecraft/world/entity/animal/allay/Allay", "createAttributes"});
+        BODIES.put("minecraft:bee", new String[]{"net/minecraft/world/entity/animal/bee/Bee", "createAttributes"});
+        BODIES.put("minecraft:vex", new String[]{"net/minecraft/world/entity/monster/Vex", "createAttributes"});
+        BODIES.put("minecraft:evoker", new String[]{"net/minecraft/world/entity/monster/illager/Evoker", "createAttributes"});
+        BODIES.put("minecraft:sniffer", new String[]{"net/minecraft/world/entity/animal/sniffer/Sniffer", "createAttributes"});
+        BODIES.put("minecraft:bat", new String[]{"net/minecraft/world/entity/ambient/Bat", "createAttributes"});
+        BODIES.put("minecraft:copper_golem", new String[]{"net/minecraft/world/entity/animal/golem/CopperGolem", "createAttributes"});
+        BODIES.put("minecraft:donkey", new String[]{"net/minecraft/world/entity/animal/equine/AbstractChestedHorse", "createBaseChestedHorseAttributes"});
+        BODIES.put("minecraft:mule", new String[]{"net/minecraft/world/entity/animal/equine/AbstractChestedHorse", "createBaseChestedHorseAttributes"});
+        BODIES.put("minecraft:wither", new String[]{"net/minecraft/world/entity/boss/wither/WitherBoss", "createAttributes"});
+        BODIES.put("minecraft:camel", new String[]{"net/minecraft/world/entity/animal/camel/Camel", "createAttributes"});
+        BODIES.put("minecraft:enderman", new String[]{"net/minecraft/world/entity/monster/Enderman,net/minecraft/world/entity/monster/EnderMan", "createAttributes"});
     }
 
     public static void main(String[] arguments) throws IOException {
@@ -58,7 +100,9 @@ public final class AttributeTableGenerator {
                 since.putIfAbsent(attribute.id(), pair[0]);
             }
             try (ZipFile zip = new ZipFile(Path.of(pair[1]).toFile())) {
-                for (Map.Entry<String, String[]> body : BODIES.entrySet())
+                Map<String, String[]> suppliers = new TreeMap<>(defaults(zip));
+                suppliers.putAll(BODIES);
+                for (Map.Entry<String, String[]> body : suppliers.entrySet())
                     carried.computeIfAbsent(body.getKey(), (String key) -> new java.util.TreeSet<>()).addAll(supplier(zip, body.getValue()[0], body.getValue()[1]));
             }
         }
@@ -122,11 +166,41 @@ public final class AttributeTableGenerator {
     }
 
     /**
+     * The supplier DefaultAttributes registers for each entity type: in its static initializer, an EntityType field load
+     * followed by the static create*Attributes call whose builder is built and put for it.
+     */
+    private static Map<String, String[]> defaults(ZipFile zip) throws IOException {
+        ZipEntry entry = zip.getEntry(DEFAULTS);
+        if (entry == null) throw new IOException("No " + DEFAULTS);
+        ClassModel model;
+        try (InputStream input = zip.getInputStream(entry)) { model = ClassFile.of().parse(input.readAllBytes()); }
+        Map<String, String[]> found = new LinkedHashMap<>();
+        for (MethodModel method : model.methods()) {
+            if (!method.methodName().equalsString("<clinit>")) continue;
+            String type = null;
+            for (CodeElement element : method.code().orElseThrow()) {
+                if (element instanceof java.lang.classfile.instruction.FieldInstruction field && field.opcode() == Opcode.GETSTATIC
+                        && field.typeSymbol().descriptorString().equals("Lnet/minecraft/world/entity/EntityType;"))
+                    type = "minecraft:" + field.name().stringValue().toLowerCase(Locale.ROOT);
+                else if (type != null && element instanceof InvokeInstruction invoke && invoke.opcode() == Opcode.INVOKESTATIC
+                        && invoke.typeSymbol().descriptorString().equals("()" + BUILDER)) {
+                    found.put(type, new String[]{invoke.owner().asInternalName(), invoke.name().stringValue()});
+                    type = null;
+                }
+            }
+        }
+        if (found.isEmpty()) throw new IOException(DEFAULTS + " registers no attribute suppliers");
+        return found;
+    }
+
+    /**
      * The attribute ids a static create*Attributes method adds: each Attributes field it loads, plus those of the
      * create*Attributes methods it calls, found on the named class or the first superclass declaring them.
      */
-    private static java.util.Set<String> supplier(ZipFile zip, String owner, String name) throws IOException {
+    private static java.util.Set<String> supplier(ZipFile zip, String owners, String name) throws IOException {
         java.util.Set<String> found = new java.util.TreeSet<>();
+        String owner = owners.split(",")[0];
+        for (String candidate : owners.split(",")) if (zip.getEntry(candidate + ".class") != null) { owner = candidate; break; }
         for (String at = owner; at != null; ) {
             ZipEntry entry = zip.getEntry(at + ".class");
             if (entry == null) throw new IOException("No class " + at);

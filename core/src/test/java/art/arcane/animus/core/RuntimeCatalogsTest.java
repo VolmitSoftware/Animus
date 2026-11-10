@@ -18,9 +18,12 @@ class RuntimeCatalogsTest {
         try (AnimusRuntime runtime = new AnimusRuntime(RuntimeEnvironment.bukkit("26.3", root))) {
             runtime.start();
             RuntimeCatalogs catalogs = new RuntimeCatalogs(new RuntimeCatalogs.Parts(runtime, () -> ran.add("refresh"), () -> null,
-                    () -> queued(ran, "shops"), () -> queued(ran, "holograms"), (String line) -> {}));
+                    () -> queued(ran, "shops"), () -> queued(ran, "holograms"), () -> queued(ran, "quests"), (String line) -> {}));
             catalogs.reload(new CatalogChange(Set.of(DocumentKind.SHOP), Set.of(), false));
             assertEquals(List.of("shops"), ran);
+            ran.clear();
+            catalogs.reload(new CatalogChange(Set.of(DocumentKind.QUEST), Set.of(), false));
+            assertEquals(List.of("quests"), ran, "a quest file reloads only quests");
             ran.clear();
             catalogs.reload(new CatalogChange(Set.of(DocumentKind.INVENTORY, DocumentKind.HOLOGRAM), Set.of(), true));
             assertEquals(List.of("shops", "holograms"), ran);
@@ -37,7 +40,7 @@ class RuntimeCatalogsTest {
         List<String> ran = new ArrayList<>(), reported = new ArrayList<>(), logged = new ArrayList<>();
         try (AnimusRuntime stopped = new AnimusRuntime(RuntimeEnvironment.bukkit("26.3", root))) {
             RuntimeCatalogs catalogs = new RuntimeCatalogs(new RuntimeCatalogs.Parts(stopped, () -> ran.add("refresh"), () -> null,
-                    () -> queued(ran, "shops"), () -> queued(ran, "holograms"), logged::add));
+                    () -> queued(ran, "shops"), () -> queued(ran, "holograms"), () -> queued(ran, "quests"), logged::add));
             assertTrue(catalogs.reloaded(new CatalogChange(Set.of(DocumentKind.NPC), Set.of(), false), reported::add).isDone());
             assertEquals(List.of("refresh"), ran);
             assertEquals(List.of(RuntimeCatalogs.NPC_RELOAD_FAILED + "IllegalStateException: Animus is not running"), reported);
@@ -54,7 +57,7 @@ class RuntimeCatalogsTest {
         try (AnimusRuntime runtime = new AnimusRuntime(RuntimeEnvironment.bukkit("26.3", root))) {
             runtime.start();
             CompletableFuture<Void> shops = new CompletableFuture<>(), holograms = new CompletableFuture<>();
-            RuntimeCatalogs catalogs = new RuntimeCatalogs(new RuntimeCatalogs.Parts(runtime, () -> {}, () -> null, () -> shops, () -> holograms, (String line) -> {}));
+            RuntimeCatalogs catalogs = new RuntimeCatalogs(new RuntimeCatalogs.Parts(runtime, () -> {}, () -> null, () -> shops, () -> holograms, () -> java.util.concurrent.CompletableFuture.completedFuture(null), (String line) -> {}));
             CompletableFuture<Void> live = catalogs.reloaded(new CatalogChange(Set.of(DocumentKind.SHOP, DocumentKind.MENU), Set.of(), false), (String problem) -> {});
             assertFalse(live.isDone());
             shops.complete(null);

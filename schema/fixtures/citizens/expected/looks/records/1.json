@@ -1,0 +1,21 @@
+{
+  "name": "Librarian",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000601",
+  "traits": {
+    "type": "VILLAGER",
+    "location": {
+      "world": "world",
+      "x": 2.5,
+      "y": 64,
+      "z": 0.5
+    },
+    "profession": "LIBRARIAN",
+    "villagertrait": {
+      "type": "minecraft:snow",
+      "level": 4
+    },
+    "scaledhealthtrait": {
+      "maxHealth": 40.0
+    }
+  }
+}

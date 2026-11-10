@@ -1,0 +1,258 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000600",
+  "id": "citizens-0",
+  "group": "harbor",
+  "name": "Ferryman",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "d0645871e188a9d2319eef3abff392d99015b22911be04c0fbb3999eef7ce282",
+    "citizensId": 0,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "harbor",
+    "x": 0.5,
+    "y": 64.0,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "movement": {
+    "speed": 4.3,
+    "avoidWater": false,
+    "openDoors": true
+  },
+  "behaviors": [
+    "citizens:waypoints-0"
+  ],
+  "modules": {
+    "animus:navigation": {
+      "enabled": false,
+      "reviewAccepted": false,
+      "mode": "walk",
+      "speed": 4.3,
+      "order": "sequence",
+      "loop": true,
+      "waitTicks": 0,
+      "points": [
+        {
+          "x": 2.5,
+          "y": 63,
+          "z": 2.5,
+          "speed": 2.15
+        },
+        {
+          "x": 20.5,
+          "y": 63,
+          "z": 2.5,
+          "teleport": {
+            "x": 80.5,
+            "y": 64.0,
+            "z": 2.5,
+            "yaw": -90.0,
+            "pitch": 0.0
+          },
+          "speed": 5.0
+        },
+        {
+          "x": 90.5,
+          "y": 63,
+          "z": 2.5,
+          "teleport": {
+            "x": 91.5,
+            "y": 63.0,
+            "z": 4.5,
+            "yaw": 90.0,
+            "pitch": 0.0
+          }
+        },
+        {
+          "x": 95.5,
+          "y": 63,
+          "z": 2.5,
+          "teleport": {
+            "x": 0.0,
+            "y": 64.0,
+            "z": 0.0,
+            "world": "far_isle"
+          }
+        }
+      ],
+      "pause": {
+        "playerRange": 4.0,
+        "onClick": true,
+        "ticks": 60,
+        "lockoutTicks": 100
+      }
+    },
+    "animus:look-close": {
+      "enabled": true,
+      "range": 8.0,
+      "lineOfSight": false,
+      "whileNavigating": false,
+      "headOnly": true,
+      "perPlayer": true,
+      "permissions": [
+        "harbor.pass",
+        "group.sailors"
+      ],
+      "turnRate": {
+        "yaw": 6.0,
+        "pitch": 3.0
+      },
+      "switchTicks": 80,
+      "randomLook": {
+        "enabled": false,
+        "delayTicks": 80,
+        "yaw": [
+          0.0,
+          360.0
+        ],
+        "pitch": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "harbor",
+        "x": 0.5,
+        "y": 64.0,
+        "z": 0.5
+      },
+      "lookclose": {
+        "enabled": true,
+        "range": 8.0,
+        "headonly": true,
+        "perplayer": true,
+        "randomSwitchTargets": true,
+        "randomlookdelay": 80,
+        "filter": "type=PLAYER permission=harbor.pass group=Sailors"
+      },
+      "rotationtrait": {
+        "globalParameters": {
+          "headOnly": true,
+          "maxYawPerTick": 6.0,
+          "maxPitchPerTick": 3.0
+        }
+      },
+      "pausepathfinding": {
+        "playerrange": 4.0,
+        "rightclick": true,
+        "pauseticks": 60,
+        "lockoutduration": 100
+      },
+      "waypoints": {
+        "provider": "linear",
+        "linear": {
+          "points": {
+            "0": {
+              "location": {
+                "world": "harbor",
+                "x": 2.0,
+                "y": 63.0,
+                "z": 2.0
+              },
+              "triggers": {
+                "0": {
+                  "type": "speed",
+                  "speed": 0.5
+                }
+              }
+            },
+            "1": {
+              "location": {
+                "world": "harbor",
+                "x": 20.0,
+                "y": 63.0,
+                "z": 2.0
+              },
+              "triggers": {
+                "0": {
+                  "type": "chat",
+                  "radius": 12.0,
+                  "lines": [
+                    "&bAll aboard!",
+                    "Next stop <npc>"
+                  ]
+                },
+                "1": {
+                  "type": "teleport",
+                  "location": {
+                    "world": "harbor",
+                    "x": 80.5,
+                    "y": 64.0,
+                    "z": 2.5,
+                    "yaw": -90.0,
+                    "pitch": 0.0
+                  }
+                },
+                "2": {
+                  "type": "command",
+                  "commands": [
+                    "/say ferry <id> crossed"
+                  ]
+                },
+                "3": {
+                  "type": "speed",
+                  "speed": 1.25
+                }
+              }
+            },
+            "2": {
+              "location": {
+                "world": "harbor",
+                "x": 90.0,
+                "y": 63.0,
+                "z": 2.0
+              },
+              "triggers": {
+                "0": {
+                  "type": "animation",
+                  "animations": [
+                    "ARM_SWING",
+                    "SLEEP",
+                    "START_ELYTRA"
+                  ],
+                  "at": {
+                    "world": "harbor",
+                    "x": 91.5,
+                    "y": 63.0,
+                    "z": 4.5,
+                    "yaw": 90.0,
+                    "pitch": 0.0
+                  }
+                }
+              }
+            },
+            "3": {
+              "location": {
+                "world": "harbor",
+                "x": 95.0,
+                "y": 63.0,
+                "z": 2.0
+              },
+              "triggers": {
+                "0": {
+                  "type": "teleport",
+                  "location": {
+                    "world": "far_isle",
+                    "x": 0.0,
+                    "y": 64.0,
+                    "z": 0.0
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

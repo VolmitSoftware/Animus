@@ -48,7 +48,10 @@ public record TriggerBinding(String id, Spec spec, Optional<String> routine, Opt
         @Override public TriggerKind kind() { return TriggerKind.INTERACTION; }
         boolean accepts(TriggerEvent.Interaction input) { return action.accepts(input); }
     }
-    public record Proximity(Phase phase, double radius) implements Spec {
+    /** {@code playerCooldownTicks} spaces one player's runs of this trigger; empty leaves the trigger's own cooldown. */
+    public record Proximity(Phase phase, double radius, OptionalInt playerCooldownTicks) implements Spec {
+        public Proximity { Objects.requireNonNull(playerCooldownTicks); }
+        public Proximity(Phase phase, double radius) { this(phase, radius, OptionalInt.empty()); }
         @Override public TriggerKind kind() { return TriggerKind.PROXIMITY; }
     }
     /** Events with no further filter: spawn, despawn, damage, death, build, player quit, death and respawn, server start. */

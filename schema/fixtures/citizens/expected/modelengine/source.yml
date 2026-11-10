@@ -1,0 +1,25 @@
+# Synthetic: Model Engine's meg_model trait, whose model_data holds Model Engine 4 JSON, Model Engine 3 JSON, or nothing readable.
+npc:
+  '0':
+    name: Drake
+    uuid: 0a1b2c3d-0000-4000-8000-000000000300
+    traits:
+      type: PLAYER
+      location: {world: world, x: 0.5, y: 64, z: 0.5, yaw: 90}
+      meg_model:
+        model_data: '{"version":"R4.0.3","base_visible":false,"models":[{"blueprint":"drake","render_scale":2.0,"hitbox_scale":2.0},{"blueprint":"drake_saddle","render_scale":1.0}]}'
+  '1':
+    name: Golem
+    uuid: 0a1b2c3d-0000-4000-8000-000000000301
+    traits:
+      type: PLAYER
+      location: {world: world, x: 4.5, y: 64, z: 0.5}
+      meg_model:
+        model_data: '{"isBaseEntityVisible":true,"models":{"golem":{"defaultStates":{"IDLE":{"stateId":"breathe","lerpIn":0.0,"lerpOut":0.0,"speed":1.0},"WALK":{"stateId":"stomp","lerpIn":0.0,"lerpOut":0.0,"speed":1.0},"DEATH":{"stateId":"death","lerpIn":0.0,"lerpOut":0.0,"speed":1.0}},"states":{}}}}'
+  '2':
+    name: Unknown
+    uuid: 0a1b2c3d-0000-4000-8000-000000000302
+    traits:
+      type: PLAYER
+      location: {world: world, x: 8.5, y: 64, z: 0.5}
+      meg_model: {cache: 12}

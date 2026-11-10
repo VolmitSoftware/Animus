@@ -159,6 +159,15 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         NpcRuntime.ActiveNpc active = require(npc);
         PlatformRefusals.mapped(() -> { living.lookAt(active.id(), new WorldPosition(active.state().position().world(), target)); return true; });
     }
+    @Override public Point anchor(NpcHandle npc, String name) {
+        NpcRuntime.ActiveNpc active = require(npc);
+        art.arcane.animus.core.npc.NpcAnchors.Anchor anchor = PlatformRefusals.mapped(() -> living.anchor(active.id(), name));
+        return new Point(anchor.world(), anchor.position(), java.util.OptionalDouble.empty(), java.util.OptionalDouble.empty());
+    }
+    @Override public void animate(NpcHandle npc, art.arcane.animus.core.npc.NpcAnimation animation) {
+        NpcRuntime.ActiveNpc active = require(npc);
+        PlatformRefusals.mapped(() -> { living.animate(active.id(), animation); return true; });
+    }
     @Override public void pose(NpcHandle npc, String pose) {
         NpcRuntime.ActiveNpc active = require(npc);
         PlatformRefusals.mapped(() -> { living.pose(active.id(), pose); return true; });
@@ -173,6 +182,10 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
     @Override public void setAppearance(NpcHandle npc, AppearanceChange change) {
         NpcRuntime.ActiveNpc active = require(npc);
         PlatformRefusals.mapped(() -> { living.setAppearance(active.id(), change.name(), change.skin(), change.reset()); return true; });
+    }
+    @Override public void bubble(NpcHandle npc, String text, int ticks) {
+        NpcRuntime.ActiveNpc active = require(npc);
+        PlatformRefusals.mapped(() -> { living.bubble(active.id(), text, ticks); return true; });
     }
     @Override public void playAnimation(NpcHandle npc, String animation, double speed, Optional<String> loop, int layer) {
         NpcRuntime.ActiveNpc active = require(npc);
@@ -259,7 +272,13 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
                 if (level == null) throw PlatformRefusals.worldUnavailable();
                 yield broadcast(level.players(), line);
             }
+            case NEARBY -> messageNearby(npc, 16, text);
         };
+    }
+    @Override public int messageNearby(NpcHandle npc, double radius, String text) {
+        NpcRuntime.ActiveNpc active = requireVoice(npc);
+        Component line = formatted(text);
+        return deliver(active, new Audience(Optional.empty(), radius), active.state().position(), false, (ServerPlayer viewer) -> viewer.sendSystemMessage(line));
     }
     private static int broadcast(List<ServerPlayer> receivers, Component line) {
         List<ServerPlayer> snapshot = List.copyOf(receivers);

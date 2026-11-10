@@ -48,7 +48,29 @@ class BodyVariantTest {
     }
 
     @Test void everyBodyTypeNamesItsOwnField() {
-        assertEquals(Set.of("horse", "llama", "frog", "armadillo", "dragon"), BodyVariant.FIELDS.keySet());
+        assertTrue(BodyVariant.FIELDS.keySet().containsAll(Set.of("horse", "llama", "frog", "armadillo", "dragon", "sheep", "villager", "zombieVillager", "player", "fallingBlock", "textDisplay")));
         assertEquals("minecraft:ender_dragon", BodyVariant.FIELDS.get("dragon").type());
+        assertEquals("minecraft:tropical_fish", BodyVariant.FIELDS.get("tropicalFish").type());
+        assertEquals(BodyVariant.FIELDS.size(), BodyVariant.types().size());
+        assertEquals("sheep", BodyVariant.fieldOf("minecraft:sheep").orElseThrow().field());
+    }
+
+    @Test void mobSettingsParseWithTheirWireIndexes() throws IOException {
+        BodyVariant sheep = variant("minecraft:sheep", "\"sheep\":{\"color\":\"red\",\"sheared\":true}");
+        assertEquals(14, sheep.index("color"));
+        assertTrue(sheep.flag("sheared"));
+        BodyVariant villager = variant("minecraft:villager", "\"villager\":{\"type\":\"desert\",\"profession\":\"librarian\",\"level\":\"master\"}");
+        assertEquals(Map.of("type", "desert", "profession", "librarian", "level", "master"), villager.choices());
+        assertEquals(4, villager.index("level"));
+        assertEquals("cold", variant("minecraft:cow", "\"cow\":{\"variant\":\"cold\"}").choices().get("variant"));
+        assertEquals(1, variant("minecraft:player", "\"player\":{\"cape\":\"hidden\"}").index("cape"));
+    }
+
+    @Test void numberSettingsTakeWholeNumbersInRange() throws IOException {
+        assertEquals(4, variant("minecraft:slime", "\"slime\":{\"size\":4}").number("size", 0));
+        assertEquals(7, variant("minecraft:slime", "").number("size", 7));
+        assertEquals(List.of("$.slime.size: expected a whole number from 1 to 127"), NpcAppearanceTest.errors("minecraft:slime", "\"slime\":{\"size\":0}"));
+        assertEquals(List.of("$.slime.size: expected a whole number from 1 to 127"), NpcAppearanceTest.errors("minecraft:slime", "\"slime\":{\"size\":2.5}"));
+        assertEquals(List.of("$.phantom.size: expected a whole number from 0 to 64"), NpcAppearanceTest.errors("minecraft:phantom", "\"phantom\":{\"size\":\"3\"}"));
     }
 }

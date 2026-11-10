@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://animus.volmitsoftware.com/schema/rig-v1.schema.json",
   "title": "Animus rig",
-  "description": "rigs/<namespace>/<path>.json. A tree of bones shown as packet-only display entities. Rules a schema cannot express (unique bone ids, parents listed before children, depth at most 16, socket and animation references) are checked by the rig validators; see dev/editor-contracts.md.",
+  "description": "rigs/<namespace>/<path>.json. A tree of bones shown as packet-only display entities. Rules a schema cannot express (unique bone ids, parents listed before children, depth at most 16, socket and animation references) are checked by the rig validators.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "revision", "id", "bones"],

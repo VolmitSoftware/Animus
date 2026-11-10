@@ -9,7 +9,9 @@ import art.arcane.animus.core.runtime.PresentationPressure;
 import art.arcane.animus.core.runtime.PreviewBodies;
 import art.arcane.animus.core.runtime.SelectionPick;
 import art.arcane.animus.core.runtime.ViewerOutbox;
+import art.arcane.animus.core.control.LookClose;
 import art.arcane.animus.core.presentation.BodyLook;
+import art.arcane.animus.core.virtual.Hitbox;
 import art.arcane.animus.core.presentation.BodyPose;
 import art.arcane.animus.core.presentation.BodyTransport;
 import art.arcane.animus.core.rig.DisplayTransform;
@@ -212,10 +214,12 @@ final class RegionViewer {
         }
         return sent;
     }
-    /** A live NPC a preview stands in for stays hidden from this viewer only. */
+    /** A live NPC a preview stands in for stays hidden from this viewer only, as does one whose viewers filter hides it from them. */
     private boolean eligible(RegionActor.Publication now, WorldPosition at, Predicate<ChunkPosition> sentChunk) {
-        return now.live() && !host.previews.hides(id, now.spec().definition().id(), now.spec().definition().uuid()) && now.snapshot().position().world().equals(at.world())
-                && now.snapshot().position().point().distance(at.point()) <= host.settings().viewDistance() && sentChunk.test(now.snapshot().position().chunk());
+        if (!now.live() || host.previews.hides(id, now.spec().definition().id(), now.spec().definition().uuid()) || !now.snapshot().position().world().equals(at.world())) return false;
+        double distance = now.snapshot().position().point().distance(at.point());
+        return distance <= host.settings().viewDistance() && sentChunk.test(now.snapshot().position().chunk())
+                && !now.spec().viewers().hides(id, distance, player::hasPermission);
     }
     private boolean eligibleNow(RegionActor actor) {
         if (!host.current(this) || !player.isOnline() || player.isDead()) return false;
@@ -224,10 +228,14 @@ final class RegionViewer {
     }
     private void spawn(RegionActor actor, RegionActor.Publication now) {
         try {
-            NpcPresentation.Label label = NpcPresentation.label(now.spec(), now.name(), now.attributes(), host.runtime.placeholders(), id);
-            NativePacketAdapter.Body body = (NativePacketAdapter.Body) NpcPresentation.body(host.packets, label, now.skin());
+            art.arcane.animus.core.presentation.MirrorSettings mirror = art.arcane.animus.core.presentation.MirrorSettings.parse(now.spec().definition().json()).orElse(null);
+            NpcPresentation.Label label = NpcPresentation.label(now.spec(), shownName(now), now.bubble(), now.attributes(), host.runtime.placeholders(), id);
+            // A mirrored skin shows only on a player body; a viewer without a readable skin sees the NPC's own.
+            art.arcane.animus.core.presentation.BodySkin skin = mirror != null && mirror.skin() && now.type().equals(art.arcane.animus.core.presentation.BodyRules.PLAYER)
+                    ? art.arcane.animus.bukkit.recording.RecorderLook.skin(player).orElse(now.skin()) : now.skin();
+            NativePacketAdapter.Body body = (NativePacketAdapter.Body) NpcPresentation.body(host.packets, label, skin);
             Presented presented = new Presented(actor, body, now);
-            if (host.runtime.placeholders().active() && NpcPresentation.placeholdered(now.spec(), now.name())) { presented.labels = label.rows(); presented.labelledAt = ticks; }
+            if (host.runtime.placeholders().active() && NpcPresentation.placeholdered(now.spec(), shownName(now))) { presented.labels = label.rows(); presented.labelledAt = ticks; }
             visible.put(actor.uuid, presented); presentationOrder.addLast(presented); cosmeticOrder.addLast(presented);
             nativeIds += presented.ids; pendingSpawns++; shown.incrementAndGet();
             handOver(() -> host.packets.spawn(player, body, pose(now))).whenComplete((nothing, failure) -> enqueue(() -> {
@@ -270,7 +278,8 @@ final class RegionViewer {
     private void equip(Presented body, RegionActor.Publication now) {
         body.equipping = true;
         try {
-            handOver(() -> host.packets.equipment(player, body.body, now.equipment())).whenComplete((nothing, failure) -> enqueue(() -> {
+            Map<art.arcane.animus.core.npc.EquipmentSlot, ItemStack> worn = mirrorsEquipment(now) ? BukkitMirror.equipment(player) : now.equipment();
+            handOver(() -> host.packets.equipment(player, body.body, worn)).whenComplete((nothing, failure) -> enqueue(() -> {
                 body.equipping = false; body.equipment = now.equipmentRevision();
                 if (failure != null && host.current(this) && !body.retired) host.cosmeticFailed(this, "equipment", body.actor, failure);
             }));
@@ -288,6 +297,18 @@ final class RegionViewer {
                 if (failure != null && host.current(this) && !body.retired) host.cosmeticFailed(this, "look", body.actor, failure);
             }));
         } catch (RuntimeException failure) { body.looking = false; body.look = now.lookRevision(); host.cosmeticFailed(this, "look", body.actor, failure); }
+        return true;
+    }
+    /** Cosmetic: the latest gesture the owner published; a failed send is not retried. */
+    private boolean gesture(Presented body, long gestures, int gesture) {
+        if (!admit(PresentationPressure.Tier.COSMETIC)) return false;
+        body.gestures = gestures;
+        try {
+            handOver(() -> gesture == art.arcane.animus.core.npc.NpcAnimation.HURT_FLASH ? host.packets.hurt(player, body.body) : host.packets.gesture(player, body.body, gesture))
+                    .whenComplete((nothing, failure) -> {
+                        if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) host.cosmeticFailed(this, "gesture", body.actor, failure); });
+                    });
+        } catch (RuntimeException failure) { host.cosmeticFailed(this, "gesture", body.actor, failure); }
         return true;
     }
     /** Cosmetic: one arm swing for any number the owner published since the last; a failed send is not retried. */
@@ -365,6 +386,10 @@ final class RegionViewer {
                 if (!phase(body, now.dragonPhase())) return sent;
                 sent++; if (!host.current(this)) return sent;
             }
+            if (body.spawnFinished && body.bound && sent < packetBudget && body.gestures != now.gestures()) {
+                if (!gesture(body, now.gestures(), now.gesture())) return sent;
+                sent++; if (!host.current(this)) return sent;
+            }
             if (body.spawnFinished && sent < packetBudget && body.swings != now.swings()) {
                 if (!swing(body, now.swings())) return sent;
                 sent++; if (!host.current(this)) return sent;
@@ -385,7 +410,7 @@ final class RegionViewer {
      */
     private boolean relabel(Presented body, RegionActor.Publication now) {
         body.labelledAt = ticks;
-        List<String> rows = NpcPresentation.label(now.spec(), now.name(), now.attributes(), host.runtime.placeholders(), id).rows();
+        List<String> rows = NpcPresentation.label(now.spec(), shownName(now), now.bubble(), now.attributes(), host.runtime.placeholders(), id).rows();
         if (rows.equals(body.labels)) return true;
         if (rows.size() != body.labels.size()) { retire(body); return true; }
         if (!admit(PresentationPressure.Tier.COSMETIC)) return false;
@@ -492,30 +517,43 @@ final class RegionViewer {
         ViewerSession.Validation validated = hit(body);
         if (validated == null) return;
         RegionActor actor = body.actor;
+        // A click on an NPC that redirects its clicks counts as a click on the target, while this region owns that target.
+        UUID target = redirect(actor);
         VirtualNpcInteractionEvent.Action action = input.action() == NativePacketAdapter.Action.ATTACK ? VirtualNpcInteractionEvent.Action.ATTACK : VirtualNpcInteractionEvent.Action.INTERACT;
-        VirtualNpcInteractionEvent event = new VirtualNpcInteractionEvent(player, actor.uuid, action, validated.distance(), false);
+        VirtualNpcInteractionEvent event = new VirtualNpcInteractionEvent(player, target, action, validated.distance(), false);
         host.plugin.getServer().getPluginManager().callEvent(event);
-        // Listeners run on this region and may teleport, clear or hand the NPC elsewhere: authority is read again.
+        // Listeners run on this region and may teleport, clear or hand the NPC elsewhere: authority is read again. A combat
+        // listener's hurt and knockback leave it the same click, so only a move to another world voids it.
+        VirtualNpcState.Snapshot now = actor.state.snapshot();
         if (event.isCancelled() || !host.current(this) || player.isDead() || visible.get(actor.uuid) != body || !eligibleNow(actor)
-                || !actor.owner.owned() || actor.state.snapshot().revision() != validated.npc().revision() || !actor.presentable()) return;
+                || !actor.owner.owned() || !now.active() || !now.position().world().equals(validated.npc().position().world()) || !actor.presentable()) return;
         host.accepted.incrementAndGet();
+        if (action == VirtualNpcInteractionEvent.Action.INTERACT) actor.clicked();
         TriggerDispatcher dispatcher = host.triggers;
         // An attack packet carries no sneaking flag, so a left click reads the player's own state.
         boolean attack = action == VirtualNpcInteractionEvent.Action.ATTACK;
-        boolean consumed = dispatcher != null && dispatcher.click(new TriggerEvent.Interaction(actor.uuid, id,
+        boolean consumed = dispatcher != null && dispatcher.click(new TriggerEvent.Interaction(target, id,
                 attack ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT, attack ? player.isSneaking() : input.secondaryAction(), TriggerEvent.Interaction.hand(input.hand())));
         NpcRuntime.InteractionObserver observer = host.observer;
-        if (observer != null) observer.accepted(actor.uuid, id, action == VirtualNpcInteractionEvent.Action.ATTACK, validated.distance(), false);
+        if (observer != null) observer.accepted(target, id, action == VirtualNpcInteractionEvent.Action.ATTACK, validated.distance(), false);
         // A behavior that consumes the click owns it: modules, riding and selection never see it.
         if (consumed) return;
         NpcRuntime.InteractionListener<Player> listener = host.interactions;
-        if (listener != null && listener.interacted(player, actor.uuid, action == VirtualNpcInteractionEvent.Action.ATTACK, input.secondaryAction())) return;
+        if (listener != null && listener.interacted(player, target, action == VirtualNpcInteractionEvent.Action.ATTACK, input.secondaryAction())) return;
         // Only the wand selects, through the listener above; a plain click is play.
-        if (actor.publication.ride() && action == VirtualNpcInteractionEvent.Action.INTERACT && !input.secondaryAction() && "MAIN_HAND".equals(input.hand())) {
+        if (target.equals(actor.uuid) && actor.publication.ride() && action == VirtualNpcInteractionEvent.Action.INTERACT && !input.secondaryAction() && "MAIN_HAND".equals(input.hand())) {
             String refusal = actor.requestRide(player);
             if (refusal != null) player.sendMessage(RichText.colorize(Palette.error("Cannot ride " + actor.spec.name() + ": " + refusal)));
             else attach(body, actor);
         }
+    }
+
+    /** The NPC that receives clicks on {@code actor}: its redirect target when this region owns it and it is shown, otherwise itself. */
+    private UUID redirect(RegionActor actor) {
+        java.util.Optional<UUID> target = actor.spec.definition().clickRedirect();
+        if (target.isEmpty()) return actor.uuid;
+        RegionActor other = host.byUuid.get(target.get());
+        return other != null && other.owner.owned() && other.presentable() ? target.get() : actor.uuid;
     }
 
     /**
@@ -693,9 +731,27 @@ final class RegionViewer {
         return sent;
     }
 
-    private static BodyPose pose(RegionActor.Publication now) {
+    private static boolean mirrorsEquipment(RegionActor.Publication now) {
+        return art.arcane.animus.core.presentation.MirrorSettings.parse(now.spec().definition().json()).filter(art.arcane.animus.core.presentation.MirrorSettings::equipment).isPresent();
+    }
+    /** The name this player sees: its own on an NPC that mirrors names, else the NPC's. */
+    private String shownName(RegionActor.Publication now) {
+        return art.arcane.animus.core.presentation.MirrorSettings.parse(now.spec().definition().json()).filter(art.arcane.animus.core.presentation.MirrorSettings::name).isPresent()
+                ? player.getName() : now.name();
+    }
+    /** The body's pose for this viewer: a per-player look-close NPC looks at a viewer in its range who may be looked at. */
+    private BodyPose pose(RegionActor.Publication now) {
         WorldPosition position = now.snapshot().position(); Vec3 point = position.point();
-        return new BodyPose(position.world(), point.x(), point.y(), point.z(), now.yaw(), now.pitch(), now.onGround());
+        LookClose look = now.lookClose();
+        if (now.lookingAtViewers() && look != null && look.perPlayer()) {
+            Hitbox box = now.snapshot().bounds();
+            Location location = player.getEyeLocation();
+            Vec3 eye = LookClose.eye(point, box.max().y() - box.min().y()), target = new Vec3(location.getX(), location.getY(), location.getZ());
+            Optional<LookClose.Facing> facing = target.distance(eye) <= look.range() && look.admits(player::hasPermission) ? LookClose.facing(eye, target) : Optional.empty();
+            if (facing.isPresent())
+                return new BodyPose(position.world(), point.x(), point.y(), point.z(), look.headOnly() ? now.yaw() : facing.get().yaw(), facing.get().yaw(), facing.get().pitch(), now.onGround());
+        }
+        return new BodyPose(position.world(), point.x(), point.y(), point.z(), now.yaw(), now.headYaw(), now.pitch(), now.onGround());
     }
     static WorldPosition position(Location location) {
         return new WorldPosition(location.getWorld().getUID().toString(), new Vec3(location.getX(), location.getY(), location.getZ()));
@@ -704,7 +760,7 @@ final class RegionViewer {
     private static final class Presented {
         final RegionActor actor; final NativePacketAdapter.Body body; final long appearance; final int ids;
         boolean bound, retired, spawnFinished, despawnFinished, moving, equipping, looking, bonesShown, rigFailed, attributing;
-        long pose, equipment, rigIdentity, socketRevision, look, swings, attackSwings, attributes, hurts, deaths;
+        long pose, equipment, rigIdentity, socketRevision, look, swings, gestures, attackSwings, attributes, hurts, deaths;
         int dragonPhase = DragonBody.PHASE_HOVERING;
         /** The passenger roster last sent for this vehicle; null when unknown, so the next update sends it again. */
         List<Integer> sentRoster;
@@ -713,10 +769,10 @@ final class RegionViewer {
         List<String> labels; long labelledAt;
         Presented(RegionActor actor, NativePacketAdapter.Body body, RegionActor.Publication now) {
             this.actor = actor; this.body = body; appearance = now.appearance(); ids = body.entityIds().length; pose = now.pose();
-            equipment = now.equipment().isEmpty() ? now.equipmentRevision() : -1;
+            equipment = now.equipment().isEmpty() && !mirrorsEquipment(now) ? now.equipmentRevision() : -1;
             // A body spawns with its definition's look; a playback look published before the spawn is sent after it.
             look = now.look() == null ? now.lookRevision() : -1;
-            swings = now.swings(); attackSwings = now.attackSwings();
+            swings = now.swings(); gestures = now.gestures(); attackSwings = now.attackSwings();
             attributes = now.attributeRevision(); hurts = now.hurts(); deaths = now.deaths();
         }
     }

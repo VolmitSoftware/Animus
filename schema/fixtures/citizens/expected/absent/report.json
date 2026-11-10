@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 15,
+  "converterVersion": 16,
   "fieldPathFormat": "json-pointer",
-  "importId": "97ed8d83fc84072c886ceed5ad5e8ac0ae3efd5957f713e862e2fc9c8bd5233e",
+  "importId": "6731e4bacb26c5cedbf2cfc6c3967a2c7fcd9e2558007774889d5b65143fdf38",
   "sourceSha256": "53142c31e4accb7fede2620677991d0e82aec965eff326c24e489ec56e0571c0",
   "worldMap": {},
   "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.",
@@ -10,6 +10,7 @@
   "valid": 5,
   "skins": 0,
   "behaviors": 0,
+  "shops": 0,
   "conversions": {
     "routes": 0,
     "routePoints": 0,
@@ -131,10 +132,10 @@
     "4": "0a1b2c3d-0000-4000-8000-000000000104"
   },
   "documents": {
-    "npcs/world/citizens-0.json": "ed5bba04f292b60577b268688c6ffd5e1a403654bc92e720977834a334bbe542",
-    "npcs/world/citizens-1.json": "94a7bba280f80aef27778108df2661f09090067e88658bb46fa013abcab3c429",
-    "npcs/world/citizens-2.json": "61dc822f76a1b292780ecaba3809cc064df8d2642b591597dd9a3d8520791922",
-    "npcs/world/citizens-3.json": "dba14a0804d917bc99531c38891246d1c0088e58087f54bae569fe72e187dc7b",
-    "npcs/world/citizens-4.json": "a6cd0c2ec901336b386fe294af100f2154f65759171806e4b804201cb693c2e5"
+    "npcs/world/citizens-0.json": "78d3af39b59746257e8a839fa6ce9bc1a65587e3f95b6f3c0e3535b562a0def6",
+    "npcs/world/citizens-1.json": "4fe91b2a761b447cefb43ae37d70f57d3439eb8330c2173ee4af17562dace928",
+    "npcs/world/citizens-2.json": "b7efe8e9e2dad08897db16a734686af0f371c34033c69346a249d31b010dbac1",
+    "npcs/world/citizens-3.json": "6a79f4fae1178203523390010e77c5168344e7bf5d514e0640af836e67af5d62",
+    "npcs/world/citizens-4.json": "1a5a982916e43aec7551dbf0483291cb24603b70ac6320e640197ada04115f38"
   }
 }

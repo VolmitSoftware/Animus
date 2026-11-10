@@ -51,7 +51,7 @@ public final class PresentationProtocolAudit {
         }
         check(presentation.bodyValues(look(NpcPose.STANDING, Optional.empty())).isEmpty(), "standing body sends no extra data");
         check(presentation.bodyValues(look(NpcPose.SITTING, Optional.empty())).isEmpty(), "sitting body rides its seat");
-        ArmorStandLook stand = new ArmorStandLook(true, true, false, true, Map.of(ArmorStandLook.Part.HEAD, new ArmorStandLook.Angles(10, -20, 0),
+        ArmorStandLook stand = new ArmorStandLook(true, true, false, true, false, Map.of(ArmorStandLook.Part.HEAD, new ArmorStandLook.Angles(10, -20, 0),
                 ArmorStandLook.Part.RIGHT_ARM, new ArmorStandLook.Angles(-90, 0, 15.5f)));
         List<SynchedEntityData.DataValue<?>> standValues = roundTrip(registries, presentation.bodyValues(look(NpcPose.STANDING, Optional.of(stand))));
         check(standValues.stream().anyMatch(value -> value.value() instanceof Byte flags && flags == 0x0d), "armor stand flags");

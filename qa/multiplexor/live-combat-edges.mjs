@@ -80,7 +80,8 @@ export async function combatEdges(t) {
     await server.cmd('animus delete edummy', /Deleted/);
     // Hits on samples are 3 each; two arrows landing between samples read as 6.
     assert(hits.every(d => d > 0 && Math.abs(d % 3) < .01), `hits ${hits}`);
-    assert(credited.includes(`target=NPC:${archer}`), `hits not credited to the archer: ${credited}`);
+    // Paper names an NPC target by its id, Folia by its UUID.
+    assert(credited.includes(`target=NPC:${archer}`) || credited.includes('target=NPC:earcher'), `hits not credited to the archer: ${credited}`);
     assert(folia || /Found no elements|No entity/.test(owners), `arrow has an owner: ${owners}`);
     assert(left === null || left === 0, `${left} arrows after the despawn`);
     assert.equal(later, health, `the dummy was hit after the archer despawned: ${health} -> ${later}`);

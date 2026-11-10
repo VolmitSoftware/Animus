@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "converterVersion": 16,
+  "fieldPathFormat": "json-pointer",
+  "importId": "d0645871e188a9d2319eef3abff392d99015b22911be04c0fbb3999eef7ce282",
+  "sourceSha256": "be8e1bd00e47e2baa3ec410558b8586b9ee32166eb1c6629e90b6ee9ef3c9f4c",
+  "worldMap": {
+    "old_harbor": "harbor"
+  },
+  "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.",
+  "records": 4,
+  "valid": 4,
+  "skins": 0,
+  "behaviors": 1,
+  "shops": 0,
+  "conversions": {
+    "routes": 1,
+    "routePoints": 4,
+    "routeGuides": 0,
+    "lookClose": 2,
+    "textBehaviors": 0,
+    "commandBehaviors": 0,
+    "skinsKept": 0
+  },
+  "citizensDefaults": {
+    "lookclose": {
+      "enabled": false,
+      "realisticlooking": false,
+      "disablewhilenavigating": true
+    },
+    "inferred": [
+      "enabled"
+    ]
+  },
+  "traits": {
+    "type": 4,
+    "location": 4,
+    "lookclose": 3,
+    "rotationtrait": 1,
+    "pausepathfinding": 2,
+    "waypoints": 1,
+    "followtrait": 2,
+    "hometrait": 2,
+    "anchors": 1,
+    "mirrortrait": 1
+  },
+  "types": {
+    "player": 3,
+    "wolf": 1
+  },
+  "sentinelFields": {},
+  "sentinelMapping": {},
+  "issues": [],
+  "migrationWarnings": [
+    "citizens-0: /traits/waypoints/linear/points/2/triggers/0/animations/2: the START_ELYTRA animation has no Animus animation; left out",
+    "citizens-0: /traits/waypoints: waypoint commands stay denied until citizens:waypoints-0 is on the [behaviors.actions] commandBehaviors list in config.toml",
+    "citizens-3: /traits/lookclose/filter: the filter admits no players, so look-close is off",
+    "movement: 1 Citizens routes now open doors and drop at least 3 blocks (openDoors, maximumFall), 0 of them raised from a lower fall distance; lower these in the NPC's movement to undo"
+  ],
+  "remappedLocations": 12,
+  "resolvedReferences": 0,
+  "unresolvedReferences": 0,
+  "sourceFields": {},
+  "idMap": {
+    "0": "0a1b2c3d-0000-4000-8000-000000000600",
+    "1": "0a1b2c3d-0000-4000-8000-000000000601",
+    "2": "0a1b2c3d-0000-4000-8000-000000000602",
+    "3": "0a1b2c3d-0000-4000-8000-000000000603"
+  },
+  "documents": {
+    "behaviors/citizens/waypoints-0.json": "cd99c114bfa5fb0d0a3d8acfb74ecbf9b2cd1556047441d6a741616d51832aad",
+    "npcs/harbor/citizens-0.json": "8729e4c46a2d6eb5268c818787c9a541263f77ec6e035698a5e15f85ab4bade4",
+    "npcs/harbor/citizens-1.json": "ee0823197d9f19ee3b2b5a97f669968c511c5938c25599bd5163e80b876f3f8c",
+    "npcs/harbor/citizens-2.json": "9a800a1478c38babdb0893b82bb60a3005ec76d2d3336c56133b3426f2788af1",
+    "npcs/harbor/citizens-3.json": "fd7f66f68368dfe615ada33bac13767354af5a976090f3057e853b4ceb56b6b4"
+  }
+}

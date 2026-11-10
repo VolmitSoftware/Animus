@@ -15,6 +15,7 @@ import art.arcane.animus.core.extension.loader.StartupModules;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -39,6 +40,7 @@ public final class ExtensionRuntime implements AutoCloseable {
     private final Consumer<State> initializationObserver;
     private final BehaviorInvoker behaviorInvoker;
     private final BuiltinCapabilities builtins;
+    private final List<Map.Entry<TrustedModule, BuiltinPolicy>> integrations = new java.util.concurrent.CopyOnWriteArrayList<>();
     // Private submission only: one startup (or one later first load after a hotload enables modules), one shutdown, then at most one scheduled cleanup poll.
     private final ScheduledThreadPoolExecutor management;
     private volatile StartupModules loader;
@@ -115,6 +117,15 @@ public final class ExtensionRuntime implements AutoCloseable {
         initialized(State.DISABLED);
     }
 
+    /**
+     * An engine-owned integration with another plugin, such as MythicMobs, bound like the built-in capabilities: it stays
+     * bound while Java modules are disabled. Register it before {@link #start}.
+     */
+    public synchronized void integration(TrustedModule module, BuiltinPolicy policy) {
+        if (started) throw new IllegalStateException("Integrations register before modules start");
+        integrations.add(Map.entry(Objects.requireNonNull(module), Objects.requireNonNull(policy)));
+    }
+
     private void installBuiltins() {
         synchronized (this) {
             if (builtins == null || builtinsInstalled) return;
@@ -123,6 +134,11 @@ public final class ExtensionRuntime implements AutoCloseable {
         Outcome<ModuleHost.ModuleStatus> installed = host.installBuiltin(builtins, builtins);
         if (installed.status() != Outcome.Status.OK)
             report.accept("Built-in behavior capabilities unavailable: " + installed.diagnostics().stream().map(Diagnostic::code).toList());
+        for (Map.Entry<TrustedModule, BuiltinPolicy> integration : integrations) {
+            Outcome<ModuleHost.ModuleStatus> bound = host.installBuiltin(integration.getKey(), integration.getValue());
+            if (bound.status() != Outcome.Status.OK)
+                report.accept("Integration " + integration.getKey().manifest().id() + " unavailable: " + bound.diagnostics().stream().map(Diagnostic::code).toList());
+        }
     }
 
     private boolean admitting() { return state == State.READY || state == State.DISABLED && builtins != null; }

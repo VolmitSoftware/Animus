@@ -27,6 +27,8 @@ import art.arcane.animus.core.recording.RecordingSource;
 import art.arcane.animus.core.recording.RecordingWorlds;
 import art.arcane.animus.core.recording.RouteRecordings;
 import art.arcane.animus.core.runtime.SkinDocuments;
+import art.arcane.animus.core.navigation.HomeSettings;
+import art.arcane.animus.core.navigation.RoutePause;
 import art.arcane.animus.core.runtime.WaypointProgress;
 
 import art.arcane.animus.core.navigation.CaptureBounds;
@@ -102,11 +104,11 @@ final class RegionActor implements RegionOwner.Body {
     record Desired(DefinitionSpec<ItemStack> spec, BodySkin skin) {}
     /** Immutable state for viewers, commands and behaviors on other threads. */
     record Publication(boolean live, VirtualNpcState.Snapshot snapshot, DefinitionSpec<ItemStack> spec, String type, String name, BodySkin skin,
-                       long appearance, float yaw, float pitch, boolean onGround, long pose,
+                       long appearance, float yaw, float headYaw, float pitch, boolean onGround, long pose, LookClose lookClose, boolean lookingAtViewers,
                        Map<EquipmentSlot, ItemStack> equipment, long equipmentRevision, int ids,
                        String navigation, long arrivals, boolean ride, boolean mount, long revision, NpcRig.Snapshot<ItemStack> rig, int dragonPhase,
-                       List<UUID> passengers, Player rider, CombatView combat, BodyLook look, long lookRevision, long swings, long attackSwings,
-                       NpcAttributes attributes, long attributeRevision, long hurts, long deaths) {}
+                       List<UUID> passengers, Player rider, CombatView combat, BodyLook look, long lookRevision, long swings, long gestures, int gesture, long attackSwings,
+                       NpcAttributes attributes, long attributeRevision, long hurts, long deaths, String bubble) {}
     /** What other combat engines and status read of this NPC's combat; null when it has none. */
     record CombatView(CombatSettings settings, CombatLoadout loadout, UUID guarded, String status, int helpers) {}
     /** A passenger whose vehicle another region owns steps onto its seat at most this often. */
@@ -148,6 +150,12 @@ final class RegionActor implements RegionOwner.Body {
     private RideSettings ride;
     private boolean mount;
     private LookClose lookClose;
+    /** The navigation module's pause, and when this NPC's route stands still. */
+    private RoutePause pause;
+    private final RoutePause.Clock pauseClock = new RoutePause.Clock();
+    /** The animus:home module, the turn the NPC last stopped being busy or at home, and its next check. */
+    private HomeSettings homeSettings;
+    private long idleSince, nextHome;
     private MovementSettings movement = MovementSettings.DEFAULT;
     private DoorPassage doors;
     private boolean falls = true, routeSpeedDeclared = true;
@@ -156,9 +164,16 @@ final class RegionActor implements RegionOwner.Body {
     private long attributeRevision;
     private long nextRandomLook;
     private long nextLook;
-    float yaw, pitch;
+    float yaw, headYaw, pitch;
+    /** A per-player look-close NPC with someone in range: each viewer is shown the NPC looking at them. */
+    private boolean lookingAtViewers;
+    /** The player look-close looked at last, and when a switching NPC may pick another. */
+    private Player lookingAt;
+    private long nextSwitch;
     private boolean onGround = true;
-    private long pose, arrivals, turns, appearance, equipmentRevision, revision, swings, attackSwings;
+    private long pose, arrivals, turns, appearance, equipmentRevision, revision, swings, gestures, attackSwings;
+    /** The last one-off gesture's animate action, or the hurt flash. */
+    private int gesture;
     /** Hits and deaths so far, which viewers show; a body that died stays shown lying down until {@link #dyingUntil}. */
     private long hurts, deaths, dyingUntil;
     /** A body that died stays shown lying down this many turns, as a vanilla death does. */
@@ -187,6 +202,9 @@ final class RegionActor implements RegionOwner.Body {
     /** How far an idle fall has carried the body, for fall damage. */
     private final FallTracker fall = new FallTracker();
     private String displayName;
+    /** The speech bubble over the body, or null, and the actor tick it ends on. */
+    private String bubble;
+    private long bubbleUntil, bubbleTicks;
     private BodySkin displaySkin;
     private AppearanceRead appearanceRead;
     private final EnumMap<EquipmentSlot, ItemStack> equipment = new EnumMap<>(EquipmentSlot.class);
@@ -229,11 +247,14 @@ final class RegionActor implements RegionOwner.Body {
         ride = RideSettings.parse(spec.definition().json()).orElse(null);
         mount = MountDeclaration.parse(spec.definition().json()).isPresent();
         lookClose = LookClose.parse(spec.definition().json()).orElse(null);
+        pause = RoutePause.parse(spec.definition().json()).orElse(null);
+        homeSettings = HomeSettings.parse(spec.definition().json()).orElse(null);
+        idleSince = turns;
         attributes = spec.appearance().traits().attributes(); attributeRevision++;
         movement = MovementSettings.parse(spec.definition().json());
         falls = MovementSettings.falls(spec.type(), spec.definition().json());
         routeSpeedDeclared = MovementSettings.routeDeclaresSpeed(spec.definition().json());
-        yaw = spec.yaw(); pitch = spec.pitch(); onGround = true;
+        yaw = spec.yaw(); headYaw = yaw; pitch = spec.pitch(); onGround = true;
         displayName = spec.name(); displaySkin = skin;
         equipment.clear(); equipment.putAll(NpcPresentation.equipment(spec, ItemStack::clone)); equipmentRevision++; appearance++; pose++;
         waypoints = WaypointSettings.parse(spec.definition()).map((WaypointSettings declared) -> progress(declared, WaypointProgress.INLINE)).orElse(null);
@@ -389,7 +410,10 @@ final class RegionActor implements RegionOwner.Body {
         if (sampled) mark = metrics.sampledLap(Subsystem.NAVIGATION, mark);
         tickRig();
         if (sampled) mark = metrics.sampledLap(Subsystem.RIGS, mark);
+        bubbleTicks++;
+        if (bubble != null && bubbleTicks >= bubbleUntil) { bubble = null; appearance++; }
         look();
+        home();
         if (spec.type().equals(DragonBody.TYPE)) dragonPhase = dragonMotion.observe(turns, state.snapshot().position().point(), grounded(),
                 DragonBody.restingPhase(spec.appearance().traits().variant()));
         ChunkPosition now = anchor();
@@ -719,6 +743,18 @@ final class RegionActor implements RegionOwner.Body {
         publish(true);
         return running;
     }
+    /** Same rules as the single-owner runtime: a pose lasts, a gesture shows once. */
+    void animate(art.arcane.animus.core.npc.NpcAnimation animation) {
+        animation.pose().ifPresent((NpcPose next) -> {
+            if (!next.availableFor(spec.type())) throw new IllegalArgumentException(spec.type() + " bodies cannot " + animation.key());
+            changeLook(next, lookMotion);
+        });
+        if (animation == art.arcane.animus.core.npc.NpcAnimation.USE_ITEM || animation == art.arcane.animus.core.npc.NpcAnimation.STOP_USING_ITEM)
+            changeLook(lookPose, animation == art.arcane.animus.core.npc.NpcAnimation.USE_ITEM ? lookMotion | BodyLook.USING_ITEM : lookMotion & ~BodyLook.USING_ITEM);
+        if (animation == art.arcane.animus.core.npc.NpcAnimation.SWING) swings++;
+        else if (animation.gesture() != -1) { gesture = animation.gesture(); gestures++; }
+        publish(true);
+    }
     void pose(String name) {
         art.arcane.animus.core.npc.NamedPoses.Facing facing = art.arcane.animus.core.npc.NamedPoses.parse(spec.definition().json()).find(name)
                 .orElseThrow(() -> new IllegalArgumentException("The NPC has no pose named " + name));
@@ -740,36 +776,52 @@ final class RegionActor implements RegionOwner.Body {
      */
     private void look() {
         LookClose look = lookClose;
-        if (look == null || turns < nextLook || mount || seated || riding.active() || !navigable()) return;
-        if (!look.whileNavigating() && (routeRead != null || (route != null && (route.plan != null || route.execution != null)))) return;
+        if (look == null || turns < nextLook || !host.budget.cosmeticAllowed()) return;
+        boolean viewers = lookOnce(look);
+        if (viewers != lookingAtViewers || (viewers && nextLook > turns)) pose++;
+        lookingAtViewers = viewers;
+    }
+    /** True when a per-player NPC has viewers in range to look at. */
+    private boolean lookOnce(LookClose look) {
+        if (mount || seated || riding.active() || !navigable()) return false;
+        if (!look.whileNavigating() && !pauseClock.paused(turns) && (routeRead != null || (route != null && (route.plan != null || route.execution != null)))) return false;
         // A playing recording faces where the recorder looked.
-        if (performance.run != null) return;
-        if (!host.budget.cosmeticAllowed() || host.budget.take(RegionBudget.Kind.LOOKS, 1) == 0) return;
+        if (performance.run != null) return false;
+        if (host.budget.take(RegionBudget.Kind.LOOKS, 1) == 0) return lookingAtViewers;
         nextLook = turns + LookClose.INTERVAL_TICKS;
         WorldPosition at = state.snapshot().position();
         World world = host.world(at.world());
-        if (world == null) return;
+        if (world == null) return false;
         Vec3 eye = LookClose.eye(at.point(), bodyHeight());
         List<LookClose.Candidate<Player>> candidates = new ArrayList<>();
         for (Player player : host.players().ownedNear(new WorldPosition(at.world(), eye), look.range() + 2, 32)) {
+            if (!look.admits(player::hasPermission)) continue;
             Location location = player.getEyeLocation();
             Vec3 playerEye = new Vec3(location.getX(), location.getY(), location.getZ());
             candidates.add(new LookClose.Candidate<>(player, playerEye, playerEye.distance(at.point()) <= host.settings().viewDistance()));
         }
-        boolean looked = false;
-        for (LookClose.Candidate<Player> candidate : look.ranked(eye, candidates)) {
+        List<LookClose.Candidate<Player>> ranked = look.ranked(eye, candidates);
+        if (look.perPlayer() && !ranked.isEmpty()) return true;
+        boolean looked = false, due = look.switchTicks() > 0 && turns >= nextSwitch;
+        Optional<LookClose.Candidate<Player>> chosen = look.choose(ranked, lookingAt, due, java.util.concurrent.ThreadLocalRandom.current());
+        List<LookClose.Candidate<Player>> order = new ArrayList<>(ranked);
+        chosen.ifPresent((LookClose.Candidate<Player> first) -> { order.remove(first); order.addFirst(first); });
+        lookingAt = null;
+        for (LookClose.Candidate<Player> candidate : order) {
             if (look.lineOfSight() && !clearSight(world, candidate.eye(), eye)) continue;
-            LookClose.facing(eye, candidate.eye()).ifPresent((LookClose.Facing facing) -> setPose(facing.yaw(), facing.pitch(), onGround));
+            LookClose.facing(eye, candidate.eye()).ifPresent((LookClose.Facing facing) -> turn(look, facing));
+            lookingAt = candidate.player();
+            if (due) nextSwitch = turns + look.switchTicks();
             looked = true;
             break;
         }
         if (!looked && look.npcs()) looked = lookAtNpc(at, eye, look.range());
         if (!looked && look.randomLook().isPresent() && look.randomLook().get().active() && turns >= nextRandomLook) {
             LookClose.RandomLook random = look.randomLook().get();
-            LookClose.Facing facing = random.pick(java.util.concurrent.ThreadLocalRandom.current());
-            setPose(facing.yaw(), facing.pitch(), onGround);
+            turn(look, random.pick(java.util.concurrent.ThreadLocalRandom.current()));
             nextRandomLook = turns + random.delayTicks();
         }
+        return false;
     }
     /** NPCs scanned for a look-close NPC target: a few nearby chunks and candidates at most. */
     private static final SpatialNpcIndex.Budget NPC_LOOK_BUDGET = new SpatialNpcIndex.Budget(16, 32);
@@ -786,7 +838,7 @@ final class RegionActor implements RegionOwner.Body {
             if (distance <= best) { best = distance; nearest = target; }
         }
         if (nearest == null) return false;
-        LookClose.facing(eye, nearest).ifPresent((LookClose.Facing facing) -> setPose(facing.yaw(), facing.pitch(), onGround));
+        LookClose.facing(eye, nearest).ifPresent((LookClose.Facing facing) -> turn(lookClose, facing));
         return true;
     }
     /** Same rule as interaction checks: every chunk on the way is owned here and loaded, and no collidable block lies between. */
@@ -825,6 +877,22 @@ final class RegionActor implements RegionOwner.Body {
             if (name.isPresent()) displayName = name.get();
             if (reference.isPresent()) { readAppearance(reference.get()); return; }
         }
+        appearance++;
+        publish(true);
+    }
+    /** A resting pose until the NPC moves; a seat comes or goes with sitting, so viewers then receive a fresh body. */
+    void rest(NpcPose pose) {
+        if (!pose.availableFor(spec.type())) throw new IllegalArgumentException("Only player bodies rest " + pose.key());
+        if (pose == NpcPose.SITTING && mount) throw new IllegalArgumentException("A sitting NPC cannot also ride another NPC");
+        boolean wasSeated = lookPose == NpcPose.SITTING;
+        changeLook(pose, 0);
+        if (wasSeated != (pose == NpcPose.SITTING)) appearance++;
+        publish(true);
+    }
+    /** A speech bubble over the NPC's name for {@code ticks} ticks. */
+    void bubble(String text, int ticks) {
+        bubble = text;
+        bubbleUntil = bubbleTicks + Math.max(1, ticks);
         appearance++;
         publish(true);
     }
@@ -881,6 +949,37 @@ final class RegionActor implements RegionOwner.Body {
         return true;
     }
 
+    /** Same rules as the single-owner runtime: an NPC idle away from home long enough teleports or walks back. */
+    private void home() {
+        HomeSettings home = homeSettings;
+        if (home == null || turns < nextHome) return;
+        nextHome = turns + HomeSettings.CHECK_TICKS;
+        WorldPosition at = state.snapshot().position();
+        ActorCombat fighting = combat;
+        // A guard stands still between its steps and a fighter between its hits; neither is idle.
+        boolean engaged = fighting != null && (fighting.guarded() != null || !(fighting.status().startsWith("IDLE") || fighting.status().startsWith("not a combatant")));
+        if (engaged || route != null || routeRead != null || performance.run != null || (waypoints != null && !waypoints.complete()) || mount || seated || riding.active()
+                || !navigable() || !at.world().equals(spec.position().world()) || at.point().distance(home.position()) < HomeSettings.AT_HOME) { idleSince = turns; return; }
+        if (!home.due(at.point(), turns - idleSince)) return;
+        idleSince = turns;
+        WorldPosition destination = new WorldPosition(at.world(), home.position());
+        if (home.strategy() == HomeSettings.Return.WALK) {
+            try { navigate(destination, MovementProfile.Mode.WALK, movement.routeSpeed(false, 2)); }
+            catch (IllegalArgumentException | IllegalStateException refused) { host.plugin.getLogger().warning("NPC " + id + " could not walk home: " + refused.getMessage()); }
+            return;
+        }
+        if (!relocate(destination)) { host.plugin.getLogger().warning("NPC " + id + " could not teleport home: the place is not loaded, held by another region or not clear"); return; }
+        setPose(home.yaw() == null ? yaw : home.yaw(), home.pitch() == null ? pitch : home.pitch(), true);
+    }
+    /** A right-click on this NPC, on its owner: a route paused by clicks stands still. */
+    void clicked() { if (pause != null && pause.onClick()) pauseClock.pause(pause, turns); }
+    /** Whether the route pause holds the NPC now; a player this region owns within its range starts one, at most every few ticks. */
+    private boolean paused() {
+        if (pause == null) return false;
+        if (pause.playerRange() > 0 && pauseClock.checkDue(turns)
+                && !host.players().ownedNear(state.snapshot().position(), pause.playerRange(), 1).isEmpty()) pauseClock.pause(pause, turns);
+        return pauseClock.paused(turns);
+    }
     private void navigate() {
         Route current = route;
         if (turns < current.nextAttempt) return;
@@ -911,6 +1010,7 @@ final class RegionActor implements RegionOwner.Body {
             startStep(current.leg);
             return;
         }
+        if (current.leg != null && paused()) { current.progressTurn = turns; routeStatus(current, "paused", ""); return; }
         World world = host.world(current.goal.world());
         if (world == null) { stopRoute("cancelled: world unavailable"); return; }
         if (current.recording != null && !host.recordings().enabled()) {
@@ -1136,9 +1236,24 @@ final class RegionActor implements RegionOwner.Body {
         host.waypoint(uuid, current.waypoint);
         if (progress == null) { finishWatch(); return; }
         if (!navigable() || route != null || waypoints != progress) return;
+        teleport(progress.settings().teleportAt(current.waypoint));
         Optional<WaypointProgress.Leg> next = current.leg == null ? Optional.empty() : progress.arrived(current.leg, state.snapshot().position().point());
         if (next.isPresent()) beginLeg(next);
         else finishWatch();
+    }
+    /** A point's teleport moves the NPC before its wait; terrain that is not loaded or not clear leaves it where it arrived. */
+    private void teleport(WaypointSettings.Teleport teleport) {
+        if (teleport == null) return;
+        World here = host.world(state.snapshot().position().world());
+        if (teleport.world() != null && (here == null || !teleport.world().equals(here.getName()))) {
+            host.plugin.getLogger().warning("NPC " + id + " could not teleport to world " + teleport.world() + ": on Folia an NPC cannot move to another world");
+            return;
+        }
+        if (!relocate(new WorldPosition(state.snapshot().position().world(), teleport.position()))) {
+            host.plugin.getLogger().warning("NPC " + id + " could not teleport to " + teleport.position() + ": the place is not loaded or not clear");
+            return;
+        }
+        setPose(teleport.yaw() == null ? yaw : teleport.yaw(), teleport.pitch() == null ? pitch : teleport.pitch(), true);
     }
     private WaypointProgress progress(WaypointSettings declared, String route) { return WaypointProgress.of(declared, spec.position().point(), uuid, route); }
     /** Same leg rules as {@link PersistedNpcService}: a pause leg holds the route until its wait ends. */
@@ -1149,7 +1264,7 @@ final class RegionActor implements RegionOwner.Body {
         WaypointSettings settings = progress.settings();
         WorldPosition at = state.snapshot().position();
         WorldPosition goal = leg.goal() == null ? at : new WorldPosition(at.world(), leg.goal());
-        double speed = movement.routeSpeed(routeSpeedDeclared, settings.speed());
+        double speed = progress.speed(movement.routeSpeed(routeSpeedDeclared, settings.speed()));
         MovementStyle style = settings.styleTo(leg.arrival());
         MovementProfile.Mode mode = movement.legMode(settings.mode(), style);
         if (leg.goal() != null) {
@@ -1324,7 +1439,17 @@ final class RegionActor implements RegionOwner.Body {
         watch.complete(null);
     }
     private void setPose(float nextYaw, float nextPitch, boolean ground) {
-        if (yaw != nextYaw || pitch != nextPitch || onGround != ground) { yaw = nextYaw; pitch = nextPitch; onGround = ground; pose++; }
+        if (yaw != nextYaw || headYaw != nextYaw || pitch != nextPitch || onGround != ground) { yaw = nextYaw; headYaw = nextYaw; pitch = nextPitch; onGround = ground; pose++; }
+    }
+    /** Turns only the head: the body keeps its yaw. */
+    private void setHead(float nextHeadYaw, float nextPitch) {
+        if (headYaw != nextHeadYaw || pitch != nextPitch) { headYaw = nextHeadYaw; pitch = nextPitch; pose++; }
+    }
+    /** Turns the head, or head and body, toward a facing, no faster than the look-close turn rate. */
+    private void turn(LookClose look, LookClose.Facing target) {
+        LookClose.Facing facing = look.turn(look.headOnly() ? headYaw : yaw, pitch, target, LookClose.INTERVAL_TICKS);
+        if (look.headOnly()) setHead(facing.yaw(), facing.pitch());
+        else setPose(facing.yaw(), facing.pitch(), onGround);
     }
     private MovementProfile profile(MovementProfile.Mode mode) { return movement.apply(routeProfile(mode), spec.type()); }
     private MovementProfile routeProfile(MovementProfile.Mode mode) { return BodyMobility.forRoute(spec.type(), hullWidth(), hullHeight(), mode); }
@@ -1623,13 +1748,13 @@ final class RegionActor implements RegionOwner.Body {
                 && previous.pose() == pose && previous.equipmentRevision() == equipmentRevision && previous.arrivals() == arrivals
                 && Objects.equals(previous.navigation(), navigation()) && previous.rig() == rigSnapshot() && previous.dragonPhase() == dragonPhase
                 && previous.passengers().equals(passengers()) && previous.rider() == rider() && Objects.equals(previous.combat(), combatView())
-                && previous.lookRevision() == lookRevision && previous.swings() == swings && previous.attackSwings() == attackSwings && previous.attributeRevision() == attributeRevision
+                && previous.lookRevision() == lookRevision && previous.swings() == swings && previous.gestures() == gestures && previous.attackSwings() == attackSwings && previous.attributeRevision() == attributeRevision
                 && previous.hurts() == hurts && previous.deaths() == deaths) return;
         Map<EquipmentSlot, ItemStack> items = new EnumMap<>(EquipmentSlot.class);
         (rig == null ? equipment : rig.bodyEquipment(equipment)).forEach((slot, item) -> items.put(slot, item.clone()));
-        publication = new Publication(presented, snapshot, spec, spec.type(), displayName, displaySkin, appearance, yaw, pitch, onGround, pose,
-                Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision, rigSnapshot(), dragonPhase, passengers(), rider(), combatView(), look, lookRevision, swings, attackSwings,
-                attributes, attributeRevision, hurts, deaths);
+        publication = new Publication(presented, snapshot, spec, spec.type(), displayName, displaySkin, appearance, yaw, headYaw, pitch, onGround, pose, lookClose, lookingAtViewers,
+                Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision, rigSnapshot(), dragonPhase, passengers(), rider(), combatView(), look, lookRevision, swings, gestures, gesture, attackSwings,
+                attributes, attributeRevision, hurts, deaths, bubble);
     }
     private Player rider() { return riding.rider(); }
     private NpcRig.Snapshot<ItemStack> rigSnapshot() {

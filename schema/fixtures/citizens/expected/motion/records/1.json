@@ -1,0 +1,23 @@
+{
+  "name": "Hound",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000601",
+  "traits": {
+    "type": "WOLF",
+    "location": {
+      "world": "old_harbor",
+      "x": 5.5,
+      "y": 64.0,
+      "z": 5.5
+    },
+    "followtrait": {
+      "followingUUID": "0a1b2c3d-0000-4000-8000-000000000600",
+      "margin": 3.0,
+      "protect": true
+    },
+    "lookclose": {
+      "enabled": true,
+      "linkedbody": true,
+      "headonly": true
+    }
+  }
+}

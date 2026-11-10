@@ -1,0 +1,26 @@
+{
+  "citizensId": 11,
+  "presentationWarnings": [],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/itemframe/item/type": "CONVERTED",
+    "/traits/itemframe/item/amount": "CONVERTED",
+    "/traits/itemframe/rotation": "CONVERTED",
+    "/traits/itemframe/facing": "CONVERTED",
+    "/traits/itemframe/fixed": "CONVERTED"
+  },
+  "reasons": {
+    "/traits/itemframe/fixed": "NPC frames never drop their item"
+  },
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": []
+}

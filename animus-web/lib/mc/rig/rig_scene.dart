@@ -1,6 +1,5 @@
 /// A sampled rig to stage nodes, drawn the way the client draws the display
-/// entities the server sends (dev/editor-design.md, "Server playback through
-/// packets"):
+/// entities the server sends as packets:
 ///
 /// - item bones: an item display, which turns its model 180 degrees about Y
 ///   and centres it (`ItemDisplayRenderer`), with the bone's visual matrix;

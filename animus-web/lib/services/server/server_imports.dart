@@ -47,7 +47,7 @@ String? dtlTradersName(String fileName) {
 }
 
 /// The review categories `accept` turns on, in the server's order.
-const List<String> importCategories = <String>['spawn', 'patrols', 'combat', 'riding', 'shops', 'builder', 'denizen'];
+const List<String> importCategories = <String>['spawn', 'patrols', 'schedules', 'combat', 'riding', 'shops', 'builder', 'denizen'];
 
 /// The server's `import-review`.
 class ImportReview {

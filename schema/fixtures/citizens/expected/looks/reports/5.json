@@ -1,0 +1,37 @@
+{
+  "citizensId": 5,
+  "presentationWarnings": [],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/skinlayers/cape": "CONVERTED",
+    "/traits/skinlayers/hat": "CONVERTED",
+    "/traits/skinlayers/left-sleeve": "CONVERTED",
+    "/traits/bossbar/title": "CONVERTED",
+    "/traits/bossbar/color": "CONVERTED",
+    "/traits/bossbar/style": "CONVERTED",
+    "/traits/bossbar/flags/0": "CONVERTED",
+    "/traits/bossbar/flags/1": "CONVERTED",
+    "/traits/bossbar/range": "CONVERTED",
+    "/traits/bossbar/track": "CONVERTED",
+    "/traits/bossbar/viewPermission": "CONVERTED",
+    "/traits/playerfilter/mode": "CONVERTED",
+    "/traits/playerfilter/groups/0": "CONVERTED",
+    "/traits/playerfilter/permissions/0": "CONVERTED",
+    "/traits/clickredirecttrait/uuid": "CONVERTED",
+    "/traits/paintingtrait/art": "UNSUPPORTED_PRESERVED"
+  },
+  "reasons": {
+    "/traits/paintingtrait/art": "applies only to minecraft:painting bodies, so Citizens did not show it either"
+  },
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": []
+}

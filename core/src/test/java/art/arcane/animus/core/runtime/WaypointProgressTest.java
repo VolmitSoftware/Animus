@@ -298,4 +298,19 @@ class WaypointProgressTest {
         assertEquals(walked, legs(progress(guided, 3), 300));
         assertEquals(List.of("s0"), legs(progress(route("\"order\":\"random\",\"points\":[" + STEP + "]"), 1), 1));
     }
+    @Test void aPointsSpeedHoldsForLaterLegsUntilAnotherPointSetsOne() throws Exception {
+        WaypointProgress progress = progress(route("\"loop\":true,\"points\":[{\"x\":0,\"y\":1,\"z\":0},{\"x\":4,\"y\":1,\"z\":0,\"speed\":4},{\"x\":8,\"y\":1,\"z\":0,\"speed\":1.5}]"), 1);
+        WaypointProgress.Leg leg = progress.start(HOME).orElseThrow();
+        assertEquals(2.0, progress.speed(2.0), "the route's own speed until a point sets one");
+        leg = progress.arrived(leg, leg.goal()).orElseThrow();
+        assertEquals(2.0, progress.speed(2.0));
+        leg = progress.arrived(leg, leg.goal()).orElseThrow();
+        assertEquals(4.0, progress.speed(2.0), "set on arriving at point 1");
+        leg = progress.arrived(leg, leg.goal()).orElseThrow();
+        assertEquals(1.5, progress.speed(2.0));
+        progress.arrived(leg, leg.goal());
+        assertEquals(1.5, progress.speed(2.0), "kept through the loop");
+        progress.start(HOME);
+        assertEquals(2.0, progress.speed(2.0), "a restart forgets it");
+    }
 }

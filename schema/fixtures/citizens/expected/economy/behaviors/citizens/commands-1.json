@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "citizens:commands-1",
+  "entry": "sneak-right",
+  "routines": {
+    "sneak-right": {
+      "type": "condition",
+      "capability": "animus:can-afford",
+      "arguments": {
+        "money": 1.0E-4
+      },
+      "then": {
+        "type": "condition",
+        "capability": "animus:can-afford",
+        "arguments": {
+          "items": [
+            {
+              "item": {
+                "id": "minecraft:iron_ingot"
+              },
+              "amount": 2
+            }
+          ]
+        },
+        "then": {
+          "type": "sequence",
+          "steps": [
+            {
+              "type": "action",
+              "capability": "animus:charge",
+              "arguments": {
+                "money": 1.0E-4,
+                "items": [
+                  {
+                    "item": {
+                      "id": "minecraft:iron_ingot"
+                    },
+                    "amount": 2
+                  }
+                ]
+              }
+            },
+            {
+              "type": "condition",
+              "capability": "animus:has-permission",
+              "arguments": {
+                "permission": "harbor.docks"
+              },
+              "then": {
+                "type": "action",
+                "capability": "animus:command",
+                "arguments": {
+                  "command": "warp docks",
+                  "as": "player"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "sneak-right",
+      "event": "interaction",
+      "action": "sneak_interact",
+      "routine": "sneak-right"
+    }
+  ]
+}

@@ -26,7 +26,8 @@ void main() {
 
     test('knows which bodies carry each attribute', () {
       expect(attributeTable(npc)['scale']!.bodies, contains('minecraft:horse'));
-      expect(attributeTable(npc)['attack_damage']!.bodies, <String>{'minecraft:frog', 'minecraft:player'});
+      expect(attributeTable(npc)['attack_damage']!.bodies, containsAll(<String>{'minecraft:frog', 'minecraft:player', 'minecraft:wolf'}));
+      expect(attributeTable(npc)['attack_damage']!.bodies, isNot(contains('minecraft:villager')));
       expect(attributeTable(npc)['scale']!.carriedBy('minecraft:horse'), isTrue);
       expect(attributeTable(npc)['luck']!.carriedBy('minecraft:horse'), isFalse);
       expect(attributeTable(npc)['luck']!.carriedBy(null), isTrue);

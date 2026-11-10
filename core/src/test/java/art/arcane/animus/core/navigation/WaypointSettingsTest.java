@@ -204,4 +204,19 @@ class WaypointSettingsTest {
     private static String route(String fields) {
         return assertThrows(IllegalArgumentException.class,()->WaypointSettings.document("{\"schemaVersion\":1,"+fields+"}"),fields).getMessage();
     }
+    @Test void pointsSetASpeedAndATeleportButNotOnStepsOrWanderCentres() throws Exception {
+        WaypointSettings parsed = WaypointSettings.parse(definition("""
+                {"enabled":true,"points":[{"x":0,"y":1,"z":0,"speed":4.5,"teleport":{"x":10.5,"y":70.25,"z":-3,"yaw":90,"pitch":-10}},{"x":5,"y":1,"z":0}]}
+                """, false)).orElseThrow();
+        assertEquals(4.5, parsed.points().getFirst().speed());
+        assertEquals(new WaypointSettings.Teleport(new art.arcane.animus.core.virtual.Vec3(10.5, 70.25, -3), 90f, -10f, null), parsed.teleportAt(0));
+        assertNull(parsed.teleportAt(1)); assertNull(parsed.teleportAt(7));
+        for (String setting : new String[]{
+                "{\"enabled\":true,\"points\":[{\"x\":0,\"y\":1,\"z\":0,\"speed\":6}]}",
+                "{\"enabled\":true,\"points\":[{\"x\":0,\"y\":1,\"z\":0,\"teleport\":{\"x\":0,\"y\":1}}]}",
+                "{\"enabled\":true,\"points\":[{\"x\":0,\"y\":1,\"z\":0,\"teleport\":{\"x\":0,\"y\":1,\"z\":0,\"world\":\"two words\"}}]}",
+                "{\"enabled\":true,\"points\":[{\"recording\":\"walk\",\"teleport\":{\"x\":0,\"y\":1,\"z\":0}}]}",
+                "{\"enabled\":true,\"order\":\"wander\",\"points\":[{\"x\":0,\"y\":1,\"z\":0,\"speed\":2}]}"})
+            assertThrows(IllegalArgumentException.class, () -> WaypointSettings.parse(definition(setting, false)), setting);
+    }
 }

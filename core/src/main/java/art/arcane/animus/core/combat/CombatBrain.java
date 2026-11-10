@@ -623,7 +623,7 @@ final class CombatBrain {
     }
 
     private long guarding(long now, VirtualNpcState.Snapshot self) {
-        Optional<CombatTarget> charge = engine.resolve(guarded);
+        Optional<CombatTarget> charge = engine.charge(guarded);
         if (charge.isEmpty()) {
             if (state == CombatState.GUARDING) finish();
             follow.reset();
@@ -711,7 +711,7 @@ final class CombatBrain {
     /** A guard stops fighting when its charge left it behind, so it can catch up. */
     private boolean chargeLeft(VirtualNpcState.Snapshot self) {
         if (guarded == null || settings.guard().catchUpDistance() <= 0) return false;
-        Optional<CombatTarget> charge = engine.resolve(guarded);
+        Optional<CombatTarget> charge = engine.charge(guarded);
         return charge.isPresent() && (!charge.get().position().world().equals(self.position().world())
                 || charge.get().position().point().distance(self.position().point()) > settings.guard().catchUpDistance());
     }

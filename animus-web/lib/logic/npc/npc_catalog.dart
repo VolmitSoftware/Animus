@@ -23,7 +23,7 @@ final RegExp npcTagPattern = RegExp(r'^[a-z0-9][a-z0-9_-]{0,31}$');
 const int npcTagLimit = 32;
 
 /// Module keys that take an `enabled` flag, in the order the browser offers them.
-const List<String> toggleableModules = <String>['animus:combat', 'animus:navigation', 'animus:look-close', 'animus:riding', 'animus:mount', 'animus:hire'];
+const List<String> toggleableModules = <String>['animus:combat', 'animus:navigation', 'animus:schedule', 'animus:look-close', 'animus:riding', 'animus:mount', 'animus:hire', 'animus:modelengine'];
 
 /// Modules that are valid as `{"enabled": true}` alone, so enabling one on an
 /// NPC without it adds it.

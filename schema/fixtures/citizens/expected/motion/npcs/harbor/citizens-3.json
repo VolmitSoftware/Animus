@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000603",
+  "id": "citizens-3",
+  "group": "harbor",
+  "name": "Harbor Clerk",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "d0645871e188a9d2319eef3abff392d99015b22911be04c0fbb3999eef7ce282",
+    "citizensId": 3,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "harbor",
+    "x": 30.5,
+    "y": 64.0,
+    "z": -6.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "animus:look-close": {
+      "enabled": false,
+      "range": 10.0,
+      "lineOfSight": false,
+      "whileNavigating": false
+    },
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "harbor",
+        "x": 30.5,
+        "y": 64.0,
+        "z": -6.5
+      },
+      "hometrait": {
+        "location": {
+          "world": "far_isle",
+          "x": 0.0,
+          "y": 64.0,
+          "z": 0.0
+        },
+        "strategy": "TELEPORT"
+      },
+      "pausepathfinding": {
+        "rightclick": true
+      },
+      "lookclose": {
+        "enabled": true,
+        "filter": "type=ZOMBIE"
+      }
+    }
+  }
+}

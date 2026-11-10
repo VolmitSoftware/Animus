@@ -72,6 +72,10 @@ final class EditorCommandGuard {
             case SHOP -> any(source, (JsonObject object) -> (object.has("commands") && object.get("commands").isJsonArray() && !object.getAsJsonArray("commands").isEmpty())
                     || text(object, "type").map((String type) -> TRADING_ENTRIES.contains(type.toLowerCase(java.util.Locale.ROOT))).orElse(false))
                     ? Optional.of("runs commands or sets prices") : Optional.empty();
+            case QUEST -> source.isJsonObject() && source.getAsJsonObject().has("rewards") && source.getAsJsonObject().get("rewards").isJsonObject()
+                    && source.getAsJsonObject().getAsJsonObject("rewards").entrySet().stream().anyMatch((java.util.Map.Entry<String, JsonElement> reward) ->
+                            List.of("commands", "items", "money").contains(reward.getKey()))
+                    ? Optional.of("runs commands or creates items or money") : Optional.empty();
             default -> Optional.empty();
         };
     }

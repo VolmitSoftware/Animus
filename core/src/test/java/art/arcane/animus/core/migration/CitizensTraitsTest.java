@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -68,9 +69,52 @@ class CitizensTraitsTest {
                 "/traits/rotationtrait/globalParameters/immediate", "/traits/rotationtrait/globalParameters/maxYawPerTick", "/traits/spawned", "/traits/controllable/enabled",
                 "/metadata/minecraft-ai", "/metadata/pathfinder-open-doors", "/traits/targetable/targetable"))
             assertTrue(result.converted().contains(path), path);
-        assertEquals(CitizensImporter.Status.REQUIRES_REVIEW, result.notes().get("/traits/rotationtrait/globalParameters/headOnly").status());
+        assertEquals(CitizensImporter.Status.CONVERTED, result.notes().get("/traits/rotationtrait/globalParameters/headOnly").status());
         assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, result.notes().get("/traitnames").status());
         assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, map("player", "{\"metadata\":{\"protected\":false}}", false).notes().get("/metadata/protected").status());
+    }
+
+    @Test void followBecomesAGuardThatProtectsOnlyWhenAsked() {
+        JsonObject traits = json("{\"followtrait\":{\"followingUUID\":\"00000000-0000-0000-0000-00000000000c\",\"margin\":3.5,\"protect\":true}}");
+        assertEquals(json("{\"player\":\"00000000-0000-0000-0000-00000000000c\",\"followDistance\":3.5,\"pointRange\":1.0,\"protect\":true}"),
+                CitizensTraits.follow(traits, Set.of()).orElseThrow());
+        JsonObject npc = json("{\"followtrait\":{\"followingUUID\":\"00000000-0000-0000-0000-00000000000d\"}}");
+        assertEquals(json("{\"npc\":\"00000000-0000-0000-0000-00000000000d\",\"followDistance\":2.0,\"pointRange\":1.0,\"protect\":false}"),
+                CitizensTraits.follow(npc, Set.of("00000000-0000-0000-0000-00000000000d")).orElseThrow());
+        assertTrue(CitizensTraits.follow(json("{\"followtrait\":{\"margin\":2}}"), Set.of()).isEmpty(), "following nobody");
+        CitizensTraits.Result result = map("player", "{\"traits\":{\"followtrait\":{\"followingUUID\":\"00000000-0000-0000-0000-00000000000c\",\"protect\":false}}}", false);
+        assertEquals(CitizensImporter.Status.CONVERTED, result.notes().get("/traits/followtrait/followingUUID").status());
+        assertTrue(result.converted().contains("/traits/followtrait/protect"));
+    }
+
+    @Test void homeInTheNpcsWorldReturnsAndOtherwiseIsKept() {
+        JsonObject traits = json("""
+                {"location":{"world":"world"},"hometrait":{"location":{"world":"world","x":10.5,"y":64.0,"z":-3.25,"yaw":-90.0,"pitch":0.0},"delay":40,"distance":-1.0,"strategy":"PATHFIND"}}
+                """);
+        assertEquals(json("{\"x\":10.5,\"y\":64.0,\"z\":-3.25,\"yaw\":-90.0,\"pitch\":0.0,\"delayTicks\":40,\"return\":\"walk\"}"), CitizensTraits.home(traits, "world").orElseThrow());
+        assertTrue(CitizensTraits.home(traits, "world_nether").isEmpty());
+        CitizensTraits.Result moved = map("player", "{\"traits\":{\"location\":{\"world\":\"town\"},\"hometrait\":{\"location\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0}}}}", false);
+        assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, moved.notes().get("/traits/hometrait").status());
+    }
+
+    @Test void anchorsBecomeNamedPlacesAndMirrorBecomesAModule() {
+        CitizensTraits.Result result = map("player", """
+                {"traits":{"location":{"world":"world"},"anchors":{"list":{"0":"Dock;world;3.0;64.0;3.0","1":"pier;isle;1;2;3","2":"bad;world;x"}}}}
+                """, false);
+        assertEquals(json("{\"dock\":{\"x\":3.0,\"y\":64.0,\"z\":3.0},\"pier\":{\"x\":1.0,\"y\":2.0,\"z\":3.0,\"world\":\"isle\"}}"), result.fields().get("anchors"));
+        assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, result.notes().get("/traits/anchors/list/2").status());
+        assertEquals(json("{\"skin\":true,\"name\":true}"), CitizensTraits.mirror(json("{\"mirrortrait\":{\"enabled\":true,\"mirrorName\":true}}")).orElseThrow());
+        assertTrue(CitizensTraits.mirror(json("{\"mirrortrait\":{\"enabled\":false}}")).isEmpty());
+    }
+
+    @Test void pausePathfindingPausesTheRouteOrIsKeptWithoutOne() {
+        JsonObject traits = json("{\"pausepathfinding\":{\"playerrange\":80.0,\"rightclick\":true,\"pauseticks\":0,\"lockoutduration\":60}}");
+        assertEquals(json("{\"playerRange\":64.0,\"onClick\":true,\"ticks\":20,\"lockoutTicks\":60}"), CitizensTraits.pause(traits).orElseThrow());
+        assertTrue(CitizensTraits.pause(json("{\"pausepathfinding\":{\"playerrange\":-1.0}}")).isEmpty(), "pauses for nothing");
+        CitizensTraits.Result routed = map("player", "{\"traits\":{\"pausepathfinding\":{\"rightclick\":true}}}", false, true);
+        assertEquals(CitizensImporter.Status.CONVERTED, routed.notes().get("/traits/pausepathfinding").status());
+        CitizensTraits.Result standing = map("player", "{\"traits\":{\"pausepathfinding\":{\"rightclick\":true}}}", false, false);
+        assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, standing.notes().get("/traits/pausepathfinding").status());
     }
 
     @Test void aRouteWithoutAvoidWaterSwimsAsCitizensDoes() {

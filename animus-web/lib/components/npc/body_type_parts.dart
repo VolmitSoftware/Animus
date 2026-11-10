@@ -1,5 +1,5 @@
 /// Inspector parts that follow the NPC's body type: the settings only that
-/// type has (`horse`, `llama`, `frog`, `armadillo`, `dragon`) as typed
+/// type has (`horse`, `sheep`, `villager`, `player` and the rest) as typed
 /// fields from the NPC schema, the fields another body left behind, and the
 /// note that stands in for the skin picker.
 library;
@@ -16,14 +16,27 @@ import '../gui/gui_fields.dart';
 import '../inspect/inspect_fields.dart';
 import 'npc_section.dart';
 
-/// Headings for each body type's own settings.
+/// Headings for each body type's own settings; the rest use the body's name.
 const Map<String, String> _titles = <String, String>{
-  'horse': 'Horse',
-  'llama': 'Llama',
-  'frog': 'Frog',
-  'armadillo': 'Armadillo',
   'dragon': 'Ender dragon',
+  'player': 'Player',
+  'zombieVillager': 'Zombie villager',
+  'magmaCube': 'Magma cube',
+  'tropicalFish': 'Tropical fish',
+  'snowGolem': 'Snow golem',
+  'polarBear': 'Polar bear',
+  'copperGolem': 'Copper golem',
+  'itemFrame': 'Item frame',
+  'glowItemFrame': 'Glow item frame',
+  'fallingBlock': 'Falling block',
+  'endCrystal': 'End crystal',
+  'blockDisplay': 'Block display',
+  'itemDisplay': 'Item display',
+  'textDisplay': 'Text display',
+  'droppedItem': 'Dropped item',
 };
+
+String _title(String field) => _titles[field] ?? '${field[0].toUpperCase()}${field.substring(1)}';
 
 /// The settings field of [type], edited with the schema's typed fields;
 /// nothing for bodies without settings.
@@ -47,7 +60,7 @@ class BodySettingsEditor extends StatelessWidget {
     final JsonMap value = asMap(doc[field]);
     final Map<String, Object?> node = schema.at(<JsonStep>[field], <String, Object?>{'type': type, field: value}) ?? const <String, Object?>{};
     if (node.isEmpty) return const dom.div(<Widget>[]);
-    final String title = _titles[field] ?? field;
+    final String title = _title(field);
     return dom.div(attributes: <String, String>{'role': 'group', 'aria-label': '$title settings', 'data-settings': field}, <Widget>[
       NpcSubhead(title, help: asString(node['description'])),
       InspectObject(

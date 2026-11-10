@@ -162,6 +162,11 @@ public final class ModHooks {
     public static void killed(LivingEntity victim, DamageSource source) {
         ModServerBehaviors behaviors = behaviors();
         if (behaviors != null) behaviors.killed(victim, source);
+        AnimusModRuntime active = runtime;
+        art.arcane.animus.core.quest.QuestService<ServerPlayer, ItemStack> quests = active == null ? null : active.quests();
+        if (quests == null || victim instanceof ServerPlayer) return;
+        ServerPlayer killer = source.getEntity() instanceof ServerPlayer direct ? direct : victim.getKillCredit() instanceof ServerPlayer credited ? credited : null;
+        if (killer != null) quests.killed(killer.getUUID(), net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(victim.getType()).toString(), java.util.Optional.empty());
     }
     /** A bow or crossbow shot begins; {@code velocity} is the speed vanilla gives its projectiles. */
     public static void aiming(LivingEntity shooter, InteractionHand hand, ItemStack weapon, float velocity) {

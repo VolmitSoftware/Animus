@@ -53,6 +53,7 @@ public final class EditorPreviews {
             case BEHAVIOR -> scanCapabilities(source, "$", diagnostics);
             case INVENTORY, MENU, HOLOGRAM -> scanActions(source, "$", false, diagnostics);
             case SHOP -> diagnostics.add(EditorDocuments.diagnostic("error", "$", "shops move items and money, so a preview cannot run them; apply to try a shop", "preview-refused"));
+            case QUEST -> diagnostics.add(EditorDocuments.diagnostic("error", "$", "quests keep player progress and pay rewards, so a preview cannot run them; apply to try a quest", "preview-refused"));
             default -> { }
         }
         return diagnostics;

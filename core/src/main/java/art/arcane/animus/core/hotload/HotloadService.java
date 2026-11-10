@@ -212,8 +212,8 @@ public final class HotloadService implements AutoCloseable {
             item.verdict().removedBehavior().ifPresent(removed::add);
             if (item.verdict().settings().isPresent()) settings = item.verdict().settings();
         }
-        // Settings can change the command allow-list that shops, chest GUIs, menus and holograms are checked against.
-        if (settings.isPresent()) { kinds.add(DocumentKind.SHOP); kinds.add(DocumentKind.MENU); }
+        // Settings can change the command allow-list that shops, chest GUIs, menus, holograms and quests are checked against.
+        if (settings.isPresent()) { kinds.add(DocumentKind.SHOP); kinds.add(DocumentKind.MENU); kinds.add(DocumentKind.QUEST); }
         Optional<art.arcane.animus.core.config.PluginSettings> next = settings;
         CompletableFuture<List<String>> done = new CompletableFuture<>();
         try {

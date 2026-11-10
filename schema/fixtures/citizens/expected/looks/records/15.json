@@ -1,0 +1,16 @@
+{
+  "name": "Wither",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000615",
+  "traits": {
+    "type": "WITHER",
+    "location": {
+      "world": "world",
+      "x": 30.5,
+      "y": 64,
+      "z": 0.5
+    },
+    "withertrait": {
+      "arrowshield": true
+    }
+  }
+}

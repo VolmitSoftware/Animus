@@ -130,7 +130,10 @@
                     "player_kill",
                     "projectile_launch",
                     "projectile_hit",
-                    "entity_shoot_bow"
+                    "entity_shoot_bow",
+                    "quest_started",
+                    "quest_stage",
+                    "quest_completed"
                   ],
                   "description": "A server behavior uses server events only."
                 }
@@ -215,12 +218,24 @@
           "description": "Shows action bar text to the triggering player, or the player named by player."
         },
         {
+          "const": "animus:advance-quest",
+          "description": "Moves the player's active Animus quest to its next stage, or to stage (from 1). Past the last stage it completes the quest with its rewards. Reports stage."
+        },
+        {
           "const": "animus:advance-quest-state",
           "description": "Advances a quest stage, by one unless by says otherwise, without passing maximum."
         },
         {
+          "const": "animus:animate",
+          "description": "Shows a vanilla animation: an arm swing, the hurt flash or a critical hit once, or a pose or held-item use that lasts until something changes it."
+        },
+        {
           "const": "animus:build",
           "description": "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z or where the NPC stands. Protection still applies."
+        },
+        {
+          "const": "animus:charge",
+          "description": "Takes money, experience levels and items from the triggering player, or the player named by player, all or nothing. Refuses with cannot-afford when they cannot pay, which ends the run."
         },
         {
           "const": "animus:choices",
@@ -233,6 +248,10 @@
         {
           "const": "animus:command",
           "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name. Allowed only for behaviors on the TOML allow-list, and never in a preview."
+        },
+        {
+          "const": "animus:complete-quest",
+          "description": "Completes the player's active Animus quest, with its rewards unless rewards is false. Reports stage."
         },
         {
           "const": "animus:give-book",
@@ -248,7 +267,7 @@
         },
         {
           "const": "animus:message",
-          "description": "Sends formatted text without a speaker: to the triggering player (trigger, the default) or the player named by player, every online player (all), the players in the NPC's or triggering player's world (world), or the console. {player_name} becomes the player's name."
+          "description": "Sends formatted text without a speaker: to the triggering player (trigger, the default) or the player named by player, every online player (all), the players in the NPC's or triggering player's world (world), the players within radius of the NPC (nearby), or the console. {player_name} becomes the player's name."
         },
         {
           "const": "animus:navigate",
@@ -277,6 +296,10 @@
         {
           "const": "animus:pose",
           "description": "Turns the NPC to one of the named poses in its definition's poses."
+        },
+        {
+          "const": "animus:quest-objective",
+          "description": "Adds amount (1 by default) to a custom objective of the player's active Animus quest stage. Reports count."
         },
         {
           "const": "animus:resume-patrol",
@@ -311,6 +334,10 @@
           "description": "Shows a particle effect at the NPC, or with at: player at the player, to the triggering player or nearby players. Server behaviors show it at the player."
         },
         {
+          "const": "animus:start-quest",
+          "description": "Starts an Animus quest for the triggering player, or the player named by player. quest is namespace:name, or a name in this behavior's namespace; force: true skips its requirements and repeat rule. Reports stage."
+        },
+        {
           "const": "animus:stop-animation",
           "description": "Stops one animation layer, or every played layer, and returns to the rig's idle animation."
         },
@@ -324,7 +351,7 @@
         },
         {
           "const": "animus:teleport",
-          "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, or to the NPC or the player."
+          "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, to the NPC or the player, or the NPC to one of its anchors."
         },
         {
           "const": "animus:title",
@@ -334,6 +361,10 @@
     },
     "conditions": {
       "anyOf": [
+        {
+          "const": "animus:can-afford",
+          "description": "True when the triggering player, or the player named by player, holds the money, experience levels and items of the cost. False when there is no triggering player."
+        },
         {
           "const": "animus:flag-state",
           "description": "Compares a flag with value (true by default) by exact JSON equality. An unset or expired flag is false: it equals false and nothing else."
@@ -353,6 +384,10 @@
         {
           "const": "animus:quest-state",
           "description": "Compares a quest stage. An unset quest is stage zero."
+        },
+        {
+          "const": "animus:quest-status",
+          "description": "Compares where the player is in an Animus quest: none, active, ready (waiting for the turn-in NPC) or finished."
         }
       ]
     },
@@ -1027,6 +1062,86 @@
           "if": {
             "properties": {
               "capability": {
+                "const": "animus:advance-quest"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "quest": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 129
+                    },
+                    "stage": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 33
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "required": [
+                    "quest"
+                  ],
+                  "description": "Moves the player's active Animus quest to its next stage, or to stage (from 1). Past the last stage it completes the quest with its rewards. Reports stage."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
                 "const": "animus:advance-quest-state"
               }
             },
@@ -1103,6 +1218,87 @@
                     "name"
                   ],
                   "description": "Advances a quest stage, by one unless by says otherwise, without passing maximum."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:animate"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "animation": {
+                      "enum": [
+                        "swing",
+                        "swing_offhand",
+                        "hurt",
+                        "crit",
+                        "magic_crit",
+                        "wake",
+                        "sneak",
+                        "sleep",
+                        "sit",
+                        "stand",
+                        "use_item",
+                        "stop_using_item"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "animation"
+                  ],
+                  "description": "Shows a vanilla animation: an arm swing, the hurt flash or a critical hit once, or a pose or held-item use that lasts until something changes it."
                 }
               },
               "required": [
@@ -1239,6 +1435,149 @@
                     "operation"
                   ],
                   "description": "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z or where the NPC stands. Protection still applies."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:charge"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "money": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000000000000
+                    },
+                    "levels": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "items": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 27,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "item": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128
+                              },
+                              "count": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 99
+                              },
+                              "components": {
+                                "type": "string",
+                                "maxLength": 4096
+                              }
+                            },
+                            "required": [
+                              "id"
+                            ]
+                          },
+                          "amount": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 6400
+                          }
+                        },
+                        "required": [
+                          "item",
+                          "amount"
+                        ]
+                      }
+                    },
+                    "match": {
+                      "enum": [
+                        "strict",
+                        "legacy",
+                        "material"
+                      ]
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "anyOf": [
+                    {
+                      "required": [
+                        "money"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "levels"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "items"
+                      ]
+                    }
+                  ],
+                  "description": "Takes money, experience levels and items from the triggering player, or the player named by player, all or nothing. Refuses with cannot-afford when they cannot pay, which ends the run."
                 }
               },
               "required": [
@@ -1524,6 +1863,84 @@
                     "command"
                   ],
                   "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name. Allowed only for behaviors on the TOML allow-list, and never in a preview."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:complete-quest"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "quest": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 129
+                    },
+                    "rewards": {
+                      "type": "boolean"
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "required": [
+                    "quest"
+                  ],
+                  "description": "Completes the player's active Animus quest, with its rewards unless rewards is false. Reports stage."
                 }
               },
               "required": [
@@ -1873,8 +2290,14 @@
                         "trigger",
                         "all",
                         "world",
+                        "nearby",
                         "console"
                       ]
+                    },
+                    "radius": {
+                      "type": "number",
+                      "minimum": 1.0,
+                      "maximum": 64.0
                     },
                     "player": {
                       "type": "string",
@@ -1885,7 +2308,7 @@
                   "required": [
                     "text"
                   ],
-                  "description": "Sends formatted text without a speaker: to the triggering player (trigger, the default) or the player named by player, every online player (all), the players in the NPC's or triggering player's world (world), or the console. {player_name} becomes the player's name."
+                  "description": "Sends formatted text without a speaker: to the triggering player (trigger, the default) or the player named by player, every online player (all), the players in the NPC's or triggering player's world (world), the players within radius of the NPC (nearby), or the console. {player_name} becomes the player's name."
                 }
               },
               "required": [
@@ -1951,6 +2374,11 @@
                       "minLength": 1,
                       "maxLength": 64
                     },
+                    "anchor": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    },
                     "x": {
                       "type": "number",
                       "minimum": -3.0E+7,
@@ -1991,6 +2419,11 @@
                     {
                       "required": [
                         "route"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "anchor"
                       ]
                     },
                     {
@@ -2517,6 +2950,92 @@
           "if": {
             "properties": {
               "capability": {
+                "const": "animus:quest-objective"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "quest": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 129
+                    },
+                    "objective": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "amount": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100000
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "required": [
+                    "quest",
+                    "objective"
+                  ],
+                  "description": "Adds amount (1 by default) to a custom objective of the player's active Animus quest stage. Reports count."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
                 "const": "animus:resume-patrol"
               }
             },
@@ -2643,6 +3162,14 @@
                       "type": "string",
                       "minLength": 1,
                       "maxLength": 36
+                    },
+                    "bubbleTicks": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1200
+                    },
+                    "chat": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -3214,6 +3741,84 @@
           "if": {
             "properties": {
               "capability": {
+                "const": "animus:start-quest"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "quest": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 129
+                    },
+                    "force": {
+                      "type": "boolean"
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "required": [
+                    "quest"
+                  ],
+                  "description": "Starts an Animus quest for the triggering player, or the player named by player. quest is namespace:name, or a name in this behavior's namespace; force: true skips its requirements and repeat rule. Reports stage."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
                 "const": "animus:stop-animation"
               }
             },
@@ -3511,6 +4116,11 @@
                         "player"
                       ]
                     },
+                    "anchor": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    },
                     "player": {
                       "type": "string",
                       "minLength": 1,
@@ -3529,9 +4139,14 @@
                       "required": [
                         "to"
                       ]
+                    },
+                    {
+                      "required": [
+                        "anchor"
+                      ]
                     }
                   ],
-                  "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, or to the NPC or the player."
+                  "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, to the NPC or the player, or the NPC to one of its anchors."
                 }
               },
               "required": [
@@ -3767,6 +4382,149 @@
               ]
             }
           ]
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:can-afford"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "money": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000000000000
+                    },
+                    "levels": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100000
+                    },
+                    "items": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 27,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "item": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 128
+                              },
+                              "count": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 99
+                              },
+                              "components": {
+                                "type": "string",
+                                "maxLength": 4096
+                              }
+                            },
+                            "required": [
+                              "id"
+                            ]
+                          },
+                          "amount": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 6400
+                          }
+                        },
+                        "required": [
+                          "item",
+                          "amount"
+                        ]
+                      }
+                    },
+                    "match": {
+                      "enum": [
+                        "strict",
+                        "legacy",
+                        "material"
+                      ]
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "anyOf": [
+                    {
+                      "required": [
+                        "money"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "levels"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "items"
+                      ]
+                    }
+                  ],
+                  "description": "True when the triggering player, or the player named by player, holds the money, experience levels and items of the cost. False when there is no triggering player."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
         },
         {
           "if": {
@@ -4193,6 +4951,90 @@
               ]
             }
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:quest-status"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "quest": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 129
+                    },
+                    "status": {
+                      "enum": [
+                        "none",
+                        "active",
+                        "ready",
+                        "finished"
+                      ]
+                    },
+                    "player": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "required": [
+                    "quest",
+                    "status"
+                  ],
+                  "description": "Compares where the player is in an Animus quest: none, active, ready (waiting for the turn-in NPC) or finished."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
         }
       ]
     },
@@ -4504,7 +5346,10 @@
             "player_kill",
             "projectile_launch",
             "projectile_hit",
-            "entity_shoot_bow"
+            "entity_shoot_bow",
+            "quest_started",
+            "quest_stage",
+            "quest_completed"
           ],
           "description": "What starts the run."
         },
@@ -5074,6 +5919,51 @@
           "then": {
             "$ref": "#/$defs/trigger-entity_shoot_bow"
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "quest_started"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-quest_started"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "quest_stage"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-quest_stage"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "quest_completed"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-quest_completed"
+          }
         }
       ]
     },
@@ -5172,6 +6062,12 @@
           "exclusiveMinimum": 0,
           "maximum": 64.0,
           "description": "Blocks, above 0."
+        },
+        "playerCooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Ticks between one player's runs of this trigger. Without it the configured playerCooldownTicks applies, unless cooldownTicks is set; 0 turns it off."
         }
       },
       "required": [
@@ -6487,6 +7383,105 @@
           "pattern": "\\S",
           "maxLength": 4096,
           "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-quest_started": {
+      "type": "object",
+      "description": "A player starts an Animus quest. Runs read context.quest, context.stage (1) and context.title.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "quest_started"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "quest": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-quest_stage": {
+      "type": "object",
+      "description": "A player's Animus quest moves on to a later stage. Runs read context.quest, context.stage (from 1) and context.title.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "quest_stage"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "quest": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-quest_completed": {
+      "type": "object",
+      "description": "A player completes an Animus quest. Runs read context.quest, context.stage (the stage count plus one) and context.title.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "quest_completed"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "quest": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An Animus quest id such as town:herbs, or a name without namespace. Omit for every quest."
         }
       },
       "required": [

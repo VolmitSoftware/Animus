@@ -26,6 +26,7 @@ const List<DocumentKind> creatableKinds = <DocumentKind>[
   DocumentKind.pack,
   DocumentKind.route,
   DocumentKind.shop,
+  DocumentKind.quest,
   DocumentKind.inventory,
   DocumentKind.menu,
   DocumentKind.hologram,
@@ -46,6 +47,7 @@ String kindPurpose(DocumentKind kind) => switch (kind) {
       DocumentKind.recording => 'Movement recorded in game',
       DocumentKind.group => 'Settings shared by NPCs',
       DocumentKind.shop => 'Buy, sell and trade pages',
+      DocumentKind.quest => 'Stages, objectives and rewards',
       DocumentKind.inventory => 'A chest window',
       DocumentKind.menu => 'A floating menu',
       DocumentKind.hologram => 'Floating text and items',
@@ -128,6 +130,7 @@ String idHint(DocumentKind kind) => switch (kind) {
       DocumentKind.skin => 'the skin SHA-256, set for you',
       DocumentKind.presets => 'always presets',
       DocumentKind.serverBehaviors => 'always server-behaviors',
+      DocumentKind.quest => 'namespace:name, such as town:bread',
       _ => 'namespace:path, such as town:welcome',
     };
 
@@ -628,6 +631,7 @@ Object? rewriteIdentity(DocumentKind kind, Object? json, String id, {required bo
       if (fresh) out['uuid'] = newUuid(random);
     case DocumentKind.behavior:
     case DocumentKind.shop:
+    case DocumentKind.quest:
     case DocumentKind.rig:
     case DocumentKind.animation:
     case DocumentKind.pack:

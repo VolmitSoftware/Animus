@@ -22,6 +22,9 @@ public interface ScreenHost<P, S> {
     /** A {@code viewer.*} property such as {@code level} or {@code world}, or null when the platform has none. */
     Object viewer(P player, String property);
     boolean permitted(P player, String node);
+    /** Takes {@code levels} experience levels when the player has that many; false, and nothing taken, otherwise. */
+    boolean takeLevels(P player, int levels);
+    void giveLevels(P player, int levels);
 
     /**
      * Shows the frame. {@code window} is the token of the window already open for this screen, or null. Returns the
@@ -94,6 +97,14 @@ public interface ScreenHost<P, S> {
     default boolean giveWand(P player) { return false; }
     /** One chat line with its click chips; a platform without click text sends the console text. */
     default void chat(P player, art.arcane.animus.core.text.ChatLine line) { message(player, line.console()); }
+    /** One chat line of formatted parts with click commands, such as dialogue answer buttons; without click text the parts are sent as plain text. */
+    default void parts(P player, List<art.arcane.animus.core.text.TextPart> parts) {
+        StringBuilder text = new StringBuilder();
+        for (art.arcane.animus.core.text.TextPart part : parts) text.append(part.text());
+        message(player, text.toString());
+    }
+    /** Gives experience points. False on a platform that cannot. */
+    default boolean experience(P player, int points) { return false; }
 
     /**
      * A line of text asked of the player: an anvil, a sign or a chat capture. {@code answer} runs once on the player's

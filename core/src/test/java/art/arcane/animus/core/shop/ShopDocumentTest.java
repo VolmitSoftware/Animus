@@ -34,6 +34,16 @@ class ShopDocumentTest {
         assertTrue(problems(ShopScreenTest.BAKERY.replace("\"schemaVersion\": 1", "\"schemaVersion\": 2")).contains("$.schemaVersion: shop schemaVersion 2 is not supported; Animus reads version 1"));
     }
 
+    @Test void levelsAreAWholeCostOnBuyCommandAndTradeEntries() {
+        String buy = "{\"schemaVersion\":1,\"revision\":1,\"id\":\"town:baker\",\"pages\":[{\"name\":\"One\",\"buy\":{\"0\":{\"id\":\"b\",\"type\":\"buy\",\"item\":{\"id\":\"minecraft:bread\"},\"price\":0,\"levels\":LEVELS}}}]}";
+        assertEquals(List.of(), problems(buy.replace("LEVELS", "5")));
+        assertEquals(5, ShopDocument.parse("town:baker", buy.replace("LEVELS", "5")).shop().orElseThrow().entry("b").orElseThrow().levels());
+        assertTrue(problems(buy.replace("LEVELS", "-1")).contains("$.pages[0].buy.0.levels: expected whole levels from 0 to 100000"));
+        assertTrue(problems(buy.replace("LEVELS", "1.5")).contains("$.pages[0].buy.0.levels: expected whole levels from 0 to 100000"));
+        String sell = "{\"schemaVersion\":1,\"revision\":1,\"id\":\"town:baker\",\"pages\":[{\"sell\":{\"0\":{\"id\":\"s\",\"type\":\"sell\",\"item\":{\"id\":\"minecraft:bread\"},\"price\":1,\"levels\":2}}}]}";
+        assertTrue(problems(sell).contains("$.pages[0].sell.0.levels: levels are a cost of buy, command and trade entries"));
+    }
+
     @Test void tradesNeedBothLists() {
         String trade = "{\"schemaVersion\":1,\"revision\":1,\"id\":\"town:baker\",\"pages\":[{\"trade\":{\"0\":{\"id\":\"t\",\"type\":\"trade\",\"item\":{\"id\":\"minecraft:diamond\"}}}}]}";
         assertTrue(problems(trade).contains("$.pages[0].trade.0.needs: expected a non-empty array of items"));

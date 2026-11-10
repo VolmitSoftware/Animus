@@ -165,6 +165,54 @@
                 "maximum": 1000,
                 "description": "Order random only: how often this point is chosen."
               },
+              "speed": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 5,
+                "description": "Not order wander: the route's speed in blocks per second from this arrival on."
+              },
+              "teleport": {
+                "type": "object",
+                "required": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "minimum": -29999984,
+                    "maximum": 29999984
+                  },
+                  "y": {
+                    "type": "number",
+                    "minimum": -29999984,
+                    "maximum": 29999984
+                  },
+                  "z": {
+                    "type": "number",
+                    "minimum": -29999984,
+                    "maximum": 29999984
+                  },
+                  "yaw": {
+                    "type": "number",
+                    "minimum": -360,
+                    "maximum": 360
+                  },
+                  "pitch": {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90
+                  },
+                  "world": {
+                    "type": "string",
+                    "pattern": "^[^\\s/\\\\]{1,64}$",
+                    "description": "Another loaded world by name; the route goes on there. Unset: the route's world."
+                  }
+                },
+                "description": "Not order wander: on arrival the NPC teleports here, in the route's world, before the wait.",
+                "additionalProperties": false
+              },
               "next": {
                 "type": "array",
                 "description": "Order sequence only: after this point, the next point is drawn from these by weight.",
@@ -323,6 +371,16 @@
                 {
                   "required": [
                     "style"
+                  ]
+                },
+                {
+                  "required": [
+                    "speed"
+                  ]
+                },
+                {
+                  "required": [
+                    "teleport"
                   ]
                 }
               ]

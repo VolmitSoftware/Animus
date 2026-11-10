@@ -32,6 +32,42 @@
       "name": "completeness",
       "source": "completeness.yml",
       "worldMap": {}
+    },
+    {
+      "name": "destinations",
+      "source": "destinations.yml",
+      "worldMap": {
+        "old_town": "town"
+      }
+    },
+    {
+      "name": "modelengine",
+      "source": "modelengine.yml",
+      "worldMap": {}
+    },
+    {
+      "name": "mythic",
+      "source": "mythic.yml",
+      "worldMap": {
+        "temple": "world"
+      }
+    },
+    {
+      "name": "economy",
+      "source": "economy.yml",
+      "worldMap": {}
+    },
+    {
+      "name": "motion",
+      "source": "motion.yml",
+      "worldMap": {
+        "old_harbor": "harbor"
+      }
+    },
+    {
+      "name": "looks",
+      "source": "looks.yml",
+      "worldMap": {}
     }
   ],
   "invalid": "invalid"

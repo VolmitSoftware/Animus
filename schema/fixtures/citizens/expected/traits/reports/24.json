@@ -18,7 +18,7 @@
     "/traits/commandtrait/commands/0/player": "CONVERTED",
     "/traits/commandtrait/commands/0/op": "CONVERTED",
     "/traits/commandtrait/commands/0/cooldown": "CONVERTED",
-    "/traits/commandtrait/commands/0/n": "UNSUPPORTED_PRESERVED",
+    "/traits/commandtrait/commands/0/n": "CONVERTED",
     "/traits/commandtrait/commands/0/delay": "UNSUPPORTED_PRESERVED",
     "/traits/commandtrait/cost": "UNSUPPORTED_PRESERVED",
     "/traits/commandtrait/executionMode": "CONVERTED",
@@ -32,7 +32,6 @@
     "/traits/denizenscript/name": "REQUIRES_INTEGRATION"
   },
   "reasons": {
-    "/traits/commandtrait/commands/0/n": "trait commandtrait has no Animus equivalent; kept in citizens:review",
     "/traits/commandtrait/commands/0/delay": "trait commandtrait has no Animus equivalent; kept in citizens:review",
     "/traits/commandtrait/cost": "trait commandtrait has no Animus equivalent; kept in citizens:review",
     "/traits/assignment/assignment": "Denizen data; its scripts are not in the save, so rewrite them as Animus behaviors by hand",

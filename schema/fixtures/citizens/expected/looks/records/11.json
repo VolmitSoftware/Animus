@@ -1,0 +1,22 @@
+{
+  "name": "Frame",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000611",
+  "traits": {
+    "type": "GLOW_ITEM_FRAME",
+    "location": {
+      "world": "world",
+      "x": 22.5,
+      "y": 64,
+      "z": 0.5
+    },
+    "itemframe": {
+      "item": {
+        "type": "DIAMOND",
+        "amount": 1
+      },
+      "rotation": "CLOCKWISE",
+      "facing": "EAST",
+      "fixed": true
+    }
+  }
+}

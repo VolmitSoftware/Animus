@@ -103,6 +103,7 @@ public final class HotloadValidation {
             case HOLOGRAM -> gui.problems(GuiKind.HOLOGRAM, id.get(), snapshot.content());
             case TEXT_ANIMATION -> gui.problems(GuiKind.ANIMATION, id.get(), snapshot.content());
             case SHOP -> shop(id.get(), snapshot.content(), context.commandsAllowed());
+            case QUEST -> quest(id.get(), snapshot.content(), context.commandsAllowed());
             case RECORDING -> recording(id.get(), snapshot.content(), source, context.recordingBytes());
             default -> errors(EditorDocuments.validate(kind, id.get(), source, context.recordingBytes()));
         };
@@ -118,6 +119,14 @@ public final class HotloadValidation {
         List<String> problems = new ArrayList<>(result.problems());
         result.shop().filter((ShopDocument shop) -> shop.hasCommands() && !commandsAllowed.test(id)).ifPresent((ShopDocument shop) -> problems.add("$: runs commands, so add "
                 + id + " to commandBehaviors or its namespace to commandNamespaces under [behaviors.actions] in config.toml"));
+        return problems;
+    }
+
+    private static List<String> quest(String id, String json, Predicate<String> commandsAllowed) {
+        art.arcane.animus.core.quest.QuestDocument.Result result = art.arcane.animus.core.quest.QuestDocument.parse(id, json);
+        List<String> problems = new ArrayList<>(result.problems());
+        result.quest().filter((art.arcane.animus.core.quest.QuestDocument quest) -> quest.hasCommands() && !commandsAllowed.test(id)).ifPresent((art.arcane.animus.core.quest.QuestDocument quest) ->
+                problems.add("$.rewards.commands: runs commands, so add " + id + " to commandBehaviors or its namespace to commandNamespaces under [behaviors.actions] in config.toml"));
         return problems;
     }
 

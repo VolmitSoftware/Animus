@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "00000000-0000-0000-0000-000000000005",
+  "id": "citizens-5",
+  "group": "town",
+  "name": "Odd",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "b04e2351c3b9ad08ab75b2eb81ee3ac457e362418a97b3d2bf728aea7c98ea2e",
+    "citizensId": 5,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "town",
+    "x": 0,
+    "y": 64,
+    "z": 0,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "town",
+        "x": 0,
+        "y": 64,
+        "z": 0
+      },
+      "npcdestinations": [
+        1,
+        2
+      ]
+    }
+  }
+}

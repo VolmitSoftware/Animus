@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000602",
+  "id": "citizens-2",
+  "group": "harbor",
+  "name": "Lookout",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "d0645871e188a9d2319eef3abff392d99015b22911be04c0fbb3999eef7ce282",
+    "citizensId": 2,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "harbor",
+    "x": -10.5,
+    "y": 70.0,
+    "z": 4.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "anchors": {
+    "dock": {
+      "x": 3.0,
+      "y": 64.0,
+      "z": 3.0
+    },
+    "isle-pier": {
+      "x": 10.5,
+      "y": 65.0,
+      "z": -2.5,
+      "world": "far_isle"
+    }
+  },
+  "modules": {
+    "animus:combat": {
+      "enabled": false,
+      "reviewAccepted": false,
+      "targeting": {
+        "fightBack": false
+      },
+      "guard": {
+        "player": "0a1b2c3d-0000-4000-8000-0000000006ff",
+        "followDistance": 2.0,
+        "pointRange": 1.0,
+        "protect": false
+      }
+    },
+    "animus:home": {
+      "x": -10.5,
+      "y": 70.0,
+      "z": 4.5,
+      "yaw": 180.0,
+      "pitch": 0.0,
+      "delayTicks": 100,
+      "distance": 2.0,
+      "return": "walk"
+    },
+    "animus:mirror": {
+      "skin": true,
+      "name": true,
+      "equipment": true
+    },
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "harbor",
+        "x": -10.5,
+        "y": 70.0,
+        "z": 4.5
+      },
+      "followtrait": {
+        "followingUUID": "0a1b2c3d-0000-4000-8000-0000000006ff"
+      },
+      "hometrait": {
+        "location": {
+          "world": "harbor",
+          "x": -10.5,
+          "y": 70.0,
+          "z": 4.5,
+          "yaw": 180.0,
+          "pitch": 0.0
+        },
+        "delay": 100,
+        "distance": 2.0,
+        "strategy": "PATHFIND"
+      },
+      "anchors": {
+        "list": {
+          "0": "dock;harbor;3.0;64.0;3.0",
+          "1": "Isle Pier;far_isle;10.5;65.0;-2.5",
+          "2": "broken;old_harbor;x"
+        }
+      },
+      "mirrortrait": {
+        "enabled": true,
+        "mirrorName": true,
+        "mirrorEquipment": true
+      }
+    }
+  }
+}

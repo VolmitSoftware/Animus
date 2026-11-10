@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000400",
+  "id": "citizens-0",
+  "group": "harbor",
+  "name": "Toll Keeper",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "f88238b8840aa1cb4d387bc24712f42db074713ab8721cb834a89bda5432b782",
+    "citizensId": 0,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "harbor",
+    "x": 0.5,
+    "y": 64.0,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "behaviors": [
+    "citizens:commands-0"
+  ],
+  "modules": {
+    "animus:health": {
+      "killable": true,
+      "death": {
+        "drops": [
+          {
+            "item": {
+              "id": "minecraft:emerald",
+              "count": 3
+            },
+            "chance": 0.25
+          },
+          {
+            "item": {
+              "id": "minecraft:bone",
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "harbor",
+        "x": 0.5,
+        "y": 64.0,
+        "z": 0.5
+      },
+      "dropstrait": {
+        "drops": {
+          "0": {
+            "chance": 0.25,
+            "drop": {
+              "type": "EMERALD",
+              "amount": 3
+            }
+          },
+          "1": {
+            "chance": 1.0,
+            "drop": {
+              "type": "BONE",
+              "amount": 1
+            }
+          },
+          "2": {
+            "chance": 0.5,
+            "drop": {
+              "type": "AIR",
+              "amount": 1
+            }
+          }
+        }
+      },
+      "shop": {
+        "rightClickShop": "Harbor Goods",
+        "storage": {
+          "unlimited": false,
+          "balance": 12.5
+        }
+      },
+      "commandtrait": {
+        "executionMode": "LINEAR",
+        "customErrorMessages": {
+          "ON_COOLDOWN": "Not yet, <p>.",
+          "MISSING_MONEY": "Bring ${0} next time."
+        },
+        "experienceCost": 2,
+        "commands": {
+          "0": {
+            "command": "give <p> minecraft:map 1",
+            "hand": "RIGHT",
+            "cost": 2.5,
+            "n": 3,
+            "cooldown": 30,
+            "itemCost": {
+              "0": {
+                "type": "GOLD_NUGGET",
+                "amount": 4
+              }
+            }
+          },
+          "1": {
+            "command": "say <p> paid the toll",
+            "hand": "BOTH",
+            "npc": true,
+            "player": true,
+            "gn": 100,
+            "globalcooldown": 600
+          },
+          "2": {
+            "command": "spawn",
+            "hand": "LEFT",
+            "itemCost": {
+              "0": {
+                "type": "STONE",
+                "amount": 1,
+                "odd-field": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

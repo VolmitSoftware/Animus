@@ -1,0 +1,24 @@
+{
+  "name": "Swimmer",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000619",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "world",
+      "x": 38.5,
+      "y": 64,
+      "z": 0.5
+    },
+    "entitypose": {
+      "pose": "SWIMMING"
+    },
+    "text": {
+      "text": [
+        "Bubbles!"
+      ],
+      "speech-bubbles": true,
+      "send-text-to-chat": false,
+      "speech-bubble-duration": 80
+    }
+  }
+}

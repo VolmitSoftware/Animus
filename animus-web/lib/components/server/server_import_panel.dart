@@ -35,6 +35,7 @@ String importStateLabel(String state) => switch (state) {
 String importCategoryLabel(String category) => switch (category) {
       'spawn' => 'Spawning',
       'patrols' => 'Patrols',
+      'schedules' => 'Schedules',
       'combat' => 'Combat',
       'riding' => 'Riding',
       'shops' => 'Shops',
@@ -338,7 +339,7 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
   List<Widget> _acceptView(ImportReview review, String importId) => <Widget>[
         const dom.h3(<Widget>[
           InfoTip(
-            tip: 'Each category stays off until accepted: spawning, patrols, combat, riding, shops, builds and Denizen behaviors.',
+            tip: 'Each category stays off until accepted: spawning, patrols, schedules, combat, riding, shops, builds and Denizen behaviors.',
             docs: Docs.liveImports,
             child: Component.text('Review categories'),
           ),

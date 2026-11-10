@@ -7,7 +7,7 @@ import java.util.Optional;
 /** Event names accepted by the {@code event} field of a behavior trigger, with the fields each accepts. */
 public enum TriggerKind {
     INTERACTION("interaction", true, Reach.NPC, "A viewer's validated click on the NPC, or the drop or swap-hands key pressed while looking at it in reach. Runs read context.action, context.sneaking and context.hand (main_hand or off_hand).", "action", "consume", "playerCooldownTicks", "whileRunning"),
-    PROXIMITY("proximity", true, Reach.NPC, "A viewer crosses a radius around the NPC.", "phase", "radius"),
+    PROXIMITY("proximity", true, Reach.NPC, "A viewer crosses a radius around the NPC.", "phase", "radius", "playerCooldownTicks"),
     SPAWN("spawn", false, Reach.NPC, "The runtime first presents the NPC."),
     DESPAWN("despawn", false, Reach.NPC, "A spawned NPC is despawned."),
     DAMAGE("damage", false, Reach.NPC, "Authoritative NPC health falls. Runs read context.damage, context.attacker and context.attacker_type (player, mob, npc or empty); a player attacker is the run's player."),
@@ -42,7 +42,10 @@ public enum TriggerKind {
     PLAYER_KILL("player_kill", true, Reach.SERVER, "A player kills a living entity. Runs read context.entity and context.entity_uuid.", "entity"),
     PROJECTILE_LAUNCH("projectile_launch", true, Reach.SERVER, "A projectile such as an arrow, snowball or trident is launched; the player is the shooter when a player shot it. Runs read context.projectile, context.shooter (an entity type, empty for none), their UUIDs and the launch location. cancel stops the launch.", "projectile", "shooter", "cancel"),
     PROJECTILE_HIT("projectile_hit", true, Reach.SERVER, "A projectile hits an entity or a block; the player is the shooter when a player shot it. Runs read context.projectile, context.shooter, context.entity and context.block (each empty when absent), their UUIDs and the hit location. cancel lets the projectile pass as if nothing was hit.", "projectile", "shooter", "entity", "block", "cancel"),
-    ENTITY_SHOOT_BOW("entity_shoot_bow", true, Reach.SERVER, "A player or mob shoots a bow or crossbow; the player is the shooter when a player shot. Runs read context.shooter, context.bow, context.projectile, context.force (a player's bow draw from 0 to 1, otherwise 1), context.hand and the shooter's location. cancel stops the shot.", "shooter", "bow", "projectile", "cancel");
+    ENTITY_SHOOT_BOW("entity_shoot_bow", true, Reach.SERVER, "A player or mob shoots a bow or crossbow; the player is the shooter when a player shot. Runs read context.shooter, context.bow, context.projectile, context.force (a player's bow draw from 0 to 1, otherwise 1), context.hand and the shooter's location. cancel stops the shot.", "shooter", "bow", "projectile", "cancel"),
+    QUEST_STARTED("quest_started", true, Reach.SERVER, "A player starts an Animus quest. Runs read context.quest, context.stage (1) and context.title.", "quest"),
+    QUEST_STAGE("quest_stage", true, Reach.SERVER, "A player's Animus quest moves on to a later stage. Runs read context.quest, context.stage (from 1) and context.title.", "quest"),
+    QUEST_COMPLETED("quest_completed", true, Reach.SERVER, "A player completes an Animus quest. Runs read context.quest, context.stage (the stage count plus one) and context.title.", "quest");
 
     /** Which documents may use an event: NPC behaviors, server behaviors ({@code "server": true}) or both. */
     public enum Reach { NPC, SERVER, BOTH }
@@ -79,8 +82,10 @@ public enum TriggerKind {
         return Optional.empty();
     }
     /** Trigger fields that filter on one context key of the event, with the context key each compares. */
-    public static final java.util.Map<String, String> FILTERS = java.util.Map.of("inventory", "inventory_type", "click", "click", "item", "item",
-            "block", "block", "cause", "cause", "damager", "damager", "entity", "entity", "projectile", "projectile", "shooter", "shooter", "bow", "bow");
+    public static final java.util.Map<String, String> FILTERS = java.util.Map.ofEntries(java.util.Map.entry("inventory", "inventory_type"),
+            java.util.Map.entry("click", "click"), java.util.Map.entry("item", "item"), java.util.Map.entry("block", "block"), java.util.Map.entry("cause", "cause"),
+            java.util.Map.entry("damager", "damager"), java.util.Map.entry("entity", "entity"), java.util.Map.entry("projectile", "projectile"),
+            java.util.Map.entry("shooter", "shooter"), java.util.Map.entry("bow", "bow"), java.util.Map.entry("quest", "quest"));
     /** Whether a trigger of this event may name a {@code cancel} condition: the platform event can be cancelled. */
     public boolean cancellable() { return fields.contains("cancel"); }
     public static List<String> names() {

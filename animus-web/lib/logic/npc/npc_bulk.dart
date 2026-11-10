@@ -8,6 +8,7 @@ import '../../state/editor_store.dart';
 import '../gui/gui_json.dart';
 import 'group_model.dart';
 import 'npc_catalog.dart';
+import 'npc_integrations.dart';
 import 'npc_paths.dart';
 
 /// What a bulk operation would write.
@@ -222,10 +223,15 @@ NpcBulkResult deleteNpcs(List<NpcEntry> entries) => NpcBulkResult(
 );
 
 /// Every module key used by [entries] or offered for toggling, sorted with
-/// the toggleable ones first.
-List<String> moduleKeys(Iterable<NpcEntry> entries) {
+/// the toggleable ones first. A plugin's module is offered only while the
+/// server reports that plugin in [plugins], unless an entry already uses it.
+List<String> moduleKeys(Iterable<NpcEntry> entries, {Set<String> plugins = const <String>{}}) {
   final Set<String> used = <String>{for (final NpcEntry entry in entries) ...entry.modules.keys};
-  return <String>[...toggleableModules, ...(used.difference(toggleableModules.toSet()).toList()..sort())];
+  final List<String> toggleable = <String>[
+    for (final String module in toggleableModules)
+      if (used.contains(module) || offersModule(module, plugins)) module,
+  ];
+  return <String>[...toggleable, ...(used.difference(toggleable.toSet()).toList()..sort())];
 }
 
 /// One line for a toast: what changed and what was skipped.

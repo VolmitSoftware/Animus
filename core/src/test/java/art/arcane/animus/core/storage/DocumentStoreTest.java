@@ -28,6 +28,14 @@ class DocumentStoreTest {
             assertNull(store.read("skins/a.json"));
         }
     }
+    @Test void questDocumentsAreWritableAndRollBack() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            String tx = store.commit(List.of(new DocumentStore.Change("quests/town/bread.json", "missing", "{\"id\":\"town:bread\"}")));
+            assertEquals("{\"id\":\"town:bread\"}", store.read("quests/town/bread.json"));
+            store.rollback(tx);
+            assertNull(store.read("quests/town/bread.json"));
+        }
+    }
     @Test void rollbackTakesAUniquePrefixOfTheTransactionId() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             String first = store.commit(List.of(new DocumentStore.Change("npcs/test/a.json", "missing", "{\"n\":1}")));

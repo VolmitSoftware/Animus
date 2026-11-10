@@ -40,8 +40,15 @@ class ShopTransactionsTest {
         return new ShopTransactions.Prepared<>(entry, stack(entry.item()), needs, gives);
     }
 
+    /** The buyer's experience levels. */
+    private final int[] levels = {0};
+    private final ShopTransactions.Levels experience = new ShopTransactions.Levels() {
+        @Override public boolean take(int amount) { if (levels[0] < amount) return false; levels[0] -= amount; return true; }
+        @Override public void give(int amount) { levels[0] += amount; }
+    };
+
     private ShopTransactions.Buyer<Stack> buyer(MockInventory inventory, Set<String> permissions) {
-        return new ShopTransactions.Buyer<>(ALEX, permissions::contains, inventory, dropped::add);
+        return new ShopTransactions.Buyer<>(ALEX, permissions::contains, inventory, dropped::add, experience);
     }
 
     private ShopTransactions<Stack> transactions(Economy money) { return new ShopTransactions<>(MockInventory.OPS, money, ledger, () -> NOW); }
@@ -172,7 +179,7 @@ class ShopTransactionsTest {
                 transactions.perform("town:baker", prepare(shop), buyer(new MockInventory(), Set.of()), false).status());
         assertTrue(slow.entered.await(5, java.util.concurrent.TimeUnit.SECONDS));
         java.util.concurrent.CompletableFuture<Status> second = java.util.concurrent.CompletableFuture.supplyAsync(() -> transactions.perform("town:baker", prepare(shop),
-                new ShopTransactions.Buyer<>(BLAKE, (String node) -> false, new MockInventory(), dropped::add), false).status());
+                new ShopTransactions.Buyer<>(BLAKE, (String node) -> false, new MockInventory(), dropped::add, experience), false).status());
         Status late = second.get(5, java.util.concurrent.TimeUnit.SECONDS);
         slow.release.countDown();
         assertEquals(Status.DONE, first.get(5, java.util.concurrent.TimeUnit.SECONDS));
@@ -357,5 +364,40 @@ class ShopTransactionsTest {
     @Test void containerShopsOnlyTradeItemsForItems() {
         economy.give(ALEX, "100");
         assertEquals(Status.NOT_TRADABLE, transactions(economy).perform("town:baker", prepare(shop("buy", BREAD)), buyer(new MockInventory(), Set.of()), false, Optional.of(new MockInventory(27))).status());
+    }
+
+    private static final String APPLE = "{\"id\":\"apple\",\"type\":\"buy\",\"item\":{\"id\":\"minecraft:golden_apple\"},\"price\":2,\"levels\":3}";
+
+    @Test void aLevelsPriceTakesExperienceLevelsWithTheMoney() {
+        economy.give(ALEX, "5");
+        levels[0] = 4;
+        MockInventory inventory = new MockInventory();
+        ShopTransactions.Outcome outcome = transactions(economy).perform("town:baker", prepare(shop("buy", APPLE)), buyer(inventory, Set.of()), false);
+        assertEquals(Status.DONE, outcome.status());
+        assertEquals(1, levels[0]);
+        assertEquals(0, new BigDecimal("3").compareTo(economy.balance(ALEX)));
+        assertEquals(1, inventory.total("minecraft:golden_apple"));
+    }
+
+    @Test void tooFewLevelsChangesNothing() {
+        economy.give(ALEX, "5");
+        levels[0] = 2;
+        MockInventory inventory = new MockInventory();
+        assertEquals(Status.NOT_ENOUGH_LEVELS, transactions(economy).perform("town:baker", prepare(shop("buy", APPLE)), buyer(inventory, Set.of()), false).status());
+        assertEquals(2, levels[0]);
+        assertEquals(0, new BigDecimal("5").compareTo(economy.balance(ALEX)));
+        assertEquals(0, inventory.writes);
+        assertTrue(journal.isEmpty());
+    }
+
+    @Test void aFailedPurchaseGivesTheLevelsBack() {
+        economy.give(ALEX, "5");
+        levels[0] = 3;
+        MockInventory inventory = new MockInventory() {
+            @Override public void set(int slot, Stack stack) { throw new IllegalStateException("inventory went away"); }
+        };
+        assertEquals(Status.FAILED, transactions(economy).perform("town:baker", prepare(shop("buy", APPLE)), buyer(inventory, Set.of()), false).status());
+        assertEquals(3, levels[0]);
+        assertEquals(0, new BigDecimal("5").compareTo(economy.balance(ALEX)));
     }
 }

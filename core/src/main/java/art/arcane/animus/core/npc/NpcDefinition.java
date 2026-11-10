@@ -18,11 +18,17 @@ public final class NpcDefinition {
     public static final int MAX_TAGS = 32;
     /** The most trait groups one NPC may list. */
     public static final int MAX_GROUPS = 16;
+    /** The field naming the NPC that receives this NPC's clicks. */
+    public static final String CLICK_REDIRECT = "clickRedirect";
     private final JsonObject data;
     private final boolean spawned, imported, dead;
     private final List<String> behaviors, tags, groups;
+    private final ViewerFilter viewers;
+    private final Optional<BossBarSettings> bossBar;
     private NpcDefinition(JsonObject data) {
         this.data = normalized(data);
+        viewers = ViewerFilter.of(this.data);
+        bossBar = BossBarSettings.of(this.data);
         spawned = data.get("spawned").getAsBoolean();
         imported = data.has("migration");
         dead = HealthSettings.dead(data);
@@ -143,12 +149,29 @@ public final class NpcDefinition {
             catch (IllegalArgumentException e) { errors.add("$.owner: expected canonical player UUID"); }
         }
         errors.addAll(NpcAppearance.validate(object));
+        errors.addAll(NpcDisguise.validate(object));
         errors.addAll(NpcInventory.validate(object));
+        ViewerFilter.read(object, errors);
+        BossBarSettings.read(object, errors);
+        if (object.has(CLICK_REDIRECT)) {
+            JsonElement target = object.get(CLICK_REDIRECT);
+            String text = target.isJsonPrimitive() && target.getAsJsonPrimitive().isString() ? target.getAsString() : "";
+            try { if (!UUID.fromString(text).toString().equals(text)) throw new IllegalArgumentException(); }
+            catch (IllegalArgumentException e) { errors.add("$.clickRedirect: expected the canonical UUID of another NPC"); }
+            if (text.equals(string(object, "uuid", new ArrayList<>()))) errors.add("$.clickRedirect: an NPC cannot redirect clicks to itself");
+        }
         art.arcane.animus.core.navigation.MovementSettings.read(object, errors);
         NamedPoses.read(object, errors);
+        NpcAnchors.read(object, errors);
         if (object.has("modules") && !object.get("modules").isJsonObject()) errors.add("$.modules: expected object");
         else {
             try { WaypointSettings.parse(object); }
+            catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
+            try { art.arcane.animus.core.presentation.MirrorSettings.parse(object); }
+            catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
+            try { art.arcane.animus.core.navigation.HomeSettings.parse(object); }
+            catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
+            try { art.arcane.animus.core.navigation.RoutePause.parse(object); }
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
             try { art.arcane.animus.core.recording.RecordingSource.parse(object); }
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
@@ -167,6 +190,10 @@ public final class NpcDefinition {
             try { art.arcane.animus.core.gui.GuiBinding.parse(object); }
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
             try { art.arcane.animus.core.hire.HireTerms.parse(object); }
+            catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
+            try { art.arcane.animus.core.schedule.ScheduleSettings.parse(object); }
+            catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
+            try { art.arcane.animus.core.integration.MythicBinding.parse(object); }
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
         }
         return List.copyOf(errors);
@@ -221,6 +248,12 @@ public final class NpcDefinition {
         if (id == null || !id.isJsonPrimitive() || !id.getAsString().matches("0|[1-9][0-9]{0,9}")) return Optional.empty();
         return Optional.of(id.getAsString());
     }
+    /** Who sees this NPC; {@link ViewerFilter#NONE} when everyone does. */
+    public ViewerFilter viewers() { return viewers; }
+    /** The boss bar this NPC shows to players near it, when it has one. */
+    public Optional<BossBarSettings> bossBar() { return bossBar; }
+    /** The NPC whose clicks this one passes on: clicking this NPC counts as clicking that one. */
+    public Optional<UUID> clickRedirect() { return data.has(CLICK_REDIRECT) ? Optional.of(UUID.fromString(data.get(CLICK_REDIRECT).getAsString())) : Optional.empty(); }
     /** Behavior references attached to this NPC. Their trigger bindings run once the NPC is active. */
     public List<String> behaviors() { return behaviors; }
     /** Labels the editor uses to find and group NPCs; empty when none are declared. */

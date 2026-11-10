@@ -91,6 +91,17 @@ void main() {
       expect(_problems(_shop(made, grid: 'trade')), isEmpty);
     });
 
+    test('should keep levels only on buy, command and trade entries', () {
+      final JsonMap buy = <String, Object?>{'id': 'b', 'type': 'buy', 'item': <String, Object?>{'id': 'minecraft:apple'}, 'price': 0, 'levels': 3};
+      expect(withShopEntryType(buy, 'command')['levels'], 3);
+      expect(withShopEntryType(buy, 'trade')['levels'], 3);
+      expect(withShopEntryType(buy, 'sell').keys, isNot(contains('levels')));
+      expect(withShopEntryType(buy, 'static').keys, isNot(contains('levels')));
+      expect(withShopEntryType(buy, 'trade', container: true).keys, isNot(contains('levels')));
+      expect(_problems(_shop(buy)), isEmpty);
+      expect(_problems(_shop(<String, Object?>{...buy, 'type': 'sell'}, grid: 'sell')).values, contains('levels are a cost of buy, command and trade entries'));
+    });
+
     test('should drop price and stock in a container shop', () {
       final JsonMap boxed = withShopEntryType(<String, Object?>{...trade, 'price': 5}, 'trade', container: true);
       expect(boxed.keys, isNot(anyOf(contains('price'), contains('stock'))));

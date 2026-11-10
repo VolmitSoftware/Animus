@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000605",
+  "id": "citizens-5",
+  "group": "world",
+  "name": "King",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "851ceffdf2b438f2987502d4250c12fdde95b8cb2caf090a47d291b0a9c4be75",
+    "citizensId": 5,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 10.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "player": {
+    "cape": "hidden",
+    "leftSleeve": "hidden"
+  },
+  "bossBar": {
+    "title": "&6The King",
+    "color": "yellow",
+    "style": "segmented_6",
+    "flags": [
+      "darken_sky",
+      "create_fog"
+    ],
+    "range": 40.0,
+    "progress": "health",
+    "permission": "court.view"
+  },
+  "viewers": {
+    "mode": "allow",
+    "groups": [
+      "nobles"
+    ],
+    "permissions": [
+      "court.enter"
+    ]
+  },
+  "clickRedirect": "0a1b2c3d-0000-4000-8000-000000000606",
+  "modules": {
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "world",
+        "x": 10.5,
+        "y": 64,
+        "z": 0.5
+      },
+      "skinlayers": {
+        "cape": false,
+        "hat": true,
+        "left-sleeve": false
+      },
+      "bossbar": {
+        "title": "&6The King",
+        "color": "YELLOW",
+        "style": "SEGMENTED_6",
+        "flags": [
+          "DARKEN_SKY",
+          "CREATE_FOG"
+        ],
+        "range": 40,
+        "track": "health",
+        "viewPermission": "court.view"
+      },
+      "playerfilter": {
+        "mode": "ALLOWLIST",
+        "groups": [
+          "nobles"
+        ],
+        "permissions": [
+          "court.enter"
+        ]
+      },
+      "clickredirecttrait": {
+        "uuid": "0a1b2c3d-0000-4000-8000-000000000606"
+      },
+      "paintingtrait": {
+        "art": "KEBAB"
+      }
+    }
+  }
+}

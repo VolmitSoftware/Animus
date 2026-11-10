@@ -437,14 +437,16 @@ public final class TriggerDispatcher implements TriggerSink {
     private boolean enqueue(Binding binding, Optional<UUID> player, Map<String, Object> event) {
         Stats stat = binding.stats;
         TriggerBinding.Interaction click = binding.trigger.spec() instanceof TriggerBinding.Interaction interaction && player.isPresent() ? interaction : null;
+        // A proximity trigger with its own player cooldown keeps one per player instead of one for the trigger.
+        OptionalInt nearby = binding.trigger.spec() instanceof TriggerBinding.Proximity proximity && player.isPresent() ? proximity.playerCooldownTicks() : OptionalInt.empty();
         // An interaction trigger's default cooldown is each player's own, so one player's clicks never hold back another's.
-        int cooldown = binding.trigger.cooldownTicks().orElse(click != null || binding.trigger.spec() instanceof TriggerBinding.Timer ? 0 : settings.defaultCooldownTicks());
+        int cooldown = binding.trigger.cooldownTicks().orElse(click != null || nearby.isPresent() || binding.trigger.spec() instanceof TriggerBinding.Timer ? 0 : settings.defaultCooldownTicks());
         if (stat.lastAdmitted >= 0 && tick - stat.lastAdmitted < cooldown) { suppress(binding); return false; }
-        if (click != null) {
-            int own = click.playerCooldownTicks().orElse(binding.trigger.cooldownTicks().isPresent() ? 0 : settings.playerCooldownTicks());
+        if (click != null || nearby.isPresent()) {
+            int own = click != null ? click.playerCooldownTicks().orElse(binding.trigger.cooldownTicks().isPresent() ? 0 : settings.playerCooldownTicks()) : nearby.getAsInt();
             Long last = stat.playerAdmitted.get(player.get());
             if (last != null && tick - last < own) { suppress(binding); return false; }
-            if (!click.queue() && stat.busy.containsKey(player.get())) { drop(binding, DropReason.PLAYER_BUSY); return false; }
+            if (click != null && !click.queue() && stat.busy.containsKey(player.get())) { drop(binding, DropReason.PLAYER_BUSY); return false; }
         }
         UUID npc = binding.definition.uuid();
         if (queue.size() >= settings.maximumQueued()) { drop(binding, DropReason.TOTAL_QUEUE); return false; }
@@ -453,8 +455,8 @@ public final class TriggerDispatcher implements TriggerSink {
         queue.addLast(new Pending(binding, player, event, tick, settings.queueLifetimeTicks()));
         queuedCount = queue.size(); stat.queued = stat.queued + 1; stat.lastAdmitted = tick;
         npcQueued.merge(npc, 1, Integer::sum);
-        if (click != null) {
-            stat.busy.merge(player.get(), 1, Integer::sum);
+        if (click != null) stat.busy.merge(player.get(), 1, Integer::sum);
+        if (click != null || nearby.isPresent()) {
             if (stat.playerAdmitted.size() >= MAX_TRACKED_PLAYERS) stat.playerAdmitted.values().removeIf((Long admitted) -> tick - admitted >= MAX_COOLDOWN_TICKS);
             stat.playerAdmitted.put(player.get(), tick);
         }

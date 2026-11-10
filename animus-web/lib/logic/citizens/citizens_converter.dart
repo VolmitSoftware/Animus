@@ -11,11 +11,15 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 
+import 'citizens_stacks.dart';
+import 'citizens_looks.dart';
 import 'citizens_traits.dart';
 import 'definition_validation.dart';
+import 'destinations.dart';
 import 'field_notes.dart';
 import 'java_json.dart';
 import 'java_lang.dart';
+import 'model_engine.dart';
 import 'presentation.dart';
 import 'runtime_behaviors.dart';
 import 'sentinel.dart';
@@ -25,8 +29,9 @@ import 'trader_builder.dart';
 export 'snake_yaml.dart' show CitizensImportException;
 
 /// Must equal `CitizensImporter.CONVERTER_VERSION`; the shared golden fixtures fail when they drift.
-const int citizensConverterVersion = 15;
+const int citizensConverterVersion = 16;
 const String _healthModule = 'animus:health';
+const String _scheduleModule = 'animus:schedule';
 
 const String _notice =
     'Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.';
@@ -131,6 +136,7 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
   summary.addString('notice', _notice);
   final JObject mapping = _identityMap(npcs);
   final JObject defaults = citizensDefaults(npcs);
+  final Set<String> npcUuids = <String>{for (final MapEntry<String, JElement> entry in mapping.entries) entry.value.asPrimitive.asString};
   final JObject conversions = JObject();
   for (final String counter in const <String>['routes', 'routePoints', 'routeGuides', 'lookClose', 'textBehaviors', 'commandBehaviors', 'skinsKept']) {
     conversions.addInt(counter, 0);
@@ -273,8 +279,28 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
       (modules.get('animus:combat')! as JObject).addBool('targetableByMobs', true);
       if (!modules.has(_healthModule)) modules.add(_healthModule, targetableHealth(record));
     }
+    final JObject? guard = citizensFollow(reviewed, npcUuids);
+    if (guard != null) {
+      if (!modules.has('animus:combat')) modules.add('animus:combat', targetableCombat());
+      final JObject combat = modules.get('animus:combat')! as JObject;
+      if (!combat.has('guard')) combat.add('guard', guard);
+    }
     final JObject? riding = _riding(traits.get('controllable'));
     if (riding != null) modules.add('animus:riding', riding);
+    final ModelEngineResult? model = traits.has(modelEngineTrait) ? mapModelEngine(reviewed.get(modelEngineTrait)!) : null;
+    if (model != null) {
+      if (model.module != null) modules.add(modelEngineModule, model.module);
+      for (final String warning in model.warnings) {
+        migrationWarnings.addString('citizens-$key: $warning');
+      }
+    }
+    final List<String> economyWarnings = <String>[];
+    final Set<String> economyConverted = <String>{};
+    if (!modules.has('animus:shop')) reportCitizensShop(traits.get('shop'), economyWarnings);
+    applyCitizensDrops(reviewed.get('dropstrait'), record, modules, economyWarnings, economyConverted);
+    for (final String warning in economyWarnings) {
+      migrationWarnings.addString('citizens-$key: $warning');
+    }
     if (traits.has(builderTrait)) {
       final BuilderResult build = convertBuilder(reviewed.get(builderTrait));
       modules.add('animus:builder', build.module);
@@ -282,6 +308,7 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
         migrationWarnings.addString('citizens-$key: $warning');
       }
     }
+    final JObject? resume = traits.has(builderTrait) ? builderResume(reviewed.get(builderTrait), key) : null;
     if (traits.has(constructorTrait)) {
       for (final String warning in constructorWarnings(reviewed.get(constructorTrait))) {
         migrationWarnings.addString('citizens-$key: $warning');
@@ -298,8 +325,9 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
       modules.add('animus:look-close', runtime.lookClose);
       if ((runtime.lookClose!.get('enabled')! as JBool).value) _increment(conversions, 'lookClose');
     }
+    // A route's waypoint behavior counts with its route.
     for (final String behavior in runtime.behaviors) {
-      _increment(conversions, behavior.startsWith('citizens:text-') ? 'textBehaviors' : 'commandBehaviors');
+      if (!behavior.startsWith('citizens:waypoints-')) _increment(conversions, behavior.startsWith('citizens:text-') ? 'textBehaviors' : 'commandBehaviors');
     }
     for (final BehaviorDocument document in runtime.documents) {
       writeBundle(document.path, document.content);
@@ -308,10 +336,35 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     for (final String warning in runtime.warnings) {
       migrationWarnings.addString('citizens-$key: $warning');
     }
-    if (!modules.has('animus:navigation') && world.isNotEmpty && citizensWanders(definition.get('type')!.asPrimitive.asString, record)) {
+    final DestinationsResult? schedule =
+        traits.has(destinationsTrait) ? convertDestinations(reviewed.get(destinationsTrait), definition.get('type')!.asPrimitive.asString, world, worldMap) : null;
+    if (schedule != null) {
+      for (final String warning in schedule.warnings) {
+        migrationWarnings.addString('citizens-$key: $warning');
+      }
+      for (final DestinationsSkin skin in schedule.skins) {
+        writeBundle(skin.path, skin.content);
+        skins.add(skin.hash);
+      }
+      if (schedule.module != null) {
+        if (modules.remove('animus:navigation') != null) {
+          migrationWarnings.addString("citizens-$key: NPC Destinations moved this NPC, so its Citizens route was left out; the schedule replaces it");
+        }
+        modules.add(_scheduleModule, schedule.module);
+      }
+    }
+    if (!modules.has('animus:navigation') && !modules.has(_scheduleModule) && world.isNotEmpty && citizensWanders(definition.get('type')!.asPrimitive.asString, record)) {
       modules.add('animus:navigation', vanillaWander(record));
       _increment(conversions, 'routes');
     }
+    if (modules.has('animus:navigation')) {
+      final JObject? pause = citizensPause(reviewed);
+      if (pause != null) (modules.get('animus:navigation')! as JObject).add('pause', pause);
+    }
+    final JObject? home = citizensHome(reviewed, world);
+    if (home != null) modules.add('animus:home', home);
+    final JObject? mirror = citizensMirror(reviewed);
+    if (mirror != null) modules.add('animus:mirror', mirror);
     final TraitsResult state = mapTraits(definition.get('type')!.asPrimitive.asString, record, reviewed, modules.has('animus:combat'),
         modules.has(_healthModule), modules.has('animus:navigation'), runtime.navigation != null, references);
     if (runtime.navigation != null) patrols++;
@@ -319,13 +372,27 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     for (final MapEntry<String, JElement> field in state.fields.entries) {
       definition.add(field.key, field.value);
     }
+    if (schedule != null) mergeDestinationsMovement(definition, schedule.movement);
     if (state.migration.isNotEmpty) migration.add('skin', state.migration);
     for (final String warning in state.warnings) {
       migrationWarnings.addString('citizens-$key: $warning');
     }
+    final LooksResult looks = mapLooks(definition.get('type')!.asPrimitive.asString, reviewed, uuid, !citizensUnprotected(record));
+    for (final MapEntry<String, JElement> field in looks.fields.entries) {
+      definition.add(field.key, field.value);
+    }
+    for (final String warning in looks.warnings) {
+      migrationWarnings.addString('citizens-$key: $warning');
+    }
     if (skinApplied) reviewed.remove('skintrait');
     modules.add('citizens:review', reviewed);
-    if (runtime.behaviors.isNotEmpty) definition.add('behaviors', JArray(<JElement>[for (final String id in runtime.behaviors) JString(id)]));
+    final List<String> listed = List<String>.of(runtime.behaviors);
+    if (resume != null) {
+      writeBundle('behaviors/citizens/builder-$key.json', writeJson(resume));
+      behaviorDocuments++;
+      listed.add(resume.get('id')!.asPrimitive.asString);
+    }
+    if (listed.isNotEmpty) definition.add('behaviors', JArray(<JElement>[for (final String id in listed) JString(id)]));
     definition.add('modules', modules);
     if (skinApplied) {
       final String serialized = writeJson(traits.get('skintrait')!);
@@ -337,12 +404,12 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     final JObject report = JObject();
     report.addInt('citizensId', numeric);
     final JObject fields = JObject();
-    final Map<String, FieldNote> notes = <String, FieldNote>{...presentation.notes, ...runtime.notes, ...state.notes};
+    final Map<String, FieldNote> notes = <String, FieldNote>{...presentation.notes, ...runtime.notes, ...state.notes, ...?schedule?.notes, ...?model?.notes, ...looks.notes};
     if (traits.has('skintrait') && !skinApplied) {
       notes['/traits/skintrait'] = FieldNote(unsupportedPreserved, unusedSkin(definition.get('type')!.asPrimitive.asString));
     }
     final JObject reasons = JObject();
-    _classify(record, '', fields, <String>{...presentation.converted, ...runtime.converted, ...state.converted}, notes, reasons);
+    _classify(record, '', fields, <String>{...presentation.converted, ...runtime.converted, ...state.converted, ...?schedule?.converted, ...economyConverted, ...looks.converted}, notes, reasons);
     report.add('presentationWarnings', JArray(<JElement>[for (final String warning in presentationWarnings) JString(warning)]));
     report.add('runtimeWarnings', JArray(<JElement>[for (final String warning in runtime.warnings) JString(warning)]));
     report.addString('fieldPathFormat', 'json-pointer');
@@ -368,6 +435,7 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
   summary.addInt('valid', valid);
   summary.addInt('skins', skins.length);
   summary.addInt('behaviors', behaviorDocuments);
+  summary.addInt('shops', 0);
   summary.add('conversions', conversions);
   summary.add('citizensDefaults', defaults);
   summary.add('traits', counts);
@@ -513,15 +581,36 @@ void _remapKnownLocations(JObject traits, Map<String, String> worlds, JArray cha
       _remapLocation(sentinel.get(key), '/traits/sentinel/$key', worlds, changes);
     }
   }
+  _remapAnchors(traits.get('anchors'), worlds, changes);
+  final JElement? home = traits.get('hometrait');
+  if (home is JObject) _remapLocation(home.get('location'), '/traits/hometrait/location', worlds, changes);
   final JElement? sit = traits.get('sittrait');
   if (sit is JObject) _remapLocation(sit.get('sittingAt'), '/traits/sittrait/sittingAt', worlds, changes);
+}
+
+/// Anchors are `name;world;x;y;z` text; the world part takes the world mapping like any location.
+void _remapAnchors(JElement? value, Map<String, String> worlds, JArray changes) {
+  if (value is! JObject || value.get('list') is! JObject) return;
+  final JObject list = value.get('list')! as JObject;
+  for (final String key in list.keys.toList()) {
+    final JElement entry = list.get(key)!;
+    if (entry is! JPrimitive) continue;
+    final List<String> parts = entry.asString.split(';');
+    if (parts.length != 5 || !worlds.containsKey(parts[1]) || worlds[parts[1]] == parts[1]) continue;
+    changes.add(JObject()
+      ..addString('source', '/traits/anchors/list/${_pointer(key)}')
+      ..addString('from', parts[1])
+      ..addString('to', worlds[parts[1]]!));
+    parts[1] = worlds[parts[1]]!;
+    list.addString(key, parts.join(';'));
+  }
 }
 
 void _walkWaypointLocations(JElement? value, String path, Map<String, String> worlds, JArray changes) {
   if (value is JObject) {
     for (final MapEntry<String, JElement> entry in value.entries.toList()) {
       final String child = '$path/${_pointer(entry.key)}';
-      if (entry.key == 'location') {
+      if (entry.key == 'location' || entry.key == 'at') {
         _remapLocation(entry.value, child, worlds, changes);
       } else {
         _walkWaypointLocations(entry.value, child, worlds, changes);

@@ -327,6 +327,10 @@ class RouteSpec {
     if (point.containsKey('weight')) {
       check('$field.weight', order != 'random' ? 'is only allowed with order random' : _rangeProblem(point['weight'], 1, routeMaxWeight, ''));
     }
+    if (point.containsKey('speed')) {
+      check('$field.speed', step ? 'requires a position point' : (order == 'wander' ? 'is not allowed with order wander' : _speedProblem(point['speed'])));
+    }
+    if (point.containsKey('teleport')) check('$field.teleport', step ? 'requires a position point' : (order == 'wander' ? 'is not allowed with order wander' : _teleportProblem(point['teleport'])));
     if (!point.containsKey('next')) return found;
     if (order != 'sequence') return found..add(('$field.next', 'is only allowed with order sequence'));
     final Object? next = point['next'];
@@ -466,7 +470,28 @@ JsonMap setRouteNodeField(JsonMap route, String key, int index, String field, Ob
   return <String, Object?>{...route, key: list};
 }
 
-const List<String> _positionFields = <String>['x', 'y', 'z', 'jitter', 'style'];
+const List<String> _positionFields = <String>['x', 'y', 'z', 'jitter', 'style', 'speed', 'teleport'];
+
+String? _speedProblem(Object? value) => value is num && value >= 1 && value <= 5 ? null : 'must be 1..5 blocks/second';
+
+/// What WaypointSettings refuses in a point's teleport: x, y and z, an optional yaw and pitch, nothing else.
+String? _teleportProblem(Object? value) {
+  if (value is! Map<String, Object?>) return 'expected {"x", "y", "z"} with an optional yaw and pitch';
+  for (final String key in value.keys) {
+    if (!const <String>['x', 'y', 'z', 'yaw', 'pitch', 'world'].contains(key)) return 'unknown field $key';
+  }
+  for (final String axis in const <String>['x', 'y', 'z']) {
+    final Object? coordinate = value[axis];
+    if (coordinate is! num || coordinate.abs() > 29999984) return 'needs $axis within the world';
+  }
+  final Object? yaw = value['yaw'];
+  if (yaw != null && (yaw is! num || yaw < -360 || yaw > 360)) return 'yaw must be -360..360 degrees';
+  final Object? world = value['world'];
+  if (world != null && (world is! String || !RegExp(r'^[^\s/\\]{1,64}$').hasMatch(world))) return 'world must be a world name';
+  final Object? pitch = value['pitch'];
+  if (pitch != null && (pitch is! num || pitch < -90 || pitch > 90)) return 'pitch must be -90..90 degrees';
+  return null;
+}
 
 /// The runtime's words for a style it does not know.
 final String _styleProblem = 'must be ${movementStyles.join(', ')}';
@@ -606,7 +631,7 @@ JsonMap setRouteOrder(JsonMap route, String order) {
   bool refused(String field) => switch (field) {
         'weight' => order != 'random',
         'next' => order != 'sequence',
-        'jitter' => order == 'wander',
+        'jitter' || 'speed' || 'teleport' => order == 'wander',
         _ => false,
       };
   if (next['points'] is List<Object?>) {

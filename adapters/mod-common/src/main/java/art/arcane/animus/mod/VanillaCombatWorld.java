@@ -95,14 +95,25 @@ final class VanillaCombatWorld extends RuntimeCombatWorld<ServerPlayer, ItemStac
         return observe(entity(ref.id())).filter((CombatTarget target) -> target.ref().kind() == ref.kind());
     }
 
+    @Override public Optional<CombatTarget> charge(TargetRef ref) {
+        if (ref.kind() == TargetKind.NPC) return Optional.empty();
+        return observe(entity(ref.id()), true).filter((CombatTarget target) -> target.ref().kind() == ref.kind());
+    }
+
+    /** Whether a player in creative or spectator ({@code exempt}) is seen: only as a guard's charge ({@code anyMode}), as on Paper. */
+    static boolean seen(boolean exempt, boolean anyMode) { return !exempt || anyMode; }
+
     /** A combat observation of a living player or mob, or empty when it cannot be a participant. */
-    Optional<CombatTarget> observe(Entity entity) {
+    Optional<CombatTarget> observe(Entity entity) { return observe(entity, false); }
+
+    /** As {@link #observe(Entity)}; with {@code anyMode} a creative or spectator player counts, as a guard's charge. */
+    Optional<CombatTarget> observe(Entity entity, boolean anyMode) {
         if (!(entity instanceof LivingEntity creature) || creature.isRemoved() || creature.isDeadOrDying() || creature.getHealth() <= 0 || helper(entity)) return Optional.empty();
         TargetKind kind;
         Set<TargetCategory> categories;
         String name;
         if (creature instanceof Player player) {
-            if (player.isCreative() || player.isSpectator()) return Optional.empty();
+            if (!seen(player.isCreative() || player.isSpectator(), anyMode)) return Optional.empty();
             kind = TargetKind.PLAYER;
             categories = Set.of(TargetCategory.PLAYERS);
             name = player.getGameProfile().name();

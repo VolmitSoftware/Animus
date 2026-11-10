@@ -1,0 +1,21 @@
+{
+  "name": "Sign",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000613",
+  "traits": {
+    "type": "TEXT_DISPLAY",
+    "location": {
+      "world": "world",
+      "x": 26.5,
+      "y": 64,
+      "z": 0.5
+    },
+    "textdisplaytrait": {
+      "text": "&eWelcome",
+      "alignment": "LEFT",
+      "shadowed": true
+    },
+    "displaytrait": {
+      "billboard": "CENTER"
+    }
+  }
+}

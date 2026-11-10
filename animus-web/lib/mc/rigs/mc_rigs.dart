@@ -9,7 +9,7 @@ import 'mc_entity_rigs.dart';
 import 'mc_player_rig.dart';
 import 'mc_rig.dart';
 
-/// The body types a transport presents (`BodyRules.TYPES`).
+/// The body types a transport presents that the preview draws.
 const List<String> mcBodyTypes = <String>[
   'minecraft:player',
   'minecraft:armor_stand',
@@ -20,6 +20,31 @@ const List<String> mcBodyTypes = <String>[
   'minecraft:armadillo',
   'minecraft:ender_dragon',
 ];
+
+/// Presented body types the preview has no model for: the rest of
+/// `BodyRules.TYPES`, every other living entity and every body with settings
+/// of its own.
+const List<String> mcPlainBodyTypes = <String>[
+  'minecraft:allay', 'minecraft:axolotl', 'minecraft:bat', 'minecraft:bee', 'minecraft:blaze', 'minecraft:block_display', //
+  'minecraft:bogged', 'minecraft:breeze', 'minecraft:camel', 'minecraft:camel_husk', 'minecraft:cat', 'minecraft:cave_spider', //
+  'minecraft:chicken', 'minecraft:cod', 'minecraft:copper_golem', 'minecraft:cow', 'minecraft:creaking', 'minecraft:creeper', //
+  'minecraft:dolphin', 'minecraft:donkey', 'minecraft:drowned', 'minecraft:elder_guardian', 'minecraft:end_crystal', 'minecraft:enderman', //
+  'minecraft:endermite', 'minecraft:evoker', 'minecraft:falling_block', 'minecraft:fox', 'minecraft:ghast', 'minecraft:giant', //
+  'minecraft:glow_item_frame', 'minecraft:glow_squid', 'minecraft:goat', 'minecraft:guardian', 'minecraft:happy_ghast', 'minecraft:hoglin', //
+  'minecraft:husk', 'minecraft:illusioner', 'minecraft:iron_golem', 'minecraft:item', 'minecraft:item_display', 'minecraft:item_frame', //
+  'minecraft:magma_cube', 'minecraft:mannequin', 'minecraft:mooshroom', 'minecraft:mule', 'minecraft:nautilus', 'minecraft:ocelot', //
+  'minecraft:painting', 'minecraft:panda', 'minecraft:parched', 'minecraft:parrot', 'minecraft:phantom', 'minecraft:pig', //
+  'minecraft:piglin', 'minecraft:piglin_brute', 'minecraft:pillager', 'minecraft:polar_bear', 'minecraft:pufferfish', 'minecraft:rabbit', //
+  'minecraft:ravager', 'minecraft:salmon', 'minecraft:sheep', 'minecraft:shulker', 'minecraft:silverfish', 'minecraft:skeleton', //
+  'minecraft:skeleton_horse', 'minecraft:slime', 'minecraft:sniffer', 'minecraft:snow_golem', 'minecraft:spider', 'minecraft:squid', //
+  'minecraft:stray', 'minecraft:strider', 'minecraft:sulfur_cube', 'minecraft:tadpole', 'minecraft:text_display', 'minecraft:trader_llama', //
+  'minecraft:tropical_fish', 'minecraft:vex', 'minecraft:villager', 'minecraft:vindicator', 'minecraft:wandering_trader', //
+  'minecraft:warden', 'minecraft:witch', 'minecraft:wither', 'minecraft:wither_skeleton', 'minecraft:wolf', 'minecraft:zoglin', //
+  'minecraft:zombie', 'minecraft:zombie_horse', 'minecraft:zombie_nautilus', 'minecraft:zombie_villager', 'minecraft:zombified_piglin',
+];
+
+/// Every body type a transport presents, those with a preview model first.
+const List<String> mcPresentedBodyTypes = <String>[...mcBodyTypes, ...mcPlainBodyTypes];
 
 const String mcSteveTexture = 'entity/player/wide/steve';
 const String mcAlexTexture = 'entity/player/slim/alex';

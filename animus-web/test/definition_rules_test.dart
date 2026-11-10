@@ -31,6 +31,15 @@ void main() {
       expect(definitionActivationErrors(_npc(<String, Object?>{'type': 'minecraft:llama'})), isEmpty);
     });
 
+    test('a rig and a Model Engine model cannot share a body', () {
+      const String refused = r'$.modules.animus:modelengine: an NPC shows either a rig or a Model Engine model; remove one';
+      final JsonMap rig = <String, Object?>{'id': 'animus:drake'};
+      JsonMap model(Object? module) => <String, Object?>{'animus:modelengine': module};
+      expect(definitionActivationErrors(_npc(<String, Object?>{'rig': rig, 'modules': model(<String, Object?>{'model': 'drake'})})), <String>[refused]);
+      expect(definitionActivationErrors(_npc(<String, Object?>{'rig': rig, 'modules': model(<String, Object?>{'model': 'drake', 'enabled': false})})), isEmpty);
+      expect(definitionActivationErrors(_npc(<String, Object?>{'modules': model(<String, Object?>{'model': 'drake'})})), isEmpty);
+    });
+
     test('a sitting NPC cannot ride another NPC', () {
       final JsonMap riding = _npc(<String, Object?>{
         'pose': 'sitting',

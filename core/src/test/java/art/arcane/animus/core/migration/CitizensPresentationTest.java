@@ -32,8 +32,9 @@ class CitizensPresentationTest {
         assertEquals("minecraft:iron_leggings", equipment.getAsJsonObject("legs").get("id").getAsString());
         assertEquals("minecraft:golden_boots", equipment.getAsJsonObject("feet").get("id").getAsString());
         assertEquals("minecraft:shield", equipment.getAsJsonObject("off_hand").get("id").getAsString());
-        assertEquals("minecraft:diamond_horse_armor", equipment.getAsJsonObject("body").get("id").getAsString());
-        assertEquals("minecraft:saddle", equipment.getAsJsonObject("saddle").get("id").getAsString());
+        assertFalse(equipment.has("body") || equipment.has("saddle"), "a player body shows neither");
+        assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, result.notes().get("/traits/equipment/body").status());
+        assertFalse(result.converted().contains("/traits/equipment/saddle/type"));
         assertEquals(List.of("/traits/equipment/cosmetic_boots: cosmetic item shown in feet instead of /traits/equipment/boots"), result.warnings());
     }
 
@@ -98,8 +99,9 @@ class CitizensPresentationTest {
                 {"armorstandtrait":{"head":{"x":0.5,"y":0,"z":-0.25},"hasarms":false,"small":true,"visible":false,"marker":true,"gravity":false}}
                 """);
         JsonObject look = stand.fields().getAsJsonObject("armorStand");
-        assertEquals("{\"small\":true,\"arms\":false,\"basePlate\":true,\"invisible\":true,\"head\":[28.648,0.0,-14.324]}", look.toString());
-        assertEquals(List.of("/traits/armorstandtrait: marker is kept for review"), stand.warnings());
+        assertEquals("{\"small\":true,\"arms\":false,\"basePlate\":true,\"invisible\":true,\"head\":[28.648,0.0,-14.324],\"marker\":true}", look.toString());
+        assertEquals(List.of(), stand.warnings());
+        assertTrue(stand.converted().contains("/traits/armorstandtrait/marker"));
         assertFalse(stand.fields().get("gravity").getAsBoolean(), "a stand without gravity hovers");
         assertTrue(stand.converted().contains("/traits/armorstandtrait/gravity"));
         CitizensPresentation.Result defaults = map("armor_stand", "{\"armorstandtrait\":{}}");
@@ -161,7 +163,7 @@ class CitizensPresentationTest {
         assertEquals("CONVERTED", fields.get("/traits/hologramtrait/lines/0").getAsString());
         assertEquals("CONVERTED", fields.get("/traits/sneak/sneaking").getAsString());
         assertEquals(CitizensImporter.CONVERTER_VERSION, preview.converterVersion());
-        assertEquals(15, CitizensImporter.CONVERTER_VERSION);
+        assertEquals(16, CitizensImporter.CONVERTER_VERSION);
     }
 
     @Test void hologramRendererSettingsMarginsAndListInventoriesMap() {

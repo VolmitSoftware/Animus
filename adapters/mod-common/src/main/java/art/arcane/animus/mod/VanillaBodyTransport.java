@@ -232,7 +232,8 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (!player && skin != null) throw new IllegalArgumentException("Skin textures apply only to player bodies");
         EntityType<?> type = entityType(typeKey);
         int reserved = BodyRules.reservedIds(typeKey);
-        ClientboundPlayerInfoUpdatePacket info = player ? playerInfo(uuid, look.profileName(), skin, look.traits().listed()) : null;
+        ClientboundPlayerInfoUpdatePacket info = player ? playerInfo(uuid, look.profileName(), skin, look.traits().listed(),
+                GameType.valueOf(look.traits().variant().choices().getOrDefault("gameMode", "survival").toUpperCase(java.util.Locale.ROOT))) : null;
         int entityId = ids.reserve(reserved + look.extraIds());
         List<Packet<ClientGamePacketListener>> team = look.team() ? bodyTeam(entityId, player ? look.profileName() : uuid.toString(), look) : null;
         return new Body(this, entityId, reserved, uuid, typeKey, type, seat(type), info, look, team);
@@ -242,11 +243,11 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         Vec3 seat = points.getClamped(EntityAttachment.PASSENGER, 0, 0f), attached = points.getClamped(EntityAttachment.VEHICLE, 0, 0f);
         return new SeatGeometry(seat.x(), seat.y(), seat.z(), attached.y());
     }
-    private static ClientboundPlayerInfoUpdatePacket playerInfo(UUID uuid, String name, BodySkin skin, boolean listed) {
+    private static ClientboundPlayerInfoUpdatePacket playerInfo(UUID uuid, String name, BodySkin skin, boolean listed, GameType mode) {
         Multimap<String, Property> values = ArrayListMultimap.create();
         if (skin != null) values.put("textures", new Property("textures", skin.textureValue(), skin.signature()));
         GameProfile profile = new GameProfile(uuid, name, new PropertyMap(values));
-        ClientboundPlayerInfoUpdatePacket.Entry entry = new ClientboundPlayerInfoUpdatePacket.Entry(uuid, profile, listed, 0, GameType.SURVIVAL, null, true, 0, null);
+        ClientboundPlayerInfoUpdatePacket.Entry entry = new ClientboundPlayerInfoUpdatePacket.Entry(uuid, profile, listed, 0, mode, null, true, 0, null);
         EnumSet<ClientboundPlayerInfoUpdatePacket.Action> actions = EnumSet.of(ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER,
                 ClientboundPlayerInfoUpdatePacket.Action.UPDATE_GAME_MODE, ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LISTED,
                 ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LATENCY, ClientboundPlayerInfoUpdatePacket.Action.UPDATE_DISPLAY_NAME,
@@ -320,7 +321,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         // A seated body follows its seat on the client, so the seat carries the movement.
         if (body.seatId >= 0) packets.add(BodyMotion.move(body.seatId, pose.x(), pose.y(), pose.z(), yaw, 0f, pose.onGround()));
         packets.add(BodyMotion.move(body.entityId, pose.x(), pose.y(), pose.z(), yaw, pose.pitch(), pose.onGround()));
-        packets.add(rotateHead(body.entityId, yaw));
+        packets.add(rotateHead(body.entityId, BodyRules.wireYaw(body.typeKey, pose.headYaw())));
         return send(session, body, PacketKind.MOVE, packets);
     }
 
@@ -351,7 +352,10 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
     }
 
     /** The main-arm swing a player shows when placing a block. */
-    @Override public CompletionStage<Void> swing(ServerPlayer viewer, BodyTransport.Body presented) {
+    @Override public CompletionStage<Void> swing(ServerPlayer viewer, BodyTransport.Body presented) { return gesture(viewer, presented, 0); }
+
+    /** One vanilla animate action: an arm swing, waking up or a critical hit. */
+    @Override public CompletionStage<Void> gesture(ServerPlayer viewer, BodyTransport.Body presented, int action) {
         Body body = checkBody(presented);
         Session session = existing(viewer);
         if (session == null) return unwatched("Viewer is not watched");
@@ -359,7 +363,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer(8));
         try {
             buffer.writeVarInt(body.entityId);
-            buffer.writeByte(0);
+            buffer.writeByte(action);
             return send(session, body, PacketKind.METADATA, List.of(ClientboundAnimatePacket.STREAM_CODEC.decode(buffer)));
         } finally { buffer.release(); }
     }
@@ -385,7 +389,8 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
             buffer.writeInt(body.entityId);
             buffer.writeByte(3);
             Packet<ClientGamePacketListener> event = net.minecraft.network.protocol.game.ClientboundEntityEventPacket.STREAM_CODEC.decode(buffer);
-            return send(session, body, PacketKind.METADATA, HEALTH == null ? List.of(event)
+            // A body that is not a living entity has no health for the client to set.
+            return send(session, body, PacketKind.METADATA, HEALTH == null || !art.arcane.animus.core.presentation.VariantWire.living(body.typeKey) ? List.of(event)
                     : List.of(event, new ClientboundSetEntityDataPacket(body.entityId, List.of(SynchedEntityData.DataValue.create(HEALTH, 0f)))));
         } finally { buffer.release(); }
     }
@@ -409,10 +414,11 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (session.visible.get(body.entityId) != body) return failed("Body is not visible to this viewer");
         boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
         Pose pose = look.pose() == NpcPose.SITTING ? Pose.STANDING : Pose.valueOf(look.nativePose());
-        return send(session, body, PacketKind.METADATA, List.of(new ClientboundSetEntityDataPacket(body.entityId, List.of(
-                SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), look.sharedFlags(invisible)),
-                SynchedEntityData.DataValue.create(EntityDataAccess.animus$pose(), pose),
-                SynchedEntityData.DataValue.create(LivingDataAccess.animus$livingFlags(), BodyLook.livingFlags(look.usingItem()))))));
+        List<SynchedEntityData.DataValue<?>> values = new ArrayList<>(List.of(SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), look.sharedFlags(invisible)),
+                SynchedEntityData.DataValue.create(EntityDataAccess.animus$pose(), pose)));
+        if (art.arcane.animus.core.presentation.VariantWire.living(body.typeKey))
+            values.add(SynchedEntityData.DataValue.create(LivingDataAccess.animus$livingFlags(), BodyLook.livingFlags(look.usingItem())));
+        return send(session, body, PacketKind.METADATA, List.of(new ClientboundSetEntityDataPacket(body.entityId, values)));
     }
 
     @Override public CompletionStage<Void> equipment(ServerPlayer viewer, BodyTransport.Body presented, Map<EquipmentSlot, ItemStack> items) {
@@ -650,6 +656,48 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (control != null && control.inbox.active()) control.inbox.heartbeat(System.nanoTime());
     }
 
+    private art.arcane.animus.core.presentation.BodyVariantValues variants;
+    private HolderLookup.Provider variantRegistries;
+
+    /** The body settings reader for these registries, made once per server and reporting what it cannot bind. */
+    private synchronized art.arcane.animus.core.presentation.BodyVariantValues variants(HolderLookup.Provider registries) {
+        if (variants != null && variantRegistries == registries) return variants;
+        try {
+            variants = new art.arcane.animus.core.presentation.BodyVariantValues(new art.arcane.animus.core.presentation.BodyVariantValues.Natives() {
+                @SuppressWarnings({"unchecked", "rawtypes"})
+                @Override public Object value(Object accessor, Object value) { return SynchedEntityData.DataValue.create((net.minecraft.network.syncher.EntityDataAccessor) accessor, value); }
+                @Override public Object item(art.arcane.animus.core.npc.NpcItem item) {
+                    ItemStack stack = VanillaRuntimeHost.stack(registries, item, "$.item", new ArrayList<>());
+                    return stack == null ? null : stack;
+                }
+                @Override public Object blockState(String state) {
+                    try { return net.minecraft.commands.arguments.blocks.BlockStateParser.parseForBlock(registries.lookupOrThrow(net.minecraft.core.registries.Registries.BLOCK), state, false).blockState(); }
+                    catch (com.mojang.brigadier.exceptions.CommandSyntaxException unknown) { return null; }
+                }
+                @Override public Object component(String text) { return ModText.component(text); }
+            }, registries);
+            variantRegistries = registries;
+            variants.report(warnings);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError unavailable) {
+            warnings.accept("NPC body settings unavailable: " + unavailable.getClass().getSimpleName());
+            throw new IllegalStateException(unavailable);
+        }
+        return variants;
+    }
+
+    private int spawnData(HolderLookup.Provider registries, String typeKey, art.arcane.animus.core.npc.BodyVariant variant) {
+        try { return variants(registries).spawnData(typeKey, variant); }
+        catch (ReflectiveOperationException failure) { return 0; }
+    }
+
+    /** The metadata of a body's own settings; none when they cannot be read on this server. */
+    private List<SynchedEntityData.DataValue<?>> variantValues(HolderLookup.Provider registries, String typeKey, art.arcane.animus.core.npc.BodyVariant variant) {
+        List<SynchedEntityData.DataValue<?>> cast = new ArrayList<>();
+        try { for (Object value : variants(registries).values(typeKey, variant)) cast.add((SynchedEntityData.DataValue<?>) value); }
+        catch (ReflectiveOperationException unreadable) { warnings.accept("NPC body settings of " + typeKey + " unavailable: " + unreadable.getClass().getSimpleName()); }
+        return cast;
+    }
+
     private List<Packet<ClientGamePacketListener>> spawnPackets(Body body, BodyPose pose, HolderLookup.Provider registries) {
         List<Packet<ClientGamePacketListener>> packets = new ArrayList<>();
         BodyLook look = body.look;
@@ -660,12 +708,13 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
             packets.add(new ClientboundAddEntityPacket(body.seatId, body.seatUuid, pose.x(), pose.y(), pose.z(), 0f, yaw, seatType, 0, Vec3.ZERO, yaw));
             packets.add(new ClientboundSetEntityDataPacket(body.seatId, seatValues()));
         }
-        packets.add(new ClientboundAddEntityPacket(body.entityId, body.uuid, pose.x(), pose.y(), pose.z(), pose.pitch(), yaw, body.type, 0, Vec3.ZERO, yaw));
-        packets.add(rotateHead(body.entityId, yaw));
+        packets.add(new ClientboundAddEntityPacket(body.entityId, body.uuid, pose.x(), pose.y(), pose.z(), pose.pitch(), yaw, body.type,
+                spawnData(registries, body.typeKey, look.traits().variant()), Vec3.ZERO, BodyRules.wireYaw(body.typeKey, pose.headYaw())));
+        packets.add(rotateHead(body.entityId, BodyRules.wireYaw(body.typeKey, pose.headYaw())));
         List<SynchedEntityData.DataValue<?>> values = new ArrayList<>();
-        if (body.playerInfo != null) values.add(SynchedEntityData.DataValue.create(AvatarDataAccess.animus$skinLayers(), (byte) 0x7f));
+        if (body.playerInfo != null) values.add(SynchedEntityData.DataValue.create(AvatarDataAccess.animus$skinLayers(), art.arcane.animus.core.presentation.VariantWire.skinParts(look.traits().variant())));
         values.addAll(bodyValues(look, body.typeKey));
-        values.addAll(ModBodyVariants.values(body.typeKey, look.traits().variant(), registries));
+        values.addAll(variantValues(registries, body.typeKey, look.traits().variant()));
         if (!values.isEmpty()) packets.add(new ClientboundSetEntityDataPacket(body.entityId, values));
         ClientboundUpdateAttributesPacket attributes = ModAttributes.packet(body.entityId, body.type, look.traits().attributes());
         if (attributes != null) packets.add(attributes);
@@ -686,7 +735,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
         byte flags = look.sharedFlags(invisible);
         if (flags != 0) values.add(SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), flags));
-        if (look.usingItem()) values.add(SynchedEntityData.DataValue.create(LivingDataAccess.animus$livingFlags(), BodyLook.livingFlags(true)));
+        if (look.usingItem() && art.arcane.animus.core.presentation.VariantWire.living(typeKey)) values.add(SynchedEntityData.DataValue.create(LivingDataAccess.animus$livingFlags(), BodyLook.livingFlags(true)));
         if (look.traits().baby()) BodyRules.babyFlag(typeKey).ifPresent((BodyRules.BabyFlag flag) -> values.add(SynchedEntityData.DataValue.create(switch (flag) {
             case AGEABLE -> AgeableDataAccess.animus$baby();
             case ZOMBIE -> ZombieDataAccess.animus$baby();

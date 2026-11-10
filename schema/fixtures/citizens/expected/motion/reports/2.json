@@ -1,0 +1,56 @@
+{
+  "citizensId": 2,
+  "presentationWarnings": [],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/followtrait/followingUUID": "CONVERTED",
+    "/traits/hometrait/location/world": "CONVERTED",
+    "/traits/hometrait/location/x": "CONVERTED",
+    "/traits/hometrait/location/y": "CONVERTED",
+    "/traits/hometrait/location/z": "CONVERTED",
+    "/traits/hometrait/location/yaw": "CONVERTED",
+    "/traits/hometrait/location/pitch": "CONVERTED",
+    "/traits/hometrait/delay": "CONVERTED",
+    "/traits/hometrait/distance": "CONVERTED",
+    "/traits/hometrait/strategy": "CONVERTED",
+    "/traits/anchors/list/0": "CONVERTED",
+    "/traits/anchors/list/1": "CONVERTED",
+    "/traits/anchors/list/2": "UNSUPPORTED_PRESERVED",
+    "/traits/mirrortrait/enabled": "CONVERTED",
+    "/traits/mirrortrait/mirrorName": "CONVERTED",
+    "/traits/mirrortrait/mirrorEquipment": "CONVERTED"
+  },
+  "reasons": {
+    "/traits/anchors/list/2": "not a name;world;x;y;z anchor",
+    "/traits/mirrortrait/enabled": "became animus:mirror",
+    "/traits/mirrortrait/mirrorName": "became animus:mirror",
+    "/traits/mirrortrait/mirrorEquipment": "became animus:mirror"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "old_harbor",
+      "to": "harbor"
+    },
+    {
+      "source": "/traits/anchors/list/0",
+      "from": "old_harbor",
+      "to": "harbor"
+    },
+    {
+      "source": "/traits/hometrait/location",
+      "from": "old_harbor",
+      "to": "harbor"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

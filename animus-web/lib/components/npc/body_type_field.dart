@@ -66,7 +66,7 @@ class _BodyTypeFieldState extends State<BodyTypeField> {
       component.onChanged(text);
       return;
     }
-    if (mcBodyTypes.contains(type)) setState(() => _asking = type);
+    if (mcPresentedBodyTypes.contains(type)) setState(() => _asking = type);
   }
 
   void _submit(String text) {
@@ -89,7 +89,7 @@ class _BodyTypeFieldState extends State<BodyTypeField> {
       SuggestInput(
         value: component.value,
         label: 'Body type',
-        suggestions: <FieldOption>[for (final String body in mcBodyTypes) FieldOption(body)],
+        suggestions: <FieldOption>[for (final String body in mcPresentedBodyTypes) FieldOption(body)],
         onChanged: _typed,
         onSubmit: () => _submit(_draft ?? component.value),
       ),

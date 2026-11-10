@@ -1,0 +1,43 @@
+{
+  "citizensId": 3,
+  "presentationWarnings": [],
+  "runtimeWarnings": [
+    "/traits/lookclose/filter: the filter admits no players, so look-close is off"
+  ],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/hometrait/location/world": "UNSUPPORTED_PRESERVED",
+    "/traits/hometrait/location/x": "UNSUPPORTED_PRESERVED",
+    "/traits/hometrait/location/y": "UNSUPPORTED_PRESERVED",
+    "/traits/hometrait/location/z": "UNSUPPORTED_PRESERVED",
+    "/traits/hometrait/strategy": "UNSUPPORTED_PRESERVED",
+    "/traits/pausepathfinding/rightclick": "UNSUPPORTED_PRESERVED",
+    "/traits/lookclose/enabled": "CONVERTED",
+    "/traits/lookclose/filter": "REQUIRES_REVIEW"
+  },
+  "reasons": {
+    "/traits/hometrait/location/world": "the home is missing or in another world than the NPC; set animus:home by hand",
+    "/traits/hometrait/location/x": "the home is missing or in another world than the NPC; set animus:home by hand",
+    "/traits/hometrait/location/y": "the home is missing or in another world than the NPC; set animus:home by hand",
+    "/traits/hometrait/location/z": "the home is missing or in another world than the NPC; set animus:home by hand",
+    "/traits/hometrait/strategy": "the home is missing or in another world than the NPC; set animus:home by hand",
+    "/traits/pausepathfinding/rightclick": "the NPC has no route to pause",
+    "/traits/lookclose/filter": "the filter admits no players, so look-close is off"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "old_harbor",
+      "to": "harbor"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

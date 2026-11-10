@@ -25,6 +25,8 @@ import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.navigation.MovementSettings;
 import art.arcane.animus.core.navigation.OwnerNavigation;
 import art.arcane.animus.core.navigation.StyledLeg;
+import art.arcane.animus.core.navigation.HomeSettings;
+import art.arcane.animus.core.navigation.RoutePause;
 import art.arcane.animus.core.navigation.WaypointSettings;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NamedPoses;
@@ -131,6 +133,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private final Deque<DefinitionQueue.Change> changes = new ArrayDeque<>();
     final Map<String, Entry> entries = new HashMap<>();
     final Map<UUID, Entry> byUuid = new HashMap<>();
+    /** Values that show a speech bubble, checked each tick for its end. */
+    private final java.util.Set<Value> bubbles = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
     final SpatialNpcIndex index = new SpatialNpcIndex(MAX_ACTIVE);
     private final Map<String, Geometry> geometries = new HashMap<>();
     private final Map<UUID, String> selections = new HashMap<>();
@@ -146,6 +150,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     final DocumentReads<P, I> reads;
     final IdleFalls<P, I> falls;
     private final LookTurns<P, I> looks;
+    private final HomeTurns<P, I> homes;
     private final RigTurns<P, I> rigs;
     private final RuntimeReport<P, I> report;
     MountRuntime<P, I> mountRuntime;
@@ -189,6 +194,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         reads = new DocumentReads<>(this, io);
         falls = new IdleFalls<>(this);
         looks = new LookTurns<>(this);
+        homes = new HomeTurns<>(this);
         rigs = new RigTurns<>(this);
         report = new RuntimeReport<>(this);
         owner();
@@ -208,8 +214,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             geometries.clear();
             for (String type : packets.entityTypes()) {
                 BodyTransport.Body body = packets.createBody(UUID.randomUUID(), type, "Animus", null);
-                geometries.put(type, new Geometry(body.width(), body.height(), body.entityIds().length, body.seat()));
+                // Displays have no size of their own; their NPCs still need a hitbox to be placed and found.
+                geometries.put(type, new Geometry(Math.max(BodyRules.MINIMUM_SIZE, body.width()), Math.max(BodyRules.MINIMUM_SIZE, body.height()), body.entityIds().length, body.seat()));
             }
+            runtime.bodyTypes(packets.entityTypes());
             mountRuntime = new MountRuntime<>(this, packets.riderUnavailable());
             riders = mountRuntime.riders();
             views.readmit();
@@ -259,7 +267,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             for (Entry entry : List.copyOf(entries.values())) remove(entry);
             mountRuntime.close();
         }
-        routes.order.clear(); falls.clear(); rigs.clear(); looks.clear();
+        routes.order.clear(); falls.clear(); rigs.clear(); looks.clear(); homes.clear();
         reads.cancelAll();
         views.forgetPending();
         entries.clear(); byUuid.clear(); selections.clear(); changes.clear(); definitions.clear();
@@ -457,9 +465,13 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     static double moveWidth(PersistedNpcService<?, ?>.Value value) { Hitbox box = value.state.snapshot().bounds(); return RouteRules.hullWidth(box.max().x() - box.min().x()); }
     static double moveHeight(PersistedNpcService<?, ?>.Value value) { return RouteRules.hullHeight(bodyHeight(value)); }
     static void setPose(PersistedNpcService<?, ?>.Value value, float yaw, float pitch, boolean onGround) {
-        if (value.yaw != yaw || value.pitch != pitch || value.onGround != onGround) {
-            value.yaw = yaw; value.pitch = pitch; value.onGround = onGround; value.poseRevision++;
+        if (value.yaw != yaw || value.headYaw != yaw || value.pitch != pitch || value.onGround != onGround) {
+            value.yaw = yaw; value.headYaw = yaw; value.pitch = pitch; value.onGround = onGround; value.poseRevision++;
         }
+    }
+    /** Turns only the head: the body keeps its yaw, as Citizens' head-only looking does. */
+    static void setHead(PersistedNpcService<?, ?>.Value value, float headYaw, float pitch) {
+        if (value.headYaw != headYaw || value.pitch != pitch) { value.headYaw = headYaw; value.pitch = pitch; value.poseRevision++; }
     }
 
     // ---- State, combat and looks ----
@@ -518,6 +530,21 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         owner(); Entry entry = byUuid.get(npc);
         return entry == null || entry.value == null ? Optional.empty() : Optional.of(entry.value.spec.position());
     }
+    @Override public art.arcane.animus.core.npc.NpcAnchors.Anchor anchor(String id, String name) {
+        return art.arcane.animus.core.npc.NpcAnchors.parse(navigable(id).spec.definition().json()).find(name)
+                .orElseThrow(() -> new IllegalArgumentException("The NPC has no anchor named " + name));
+    }
+    @Override public void animate(String id, art.arcane.animus.core.npc.NpcAnimation animation) {
+        Value value = navigable(id);
+        animation.pose().ifPresent((NpcPose pose) -> {
+            if (!pose.availableFor(value.spec.type())) throw new IllegalArgumentException(value.spec.type() + " bodies cannot " + animation.key());
+            changeLook(value, pose, value.lookMotion);
+        });
+        if (animation == art.arcane.animus.core.npc.NpcAnimation.USE_ITEM || animation == art.arcane.animus.core.npc.NpcAnimation.STOP_USING_ITEM)
+            changeLook(value, value.lookPose, animation == art.arcane.animus.core.npc.NpcAnimation.USE_ITEM ? value.lookMotion | BodyLook.USING_ITEM : value.lookMotion & ~BodyLook.USING_ITEM);
+        if (animation == art.arcane.animus.core.npc.NpcAnimation.SWING) swing(value);
+        else if (animation.gesture() != -1) { value.gesture = animation.gesture(); value.gestures++; value.gesturedAt = tickNumber; }
+    }
     /** Swings the NPC's arm for everyone who sees it. */
     public void swing(String id) {
         if (!available()) return;
@@ -530,7 +557,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     public void attackSwing(String id) {
         if (!available()) return;
         owner(); Value value = value(id);
-        if (value != null) value.attackSwings++;
+        if (value != null) { value.attackSwings++; value.foughtAt = tickNumber; }
     }
     /** Raises or lowers the NPC's bow for everyone who sees it. */
     public void drawing(String id, boolean drawing) {
@@ -618,6 +645,33 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         }
         views.represent(value);
     }
+    /** Runtime-only, like appearance. A seat comes or goes with sitting, so viewers then receive a fresh body. */
+    @Override public void rest(String id, NpcPose pose) {
+        Value value = navigable(id);
+        if (!pose.availableFor(value.spec.type())) throw new IllegalArgumentException("Only player bodies rest " + pose.key());
+        if (pose == NpcPose.SITTING && value.mountReference != null) throw new IllegalArgumentException("A sitting NPC cannot also ride another NPC");
+        boolean seated = value.lookPose == NpcPose.SITTING;
+        changeLook(value, pose, 0);
+        if (seated != (pose == NpcPose.SITTING)) views.represent(value);
+    }
+    @Override public void bubble(String id, String text, int ticks) {
+        Value value = navigable(id);
+        value.bubble = text;
+        value.bubbleUntil = tickNumber + Math.max(1, ticks);
+        bubbles.add(value);
+        views.represent(value);
+    }
+    /** Bubbles whose time ended leave their bodies. */
+    private void endBubbles() {
+        for (java.util.Iterator<Value> shown = bubbles.iterator(); shown.hasNext(); ) {
+            Value value = shown.next();
+            if (value.bubble != null && value.bubbleUntil > tickNumber) continue;
+            shown.remove();
+            if (value.bubble == null) continue;
+            value.bubble = null;
+            views.represent(value);
+        }
+    }
     /** An empty stack clears the slot. Runtime-only, like appearance. */
     @Override public void setAttribute(String id, String attribute, OptionalDouble next) {
         Value value = navigable(id);
@@ -668,6 +722,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             // Completion work is bounded independently of connection count and packet acknowledgments.
             views.drainCompletions(settings.packetsPerTick() * 2);
             reads.drain();
+            if (!bubbles.isEmpty()) endBubbles();
             boolean forced = refresh.getAndSet(false);
             Map<String, NpcDefinition> snapshot = runtime.npcs().snapshot();
             if (snapshot.size() > MAX_DEFINITIONS) throw new IllegalStateException("Definition runtime limit exceeded: " + MAX_DEFINITIONS);
@@ -700,6 +755,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             rigs.tick();
             mark = metrics.lap(Subsystem.RIGS, mark);
             looks.tick();
+            homes.tick();
             if (!available()) return; // Arrival listeners may disable the plugin or retire the entire runtime.
             mountRuntime.syncPassengers();
             mountRuntime.tickDragons();
@@ -791,6 +847,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         mountRuntime.activated(entry.value);
         if (entry.value.rigId != null) rigs.add(entry.value);
         if (entry.value.lookClose != null) looks.add(entry.value);
+        if (entry.value.home != null) homes.add(entry.value);
         if (!sameNpc) {
             if (triggers != null) triggers.activated(spec.definition().uuid());
             host.npcSpawned(spec.definition().uuid(), spec.definition().id(), state.snapshot().position());
@@ -817,7 +874,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         reads.cancelRoute(old);
         reads.cancelAppearance(old);
         rigs.remove(old);
-        looks.remove(old);
+        looks.remove(old); homes.remove(old);
         UUID uuid = old.spec.definition().uuid(); byUuid.remove(uuid, entry); index.remove(uuid); old.state.despawn();
         views.represent(old);
     }
@@ -880,7 +937,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         closeQuietly(settingsSubscription);
         previews.close();
         closeQuietly(ticker);
-        routes.close(); falls.clear(); rigs.clear(); looks.clear(); if (navigation != null) navigation.close();
+        routes.close(); falls.clear(); rigs.clear(); looks.clear(); homes.clear(); if (navigation != null) navigation.close();
         reads.cancelAll();
         views.clear();
         entries.values().forEach((Entry entry) -> { if (entry.value != null) { routes.failWatch(entry.value, "cancelled: runtime shutdown"); entry.value.state.despawn(); index.remove(entry.value.spec.definition().uuid()); } });
@@ -896,9 +953,15 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     final class Value {
         final DefinitionSpec<I> spec; final BodySkin skin; final VirtualNpcState state; final int ids;
         final DefinitionAuthority authority;
-        float yaw, pitch; boolean onGround = true; long poseRevision, arrivals;
+        float yaw, headYaw, pitch; boolean onGround = true; long poseRevision, arrivals;
+        /** A per-player look-close NPC with someone in range: each viewer is shown the NPC looking at them. */
+        boolean lookingAtViewers;
+        /** The player look-close looked at last, and when a switching NPC may pick another. */
+        P lookingAt; long nextSwitch;
         /** Arm swings so far and the tick of the last; each viewer sends one swing for any number since its last. */
         long swings, swungAt;
+        /** One-off gestures so far, the last one's animate action (or the hurt flash) and its tick; each viewer sends the latest. */
+        long gestures, gesturedAt; int gesture;
         RouteNavigator<P, I>.Route route; WaypointProgress waypoints; String navigationStatus = "idle", routeError;
         /** The log already said terrain blocks one of this NPC's legs. */
         boolean blockedWarned;
@@ -923,22 +986,36 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         final MountReference mountReference; final RideSettings ride; final SeatGeometry seat;
         boolean supportQueued; double fallSpeed;
         final LookClose lookClose; long nextLook, nextRandomLook;
+        /** The navigation module's pause, and when this NPC's route stands still. */
+        final RoutePause pause; final RoutePause.Clock pauseClock = new RoutePause.Clock();
+        /** The animus:home module, the tick the NPC last stopped being busy or at home, and its next check. */
+        final HomeSettings home; long idleSince, nextHome;
+        /** Each viewer sees its own skin or name on this NPC; null shows the NPC's own. */
+        final art.arcane.animus.core.presentation.MirrorSettings mirror;
+        /** The NPC guards a player or NPC by its definition, and the tick of its last attack: either keeps it from going home. */
+        final boolean guards; long foughtAt = Long.MIN_VALUE / 2;
         MovementSettings movement; boolean falls; final boolean routeSpeedDeclared; final DoorPassage doors;
         /** The definition's attributes with runtime changes on top; {@link #attributeRevision} moves with every runtime change. */
         NpcAttributes attributes; long attributeRevision;
         final DragonMotion dragonMotion = new DragonMotion(); int dragonPhase = DragonBody.PHASE_HOVERING;
         CompletableFuture<Void> routeWatch;
         String displayName; BodySkin displaySkin; DocumentReads<P, I>.AppearanceRead appearanceTask;
+        /** The speech bubble shown over the body, or null, and the tick it ends on. */
+        String bubble; long bubbleUntil;
         final Map<EquipmentSlot, I> equipment = new EnumMap<>(EquipmentSlot.class);
         long equipmentRevision;
         final String rigId; NpcRig<I> rig; String rigProblem; long rigGeneration;
         Value(DefinitionSpec<I> spec, BodySkin skin, VirtualNpcState state, int ids, SeatGeometry seat) {
-            this.spec = spec; this.skin = skin; this.state = state; this.ids = ids; this.seat = seat; yaw = spec.yaw(); pitch = spec.pitch();
+            this.spec = spec; this.skin = skin; this.state = state; this.ids = ids; this.seat = seat; yaw = spec.yaw(); headYaw = yaw; pitch = spec.pitch();
             displayName = spec.name(); displaySkin = skin;
             equipment.putAll(NpcPresentation.equipment(spec, host::copy)); equipmentRevision = equipment.isEmpty() ? 0 : 1;
             mountReference = MountDeclaration.parse(spec.definition().json()).orElse(null);
             ride = RideSettings.parse(spec.definition().json()).orElse(null);
             lookClose = LookClose.parse(spec.definition().json()).orElse(null);
+            pause = RoutePause.parse(spec.definition().json()).orElse(null);
+            home = HomeSettings.parse(spec.definition().json()).orElse(null);
+            mirror = art.arcane.animus.core.presentation.MirrorSettings.parse(spec.definition().json()).orElse(null);
+            guards = home != null && HomeSettings.guards(spec.definition().json());
             attributes = spec.appearance().traits().attributes();
             movement = MovementSettings.parse(spec.definition().json());
             doors = new DoorPassage(spec.definition().uuid());

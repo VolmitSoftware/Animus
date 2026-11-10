@@ -56,7 +56,7 @@ final class CommandTreeHints {
             if (active == null || !type.isInstance(event) || !(event instanceof PlayerEvent playerEvent)) return;
             try {
                 if (!event.isAsynchronous() && (boolean) firedAsync.invoke(event)) return;
-                rewrite((CommandNode<?>) tree.invoke(event), labels, active.engine().getRoot(), actor.apply(playerEvent.getPlayer()));
+                rewrite((CommandNode<?>) tree.invoke(event), labels, active, actor.apply(playerEvent.getPlayer()));
             } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
                 log.fine("Command hints skipped for " + playerEvent.getPlayer().getName() + ": " + failure);
             }
@@ -65,24 +65,24 @@ final class CommandTreeHints {
 
     /** Replaces each label's free-text node under {@code root} with the actor's own tree. */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    static void rewrite(CommandNode<?> root, List<String> labels, DirectorRuntimeNode commands, CommandActor actor) throws ReflectiveOperationException {
+    static void rewrite(CommandNode<?> root, List<String> labels, AnimusDirector director, CommandActor actor) throws ReflectiveOperationException {
         for (String label : labels) {
             if (root.getChild(label) == null) continue;
             remove(root, label);
-            ((CommandNode) root).addChild(tree(label, commands, actor));
+            ((CommandNode) root).addChild(tree(label, director.engine().getRoot(), director, actor));
         }
     }
 
     /** The literal tree of {@code node} as {@code name}, listing only what the actor may run. */
-    static LiteralCommandNode<Object> tree(String name, DirectorRuntimeNode node, CommandActor actor) {
+    static LiteralCommandNode<Object> tree(String name, DirectorRuntimeNode node, AnimusDirector director, CommandActor actor) {
         LiteralArgumentBuilder<Object> literal = LiteralArgumentBuilder.literal(name);
         if (!node.isInvocable()) {
             literal.executes(RUNS);
             literal.then(LiteralArgumentBuilder.literal(HELP).executes(RUNS)
                     .then(RequiredArgumentBuilder.argument(PAGE, IntegerArgumentType.integer(0)).executes(RUNS)));
             for (DirectorRuntimeNode child : node.getChildren()) {
-                if (!runnable(actor, child)) continue;
-                for (String alias : child.allNames()) literal.then(tree(alias, child, actor));
+                if (!runnable(director, actor, child)) continue;
+                for (String alias : child.allNames()) literal.then(tree(alias, child, director, actor));
             }
             return literal.build();
         }
@@ -92,9 +92,9 @@ final class CommandTreeHints {
         return literal.build();
     }
 
-    /** Listed or hidden, what the actor may run; a hidden command still answers the chat chips that run it. */
-    private static boolean runnable(CommandActor actor, DirectorRuntimeNode node) {
-        return AnimusDirector.visible(actor, node) || node.getDescriptor().isHidden() && AnimusDirector.allowed(actor, node);
+    /** Listed or hidden, what the actor may run with the plugins running; a hidden command still answers the chat chips that run it. */
+    private static boolean runnable(AnimusDirector director, CommandActor actor, DirectorRuntimeNode node) {
+        return director.visible(actor, node) || node.getDescriptor().isHidden() && AnimusDirector.allowed(actor, node) && director.needs(node).isEmpty();
     }
 
     /** Paper's Brigadier removes a child by name; plain Brigadier needs its maps edited. */

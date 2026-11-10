@@ -44,7 +44,7 @@ class AdministrationTest {
             String hash = "ab".repeat(32);
             IOException missing = assertThrows(IOException.class, () -> admin.edit("guard", "{\"skin\": \"" + hash + "\"}"));
             assertEquals("$.skin: no skin file skins/" + hash + ".json", missing.getMessage());
-            assertEquals(java.util.Optional.empty(), Administration.patchProblem(runtime.documents(), com.google.gson.JsonParser.parseString("{\"migration\": null, \"name\": \"A\"}").getAsJsonObject()));
+            assertEquals(java.util.Optional.empty(), Administration.patchProblem(runtime, com.google.gson.JsonParser.parseString("{\"migration\": null, \"name\": \"A\"}").getAsJsonObject()));
             List.of(admin.delete("deputy"));
         }
         try (AnimusRuntime runtime = new AnimusRuntime(environment)) {
@@ -127,6 +127,25 @@ class AdministrationTest {
             assertTrue(runtime.npcs().find("bob").orElseThrow().spawned());
         }
     }
+    @Test void aTemplateLaysItsLookOverTheNewNpcButKeepsAGivenName() throws Exception {
+        try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            Administration.Creation creation = admin.creation("king", "minecraft:armor_stand", "world", new art.arcane.animus.core.virtual.Vec3(0, 64, 0), 0, "", "king", Optional.empty(), true);
+            com.google.gson.JsonObject fields = com.google.gson.JsonParser.parseString("""
+                    {"type":"minecraft:armor_stand","name":"&6Skeleton King","glowing":true,
+                     "equipment":{"head":{"id":"minecraft:golden_helmet"}},"modules":{"mythic:mob":{"mob":"SkeletonKing"}}}""").getAsJsonObject();
+            Administration.Creation shown = admin.templated(creation, fields, false);
+            com.google.gson.JsonObject document = shown.draft().document();
+            assertEquals("&6Skeleton King", shown.definition().name());
+            assertTrue(document.get("glowing").getAsBoolean());
+            assertEquals("minecraft:golden_helmet", document.getAsJsonObject("equipment").getAsJsonObject("head").get("id").getAsString());
+            assertEquals("SkeletonKing", document.getAsJsonObject("modules").getAsJsonObject("mythic:mob").get("mob").getAsString());
+            assertEquals(creation.definition().uuid(), shown.definition().uuid());
+            assertEquals("king", admin.templated(creation, fields, true).definition().name());
+            com.google.gson.JsonObject broken = com.google.gson.JsonParser.parseString("{\"equipment\":{\"wings\":{\"id\":\"minecraft:elytra\"}}}").getAsJsonObject();
+            assertTrue(assertThrows(java.io.IOException.class, () -> admin.templated(creation, broken, false)).getMessage().contains("$.equipment.wings"));
+        }
+    }
     @Test void renameAndMoveRewriteTheDefinition() throws Exception {
         try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
             runtime.start(); Administration admin = new Administration(runtime);
@@ -144,13 +163,14 @@ class AdministrationTest {
     @Test void aBodyAnimusCannotShowIsRefusedAtCreateAndEdit() throws Exception {
         try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
             runtime.start(); Administration admin = new Administration(runtime);
-            String bodies = "minecraft:armadillo, minecraft:armor_stand, minecraft:ender_dragon, minecraft:frog, minecraft:horse, minecraft:llama, minecraft:player, minecraft:turtle";
-            assertEquals("villager cannot be shown; the bodies Animus shows are " + bodies,
-                    assertThrows(IOException.class, () -> admin.create("v", "villager", "world", 1, 64, 2, "", "V")).getMessage());
+            String bodies = String.join(", ", art.arcane.animus.core.presentation.BodyRules.TYPES.stream().sorted().toList());
+            assertTrue(bodies.contains("minecraft:painting") && bodies.contains("minecraft:zombie"), bodies);
+            assertEquals("marker cannot be shown; the bodies Animus shows are " + bodies,
+                    assertThrows(IOException.class, () -> admin.create("v", "marker", "world", 1, 64, 2, "", "V")).getMessage());
             List.of(admin.create("steed", "llama", "world", 1, 64, 2, "", "Steed"));
             assertEquals("minecraft:llama", runtime.npcs().find("steed").orElseThrow().json().get("type").getAsString(), "a bare type is saved namespaced");
-            assertEquals("$.type: minecraft:zombie cannot be shown; the bodies Animus shows are " + bodies,
-                    assertThrows(IOException.class, () -> admin.edit("steed", "{\"type\":\"minecraft:zombie\"}")).getMessage());
+            assertEquals("$.type: minecraft:marker cannot be shown; the bodies Animus shows are " + bodies,
+                    assertThrows(IOException.class, () -> admin.edit("steed", "{\"type\":\"minecraft:marker\"}")).getMessage());
         }
     }
     @Test void plainRepliesForBadJsonUnknownIdsAndRepeatedRollbacks() throws Exception {
@@ -264,6 +284,45 @@ class AdministrationTest {
             assertTrue(runtime.npcs().all().isEmpty());
         }
         try (AnimusRuntime runtime = new AnimusRuntime(environment)) { runtime.start(); assertTrue(runtime.npcs().all().isEmpty()); }
+    }
+
+    /** create and edit take every body the server's transport shows, such as any living entity on Bukkit. */
+    @Test void createAndEditTakeTheBodiesTheServerShows() throws Exception {
+        try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            java.util.Set<String> shown = new java.util.HashSet<>(art.arcane.animus.core.presentation.BodyRules.TYPES);
+            shown.remove("minecraft:zombie");
+            runtime.bodyTypes(shown);
+            IOException refused = assertThrows(IOException.class, () -> admin.create("walker", "minecraft:zombie", "world", 1, 64, 2, "", "Walker"));
+            assertTrue(refused.getMessage().startsWith("minecraft:zombie cannot be shown"), refused.getMessage());
+            shown.add("minecraft:zombie");
+            runtime.bodyTypes(shown);
+            admin.create("walker", "minecraft:zombie", "world", 1, 64, 2, "", "Walker");
+            assertEquals("minecraft:zombie", runtime.npcs().find("walker").orElseThrow().json().get("type").getAsString());
+            admin.edit("walker", "{\"type\":\"minecraft:villager\"}");
+            assertEquals("minecraft:villager", runtime.npcs().find("walker").orElseThrow().json().get("type").getAsString());
+            assertTrue(Administration.patchProblem(runtime, com.google.gson.JsonParser.parseString("{\"type\":\"minecraft:marker\"}").getAsJsonObject()).isPresent());
+        }
+    }
+
+    /** Chat shows ids cut to 12 characters with the full id on click; a typed short id answers as the full one. */
+    @Test void importCommandsTakeTheShortIdChatShows() throws Exception {
+        try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            Path input = runtime.documents().resolve("imports/inbox/sample.yml"); Files.createDirectories(input.getParent());
+            Files.writeString(input, "{\"npc\":{\"1\":{\"uuid\":\"00000000-0000-0000-0000-000000000001\",\"name\":\"Guard\",\"traits\":{\"type\":\"PLAYER\",\"location\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0}}}}}");
+            String preview = id("Preview ", admin.preview("sample.yml", Optional.empty(), Map.of()).getFirst());
+            String application = id("Application ", admin.stage(preview.substring(0, 12), "reject", Optional.empty()).getFirst());
+            assertTrue(RichText.plain(admin.applyPlan(preview.substring(0, 12), application.substring(0, 12)).getFirst()).startsWith("[Animus]: Installed dormant NPCs; tx "));
+            Files.writeString(input, Files.readString(input).replace("000000000001", "000000000002").replace("\"1\"", "\"2\""));
+            String second = id("Preview ", admin.preview("sample.yml", Optional.empty(), Map.of()).getFirst());
+            assertTrue(RichText.plain(admin.apply(second.substring(0, 12)).getFirst()).startsWith("[Animus]: Installed"), "apply takes the short id too");
+            assertEquals(2, runtime.npcs().all().size());
+            IOException unknown = assertThrows(IOException.class, () -> admin.apply("0123456789ab"));
+            assertEquals("No import id starts with 0123456789ab", unknown.getMessage());
+            IOException tooShort = assertThrows(IOException.class, () -> admin.apply("abc"));
+            assertEquals("Give the import id from the preview, at least its first 8 characters", tooShort.getMessage());
+        }
     }
 
     private static String transaction(String receipt) {

@@ -11,6 +11,7 @@ String kindListPurpose(DocumentKind kind) => switch (kind) {
       DocumentKind.behavior => 'Behaviors are node graphs that tell NPCs what to do and when.',
       DocumentKind.pack => 'Packs bundle behaviors to install or share together.',
       DocumentKind.shop => 'Shops are trade offers an NPC opens for players.',
+      DocumentKind.quest => 'Quests are stages of objectives an NPC offers, with rewards at the end.',
       DocumentKind.inventory => 'Chest GUIs are clickable chest menus for players.',
       DocumentKind.menu => 'Menus are clickable holographic menus placed in the world.',
       DocumentKind.hologram => 'Holograms are floating lines of text and items in the world.',

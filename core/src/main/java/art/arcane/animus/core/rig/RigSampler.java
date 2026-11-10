@@ -7,7 +7,7 @@ import java.util.Optional;
 
 /**
  * Samples a rig's bones for a list of playing layers at one moment. Pure and platform free; the browser editor's Dart
- * sampler implements the same rules, pinned by {@code schema/fixtures/animation/samples/}. See dev/editor-contracts.md.
+ * sampler implements the same rules, pinned by {@code schema/fixtures/animation/samples/}.
  */
 public final class RigSampler {
     private RigSampler() {}

@@ -114,8 +114,8 @@ void main() {
     });
 
     test('should list the body types when the type is not one', () {
-      final NpcScene scene = npcScene(NpcLook.fromDefinition(<String, Object?>{'type': 'minecraft:zombie'}));
-      expect(scene.notes.single, allOf(contains('minecraft:zombie is not a body type'), contains('minecraft:armor_stand'), contains('minecraft:ender_dragon')));
+      final NpcScene scene = npcScene(NpcLook.fromDefinition(<String, Object?>{'type': 'minecraft:marker'}));
+      expect(scene.notes.single, allOf(contains('minecraft:marker is not a body type'), contains('minecraft:armor_stand'), contains('minecraft:ender_dragon')));
     });
   });
 

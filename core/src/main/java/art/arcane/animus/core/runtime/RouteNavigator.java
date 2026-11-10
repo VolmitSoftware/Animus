@@ -14,6 +14,7 @@ import art.arcane.animus.core.navigation.NavigationPlan;
 import art.arcane.animus.core.navigation.PathExecution;
 import art.arcane.animus.core.navigation.PathPlanner;
 import art.arcane.animus.core.navigation.StyledLeg;
+import art.arcane.animus.core.navigation.RoutePause;
 import art.arcane.animus.core.navigation.WaypointSettings;
 import art.arcane.animus.core.recording.RecordingRun;
 import art.arcane.animus.core.recording.RouteRecordings;
@@ -200,7 +201,7 @@ final class RouteNavigator<P, I> {
         WaypointSettings waypointSettings = progress.settings();
         WorldPosition at = value.state.snapshot().position();
         WorldPosition goal = leg.goal() == null ? at : new WorldPosition(at.world(), leg.goal());
-        double speed = value.movement.routeSpeed(value.routeSpeedDeclared, waypointSettings.speed());
+        double speed = progress.speed(value.movement.routeSpeed(value.routeSpeedDeclared, waypointSettings.speed()));
         MovementStyle style = waypointSettings.styleTo(leg.arrival());
         MovementProfile.Mode mode = value.movement.legMode(waypointSettings.mode(), style);
         if (leg.goal() != null) {
@@ -361,6 +362,14 @@ final class RouteNavigator<P, I> {
         route.awake = !service.playersNear(route.value.state.snapshot().position(), service.settings.viewDistance(), 1).isEmpty();
         return route.awake;
     }
+    /** Whether the NPC's route pause holds it now; a player within its range starts one, at most every few ticks. */
+    private boolean paused(PersistedNpcService<P, I>.Value value, long tick) {
+        RoutePause pause = value.pause;
+        if (pause == null) return false;
+        if (pause.playerRange() > 0 && value.pauseClock.checkDue(tick)
+                && !service.playersNear(value.state.snapshot().position(), pause.playerRange(), 1).isEmpty()) value.pauseClock.pause(pause, tick);
+        return value.pauseClock.paused(tick);
+    }
     private RouteScheduler.Result workRoute(Route route) {
         PersistedNpcService<P, I>.Value value = route.value;
         long tick = service.tickNumber;
@@ -380,6 +389,11 @@ final class RouteNavigator<P, I> {
             value.route = null;
             startStep(value, route.leg);
             return RouteScheduler.Result.DONE;
+        }
+        if (route.leg != null && paused(value, tick)) {
+            route.progressTick = tick;
+            status(route, "paused", "");
+            return RouteScheduler.Result.KEEP;
         }
         String world = route.goal.world();
         if (!service.host.worldLoaded(world)) { stopRoute(value, "cancelled: world unavailable"); return RouteScheduler.Result.DONE; }
@@ -574,11 +588,24 @@ final class RouteNavigator<P, I> {
         PersistedNpcService<P, I>.Entry entry = service.byUuid.get(value.spec.definition().uuid());
         if (!service.available() || entry == null || entry.value != value || value.route != null || value.waypoints != progress || progress == null
                 || !value.state.snapshot().active() || !value.authority.accepts(service.runtime.npcs().snapshot().get(entry.id))) return;
+        teleport(value, progress.settings().teleportAt(route.waypoint));
         Optional<WaypointProgress.Leg> next = route.leg == null ? Optional.empty() : progress.arrived(route.leg, value.state.snapshot().position().point());
         if (next.isPresent()) beginLeg(value, next);
         else finishWatch(value);
     }
 
+    /** A point's teleport moves the NPC before its wait; terrain that is not loaded or not clear leaves it where it arrived. */
+    private void teleport(PersistedNpcService<P, I>.Value value, WaypointSettings.Teleport teleport) {
+        if (teleport == null) return;
+        WorldPosition at = value.state.snapshot().position();
+        String world = teleport.world() == null ? at.world() : service.host.resolveWorld(teleport.world()).orElse(null);
+        if (world == null) { service.host.warn("NPC " + value.spec.definition().id() + " could not teleport: world " + teleport.world() + " is not loaded"); return; }
+        if (!service.relocate(value.spec.definition().id(), new WorldPosition(world, teleport.position()))) {
+            service.host.warn("NPC " + value.spec.definition().id() + " could not teleport to " + teleport.position() + ": the place is not loaded or not clear");
+            return;
+        }
+        PersistedNpcService.setPose(value, teleport.yaw() == null ? value.yaw : teleport.yaw(), teleport.pitch() == null ? value.pitch : teleport.pitch(), true);
+    }
     final class Route {
         final UUID id = UUID.randomUUID(); final PersistedNpcService<P, I>.Value value; final WorldPosition goal;
         final MovementProfile.Mode mode; final double speed; final int waypoint; final WaypointProgress.Leg leg;

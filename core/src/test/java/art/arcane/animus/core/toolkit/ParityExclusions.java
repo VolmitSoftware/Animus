@@ -16,6 +16,8 @@ final class ParityExclusions {
             "group",
             // The Skins screen sets it from a player or a saved skin file.
             "skin",
+            // Anchors are saved where the player stands with /animus npc anchor, which lists and removes them too.
+            "anchors.*",
             // Items: the Equipment screen sets worn and held items; stored inventory and hire costs stay in the web editor.
             "equipment.*",
             "inventory.slots.*",
@@ -25,6 +27,9 @@ final class ParityExclusions {
             // The [min, max] form of a wait; the screens set a fixed number of ticks.
             "modules.animus:navigation.waitTicks[]",
             "modules.animus:navigation.points[].waitTicks[]",
+            // A schedule's stay range and wander are set with /animus schedule add (stay=60-120, wander=4) or in the web editor.
+            "modules.animus:schedule.locations[].staySeconds[]",
+            "modules.animus:schedule.locations[].wander*",
             // Recording steps are written by the recorder, not by hand.
             "modules.animus:navigation.points[].fromTick",
             "modules.animus:navigation.points[].toTick",

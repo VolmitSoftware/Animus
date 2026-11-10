@@ -22,11 +22,47 @@
               "permission": "town.scribe"
             },
             "then": {
-              "type": "action",
-              "capability": "animus:command",
+              "type": "condition",
+              "capability": "animus:flag-state",
               "arguments": {
-                "command": "give {player_name} minecraft:paper 1",
-                "as": "console"
+                "name": "commands-3-0-cooldown",
+                "scope": "relationship"
+              },
+              "then": {
+                "type": "action",
+                "capability": "animus:message",
+                "arguments": {
+                  "text": "Please wait before using this again."
+                }
+              },
+              "else": {
+                "type": "sequence",
+                "steps": [
+                  {
+                    "type": "action",
+                    "capability": "animus:set-flag",
+                    "arguments": {
+                      "name": "commands-3-0-cooldown",
+                      "scope": "relationship",
+                      "expireSeconds": 10
+                    }
+                  },
+                  {
+                    "type": "action",
+                    "capability": "animus:command",
+                    "arguments": {
+                      "command": "give {player_name} minecraft:paper 1",
+                      "as": "console"
+                    }
+                  }
+                ]
+              }
+            },
+            "else": {
+              "type": "action",
+              "capability": "animus:message",
+              "arguments": {
+                "text": "You don't have permission to do that."
               }
             }
           }
@@ -124,6 +160,49 @@
             "equals": 1
           },
           "then": {
+            "type": "condition",
+            "capability": "animus:can-afford",
+            "arguments": {
+              "money": 10
+            },
+            "then": {
+              "type": "sequence",
+              "steps": [
+                {
+                  "type": "action",
+                  "capability": "animus:charge",
+                  "arguments": {
+                    "money": 10
+                  }
+                },
+                {
+                  "type": "action",
+                  "capability": "animus:command",
+                  "arguments": {
+                    "command": "eco give {player_name} 5",
+                    "as": "console"
+                  }
+                }
+              ]
+            },
+            "else": {
+              "type": "action",
+              "capability": "animus:message",
+              "arguments": {
+                "text": "You need at least $10."
+              }
+            }
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:quest-state",
+          "arguments": {
+            "name": "commands-3-left",
+            "scope": "npc",
+            "equals": 2
+          },
+          "then": {
             "type": "action",
             "capability": "animus:command",
             "arguments": {
@@ -138,7 +217,7 @@
           "arguments": {
             "name": "commands-3-left",
             "scope": "npc",
-            "maximum": 2
+            "maximum": 3
           }
         },
         {
@@ -147,7 +226,7 @@
           "arguments": {
             "name": "commands-3-left",
             "scope": "npc",
-            "atLeast": 2
+            "atLeast": 3
           },
           "then": {
             "type": "action",
@@ -175,8 +254,7 @@
       "id": "right",
       "event": "interaction",
       "action": "interact",
-      "routine": "right",
-      "cooldownTicks": 200
+      "routine": "right"
     },
     {
       "id": "left",

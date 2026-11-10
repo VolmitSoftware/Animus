@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000619",
+  "id": "citizens-19",
+  "group": "world",
+  "name": "Swimmer",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "851ceffdf2b438f2987502d4250c12fdde95b8cb2caf090a47d291b0a9c4be75",
+    "citizensId": 19,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 38.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "pose": "swimming",
+  "behaviors": [
+    "citizens:text-19"
+  ],
+  "modules": {
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "world",
+        "x": 38.5,
+        "y": 64,
+        "z": 0.5
+      },
+      "entitypose": {
+        "pose": "SWIMMING"
+      },
+      "text": {
+        "text": [
+          "Bubbles!"
+        ],
+        "speech-bubbles": true,
+        "send-text-to-chat": false,
+        "speech-bubble-duration": 80
+      }
+    }
+  }
+}

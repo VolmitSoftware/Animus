@@ -1,0 +1,26 @@
+{
+  "citizensId": 6,
+  "presentationWarnings": [],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/playerfilter/players/0": "CONVERTED",
+    "/traits/playerfilter/players/1": "UNSUPPORTED_PRESERVED",
+    "/traits/text/text/0": "CONVERTED",
+    "/traits/text/talkitem": "CONVERTED",
+    "/traits/text/delay": "CONVERTED"
+  },
+  "reasons": {
+    "/traits/playerfilter/players/1": "not a value Animus accepts"
+  },
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": []
+}

@@ -9,6 +9,7 @@ enum DocumentKind {
   behavior('behavior', 'Behaviors', 'behaviors'),
   pack('pack', 'Packs', 'packs'),
   shop('shop', 'Shops', 'shops'),
+  quest('quest', 'Quests', 'quests'),
   inventory('inventory', 'Chest GUIs', 'gui/inventories'),
   menu('menu', 'Menus', 'gui/menus'),
   hologram('hologram', 'Holograms', 'gui/holograms'),

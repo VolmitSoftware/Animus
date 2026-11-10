@@ -1,0 +1,14 @@
+{
+  "name": "Saddled Pig",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000617",
+  "traits": {
+    "type": "PIG",
+    "location": {
+      "world": "world",
+      "x": 34.5,
+      "y": 64,
+      "z": 0.5
+    },
+    "saddle": true
+  }
+}

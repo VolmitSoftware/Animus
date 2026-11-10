@@ -85,4 +85,21 @@ class LookCloseTest {
         assertFalse(new LookClose.RandomLook(false, 60, 0, 360, 0, 0).active());
         assertTrue(random.active());
     }
+    @Test void headOnlyPerPlayerPermissionsAndTurnRateParse() {
+        LookClose look = LookClose.parse(definition("{\"headOnly\":true,\"perPlayer\":true,\"permissions\":[\"town.vip\"],\"turnRate\":{\"yaw\":5}}", false)).orElseThrow();
+        assertTrue(look.headOnly()); assertTrue(look.perPlayer());
+        assertEquals(List.of("town.vip"), look.permissions());
+        assertEquals(new LookClose.TurnRate(5, 10), look.turnRate().orElseThrow());
+        assertTrue(look.admits("town.vip"::equals)); assertFalse(look.admits((String node) -> false));
+        assertTrue(failure("{\"permissions\":[\"a b\"]}").contains("permissions"));
+        assertTrue(failure("{\"turnRate\":{\"yaw\":400}}").contains("turnRate.yaw"));
+        assertTrue(failure("{\"headOnly\":1}").contains("headOnly"));
+    }
+    @Test void aTurnRateTurnsTheShortWayAndStopsAtTheTarget() {
+        LookClose slow = LookClose.parse(definition("{\"turnRate\":{\"yaw\":4,\"pitch\":0}}", false)).orElseThrow();
+        assertEquals(new LookClose.Facing(-20, 0), slow.turn(0, 0, new LookClose.Facing(-90, 30), 5), "4 degrees a tick for 5 ticks, pitch locked");
+        assertEquals(new LookClose.Facing(190, 0), slow.turn(170, 0, new LookClose.Facing(-150, 0), 5), "across the wrap, not the long way round");
+        assertEquals(new LookClose.Facing(12, 0), slow.turn(10, 0, new LookClose.Facing(12, 0), 5));
+        assertEquals(new LookClose.Facing(-90, 30), new LookClose(10, false, false).turn(0, 0, new LookClose.Facing(-90, 30), 5), "no rate turns at once");
+    }
 }

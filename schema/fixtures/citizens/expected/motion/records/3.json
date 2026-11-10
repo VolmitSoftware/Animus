@@ -1,0 +1,29 @@
+{
+  "name": "Harbor Clerk",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000603",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "old_harbor",
+      "x": 30.5,
+      "y": 64.0,
+      "z": -6.5
+    },
+    "hometrait": {
+      "location": {
+        "world": "far_isle",
+        "x": 0.0,
+        "y": 64.0,
+        "z": 0.0
+      },
+      "strategy": "TELEPORT"
+    },
+    "pausepathfinding": {
+      "rightclick": true
+    },
+    "lookclose": {
+      "enabled": true,
+      "filter": "type=ZOMBIE"
+    }
+  }
+}

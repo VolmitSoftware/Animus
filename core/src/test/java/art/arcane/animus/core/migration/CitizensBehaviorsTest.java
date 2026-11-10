@@ -64,7 +64,7 @@ class CitizensBehaviorsTest {
         assertEquals(json("{\"enabled\":false,\"reviewAccepted\":false,\"mode\":\"walk\",\"speed\":1.72,\"order\":\"sequence\",\"loop\":true,\"waitTicks\":0,"
                 + "\"points\":[{\"x\":1.5,\"y\":64,\"z\":2.5},{\"x\":9.5,\"y\":64,\"z\":-3.5,\"waitTicks\":60}]}"), navigation);
         assertEquals(2, result.points());
-        assertTrue(result.warnings().contains("/traits/waypoints/linear: chat waypoint triggers are not supported; kept in citizens:review"), result.warnings().toString());
+        assertEquals(List.of("citizens:waypoints-7"), result.behaviors());
         assertTrue(result.warnings().contains("/traits/waypoints/linear: 1 points in another world or without usable coordinates were left out"));
         assertTrue(result.converted().contains("/traits/waypoints/linear/points/1/triggers/0/delay"));
         assertTrue(result.converted().contains("/traits/waypoints/linear/points/0/location/x"));
@@ -150,7 +150,7 @@ class CitizensBehaviorsTest {
         CitizensBehaviors.Document document = result.documents().getFirst();
         assertEquals("behaviors/citizens/text-7.json", document.path());
         JsonObject behavior = JsonDocuments.object(document.content());
-        assertEquals(json("{\"id\":\"near\",\"event\":\"proximity\",\"phase\":\"enter\",\"radius\":6.0,\"cooldownTicks\":200}"), behavior.getAsJsonArray("triggers").get(0));
+        assertEquals(json("{\"id\":\"near\",\"event\":\"proximity\",\"phase\":\"enter\",\"radius\":6.0,\"playerCooldownTicks\":200}"), behavior.getAsJsonArray("triggers").get(0));
         JsonArray steps = behavior.getAsJsonObject("routines").getAsJsonObject("main").getAsJsonArray("steps");
         assertEquals("animus:set-quest-state", steps.get(0).getAsJsonObject().get("capability").getAsString());
         assertEquals(2, steps.get(0).getAsJsonObject().getAsJsonObject("arguments").get("random").getAsInt());
@@ -163,7 +163,7 @@ class CitizensBehaviorsTest {
         CitizensBehaviors.Result result = map("{\"text\":{\"text\":[\"One\",\"Two\",\"Three\"]}}");
         JsonObject behavior = JsonDocuments.object(result.documents().getFirst().content());
         assertEquals("interaction", behavior.getAsJsonArray("triggers").get(0).getAsJsonObject().get("event").getAsString());
-        assertEquals(100, behavior.getAsJsonArray("triggers").get(0).getAsJsonObject().get("cooldownTicks").getAsInt());
+        assertEquals(100, behavior.getAsJsonArray("triggers").get(0).getAsJsonObject().get("playerCooldownTicks").getAsInt(), "each player waits on their own, as in Citizens");
         JsonArray steps = behavior.getAsJsonObject("routines").getAsJsonObject("main").getAsJsonArray("steps");
         assertEquals(5, steps.size());
         assertEquals("animus:advance-quest-state", steps.get(3).getAsJsonObject().get("capability").getAsString());
@@ -171,6 +171,19 @@ class CitizensBehaviorsTest {
         accepted(result.documents().getFirst().content());
         CitizensBehaviors.Result single = map("{\"text\":{\"text\":[\"Only\"]}}");
         assertEquals("animus:say", JsonDocuments.object(single.documents().getFirst().content()).getAsJsonObject("routines").getAsJsonObject("main").get("capability").getAsString());
+    }
+
+    @Test void aTalkItemGuardsClickTextOnTheHeldItem() throws IOException {
+        CitizensBehaviors.Result result = map("{\"text\":{\"text\":[\"Pass\"],\"talkitem\":\"PAPER, minecraft:map\"}}");
+        String content = result.documents().getFirst().content();
+        accepted(content);
+        JsonObject main = JsonDocuments.object(content).getAsJsonObject("routines").getAsJsonObject("main");
+        assertEquals("condition", main.get("type").getAsString());
+        assertEquals("same(player.item_in_hand, 'minecraft:paper') || same(player.item_in_hand, 'minecraft:map')", main.get("expression").getAsString());
+        assertTrue(result.converted().contains("/traits/text/talkitem"));
+        CitizensBehaviors.Result close = map("{\"text\":{\"text\":[\"Near\"],\"talk-close\":true,\"talkitem\":\"PAPER\"}}");
+        assertEquals("animus:say", JsonDocuments.object(close.documents().getFirst().content()).getAsJsonObject("routines").getAsJsonObject("main").get("capability").getAsString(),
+                "Citizens checks the talk item only on clicks");
     }
 
     @Test void commandsBecomeABehaviorPerClick() throws IOException {
@@ -186,7 +199,7 @@ class CitizensBehaviorsTest {
         JsonObject behavior = JsonDocuments.object(content);
         assertEquals("right", behavior.get("entry").getAsString());
         JsonArray triggers = behavior.getAsJsonArray("triggers");
-        assertEquals(json("{\"id\":\"right\",\"event\":\"interaction\",\"action\":\"interact\",\"routine\":\"right\",\"cooldownTicks\":100}"), triggers.get(0));
+        assertEquals(json("{\"id\":\"right\",\"event\":\"interaction\",\"action\":\"interact\",\"routine\":\"right\"}"), triggers.get(0));
         assertEquals("attack", triggers.get(1).getAsJsonObject().get("action").getAsString());
         JsonArray right = behavior.getAsJsonObject("routines").getAsJsonObject("right").getAsJsonArray("steps");
         JsonObject delayed = right.get(0).getAsJsonObject();
@@ -194,17 +207,39 @@ class CitizensBehaviorsTest {
         assertEquals(json("{\"command\":\"say Guard greets you\",\"as\":\"player\"}"), delayed.getAsJsonArray("steps").get(1).getAsJsonObject().getAsJsonObject("arguments"));
         JsonObject gated = right.get(1).getAsJsonObject();
         assertEquals("animus:has-permission", gated.get("capability").getAsString());
-        assertEquals(json("{\"command\":\"give {player_name} minecraft:bread 1\",\"as\":\"console\"}"), gated.getAsJsonObject("then").getAsJsonObject("arguments"));
+        JsonObject cooling = gated.getAsJsonObject("then");
+        assertEquals(json("{\"name\":\"commands-7-1-cooldown\",\"scope\":\"relationship\"}"), cooling.getAsJsonObject("arguments"), "the per-player cooldown is a flag per NPC and player");
+        JsonArray ready = cooling.getAsJsonObject("else").getAsJsonArray("steps");
+        assertEquals(json("{\"name\":\"commands-7-1-cooldown\",\"scope\":\"relationship\",\"expireSeconds\":5}"), ready.get(0).getAsJsonObject().getAsJsonObject("arguments"));
+        assertEquals(json("{\"command\":\"give {player_name} minecraft:bread 1\",\"as\":\"console\"}"), ready.get(1).getAsJsonObject().getAsJsonObject("arguments"));
         JsonArray left = behavior.getAsJsonObject("routines").getAsJsonObject("left").getAsJsonArray("steps");
-        assertEquals(2, left.size(), "the costed command is left out");
-        assertEquals("console", left.get(1).getAsJsonObject().getAsJsonObject("arguments").get("as").getAsString(), "operator commands run from the console");
+        assertEquals(3, left.size(), "the costed command converts too");
+        assertEquals("animus:can-afford", left.get(1).getAsJsonObject().get("capability").getAsString());
+        assertEquals("console", left.get(2).getAsJsonObject().getAsJsonObject("arguments").get("as").getAsString(), "operator commands run from the console");
         List<String> warnings = result.warnings();
         assertEquals(json("{\"id\":\"sneak-right\",\"event\":\"interaction\",\"action\":\"sneak_interact\",\"routine\":\"sneak-right\"}"), triggers.get(2));
         assertEquals("spawn", behavior.getAsJsonObject("routines").getAsJsonObject("sneak-right").getAsJsonObject("arguments").get("command").getAsString());
         assertTrue(warnings.contains("/traits/commandtrait: LEFT, RIGHT and BOTH commands also run on a sneaking click, beside the SHIFT ones"), warnings.toString());
-        assertTrue(warnings.contains("/traits/commandtrait/commands/3: the command costs money, experience or items, which Animus cannot charge; not converted"));
         assertTrue(warnings.contains("/traits/commandtrait/commands/4/op: the command ran as an operator player; it now runs from the console"));
         assertTrue(warnings.contains("/traits/commandtrait: commands stay denied until citizens:commands-7 is on the [behaviors.actions] commandBehaviors list in config.toml"));
+        assertTrue(warnings.stream().noneMatch((String warning) -> warning.contains("cannot charge")), warnings.toString());
+    }
+
+    @Test void aPlayerCastingAMythicSkillBecomesTheMythicCastAction() throws IOException {
+        CitizensBehaviors.Result result = map("{\"commandtrait\":{\"commands\":{"
+                + "\"0\":{\"command\":\"/mm test cast GreetSkill\",\"hand\":\"RIGHT\",\"player\":true},"
+                + "\"1\":{\"command\":\"mythicmobs t c Fire_Burst-2 -s\",\"hand\":\"LEFT\",\"op\":true},"
+                + "\"2\":{\"command\":\"mm test cast FromConsole\",\"hand\":\"SHIFT_RIGHT\"}}}}");
+        JsonObject routines = JsonDocuments.object(result.documents().getFirst().content()).getAsJsonObject("routines");
+        assertEquals(json("{\"type\":\"action\",\"capability\":\"mythic:cast-skill\",\"arguments\":{\"skill\":\"GreetSkill\",\"caster\":\"player\"}}"), routines.get("right"));
+        assertEquals("Fire_Burst-2", routines.getAsJsonObject("left").getAsJsonObject("arguments").get("skill").getAsString());
+        assertEquals("animus:command", routines.getAsJsonObject("sneak-right").get("capability").getAsString(), "the console has no body to cast from");
+        List<String> warnings = result.warnings();
+        assertTrue(warnings.contains("/traits/commandtrait/commands/0/command: the MythicMobs skill cast became mythic:cast-skill, which needs MythicMobs on the server"), warnings.toString());
+        assertFalse(warnings.contains("/traits/commandtrait/commands/1/op: the command ran as an operator player; it now runs from the console"));
+        CitizensBehaviors.Result castsOnly = map("{\"commandtrait\":{\"commands\":{\"0\":{\"command\":\"mm test cast GreetSkill\",\"player\":true}}}}");
+        assertTrue(castsOnly.warnings().contains("/traits/commandtrait: commands stay denied until citizens:commands-7 is on the [behaviors.actions] commandBehaviors list in config.toml"),
+                "a cast needs the command allow-list too: " + castsOnly.warnings());
     }
 
     @Test void commandModesTakeTurnsOrPickAtRandom() throws IOException {
@@ -221,10 +256,14 @@ class CitizensBehaviorsTest {
         }
     }
 
-    @Test void chargedCommandTraitsConvertNothing() {
+    @Test void aCommandTraitCostIsChargedOncePerClick() throws IOException {
         CitizensBehaviors.Result result = map("{\"commandtrait\":{\"cost\":5.0,\"commands\":{\"0\":{\"command\":\"a\",\"hand\":\"BOTH\"}}}}");
-        assertTrue(result.behaviors().isEmpty());
-        assertEquals(List.of("/traits/commandtrait: the commands cost money, experience or items, which Animus cannot charge, so none were converted"), result.warnings());
+        String content = result.documents().getFirst().content();
+        accepted(content);
+        JsonObject click = JsonDocuments.object(content).getAsJsonObject("routines").getAsJsonObject("click");
+        assertEquals(json("{\"money\":5}"), click.getAsJsonObject("arguments"));
+        assertEquals("animus:charge", click.getAsJsonObject("then").getAsJsonArray("steps").get(0).getAsJsonObject().get("capability").getAsString());
+        assertEquals(json("{\"text\":\"You need at least $5.\"}"), click.getAsJsonObject("else").getAsJsonObject("arguments"));
     }
 
     @Test void randomLookKeepsItsDelayAndRangesAndCosmeticOptionsGetReasons() {
@@ -233,8 +272,67 @@ class CitizensBehaviorsTest {
         assertEquals(json("{\"enabled\":false,\"delayTicks\":120,\"yaw\":[0.0,360.0],\"pitch\":[-8.0,8.0]}"), result.lookClose().orElseThrow().get("randomLook"));
         for (String path : List.of("/traits/lookclose/randomlookdelay", "/traits/lookclose/randomYawRange/0", "/traits/lookclose/randomPitchRange/1", "/traits/lookclose/perplayer"))
             assertTrue(result.converted().contains(path), path);
-        assertEquals(CitizensImporter.Status.REQUIRES_REVIEW, result.notes().get("/traits/lookclose/headonly").status());
+        assertTrue(result.converted().contains("/traits/lookclose/headonly"));
+        assertTrue(result.lookClose().orElseThrow().get("headOnly").getAsBoolean());
         assertEquals(List.of(), result.warnings());
+    }
+
+    @Test void speedAndTeleportTriggersBecomePointSettings() {
+        CitizensBehaviors.Result result = map("{\"waypoints\":{\"provider\":\"linear\",\"linear\":{\"points\":[" + location(1, 64, 2) + ","
+                + "{\"location\":{\"world\":\"world\",\"x\":9,\"y\":64,\"z\":3},\"triggers\":[{\"type\":\"speed\",\"speed\":0.5},"
+                + "{\"type\":\"teleport\",\"location\":{\"world\":\"world\",\"x\":40.25,\"y\":70.5,\"z\":-8.0,\"yaw\":450.0,\"pitch\":12.34567}}]},"
+                + "{\"location\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0},\"triggers\":[{\"type\":\"teleport\",\"location\":{\"world\":\"nether\",\"x\":0,\"y\":64,\"z\":0}}]}]}}}");
+        JsonObject point = result.navigation().orElseThrow().getAsJsonArray("points").get(1).getAsJsonObject();
+        assertEquals(2.15, point.get("speed").getAsDouble(), "Citizens' modifier times 4.3 blocks a second");
+        assertEquals(json("{\"x\":40.25,\"y\":70.5,\"z\":-8.0,\"yaw\":90.0,\"pitch\":12.346}"), point.getAsJsonObject("teleport"));
+        assertEquals(json("{\"x\":0.0,\"y\":64.0,\"z\":0.0,\"world\":\"nether\"}"), result.navigation().orElseThrow().getAsJsonArray("points").get(2).getAsJsonObject().getAsJsonObject("teleport"),
+                "a teleport to another world names it");
+        for (String path : List.of("/traits/waypoints/linear/points/1/triggers/0/speed", "/traits/waypoints/linear/points/1/triggers/1/location/yaw"))
+            assertTrue(result.converted().contains(path), path);
+        assertEquals(List.of(), result.behaviors(), "speed and teleport need no behavior");
+    }
+
+    @Test void chatAndCommandTriggersRunOnArrival() {
+        CitizensBehaviors.Result result = map("{\"waypoints\":{\"provider\":\"linear\",\"linear\":{\"points\":["
+                + "{\"location\":{\"world\":\"elsewhere\",\"x\":0,\"y\":64,\"z\":0}}," + location(1, 64, 2) + ","
+                + "{\"location\":{\"world\":\"world\",\"x\":9,\"y\":64,\"z\":3},\"triggers\":[{\"type\":\"chat\",\"radius\":5.0,\"lines\":[\"&aHello from <npc>\",\"Hi <p>\"]},"
+                + "{\"type\":\"chat\",\"lines\":[\"Everyone\"]},{\"type\":\"command\",\"commands\":[\"/say <id> arrived\"]},"
+                + "{\"type\":\"animation\",\"animations\":[\"ARM_SWING\",\"START_ELYTRA\"],\"at\":{\"world\":\"world\",\"x\":9.5,\"y\":64.0,\"z\":4.5}}]}]}}}");
+        assertEquals(List.of("citizens:waypoints-7"), result.behaviors());
+        String content = result.documents().getFirst().content();
+        accepted(content);
+        JsonObject document = json(content);
+        assertEquals("behaviors/citizens/waypoints-7.json", result.documents().getFirst().path());
+        assertEquals(json("{\"id\":\"point-1\",\"event\":\"waypoint\",\"waypoint\":1,\"routine\":\"point-1\"}"), document.getAsJsonArray("triggers").get(0), "the index of the converted point");
+        assertEquals(json("""
+                {"type":"sequence","steps":[
+                 {"type":"action","capability":"animus:message","arguments":{"text":"&aHello from Guard","to":"nearby","radius":5.0}},
+                 {"type":"action","capability":"animus:message","arguments":{"text":"Everyone","to":"world"}},
+                 {"type":"action","capability":"animus:command","arguments":{"command":"say 7 arrived","as":"console"}},
+                 {"type":"action","capability":"animus:animate","arguments":{"animation":"swing"}}]}
+                """), document.getAsJsonObject("routines").get("point-1"));
+        assertTrue(result.warnings().contains("/traits/waypoints/linear/points/2/triggers/0/lines/1: a waypoint has no player to name; left out"), result.warnings().toString());
+        assertTrue(result.warnings().contains("/traits/waypoints/linear/points/2/triggers/3/animations/1: the START_ELYTRA animation has no Animus animation; left out"), result.warnings().toString());
+        assertEquals(json("{\"x\":9.5,\"y\":64.0,\"z\":4.5}"), result.navigation().orElseThrow().getAsJsonArray("points").get(1).getAsJsonObject().getAsJsonObject("teleport"),
+                "the animation's place becomes the point's teleport");
+        assertTrue(result.warnings().stream().anyMatch((String warning) -> warning.contains("waypoint commands stay denied until citizens:waypoints-7")));
+    }
+
+    @Test void lookCloseKeepsHeadOnlyPerPlayerFiltersAndGradualTurning() {
+        CitizensBehaviors.Result result = map("""
+                {"lookclose":{"enabled":true,"headonly":true,"perplayer":true,"filter":"type=PLAYER permission=town.vip,town.guest group=Staff"},
+                 "rotationtrait":{"globalParameters":{"maxYawPerTick":5.0,"lockPitch":true}}}
+                """);
+        JsonObject look = result.lookClose().orElseThrow();
+        assertTrue(look.get("headOnly").getAsBoolean());
+        assertTrue(look.get("perPlayer").getAsBoolean());
+        assertEquals("[\"town.vip\",\"town.guest\",\"group.staff\"]", look.get("permissions").toString());
+        assertEquals(json("{\"yaw\":5.0,\"pitch\":0.0}"), look.getAsJsonObject("turnRate"));
+        assertEquals(CitizensImporter.Status.CONVERTED, result.notes().get("/traits/lookclose/filter").status());
+        assertFalse(map("{\"lookclose\":{\"enabled\":true,\"headonly\":true,\"linkedbody\":true}}").lookClose().orElseThrow().has("headOnly"), "a linked body turns with the head");
+        assertFalse(map("{\"lookclose\":{\"enabled\":true,\"filter\":\"type=ZOMBIE\"}}").lookClose().orElseThrow().get("enabled").getAsBoolean(), "no player passes");
+        assertFalse(map("{\"lookclose\":{\"enabled\":true},\"rotationtrait\":{\"globalParameters\":{\"maxYawPerTick\":40.0}}}").lookClose().orElseThrow().has("turnRate"),
+                "Citizens' own rates turn as fast as Animus looks");
     }
 
     @Test void waypointFacingWorldIdsAndGuideTriggersCountAsConverted() {

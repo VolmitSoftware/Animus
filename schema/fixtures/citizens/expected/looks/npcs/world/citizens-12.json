@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000612",
+  "id": "citizens-12",
+  "group": "world",
+  "name": "Sandfall",
+  "type": "minecraft:falling_block",
+  "spawned": false,
+  "migration": {
+    "importId": "851ceffdf2b438f2987502d4250c12fdde95b8cb2caf090a47d291b0a9c4be75",
+    "citizensId": 12,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 24.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "fallingBlock": {
+    "block": "minecraft:gold_block"
+  },
+  "modules": {
+    "citizens:review": {
+      "type": "FALLING_BLOCK",
+      "location": {
+        "world": "world",
+        "x": 24.5,
+        "y": 64,
+        "z": 0.5
+      }
+    }
+  }
+}

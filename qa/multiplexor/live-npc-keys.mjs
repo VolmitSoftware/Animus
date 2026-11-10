@@ -126,7 +126,7 @@ export async function npcKeys(t) {
       for (let i = 0; i < 10; i++) { owner.send('use', { id: story.id, sneak: true }); await delay(200); }
     } finally { await sneak(false); }
     await owner.chat('Story » story-end', from, 8000).catch(async error => {
-      const rows = await server.capture('animus behaviors triggers', /Behavior triggers:[^\n]*/);
+      const rows = await server.capture('animus behaviors triggers', /⇀ Server triggers[^\n]*/);
       throw new Error(`${error.message}; ${rows.split('\n').filter(line => /story|Behavior triggers|refus|START/i.test(line)).join(' | ').slice(0, 900)}`);
     });
     await delay(500);

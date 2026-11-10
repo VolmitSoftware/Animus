@@ -71,19 +71,33 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
         }
     }
     /**
+     * Where an arrival moves the NPC at once: in the route's world, or in {@code world} by name. A null yaw or pitch keeps
+     * the NPC's own.
+     */
+    public record Teleport(Vec3 position, Float yaw, Float pitch, String world) {
+        public Teleport {
+            Objects.requireNonNull(position);
+            if (world != null && !world.matches("[^\\s/\\\\]{1,64}")) throw new IllegalArgumentException("Teleport world must be a world name");
+            if ((yaw != null && (!Float.isFinite(yaw) || yaw < -360 || yaw > 360)) || (pitch != null && (!Float.isFinite(pitch) || pitch < -90 || pitch > 90)))
+                throw new IllegalArgumentException("Teleport facing exceeds native execution bounds");
+        }
+    }
+    /**
      * One route point: a position, or a recording step with no position of its own. A null wait or a negative jitter
      * means the route's own value applies here; a step has no jitter. Weight steers order random; next, when not empty,
      * replaces index + 1 in order sequence. A null style walks the leg to this point in the route's style; a step has none.
+     * A speed, when set, is the route's speed from this arrival on; a teleport moves the NPC on arrival, before the wait.
      */
-    public record Waypoint(Vec3 position, Step step, Wait waitTicks, int jitter, int weight, List<Junction> next, MovementStyle style) {
+    public record Waypoint(Vec3 position, Step step, Wait waitTicks, int jitter, int weight, List<Junction> next, MovementStyle style, Double speed, Teleport teleport) {
         public Waypoint {
             Objects.requireNonNull(next);
-            if ((position == null) == (step == null) || (step != null && (jitter != -1 || style != null))
-                    || jitter < -1 || jitter > MAXIMUM_JITTER || weight < 1 || weight > MAXIMUM_WEIGHT || next.size() > MAXIMUM_JUNCTIONS)
+            if ((position == null) == (step == null) || (step != null && (jitter != -1 || style != null || speed != null || teleport != null))
+                    || jitter < -1 || jitter > MAXIMUM_JITTER || weight < 1 || weight > MAXIMUM_WEIGHT || next.size() > MAXIMUM_JUNCTIONS
+                    || (speed != null && (!Double.isFinite(speed) || speed < 1 || speed > 5)))
                 throw new IllegalArgumentException("Point settings exceed native execution bounds");
             next = List.copyOf(next);
         }
-        public Waypoint(Vec3 position) { this(position, null, null, -1, 1, List.of(), null); }
+        public Waypoint(Vec3 position) { this(position, null, null, -1, 1, List.of(), null, null, null); }
     }
     /** Random walking around a centre: block x and z within radius, feet height within height of the centre. */
     public record Wander(int radius, int height) {
@@ -96,7 +110,7 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
     /** Inline route settings; a reusable route or a recording refuses each of them. */
     public static final List<String> ROUTE_FIELDS = List.of("points", "mode", "speed", "order", "loop", "waitTicks", "guides", "linkDistance", "wander",
             "seed", "startOffset", "jitter", "style");
-    private static final Set<String> POINT_FIELDS = Set.of("x", "y", "z", "waitTicks", "jitter", "weight", "next", "style");
+    private static final Set<String> POINT_FIELDS = Set.of("x", "y", "z", "waitTicks", "jitter", "weight", "next", "style", "speed", "teleport");
     private static final Set<String> STEP_FIELDS = Set.of("recording", "fromTick", "toTick", "playback", "waitTicks", "weight", "next");
 
     public WaypointSettings {
@@ -105,7 +119,8 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
         int maximum = order == Order.WANDER ? MAXIMUM_WANDER_CENTRES : MAXIMUM_POINTS;
         for (Waypoint point : points) {
             if ((point.weight() != 1 && order != Order.RANDOM) || (!point.next().isEmpty() && order != Order.SEQUENCE)
-                    || (point.jitter() > 0 && order == Order.WANDER) || (point.step() != null && order == Order.WANDER))
+                    || (point.jitter() > 0 && order == Order.WANDER) || (point.step() != null && order == Order.WANDER)
+                    || ((point.speed() != null || point.teleport() != null) && order == Order.WANDER))
                 throw new IllegalArgumentException("Point settings do not apply to order " + order.key());
             for (Junction junction : point.next())
                 if (junction.to() >= points.size()) throw new IllegalArgumentException("Junction leads past the last point");
@@ -129,6 +144,8 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
         if (at.step() != null) return 0;
         return at.jitter() >= 0 ? at.jitter() : jitter;
     }
+    /** Where arriving at {@code arrival} moves the NPC; null for a guide, a step or a point without a teleport. */
+    public Teleport teleportAt(int arrival) { return arrival >= 0 && arrival < points.size() ? points.get(arrival).teleport() : null; }
     /** The style of the leg that ends at {@code arrival}: the point's own, else the route's; null leaves the NPC's own. Guides use the route's. */
     public MovementStyle styleTo(int arrival) {
         MovementStyle own = arrival >= 0 && arrival < points.size() ? points.get(arrival).style() : null;
@@ -280,7 +297,15 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
             int weight = point.has("weight") ? weight(point.get("weight"), field + ".weight") : 1;
             if (point.has("next") && order != Order.SEQUENCE) throw new IllegalArgumentException(field + ".next is only allowed with order sequence");
             List<Junction> next = point.has("next") ? junctions(point.get("next"), field + ".next", array.size()) : List.of();
-            points.add(new Waypoint(position, step, ownWait, ownJitter, weight, next, !recording && point.has("style") ? legStyle : null));
+            if ((point.has("speed") || point.has("teleport")) && order == Order.WANDER)
+                throw new IllegalArgumentException(field + "." + (point.has("speed") ? "speed" : "teleport") + " is not allowed with order wander");
+            Double pointSpeed = null;
+            if (point.has("speed")) {
+                pointSpeed = number(point.get("speed"), field + ".speed");
+                if (pointSpeed < 1 || pointSpeed > 5) throw new IllegalArgumentException(field + ".speed must be 1..5 blocks/second");
+            }
+            Teleport teleport = point.has("teleport") ? teleport(point.get("teleport"), field + ".teleport") : null;
+            points.add(new Waypoint(position, step, ownWait, ownJitter, weight, next, !recording && point.has("style") ? legStyle : null, pointSpeed, teleport));
         }
         List<Vec3> guides = new ArrayList<>();
         if (data.has("guides")) {
@@ -318,6 +343,31 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
             wander = new Wander(radius, height);
         }
         return new WaypointSettings(mode, speed, order, loop, wait, points, guides, link, wander, seed, start, jitter, style);
+    }
+    private static Teleport teleport(JsonElement value, String field) {
+        JsonObject teleport = object(value, field);
+        for (String key : teleport.keySet())
+            if (!Set.of("x", "y", "z", "yaw", "pitch", "world").contains(key)) throw new IllegalArgumentException(field + "." + key + ": unknown field");
+        Vec3 position = coordinate(teleport, field, MovementProfile.Mode.FLY);
+        String world = null;
+        if (teleport.has("world")) {
+            JsonElement name = teleport.get("world");
+            if (!name.isJsonPrimitive() || !name.getAsJsonPrimitive().isString() || !name.getAsString().matches("[^\\s/\\\\]{1,64}"))
+                throw new IllegalArgumentException(field + ".world: expected a world name of 1-64 characters");
+            world = name.getAsString();
+        }
+        Float yaw = null, pitch = null;
+        if (teleport.has("yaw")) {
+            double degrees = number(teleport.get("yaw"), field + ".yaw");
+            if (degrees < -360 || degrees > 360) throw new IllegalArgumentException(field + ".yaw must be -360..360 degrees");
+            yaw = (float) degrees;
+        }
+        if (teleport.has("pitch")) {
+            double degrees = number(teleport.get("pitch"), field + ".pitch");
+            if (degrees < -90 || degrees > 90) throw new IllegalArgumentException(field + ".pitch must be -90..90 degrees");
+            pitch = (float) degrees;
+        }
+        return new Teleport(position, yaw, pitch, world);
     }
     private static MovementStyle style(JsonElement value, String field) {
         return MovementSettings.style(value).orElseThrow(() -> new IllegalArgumentException(field + " must be " + String.join(", ", MovementStyle.keys())));

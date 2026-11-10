@@ -48,16 +48,16 @@ export async function commandFeel(t) {
     assert(lines.some(l => l.startsWith('NPCs [Docs]')), 'topic heading');
     assert(lines.some(l => l.startsWith('⇀ create [id] ⊰type⊱')), 'entry chips');
     const create = seen.chat.find(c => c.text.startsWith('⇀ create'));
-    assert(create.actions.some(a => a.startsWith('suggest /animus create \t') && a.includes('✎ Save a new despawned NPC')), JSON.stringify(create.actions));
+    assert(create.actions.some(a => a.startsWith('suggest /animus create \t') && a.includes('✎ Save and spawn a new NPC')), JSON.stringify(create.actions));
     const bar = seen.chat.find(c => /Page 2 ❭$/.test(c.text));
-    assert(bar && bar.actions.some(a => a.startsWith('run /animus page=2\tNext page')), JSON.stringify(bar));
+    assert(bar && bar.actions.some(a => a.startsWith('run /animus help 2\tNext page')), JSON.stringify(bar));
     return `${lines.length} lines; bar "${bar.text.trim()}"`;
   });
 
   await check('feel: the page bar turns to page 2 with the ding', async () => {
     const seen = await run('page2', '/animus page=2', /〈 Page 1/, SUCCESS);
     const bar = seen.chat.find(c => c.text.startsWith('〈 Page 1'));
-    assert(bar && bar.actions.some(a => a.startsWith('run /animus page=1\tPrevious page')), JSON.stringify(seen.chat.at(-1)));
+    assert(bar && bar.actions.some(a => a.startsWith('run /animus help 1\tPrevious page')), JSON.stringify(seen.chat.at(-1)));
     return `bar "${bar.text.trim()}"`;
   });
 
@@ -77,10 +77,10 @@ export async function commandFeel(t) {
   });
 
   await check('feel: create without coordinates places the NPC where the player stands, with the ding', async () => {
-    await run('success', '/animus create feel', /Created dormant feel/, SUCCESS);
+    await run('success', '/animus create feel', /Created feel\b/, SUCCESS);
     const at = JSON.parse(readFileSync(path.join(data, 'npcs', 'feel.json'), 'utf8')).position;
     assert(at.world === 'world' && close(at.x, owner.position.x) && close(at.y, owner.position.y) && close(at.z, owner.position.z), JSON.stringify([at, owner.position]));
-    await run('relative', '/animus create feel2 ~2 ~ ~-1', /Created dormant feel2/, SUCCESS);
+    await run('relative', '/animus create feel2 ~2 ~ ~-1', /Created feel2\b/, SUCCESS);
     const moved = JSON.parse(readFileSync(path.join(data, 'npcs', 'feel2.json'), 'utf8')).position;
     assert(close(moved.x, owner.position.x + 2) && close(moved.z, owner.position.z - 1), JSON.stringify(moved));
     return `feel at ${at.x} ${at.y} ${at.z}; feel2 at ${moved.x} ${moved.y} ${moved.z}`;
@@ -89,7 +89,7 @@ export async function commandFeel(t) {
   await check('feel: a command that cannot run sounds low, a handler that returns dings even when it answers red', async () => {
     const unknown = await run('failure', '/animus nosuchcommand', /Unknown command/, FAILURE);
     const missing = await run('missing', '/animus delete', /Usage/, FAILURE);
-    const answered = await run('answered', '/animus inspect nosuchnpc', /Unknown NPC/, SUCCESS);
+    const answered = await run('answered', '/animus inspect nosuchnpc', /No NPC named nosuchnpc/, SUCCESS);
     return `${unknown.chat[0].text} | ${missing.chat.at(-1).text} | ${answered.chat[0].text}`;
   });
 

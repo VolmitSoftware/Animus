@@ -276,7 +276,7 @@ public final class NativeProtocolClient {
             event("position", "x", v.x, "y", v.y, "z", v.z, "yaw", accepted.yRot(), "pitch", accepted.xRot());
         } else if (packet instanceof ClientboundSystemChatPacket p) event("chat", "text", p.content().getString(), "clicks", clicks(p.content()), "actions", actions(p.content()));
         else if (packet instanceof ClientboundSetHealthPacket p) event("health", "health", p.getHealth(), "food", p.getFood(), "saturation", p.getSaturation());
-        else if (packet instanceof ClientboundAddEntityPacket p) event("spawn", "id", p.getId(), "uuid", p.getUUID().toString(), "type", BuiltInRegistries.ENTITY_TYPE.getKey(p.getType()).toString(), "x", p.getX(), "y", p.getY(), "z", p.getZ());
+        else if (packet instanceof ClientboundAddEntityPacket p) event("spawn", "id", p.getId(), "uuid", p.getUUID().toString(), "type", BuiltInRegistries.ENTITY_TYPE.getKey(p.getType()).toString(), "x", p.getX(), "y", p.getY(), "z", p.getZ(), "data", p.getData());
         else if (packet instanceof ClientboundPlayerInfoUpdatePacket p) {
             for (var entry : p.entries()) {
                 List<Map<String, Object>> textures = new ArrayList<>();
@@ -291,8 +291,8 @@ public final class NativeProtocolClient {
             }
         } else if (packet instanceof ClientboundPlayerInfoRemovePacket p) event("player_info_remove", "uuids", p.profileIds().stream().map(UUID::toString).toList());
         else if (packet instanceof ClientboundRemoveEntitiesPacket p) event("remove", "ids", ProtocolRevision.removed(p));
-        else if (packet instanceof ClientboundEntityPositionSyncPacket p) emitMove(p.id(), ProtocolRevision.position(p));
-        else if (packet instanceof ClientboundTeleportEntityPacket p) emitMove(p.id(), p.change().position());
+        else if (packet instanceof ClientboundEntityPositionSyncPacket p) emitMove(p.id(), ProtocolRevision.position(p), ProtocolRevision.yaw(p));
+        else if (packet instanceof ClientboundTeleportEntityPacket p) emitMove(p.id(), p.change().position(), p.change().yRot());
         else if (packet instanceof ClientboundSetPassengersPacket p) {
             synchronized (this) {
                 boolean aboard = Arrays.stream(p.getPassengers()).anyMatch(id -> id == ownEntity);
@@ -311,7 +311,13 @@ public final class NativeProtocolClient {
             event("suggestions", "id", p.id(), "texts", p.suggestions().stream().map(net.minecraft.network.protocol.game.ClientboundCommandSuggestionsPacket.Entry::text).toList());
         else if (packet instanceof ClientboundSoundPacket p) event("sound", "sound", p.getSound().unwrapKey().map(key -> key.identifier().toString()).orElse(p.getSound().value().location().toString()), "volume", p.getVolume(), "pitch", p.getPitch());
         else if (packet instanceof ClientboundLevelParticlesPacket p) event("particle", "particle", BuiltInRegistries.PARTICLE_TYPE.getKey(ProtocolRevision.particle(p).getType()).toString(), "count", ProtocolRevision.particleCount(p));
-        else if (packet instanceof ClientboundBossEventPacket) event("boss_event");
+        else if (packet instanceof ClientboundBossEventPacket p) p.dispatch(new ClientboundBossEventPacket.Handler() {
+            @Override public void add(UUID id, net.minecraft.network.chat.Component name, float progress, net.minecraft.world.BossEvent.BossBarColor color,
+                                      net.minecraft.world.BossEvent.BossBarOverlay overlay, boolean darken, boolean music, boolean fog) {
+                event("boss_event", "operation", "add", "bar", id.toString(), "text", name.getString(), "progress", progress, "color", color.name(), "darken", darken);
+            }
+            @Override public void remove(UUID id) { event("boss_event", "operation", "remove", "bar", id.toString()); }
+        });
         // One event per packet, so cells the server changed in one tick and one chunk section arrive as one event.
         else if (packet instanceof ClientboundBlockUpdatePacket p) event("blocks", "cells", List.of(cell(p.getPos(), p.getBlockState())));
         else if (packet instanceof ClientboundSectionBlocksUpdatePacket p) {
@@ -335,6 +341,12 @@ public final class NativeProtocolClient {
                 else if (item.value() instanceof Enum<?> constant) field.put("value", constant.name());
                 else if (item.value() instanceof ItemStack stack) field.put("item", stack.isEmpty() ? "empty" : BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
                 else if (item.value() instanceof net.minecraft.network.chat.Component text) field.put("text", text.getString());
+                else if (item.value() instanceof org.joml.Vector3fc vector) field.put("vector", List.of(vector.x(), vector.y(), vector.z()));
+                else if (item.value() instanceof org.joml.Quaternionfc rotation) field.put("quaternion", List.of(rotation.x(), rotation.y(), rotation.z(), rotation.w()));
+                else if (item.value() instanceof net.minecraft.world.entity.npc.villager.VillagerData villager)
+                    field.put("raw", villager.type().unwrapKey().map(Object::toString).orElse("") + " " + villager.profession().unwrapKey().map(Object::toString).orElse("") + " " + villager.level());
+                else if (item.value() instanceof net.minecraft.core.Holder<?> holder) field.put("raw", holder.unwrapKey().map(Object::toString).orElse(""));
+                else if (item.value() instanceof net.minecraft.world.level.block.state.BlockState state) field.put("raw", state.toString());
                 fields.add(field);
             }
             event("metadata", "id", p.id(), "entries", p.packedItems().size(), "fields", fields);
@@ -427,7 +439,7 @@ public final class NativeProtocolClient {
         cell.put("state", net.minecraft.commands.arguments.blocks.BlockStateParser.serialize(state));
         return cell;
     }
-    private void emitMove(int id, Vec3 v) { event("move", "id", id, "x", v.x, "y", v.y, "z", v.z); }
+    private void emitMove(int id, Vec3 v, float yaw) { event("move", "id", id, "x", v.x, "y", v.y, "z", v.z, "yaw", yaw); }
 
     private void control(JsonObject command) throws Exception {
         switch (command.get("op").getAsString()) {

@@ -91,8 +91,9 @@ class BodyLookTest {
     }
 
     @Test void armorStandFlagsMatchClientBits() {
-        assertEquals(0x01 | 0x04 | 0x08, BodyLook.armorStandFlags(new ArmorStandLook(true, true, false, false, Map.of())));
-        assertEquals(0, BodyLook.armorStandFlags(new ArmorStandLook(false, false, true, true, Map.of())));
+        assertEquals(0x01 | 0x04 | 0x08, BodyLook.armorStandFlags(new ArmorStandLook(true, true, false, false, false, Map.of())));
+        assertEquals(0x08 | 0x10, BodyLook.armorStandFlags(new ArmorStandLook(false, false, false, false, true, Map.of())));
+        assertEquals(0, BodyLook.armorStandFlags(new ArmorStandLook(false, false, true, true, false, Map.of())));
         assertEquals(0x10 | 0x08, BodyLook.SEAT_FLAGS);
     }
 

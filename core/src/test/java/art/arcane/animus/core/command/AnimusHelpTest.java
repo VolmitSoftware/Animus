@@ -33,12 +33,12 @@ class AnimusHelpTest {
     @Test void theRootIsGroupedByTopicWithTheNewcomerToolsFirst() {
         AnimusHelp.Page page = rootPage(0);
         List<String> titles = page.sections().stream().map(AnimusHelp.Section::title).toList();
-        assertEquals(List.of("Tools", "NPCs", "Movement", "Combat", "Content", "Services", "Behaviors", "Groups", "Diagnostics"), titles);
+        assertEquals(List.of("Tools", "NPCs", "Movement", "Combat", "Content", "Services", "Quests", "Behaviors", "Groups", "Diagnostics"), titles);
         assertEquals(List.of("setup", "tools"), page.sections().getFirst().entries().stream().map((DirectorRuntimeNode node) -> node.getDescriptor().getName()).toList());
         String first = String.join("\n", AnimusHelp.lines(page));
         assertTrue(first.contains("setup") && first.contains("tools"), "setup and tools are on the first page");
         List<String> npcs = page.sections().get(1).entries().stream().map((DirectorRuntimeNode node) -> node.getDescriptor().getName()).toList();
-        assertEquals(List.of("status", "list", "create", "inspect", "edit", "clone", "delete", "spawn", "despawn", "select", "selection", "validate", "reload", "rollback", "npc"), npcs);
+        assertEquals(List.of("status", "list", "create", "mythic", "inspect", "edit", "clone", "delete", "spawn", "despawn", "select", "selection", "validate", "reload", "rollback", "npc"), npcs);
         assertFalse(page.entries().stream().anyMatch((DirectorRuntimeNode node) -> node.getDescriptor().getName().equals("choice")), "the hidden click target stays out");
     }
 

@@ -1,0 +1,128 @@
+{
+  "citizensId": 0,
+  "presentationWarnings": [],
+  "runtimeWarnings": [
+    "/traits/waypoints/linear/points/2/triggers/0/animations/2: the START_ELYTRA animation has no Animus animation; left out",
+    "/traits/waypoints: waypoint commands stay denied until citizens:waypoints-0 is on the [behaviors.actions] commandBehaviors list in config.toml"
+  ],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/navigator/speedmodifier": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/lookclose/enabled": "CONVERTED",
+    "/traits/lookclose/range": "CONVERTED",
+    "/traits/lookclose/headonly": "CONVERTED",
+    "/traits/lookclose/perplayer": "CONVERTED",
+    "/traits/lookclose/randomSwitchTargets": "CONVERTED",
+    "/traits/lookclose/randomlookdelay": "CONVERTED",
+    "/traits/lookclose/filter": "CONVERTED",
+    "/traits/rotationtrait/globalParameters/headOnly": "CONVERTED",
+    "/traits/rotationtrait/globalParameters/maxYawPerTick": "CONVERTED",
+    "/traits/rotationtrait/globalParameters/maxPitchPerTick": "CONVERTED",
+    "/traits/pausepathfinding/playerrange": "CONVERTED",
+    "/traits/pausepathfinding/rightclick": "CONVERTED",
+    "/traits/pausepathfinding/pauseticks": "CONVERTED",
+    "/traits/pausepathfinding/lockoutduration": "CONVERTED",
+    "/traits/waypoints/provider": "CONVERTED",
+    "/traits/waypoints/linear/points/0/location/world": "CONVERTED",
+    "/traits/waypoints/linear/points/0/location/x": "CONVERTED",
+    "/traits/waypoints/linear/points/0/location/y": "CONVERTED",
+    "/traits/waypoints/linear/points/0/location/z": "CONVERTED",
+    "/traits/waypoints/linear/points/0/triggers/0/type": "CONVERTED",
+    "/traits/waypoints/linear/points/0/triggers/0/speed": "CONVERTED",
+    "/traits/waypoints/linear/points/1/location/world": "CONVERTED",
+    "/traits/waypoints/linear/points/1/location/x": "CONVERTED",
+    "/traits/waypoints/linear/points/1/location/y": "CONVERTED",
+    "/traits/waypoints/linear/points/1/location/z": "CONVERTED",
+    "/traits/waypoints/linear/points/1/triggers/0/type": "CONVERTED",
+    "/traits/waypoints/linear/points/1/triggers/0/radius": "CONVERTED",
+    "/traits/waypoints/linear/points/1/triggers/0/lines/0": "CONVERTED",
+    "/traits/waypoints/linear/points/1/triggers/0/lines/1": "CONVERTED",
+    "/traits/waypoints/linear/points/1/triggers/1/type": "CONVERTED",
+    "/traits/waypoints/linear/points/1/triggers/1/location/world": "CONVERTED",
+    "/traits/waypoints/linear/points/1/triggers/1/location/x": "CONVERTED",
+    "/traits/waypoints/linear/points/1/triggers/1/location/y": "CONVERTED",
+    "/traits/waypoints/linear/points/1/triggers/1/location/z": "CONVERTED",
+    "/traits/waypoints/linear/points/1/triggers/1/location/yaw": "CONVERTED",
+    "/traits/waypoints/linear/points/1/triggers/1/location/pitch": "CONVERTED",
+    "/traits/waypoints/linear/points/1/triggers/2/type": "CONVERTED",
+    "/traits/waypoints/linear/points/1/triggers/2/commands/0": "CONVERTED",
+    "/traits/waypoints/linear/points/1/triggers/3/type": "CONVERTED",
+    "/traits/waypoints/linear/points/1/triggers/3/speed": "CONVERTED",
+    "/traits/waypoints/linear/points/2/location/world": "CONVERTED",
+    "/traits/waypoints/linear/points/2/location/x": "CONVERTED",
+    "/traits/waypoints/linear/points/2/location/y": "CONVERTED",
+    "/traits/waypoints/linear/points/2/location/z": "CONVERTED",
+    "/traits/waypoints/linear/points/2/triggers/0/type": "CONVERTED",
+    "/traits/waypoints/linear/points/2/triggers/0/animations/0": "CONVERTED",
+    "/traits/waypoints/linear/points/2/triggers/0/animations/1": "CONVERTED",
+    "/traits/waypoints/linear/points/2/triggers/0/animations/2": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/2/triggers/0/at/world": "CONVERTED",
+    "/traits/waypoints/linear/points/2/triggers/0/at/x": "CONVERTED",
+    "/traits/waypoints/linear/points/2/triggers/0/at/y": "CONVERTED",
+    "/traits/waypoints/linear/points/2/triggers/0/at/z": "CONVERTED",
+    "/traits/waypoints/linear/points/2/triggers/0/at/yaw": "CONVERTED",
+    "/traits/waypoints/linear/points/2/triggers/0/at/pitch": "CONVERTED",
+    "/traits/waypoints/linear/points/3/location/world": "CONVERTED",
+    "/traits/waypoints/linear/points/3/location/x": "CONVERTED",
+    "/traits/waypoints/linear/points/3/location/y": "CONVERTED",
+    "/traits/waypoints/linear/points/3/location/z": "CONVERTED",
+    "/traits/waypoints/linear/points/3/triggers/0/type": "CONVERTED",
+    "/traits/waypoints/linear/points/3/triggers/0/location/world": "CONVERTED",
+    "/traits/waypoints/linear/points/3/triggers/0/location/x": "CONVERTED",
+    "/traits/waypoints/linear/points/3/triggers/0/location/y": "CONVERTED",
+    "/traits/waypoints/linear/points/3/triggers/0/location/z": "CONVERTED"
+  },
+  "reasons": {
+    "/traits/lookclose/filter": "groups became group.<name> permissions, which LuckPerms and most permission plugins grant to group members",
+    "/traits/rotationtrait/globalParameters/headOnly": "look-close's own head-only and linked-body settings apply",
+    "/traits/rotationtrait/globalParameters/maxYawPerTick": "became turnRate in animus:look-close",
+    "/traits/rotationtrait/globalParameters/maxPitchPerTick": "became turnRate in animus:look-close",
+    "/traits/waypoints/linear/points/2/triggers/0/animations/2": "not converted; check it in citizens:review"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "old_harbor",
+      "to": "harbor"
+    },
+    {
+      "source": "/traits/waypoints/linear/points/0/location",
+      "from": "old_harbor",
+      "to": "harbor"
+    },
+    {
+      "source": "/traits/waypoints/linear/points/1/location",
+      "from": "old_harbor",
+      "to": "harbor"
+    },
+    {
+      "source": "/traits/waypoints/linear/points/1/triggers/1/location",
+      "from": "old_harbor",
+      "to": "harbor"
+    },
+    {
+      "source": "/traits/waypoints/linear/points/2/location",
+      "from": "old_harbor",
+      "to": "harbor"
+    },
+    {
+      "source": "/traits/waypoints/linear/points/2/triggers/0/at",
+      "from": "old_harbor",
+      "to": "harbor"
+    },
+    {
+      "source": "/traits/waypoints/linear/points/3/location",
+      "from": "old_harbor",
+      "to": "harbor"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

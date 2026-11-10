@@ -1,0 +1,23 @@
+{
+  "citizensId": 1,
+  "presentationWarnings": [],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/profession": "CONVERTED",
+    "/traits/villagertrait/type": "CONVERTED",
+    "/traits/villagertrait/level": "CONVERTED",
+    "/traits/scaledhealthtrait/maxHealth": "CONVERTED"
+  },
+  "reasons": {},
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": []
+}

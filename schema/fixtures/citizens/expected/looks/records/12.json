@@ -1,0 +1,17 @@
+{
+  "name": "Sandfall",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000612",
+  "metadata": {
+    "item-type-id": "GOLD_BLOCK",
+    "item-type-data": 0
+  },
+  "traits": {
+    "type": "FALLING_BLOCK",
+    "location": {
+      "world": "world",
+      "x": 24.5,
+      "y": 64,
+      "z": 0.5
+    }
+  }
+}
