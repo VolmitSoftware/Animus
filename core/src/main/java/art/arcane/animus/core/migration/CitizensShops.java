@@ -68,8 +68,7 @@ final class CitizensShops {
 
     /**
      * The {@code animus:shop} module of an NPC whose shop trait opens a shop on right click: the named global shop, or
-     * the NPC's own shop when no global shop has that name. Like every imported shop link it opens nothing until the
-     * shops review is accepted.
+     * the NPC's own shop when no global shop has that name.
      */
     static Optional<JsonObject> module(JsonElement trait, String uuid, Converted shops, List<String> warnings) {
         JsonObject shop = object(trait);
@@ -84,7 +83,6 @@ final class CitizensShops {
         JsonObject module = new JsonObject();
         module.addProperty("shop", id);
         module.addProperty("openOn", "right");
-        module.addProperty("reviewAccepted", false);
         return Optional.of(module);
     }
 

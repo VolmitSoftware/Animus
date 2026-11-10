@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "d3cbcdc8-7cb3-5d8c-bd56-6972acfb93d8",
+  "id": "frame-up",
+  "group": "settings",
+  "name": "Set frame-up",
+  "type": "minecraft:item_frame",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "itemFrame": {
+    "item": {
+      "id": "minecraft:iron_sword"
+    },
+    "facing": "up",
+    "rotation": 2
+  }
+}

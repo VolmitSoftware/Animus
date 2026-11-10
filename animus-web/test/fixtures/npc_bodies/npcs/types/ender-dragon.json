@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "30c5c7c0-82f9-52a2-97be-1a3b2defe0d7",
+  "id": "ender-dragon",
+  "group": "types",
+  "name": "Body ender_dragon",
+  "type": "minecraft:ender_dragon",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

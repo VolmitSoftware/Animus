@@ -66,7 +66,7 @@ class GroupFactoringTest {
     }
 
     @Test
-    void factorGroupsStagesGroupFilesAndAcceptAndRollbackCoverThem() throws Exception {
+    void factorGroupsStagesGroupFilesAndApplyAndRollbackCoverThem() throws Exception {
         Files.createDirectories(root.resolve("plugins/Citizens"));
         Files.writeString(root.resolve("plugins/Citizens/saves.yml"), SAVES);
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
@@ -75,7 +75,6 @@ class GroupFactoringTest {
             String staged = String.join("\n", flow.preview("reject", Optional.empty(), Map.of(), true));
             assertTrue(staged.contains("Factored groups: groups/citizens-"), staged);
             assertTrue(staged.contains(".json (2 NPCs)"), staged);
-            assertTrue(staged.contains("combat 2"), "review counts read the effective definitions: " + staged);
             flow.applyStaged();
             NpcDefinition one = npcs.find("citizens-1").orElseThrow(), two = npcs.find("citizens-2").orElseThrow();
             assertEquals(1, one.groups().size());
@@ -87,11 +86,8 @@ class GroupFactoringTest {
             assertFalse(npcs.draft("citizens-1").document().getAsJsonObject("modules").has("animus:combat"), "the stored file lists the group instead");
             assertTrue(npcs.find("citizens-3").orElseThrow().groups().isEmpty());
 
-            String accepted = String.join("\n", flow.acceptCategories(List.of("combat")));
-            assertTrue(accepted.contains("combat 2"), accepted);
             JsonObject combat = npcs.find("citizens-1").orElseThrow().json().getAsJsonObject("modules").getAsJsonObject("animus:combat");
-            assertTrue(combat.get("reviewAccepted").getAsBoolean() && combat.get("enabled").getAsBoolean(), combat.toString());
-            assertTrue(store.read("groups/" + group + ".json").replaceAll("\\s", "").contains("\"reviewAccepted\":true"));
+            assertTrue(combat.get("enabled").getAsBoolean() && !combat.has("reviewAccepted"), "the group's combat is on once applied: " + combat);
 
             flow.rollbackApplied();
             assertNull(store.read("groups/" + group + ".json"));

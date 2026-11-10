@@ -23,7 +23,7 @@
     "/recipes/2: the offer has no result item or no first item; kept in source.yml",
     "/object/villagerType: mob settings are kept in the NPC's shopkeepers:review section",
     "/object/equipment: mob settings are kept in the NPC's shopkeepers:review section",
-    "a new minecraft:villager NPC stands at the shopkeeper's place, despawned until the spawn review is accepted"
+    "a new minecraft:villager NPC stands at the shopkeeper's place"
   ],
   "counts": {
     "CONVERTED": 12,

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "4fdbdee4-d546-5aa5-87de-389b44afd150",
+  "id": "villager-librarian",
+  "group": "settings",
+  "name": "Set villager-librarian",
+  "type": "minecraft:villager",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "villager": {
+    "type": "taiga",
+    "profession": "librarian",
+    "level": "expert"
+  }
+}

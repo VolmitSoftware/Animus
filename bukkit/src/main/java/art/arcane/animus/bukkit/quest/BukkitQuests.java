@@ -27,15 +27,17 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
- * Animus quests on Bukkit, Paper and Folia: the quest service, the {@code /quests} command, the events quests count
- * (mob and NPC kills) and the check timer. Every player event runs where Bukkit fires it; the service hands player
- * work to each player's owner.
+ * Animus quests on Bukkit, Paper and Folia: the quest service, the {@code /quests} command (also {@code /questlog},
+ * since Quests by PikaMug takes {@code /quests} when installed), the events quests count (mob and NPC kills), the
+ * player records read on join and the check timer. Every player event runs where Bukkit fires it, on the player's own
+ * region on Folia; the service hands other player work to each player's owner.
  */
 public final class BukkitQuests implements Listener, AutoCloseable {
     private final JavaPlugin plugin;
@@ -56,9 +58,10 @@ public final class BukkitQuests implements Listener, AutoCloseable {
     /** The world facts requirement conditions read, once the behavior runtime has them. */
     public void facts(BehaviorFacts provider) { facts = provider; }
 
-    /** Registers the events and {@code /quests}, starts the check timer on {@code ownerTicks} and reads the catalog. */
+    /** Registers the events and {@code /quests}, reads the records of players already online, starts the check timer on {@code ownerTicks} and reads the catalog. */
     public void start(Function<Runnable, AutoCloseable> ownerTicks) {
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
+        for (Player online : plugin.getServer().getOnlinePlayers()) service.onPlayer(online.getUniqueId(), () -> service.joined(online));
         PluginCommand journal = plugin.getCommand("quests");
         if (journal != null) journal.setExecutor((sender, command, label, arguments) -> {
             if (!(sender instanceof Player player)) { sender.sendMessage(Palette.error("Only a player has a quest journal")); return true; }
@@ -87,6 +90,9 @@ public final class BukkitQuests implements Listener, AutoCloseable {
         UUID killer = event.getKiller().orElse(null);
         if (killer != null) service.killed(killer, "", Optional.of(event.getNpcId()));
     }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void joined(PlayerJoinEvent event) { service.joined(event.getPlayer()); }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void quit(PlayerQuitEvent event) { service.quit(event.getPlayer()); }

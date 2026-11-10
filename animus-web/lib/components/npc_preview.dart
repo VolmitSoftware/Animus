@@ -2,7 +2,9 @@
 /// pose, skin, equipment, text and the rig it names (with its animations
 /// playable), with the skin controls and a readout of what the stage cannot
 /// show. It is drawn in the browser; with a paired server that shares
-/// terrain, the blocks around the NPC replace the grass patch.
+/// terrain, the blocks around the NPC and along its route replace the grass
+/// patch, and while the NPC is spawned the body stands where the NPC is
+/// now, with the blocks around it loading as it walks.
 library;
 
 import 'dart:convert';
@@ -19,18 +21,23 @@ import '../logic/npc/npc_attributes.dart';
 import '../logic/npc/route_model.dart';
 import '../logic/offline/new_documents.dart';
 import '../logic/rig_sampler.dart';
+import '../logic/terrain/terrain_path.dart';
 import '../mc/npc/npc_look.dart';
 import '../mc/npc/npc_playground.dart';
 import '../mc/npc/npc_scene.dart';
 import '../mc/npc/npc_skin.dart';
 import '../mc/npc/route_overlay.dart';
+import '../mc/scene/mc_math.dart';
+import '../mc/scene/mc_scene.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import '../services/skin_images.dart';
 import '../services/skin_textures.dart';
+import '../services/terrain/terrain_client.dart';
 import 'gui/gui_fields.dart';
 import 'mc/mc_asset_loader.dart';
 import 'mc/mc_stage.dart';
+import 'terrain/live_position.dart';
 import 'terrain/stage_terrain.dart';
 
 class NpcPreview extends StatefulWidget {
@@ -79,11 +86,14 @@ class _NpcPreviewState extends State<NpcPreview> {
   bool _playing = false;
   double? _lastFrame;
   bool _backToIdle = false;
-  late final StageTerrain _terrain = StageTerrain(() {
+  late final StageTerrain _terrain = StageTerrain(_redraw);
+  late final LivePosition _live = LivePosition(_redraw);
+
+  void _redraw() {
     if (!mounted) return;
     setState(() {});
     _sync();
-  });
+  }
 
   NpcLook get _look {
     final Object? json = component.document.json;
@@ -160,6 +170,7 @@ class _NpcPreviewState extends State<NpcPreview> {
   void dispose() {
     _playing = false;
     _terrain.dispose();
+    _live.dispose();
     super.dispose();
   }
 
@@ -171,10 +182,16 @@ class _NpcPreviewState extends State<NpcPreview> {
     final NpcSkinChoice skin = _skinFor(look);
     final JsonMap? route = _showRoute ? component.route : null;
     final AnimusDocument? rig = component.rig;
-    final JsonMap position = asMap(asMap(component.document.json)['position']);
-    _terrain.show(asString(position['world']), asDouble(position['x']) ?? 0, asDouble(position['y']) ?? 0, asDouble(position['z']) ?? 0);
+    final JsonMap definition = asMap(component.document.json);
+    final JsonMap position = asMap(definition['position']);
+    final String? world = asString(position['world']);
+    final (double, double, double) home = (asDouble(position['x']) ?? 0, asDouble(position['y']) ?? 0, asDouble(position['z']) ?? 0);
+    _live.follow(definition['spawned'] == true && _terrain.on ? component.document.id : null);
+    final TerrainLivePosition? live = _live.at?.world == world ? _live.at : null;
+    _terrain.show(world, McVec3(home.$1, home.$2, home.$3),
+        path: terrainRoutePath(route == null ? null : RouteSpec(route), home: home, live: live == null ? null : (live.x, live.y, live.z)));
     final String signature = '${component.document.source}|${skin.textureId}|${skin.slim}|${route == null ? '' : jsonEncode(route)}'
-        '|${rig?.source.hashCode}|$_animation|$_tick|${identityHashCode(_terrain.result)}|${_terrain.on}';
+        '|${rig?.source.hashCode}|$_animation|$_tick|${identityHashCode(_terrain.result)}|${_terrain.on}|$live';
     if (signature == _shown && !frame) return;
     _shown = signature;
     final Object? rigJson = rig?.json;
@@ -187,10 +204,42 @@ class _NpcPreviewState extends State<NpcPreview> {
       resources: component.resources,
       textureId: _texture,
     );
-    final NpcScene scene = _scene = route == null
-        ? body
-        : withRoute(body, RouteSpec(route), (asDouble(position['x']) ?? 0, asDouble(position['y']) ?? 0, asDouble(position['z']) ?? 0));
-    _stage.show(_terrain.apply(scene.scene), scene.texts, yawDeg: look.yawDeg, frame: frame);
+    final NpcScene placed = live == null ? body : _atLive(body, live, home);
+    final NpcScene scene = _scene = route == null ? placed : _nearFrame(withRoute(placed, RouteSpec(route), home), live == null ? null : (live.x - home.$1, live.z - home.$3));
+    _stage.show(_terrain.apply(scene.scene), scene.texts, yawDeg: look.yawDeg, frame: frame, reach: _terrain.reach);
+  }
+
+  /// [scene] framing only the points within [_frameReach] blocks of
+  /// [centre] (the NPC, at home when null), so a long route keeps the body
+  /// in view.
+  static NpcScene _nearFrame(NpcScene scene, (double, double)? centre) => NpcScene(
+        scene: McScene(scene.scene.nodes,
+            frame: <McVec3>[
+              for (final McVec3 point in scene.scene.frame)
+                if ((point.x - (centre?.$1 ?? 0)).abs() <= _frameReach && (point.z - (centre?.$2 ?? 0)).abs() <= _frameReach) point,
+            ],
+            glow: scene.scene.glow,
+            ground: scene.scene.ground),
+        texts: scene.texts,
+        notes: scene.notes,
+        presentable: scene.presentable,
+      );
+
+  static const double _frameReach = 32;
+
+  /// [body] standing where the spawned NPC is now, relative to [home]: its
+  /// nodes, texts and framing moved there, so the camera follows it over the
+  /// blocks it walks on.
+  static NpcScene _atLive(NpcScene body, TerrainLivePosition live, (double, double, double) home) {
+    final McVec3 by = McVec3(live.x - home.$1, live.y - home.$2, live.z - home.$3);
+    final McMat4 move = McMat4.translation(by.x, by.y, by.z);
+    return NpcScene(
+      scene: McScene(<McSceneNode>[for (final McSceneNode node in body.scene.nodes) mcMovedNode(node, move)],
+          frame: <McVec3>[for (final McVec3 point in body.scene.frame) point + by], glow: body.scene.glow, ground: body.scene.ground),
+      texts: <NpcText>[for (final NpcText text in body.texts) text.moved(by)],
+      notes: body.notes,
+      presentable: body.presentable,
+    );
   }
 
   /// Fetches a signed skin's texture once its document is here, and redraws
@@ -262,7 +311,12 @@ class _NpcPreviewState extends State<NpcPreview> {
     final NpcSkinInfo? info = _skinInfo;
     final LoadedSkin? loaded = _loaded(look);
     final bool slim = _slim;
-    return dom.section(classes: 'animus-panel animus-npc-preview', attributes: <String, String>{'data-terrain-meshes': '${_terrain.on ? _terrain.result?.nodes.length ?? 0 : 0}'}, <Widget>[
+    final TerrainLivePosition? live = _live.at;
+    return dom.section(classes: 'animus-panel animus-npc-preview', attributes: <String, String>{
+      'data-terrain-meshes': '${_terrain.on ? _terrain.result?.nodes.length ?? 0 : 0}',
+      'data-terrain-chunks': '${_terrain.on ? _terrain.result?.chunks ?? 0 : 0}',
+      if (live != null) 'data-live-position': '${live.world} ${live.x} ${live.y} ${live.z}',
+    }, <Widget>[
       const dom.p(classes: 'animus-preview-label', <Widget>[
         Component.text('Browser preview'),
       ]),
@@ -333,6 +387,7 @@ class _NpcPreviewState extends State<NpcPreview> {
               : <String>[for (final MapEntry<NpcSlot, NpcItem> entry in look.equipment.entries) '${entry.key.key} ${entry.value.id}'].join(', '),
         ),
         ..._fact('Text', look.textLines.isEmpty ? (look.nativeName ? 'nameplate only' : 'none') : '${look.textLines.length} line${look.textLines.length == 1 ? '' : 's'}'),
+        if (live != null) ..._fact('Now at', '${live.x.floor()}, ${live.y.floor()}, ${live.z.floor()} in ${live.world}'),
       ]),
       if (scene.notes.isNotEmpty || _terrain.note != null)
         dom.ul(classes: 'animus-npc-notes', <Widget>[

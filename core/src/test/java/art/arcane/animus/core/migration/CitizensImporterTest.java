@@ -44,8 +44,8 @@ class CitizensImporterTest {
             assertEquals("already-applied", importer.apply(store, preview.id()));
             NpcDefinition definition = NpcDefinition.parse(store.read("npcs/world/citizens-1.json"));
             assertEquals("world", definition.json().getAsJsonObject("position").get("world").getAsString());
-            assertFalse(definition.json().get("spawned").getAsBoolean());
-            assertFalse(definition.json().getAsJsonObject("modules").getAsJsonObject("animus:combat").get("enabled").getAsBoolean());
+            assertTrue(definition.json().get("spawned").getAsBoolean(), "spawned as Citizens had it");
+            assertTrue(definition.json().getAsJsonObject("modules").getAsJsonObject("animus:combat").get("enabled").getAsBoolean(), "converted combat is on");
             assertEquals(42, definition.json().getAsJsonObject("modules").getAsJsonObject("citizens:review").getAsJsonObject("mystery").get("answer").getAsInt());
             store.rollback(tx);
             assertNull(store.read("npcs/world/citizens-1.json"));
@@ -53,6 +53,20 @@ class CitizensImporterTest {
             importer.apply(store, preview.id());
         }
     }
+    @Test void aPreviewFromAnOlderConverterIsRefusedWithTheCommandThatMakesANewOne() throws Exception {
+        Path target = root.resolve("out");
+        CitizensImporter importer = new CitizensImporter();
+        var preview = importer.preview(source("npc:\n" + npc("1")), target, Map.of());
+        OlderPreviews.age(preview.directory());
+        try (DocumentStore store = new DocumentStore(target)) {
+            CitizensImporter.OutdatedPreview refused = assertThrows(CitizensImporter.OutdatedPreview.class, () -> importer.apply(store, preview.id()));
+            assertTrue(refused.getMessage().startsWith(OlderPreviews.refusal(preview.id()) + "old/citizens-1.json is schemaVersion 1, this one writes 2; "), refused.getMessage());
+            assertTrue(refused.getMessage().endsWith("; run /animus import preview <file> again and apply the import id it reports"), refused.getMessage());
+            assertThrows(CitizensImporter.OutdatedPreview.class, () -> ImportApplications.stage(store, preview.id(), "reject", null), "staging it is refused the same way");
+            assertNull(store.read("npcs/old/citizens-1.json"));
+        }
+    }
+
     @Test void mobBodiesKeepTheirCitizensSkinForReviewInsteadOfActivatingWithIt() throws Exception {
         String frog = npc("2").replace("type: PLAYER", "type: FROG").replace("textureRaw: abc", "textureRaw: frog");
         CitizensImporter.Preview preview = new CitizensImporter().preview(source("npc:\n" + npc("1") + frog), root.resolve("out"), Map.of("old", "world"));
@@ -73,7 +87,7 @@ class CitizensImporterTest {
     }
     @Test void previewCountsADefinitionTheRuntimeWouldRefuseAsInvalid() throws Exception {
         JsonObject definition = JsonDocuments.object("""
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"frog","group":"test","name":"Frog",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"frog","group":"test","name":"Frog",
                  "type":"minecraft:frog","spawned":false,"skin":"%s","position":{"world":"world","x":1,"y":64,"z":2,"yaw":0,"pitch":0}}
                 """.formatted("a".repeat(64)));
         assertEquals(java.util.List.of("$.skin: textures require a player body"), CitizensImporter.validate(definition));
@@ -185,24 +199,13 @@ class CitizensImporterTest {
         assertEquals("original", definition.getAsJsonObject("modules").getAsJsonObject("citizens:review").getAsJsonObject("location").get("worldid").getAsString());
     }
 
-    @Test void rejectsIncompleteRepeatApplyAndEnabledCombatEvenWithUpdatedManifest() throws Exception {
+    @Test void rejectsAnIncompleteRepeatApply() throws Exception {
         var importer = new CitizensImporter();
         var preview = importer.preview(source("npc:\n" + npc("1")), root.resolve("out"), Map.of());
         try (DocumentStore store = new DocumentStore(root.resolve("out"))) {
             importer.apply(store, preview.id());
             Files.delete(root.resolve("out/npcs/old/citizens-1.json"));
             assertTrue(assertThrows(IOException.class, () -> importer.apply(store, preview.id())).getMessage().contains("incomplete"));
-            // Remove only our generated receipt, then exercise the independent staged-combat check.
-            Files.delete(root.resolve("out/imports/" + preview.id() + "/receipt.json"));
-            String name = "npcs/old/citizens-1.json";
-            Path candidatePath = preview.directory().resolve(name);
-            JsonObject candidate = JsonDocuments.object(Files.readString(candidatePath));
-            candidate.getAsJsonObject("modules").getAsJsonObject("animus:combat").addProperty("enabled", true);
-            String content = JsonDocuments.write(candidate); Files.writeString(candidatePath, content);
-            JsonObject report = preview.summary(); report.getAsJsonObject("documents").addProperty(name, JsonDocuments.hash(content));
-            Files.writeString(preview.directory().resolve("report.json"), JsonDocuments.write(report));
-            assertTrue(assertThrows(IOException.class, () -> importer.apply(store, preview.id())).getMessage().contains("disabled"));
-            assertFalse(Files.exists(root.resolve("out/npcs/old/citizens-1.json")));
         }
     }
 

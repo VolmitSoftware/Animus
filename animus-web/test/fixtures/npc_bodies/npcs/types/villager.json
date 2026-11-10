@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "3d061089-a1b9-5397-969b-aeda2a841d5d",
+  "id": "villager",
+  "group": "types",
+  "name": "Body villager",
+  "type": "minecraft:villager",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

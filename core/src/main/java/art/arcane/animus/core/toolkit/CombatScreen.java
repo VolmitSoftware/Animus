@@ -38,21 +38,19 @@ final class CombatScreen<P, S> extends ToolScreen<P, S> {
             icon(SUMMARY, "minecraft:name_tag", title("Nothing selected"), List.of("&7Click NPCs with the wand, or use Find"), Optional.empty());
             return;
         }
-        int on = 0, waiting = 0;
+        int on = 0;
         for (String id : selected) {
             Optional<NpcDefinition> definition = toolkit.npcs().find(id);
             if (definition.isEmpty()) continue;
             JsonObject module = CombatFiles.module(definition.get().json(), CombatSettings.MODULE);
             if (!CombatFiles.literalTrue(module, "enabled")) continue;
             on++;
-            if (definition.get().imported() && !CombatFiles.literalTrue(module, "reviewAccepted")) waiting++;
         }
         JsonObject first = toolkit.npcs().find(selected.getFirst()).map((NpcDefinition definition) -> CombatFiles.module(definition.json(), CombatSettings.MODULE)).orElse(new JsonObject());
         List<String> summary = new ArrayList<>(List.of("&7Combat on &f" + on + "&7 of &f" + selected.size(), "&7Rows show &f" + selected.getFirst()));
-        if (waiting > 0) summary.add("&c" + waiting + " with imported combat waiting; Enable turns it on");
         icon(SUMMARY, "minecraft:name_tag", title(ToolkitFiles.count(selected.size()) + " selected"), summary, Optional.empty());
 
-        guarded(ENABLE, "minecraft:lime_concrete", "Enable combat", "Lets them fight; also turns on imported combat", selected.size(), false,
+        guarded(ENABLE, "minecraft:lime_concrete", "Enable combat", "Lets them fight", selected.size(), false,
                 () -> write((CombatFiles files, List<String> ids) -> files.enable(ids, true)));
         guarded(DISABLE, "minecraft:gray_concrete", "Disable combat", "Stops them fighting; their combat settings stay", selected.size(), false,
                 () -> write((CombatFiles files, List<String> ids) -> files.enable(ids, false)));

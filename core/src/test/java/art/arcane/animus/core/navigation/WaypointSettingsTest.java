@@ -7,20 +7,20 @@ import static org.junit.jupiter.api.Assertions.*;
 class WaypointSettingsTest {
     private static JsonObject definition(String nativeSettings, boolean imported) {
         return JsonParser.parseString("""
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"patrol","group":"test",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"patrol","group":"test",
                  "name":"Guard","type":"minecraft:player","spawned":true,
                  "position":{"world":"world","x":0,"y":1,"z":0,"yaw":0,"pitch":0},
                  "modules":{"citizens:review":{"waypoints":{"enabled":true}}%s}%s}
                 """.formatted(nativeSettings==null?"":",\"animus:navigation\":"+nativeSettings,imported?",\"migration\":{}":"")).getAsJsonObject();
     }
-    @Test void preservedImportsNeverBecomeExecutableAndNativeRoutesNeedExplicitEnablement() throws Exception {
+    @Test void preservedImportsNeverBecomeExecutableAndRoutesNeedExplicitEnablement() throws Exception {
         assertTrue(WaypointSettings.parse(definition(null,true)).isEmpty());
         assertTrue(WaypointSettings.parse(definition("{\"points\":[{\"x\":1,\"y\":2,\"z\":3}]}",false)).isEmpty());
-        assertThrows(IllegalArgumentException.class,()->WaypointSettings.parse(definition("{\"enabled\":true,\"points\":[{\"x\":1,\"y\":2,\"z\":3}]}",true)));
+        assertTrue(WaypointSettings.parse(definition("{\"enabled\":true,\"points\":[{\"x\":1,\"y\":2,\"z\":3}]}",true)).isPresent(), "an imported route walks once enabled");
     }
     @Test void reviewedNativeRouteKeepsLoopWaitModeAndCoordinates() throws Exception {
         var parsed=WaypointSettings.parse(definition("""
-                {"enabled":true,"reviewAccepted":true,"mode":"swim","speed":3.5,"loop":true,"waitTicks":40,
+                {"enabled":true,"mode":"swim","speed":3.5,"loop":true,"waitTicks":40,
                  "points":[{"x":1.25,"y":62.5,"z":-2}]}
                 """,true)).orElseThrow();
         assertEquals(MovementProfile.Mode.SWIM,parsed.mode());assertEquals(3.5,parsed.speed());assertTrue(parsed.loop());assertEquals(WaypointSettings.Wait.fixed(40),parsed.waitTicks());
@@ -43,7 +43,7 @@ class WaypointSettingsTest {
         assertTrue(WaypointSettings.parse(reference).isEmpty());assertEquals("town_patrol",WaypointSettings.reference(reference));
         assertThrows(IllegalArgumentException.class,()->WaypointSettings.reference(definition("{\"enabled\":true,\"route\":\"../secret\"}",false)));
         assertThrows(IllegalArgumentException.class,()->WaypointSettings.reference(definition("{\"enabled\":true,\"route\":\"patrol\",\"speed\":2}",false)));
-        assertThrows(IllegalArgumentException.class,()->WaypointSettings.reference(definition("{\"enabled\":true,\"route\":\"patrol\"}",true)));
+        assertEquals("patrol",WaypointSettings.reference(definition("{\"enabled\":true,\"route\":\"patrol\"}",true)));
     }
     @Test void reusableDocumentRequiresExactSchemaAndUtf8ByteBound() {
         String route="{\"schemaVersion\":1,\"points\":[{\"x\":0,\"y\":1,\"z\":0}]}";

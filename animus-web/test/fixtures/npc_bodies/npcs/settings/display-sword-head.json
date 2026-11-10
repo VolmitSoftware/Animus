@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "88bce1b8-f804-5bb1-895d-a5a7b20d3aec",
+  "id": "display-sword-head",
+  "group": "settings",
+  "name": "Set display-sword-head",
+  "type": "minecraft:item_display",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "itemDisplay": {
+    "item": {
+      "id": "minecraft:diamond_sword"
+    },
+    "transform": "head"
+  }
+}

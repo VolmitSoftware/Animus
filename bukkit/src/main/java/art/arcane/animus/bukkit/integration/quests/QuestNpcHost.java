@@ -2,13 +2,12 @@ package art.arcane.animus.bukkit.integration.quests;
 
 import art.arcane.animus.bukkit.api.AnimusNpcs;
 import java.util.Optional;
-import java.util.OptionalInt;
 import java.util.UUID;
 import org.bukkit.Location;
 
 /**
- * What every quest plugin integration reads from and does to Animus NPCs: Quests, BeautyQuests, BetonQuest, NotQuests and
- * Typewriter. Lookups are safe from any thread; changes are queued on the file lane and reach the world on the next refresh.
+ * What every quest plugin integration reads from and does to Animus NPCs: Quests, BeautyQuests and BetonQuest.
+ * Lookups are safe from any thread; changes are queued on the file lane and reach the world on the next refresh.
  */
 public interface QuestNpcHost {
     AnimusNpcs npcs();
@@ -21,9 +20,6 @@ public interface QuestNpcHost {
 
     /** The NPC's body height in blocks, when it is active. */
     Optional<Double> height(UUID npc);
-
-    /** The Citizens id the NPC was imported from, if any. */
-    OptionalInt citizensId(UUID npc);
 
     /** Saves a new position for the NPC. */
     void teleport(String key, Location to);

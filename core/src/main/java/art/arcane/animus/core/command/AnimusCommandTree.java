@@ -4,6 +4,7 @@ import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.admin.Administration;
 import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
 import art.arcane.animus.core.behavior.builtin.PendingChoices;
+import art.arcane.animus.core.editor.EditorCommands;
 import art.arcane.animus.core.integration.NpcTemplates;
 import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.Subsystem;
@@ -417,7 +418,11 @@ public final class AnimusCommandTree extends CommandGroup {
                     String changed = Administration.describe(changes);
                     if (!stopping()) actor.reply(() -> {
                         if (patch.isEmpty()) commit(actor, candidate, draft, PermissionNodes.NPC_EDIT, "spawn", (String tx) -> "Spawning " + id + "; tx " + tx + "; it becomes active once its chunk loads");
-                        else commit(actor, candidate, draft, PermissionNodes.NPC_EDIT, "save", (String tx) -> "Saved " + id + ": " + changed + "; tx " + tx);
+                        else {
+                            Optional<String> commands = EditorCommands.scheduleRefusal(actor, document);
+                            if (commands.isPresent()) { actor.tell(Palette.error("Cannot save " + id + ": " + commands.get())); return; }
+                            commit(actor, candidate, draft, PermissionNodes.NPC_EDIT, "save", (String tx) -> "Saved " + id + ": " + changed + "; tx " + tx);
+                        }
                     });
                 } catch (IOException | RuntimeException e) { reply(actor, Palette.error(reason(e))); }
             });

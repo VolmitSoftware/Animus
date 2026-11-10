@@ -69,7 +69,7 @@ public final class ApplicationChecks {
                 NpcDefinition second=NpcDefinition.parse(store.read("npcs/copy-town/citizens-2-town.json"));
                 check(!first.uuid().equals(accepted.uuid()),"duplicate receives independent identity");
                 check(first.json().getAsJsonObject("migration").getAsJsonArray("references").get(0).getAsJsonObject().get("npcUuid").getAsString().equals(second.uuid().toString()),"duplicate references copied target");
-                check(!first.json().get("spawned").getAsBoolean(),"copied definition stays dormant");
+                check(first.json().get("spawned").getAsBoolean(),"copied definition spawns as converted");
                 store.rollback(copied);
                 check(store.read(first.path())==null && store.read(second.path())==null,"rollback removes copied definitions");
                 check(store.read(accepted.path())!=null,"copy rollback preserves originals");

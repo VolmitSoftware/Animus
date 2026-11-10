@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "253618b1-125a-55a4-85d6-65b95d3a6d4e",
+  "id": "zombie-horse",
+  "group": "types",
+  "name": "Body zombie_horse",
+  "type": "minecraft:zombie_horse",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

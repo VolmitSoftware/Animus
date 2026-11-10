@@ -40,7 +40,7 @@ public final class AnimusHelp {
     /** Verbs in the order a group lists them: reading first, then doing, then undoing; unlisted verbs follow A-Z. */
     private static final List<String> VERBS = List.of("status", "list", "inspect", "members", "summary", "capabilities", "problems", "packs", "triggers",
             "trace", "schematics", "tokens", "performance", "network", "npc", "watch", "mode", "go", "look", "create", "start", "run", "play", "open", "menu",
-            "preview", "stage", "apply", "plan", "review", "accept", "engage", "disengage", "target", "guard", "attack", "mob", "release", "assign", "unassign",
+            "preview", "stage", "apply", "plan", "review", "engage", "disengage", "target", "guard", "attack", "mob", "release", "assign", "unassign",
             "action", "condition", "spawn", "move", "path", "mount", "control", "folia", "pause", "resume", "survey", "donate", "team", "ghost", "pair",
             "revoke", "validate", "schema", "reload", "build", "citizens", "shops", "gloss", "live", "file", "import", "export", "close", "stop", "cancel", "clear", "reset",
             "rollback", "delete", "state", "behavior", "player", "relationship", "all", "confirm");

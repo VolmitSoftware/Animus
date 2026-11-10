@@ -263,10 +263,12 @@ class _EditorShellState extends State<EditorShell> {
       if (picked == null) return;
       final WorkspaceSnapshot snapshot = await component.store.openFiles(picked.name, picked.files, requireDocuments: true, zip: zip);
       final int invalid = snapshot.documents.where((AnimusDocument document) => !document.valid).length;
+      final int upgraded = component.store.upgraded.length;
+      final String upgrades = upgraded == 0 ? '' : ' Upgraded $upgraded ${upgraded == 1 ? 'file' : 'files'} to schemaVersion 2.';
       if (invalid > 0) {
-        ArcaneSonner.warning('Opened ${snapshot.documents.length} documents; $invalid need repair.');
+        ArcaneSonner.warning('Opened ${snapshot.documents.length} documents; $invalid need repair.$upgrades');
       } else {
-        ArcaneSonner.success('Opened ${snapshot.documents.length} documents.');
+        ArcaneSonner.success('Opened ${snapshot.documents.length} documents.$upgrades');
       }
       component.onNavigate(WorkspaceRoute(snapshot.id));
       focusMainHeading();
@@ -666,6 +668,7 @@ class _EditorShellState extends State<EditorShell> {
           WorkspaceOverview(
             workspace: workspace,
             ignored: component.store.ignored,
+            upgraded: component.store.upgraded,
             onNavigate: component.onNavigate,
           ),
       ]),

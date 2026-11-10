@@ -94,7 +94,7 @@ class DestinationsMappingTest {
                         TimeOfDay: -1
             """.formatted(TEXTURE);
 
-    @Test void destinationsBecomeAScheduleThatWaitsForReview() throws Exception {
+    @Test void destinationsBecomeAScheduleThatRunsOnceApplied() throws Exception {
         Path source = Files.writeString(root.resolve("saves.yml"), SAVES);
         CitizensImporter importer = new CitizensImporter();
         CitizensImporter.Preview preview = importer.preview(source, root.resolve("out"), Map.of("old_town", "town"));
@@ -103,7 +103,7 @@ class DestinationsMappingTest {
         String warnings = preview.summary().getAsJsonArray("migrationWarnings").toString();
         assertTrue(warnings.contains("a destination in elsewhere was left out"), warnings);
         assertTrue(warnings.contains("WorldGuard region market"), warnings);
-        assertTrue(warnings.contains("commandNamespaces"), warnings);
+        assertTrue(warnings.contains("arrival commands run from the console, as they did under Citizens"), warnings);
         assertFalse(warnings.contains("waypoint provider npcdestinations is not supported"), warnings);
         JsonObject report = JsonDocuments.object(Files.readString(preview.directory().resolve("reports/3.json")));
         JsonObject fields = report.getAsJsonObject("fields");
@@ -120,13 +120,11 @@ class DestinationsMappingTest {
             importer.apply(store, preview.id());
             JsonObject json = NpcDefinition.parse(store.read("npcs/town/citizens-3.json")).json();
             JsonObject module = json.getAsJsonObject("modules").getAsJsonObject(ScheduleSettings.MODULE);
-            assertFalse(module.get("enabled").getAsBoolean());
-            assertFalse(module.get("reviewAccepted").getAsBoolean());
+            assertTrue(module.get("enabled").getAsBoolean() && !module.has("reviewAccepted"), "the schedule runs once applied");
             assertFalse(json.getAsJsonObject("modules").has("animus:navigation"));
             assertTrue(json.getAsJsonObject("movement").get("openDoors").getAsBoolean());
             assertFalse(json.getAsJsonObject("movement").getAsJsonObject("stuck").get("teleport").getAsBoolean());
 
-            CitizensDropIn.acceptCategory(json, "schedules");
             ScheduleSettings schedule = ScheduleSettings.parse(json).orElseThrow();
             assertEquals(3, schedule.locations().size(), "two destinations and the old x:y:z:time location");
             ScheduleSettings.Location bakery = schedule.locations().getFirst();
@@ -154,19 +152,6 @@ class DestinationsMappingTest {
         }
     }
 
-    @Test void importedSchedulesMustArriveOff() throws Exception {
-        Path source = Files.writeString(root.resolve("saves.yml"), SAVES);
-        CitizensImporter importer = new CitizensImporter();
-        CitizensImporter.Preview preview = importer.preview(source, root.resolve("out"), Map.of("old_town", "town"));
-        Path staged = preview.directory().resolve("npcs/town/citizens-3.json");
-        JsonObject json = JsonDocuments.object(Files.readString(staged));
-        json.getAsJsonObject("modules").getAsJsonObject(ScheduleSettings.MODULE).addProperty("enabled", true);
-        Files.writeString(staged, JsonDocuments.write(json));
-        try (DocumentStore store = new DocumentStore(root.resolve("out"))) {
-            assertThrows(java.io.IOException.class, () -> importer.apply(store, preview.id()));
-        }
-    }
-
     @Test void aTraitWithoutDestinationsSchedulesNothing() throws Exception {
         DestinationsMapping.Result result = DestinationsMapping.convert(JsonDocuments.object("{\"PauseForPlayers\":5}"), "minecraft:player", "world", Map.of());
         assertTrue(result.module().isEmpty());
@@ -185,5 +170,18 @@ class DestinationsMappingTest {
         assertFalse(location.has("pose"));
         assertTrue(result.skins().isEmpty());
         assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, result.notes().get("/traits/npcdestinations/Destinations/0/Skin").status());
+    }
+
+    @Test void itemsInSlotsTheBodyDoesNotShowStayForReview() throws Exception {
+        JsonObject trait = JsonDocuments.object("""
+                {"Destinations":{"0":{"Location":{"world":"world","x":1,"y":64,"z":1},"TimeOfDay":500,
+                  "Items":{"Head":{"id":"minecraft:leather_helmet","count":1},"Chest":{"id":"minecraft:iron_chestplate","count":1}}}}}
+                """);
+        DestinationsMapping.Result result = DestinationsMapping.convert(trait, "minecraft:villager", "world", Map.of());
+        JsonObject equipment = result.module().orElseThrow().getAsJsonArray("locations").get(0).getAsJsonObject().getAsJsonObject("equipment");
+        assertEquals(java.util.Set.of("head"), equipment.keySet());
+        CitizensImporter.Note chest = result.notes().get("/traits/npcdestinations/Destinations/0/Items/Chest");
+        assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, chest.status());
+        assertTrue(chest.reason().contains("does not show the chest slot"), chest.reason());
     }
 }

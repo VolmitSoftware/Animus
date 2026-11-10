@@ -133,6 +133,7 @@ public final class AnimusPlugin extends JavaPlugin {
     private volatile ShopService<Player, ItemStack> shops;
     private volatile HoloService<Player, ItemStack> guis;
     private volatile art.arcane.animus.bukkit.quest.BukkitQuests quests;
+    private volatile art.arcane.animus.bukkit.integration.quests.QuestIntegrations questPlugins;
     private AutoCloseable screenTicks, hireTicks, scheduleTicks, triggerTicks, bossBarTicks;
     private art.arcane.animus.bukkit.runtime.BukkitBossBars bossBars;
     private final DialogueTriggers dialogueTriggers = new DialogueTriggers(() -> {
@@ -154,9 +155,6 @@ public final class AnimusPlugin extends JavaPlugin {
     private BukkitServerBehaviors serverBehaviors;
     private AutoCloseable mythic;
 
-
-    @Override
-    public void onLoad() { art.arcane.animus.bukkit.integration.quests.QuestIntegrations.load(this); }
 
     @Override
     public void onEnable() {
@@ -271,7 +269,7 @@ public final class AnimusPlugin extends JavaPlugin {
             living.observeInteractions(modules::interacted);
             art.arcane.animus.bukkit.integration.quests.RuntimeQuestNpcHost questNpcs = new art.arcane.animus.bukkit.integration.quests.RuntimeQuestNpcHost(runtime, living, lookup, commands, getLogger()::warning);
             getServer().getPluginManager().registerEvents(questNpcs, this);
-            art.arcane.animus.bukkit.integration.quests.QuestIntegrations.start(this, questNpcs);
+            questPlugins = art.arcane.animus.bukkit.integration.quests.QuestIntegrations.start(this, questNpcs);
             living.animationEvents(new AnimationEventRunner((Capabilities.Key key, NpcHandle npc, String arguments) -> modules.action(key, npc, Optional.empty(), arguments),
                     (String message) -> getLogger().info(message)));
             proof.observeInteractions(modules::interacted);
@@ -376,6 +374,7 @@ public final class AnimusPlugin extends JavaPlugin {
             catch (Exception ignored) { /* Its listeners and ticks stop with the plugin. */ }
             mythic = null;
         }
+        if (questPlugins != null) { questPlugins.close(); questPlugins = null; }
         if (serverBehaviors != null) { serverBehaviors.close(); serverBehaviors = null; }
         if (behaviors != null) behaviors.close();
         if (builtins != null) builtins.close();

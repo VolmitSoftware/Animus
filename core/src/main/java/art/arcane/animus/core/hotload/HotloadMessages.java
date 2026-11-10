@@ -15,6 +15,7 @@ public final class HotloadMessages {
     public static final String RESTART = " &c[restart required]";
     public static final String REFUSED = Palette.PREFIX + "&cHotload refused &f[{file}] &c{error} &7[{kept}]";
     public static final String KEPT = "kept the last valid version";
+    public static final String UPGRADED = Palette.PREFIX + "&aUpgraded &f[{file}] &7[schemaVersion {from} -> {to}] [rollback {transaction}]";
 
     private HotloadMessages() {}
 
@@ -31,6 +32,11 @@ public final class HotloadMessages {
         if (changes.size() > shown)
             lines.add(RichText.format(TRUNCATED, Map.of("file", file, "remaining", Integer.toString(changes.size() - shown))));
         return lines;
+    }
+
+    /** A file below the current schema that was migrated before it loaded, with the transaction that undoes it. */
+    public static String upgraded(String file, int from, int to, String transaction) {
+        return RichText.format(UPGRADED, Map.of("file", file, "from", Integer.toString(from), "to", Integer.toString(to), "transaction", transaction));
     }
 
     /** The refusal of an invalid edit, with the exact field error. */

@@ -2,7 +2,9 @@
 // start rows, the workspace list with rename (Enter and Escape, focus back
 // on the button), delete with Escape and restore, the skip link, routes to a
 // missing workspace or document, then ../schema/fixtures/export opened as a
-// data folder with its listing, diagnostics and view tabs (arrow keys).
+// data folder with its listing, diagnostics and view tabs (arrow keys), and
+// ../schema/fixtures/upgrades/before (NPCs and a group at schemaVersion 1)
+// opened as one that says which files it upgraded to version 2.
 //
 //   python3 tool/serve_site.py --port <port>
 //   ANIMUS_WEB_URL=http://127.0.0.1:<port> PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node test/home_browser.cjs
@@ -12,6 +14,7 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {openFromSidebar, sidebar} = require('./support/shell.cjs');
 
 const exportFolder = path.resolve(__dirname, '../../schema/fixtures/export');
+const upgradesFolder = path.resolve(__dirname, '../../schema/fixtures/upgrades/before');
 const url = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })()).replace(/\/$/, '');
 
 async function noSideways(page, where) {
@@ -141,6 +144,24 @@ async function run(browser, viewport, label) {
   await noSideways(page, `${label} document`);
   await page.reload();
   await page.getByRole('heading', {name: 'Bakery counter'}).or(page.locator('.animus-chest')).first().waitFor();
+
+  // Files from an older Animus are upgraded as they open, and the overview says which.
+  await page.goto(url);
+  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
+  const oldChooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', {name: 'Open folder'}).first().click();
+  await (await oldChooser).setFiles(upgradesFolder);
+  await page.getByText('Upgraded 3 files to schemaVersion 2.').first().waitFor();
+  const upgraded = page.locator('[data-testid="upgraded-files"]');
+  await upgraded.getByText('3 files were upgraded to schemaVersion 2').waitFor();
+  await upgraded.locator('summary').click();
+  for (const file of ['groups/guards.json', 'npcs/town/citizens-10.json', 'npcs/town/citizens-9.json']) await upgraded.getByText(file, {exact: true}).waitFor();
+  await noSideways(page, `${label} upgraded folder`);
+  await openFromSidebar(page, 'Guard');
+  await page.getByRole('tab', {name: 'Code'}).click();
+  const code = await page.locator('.animus-code textarea').inputValue();
+  assert.match(code, /"schemaVersion": 2,/);
+  assert.ok(!code.includes('reviewAccepted'), 'the review flag is gone');
   assert.deepEqual(errors, []);
   await context.close();
 }

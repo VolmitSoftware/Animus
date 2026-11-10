@@ -48,7 +48,7 @@ import java.util.stream.Stream;
  * shopkeeper whose NPC is installed and returns the rest as pending.
  */
 public final class ShopkeepersImporter {
-    public static final int VERSION = 2;
+    public static final int VERSION = 3;
     public static final String NAMESPACE = "shopkeepers", IMPORTS = "imports/shopkeepers";
     static final String SHOP_PATH = "shops/shopkeepers/shop-(?:0|[1-9][0-9]{0,9})\\.json", NPC_PATH = "npcs/shopkeepers/shopkeeper-(?:0|[1-9][0-9]{0,9})\\.json";
     private static final int MAXIMUM_SHOPKEEPERS = 10_000, PER_PAGE = 45, MAXIMUM_STACK = 64;
@@ -321,7 +321,7 @@ public final class ShopkeepersImporter {
         summary.addProperty("sourceSha256", JsonDocuments.hash(save));
         config.ifPresent((String text) -> summary.addProperty("configSha256", JsonDocuments.hash(text)));
         citizens.ifPresent((String text) -> summary.addProperty("citizensSha256", JsonDocuments.hash(text)));
-        summary.addProperty("notice", "Data conversion only. Shops install under shops/shopkeepers/ and stay closed on their NPCs until the shops review is accepted. Try each shop in game before relying on it.");
+        summary.addProperty("notice", "Data conversion only. Shops install under shops/shopkeepers/ and open on their NPCs. Try each shop in game before relying on it.");
         summary.add("dataVersion", root.has("data-version") && root.get("data-version").isJsonPrimitive() ? root.get("data-version").deepCopy() : JsonNull.INSTANCE);
         summary.addProperty("shops", shops);
         summary.addProperty("npcs", npcCount);
@@ -519,7 +519,7 @@ public final class ShopkeepersImporter {
             return Optional.empty();
         }
         JsonObject definition = new JsonObject();
-        definition.addProperty("schemaVersion", 1);
+        definition.addProperty("schemaVersion", NpcDefinition.SCHEMA_VERSION);
         definition.addProperty("revision", 1);
         Optional<UUID> unique = string(record, "uniqueId").flatMap(ShopkeepersImporter::uuid);
         definition.addProperty("uuid", unique.orElse(UUID.nameUUIDFromBytes(("animus:shopkeepers:" + number).getBytes(StandardCharsets.UTF_8))).toString());
@@ -528,7 +528,7 @@ public final class ShopkeepersImporter {
         String name = string(record, "name").map(String::strip).filter((String text) -> !text.isEmpty() && text.length() <= 256 && text.codePoints().noneMatch(Character::isISOControl)).orElse("Shopkeeper " + number);
         definition.addProperty("name", name);
         definition.addProperty("type", entity);
-        definition.addProperty("spawned", false);
+        definition.addProperty("spawned", true);
         JsonObject position = new JsonObject();
         position.addProperty("world", world.get());
         position.addProperty("x", x.get() + 0.5);
@@ -543,7 +543,6 @@ public final class ShopkeepersImporter {
         migration.addProperty("importId", importId);
         migration.addProperty("source", "Shopkeepers");
         migration.addProperty("shopkeeper", number);
-        migration.addProperty("originalSpawned", true);
         definition.add("migration", migration);
         JsonObject modules = new JsonObject();
         JsonObject review = object.deepCopy();
@@ -555,7 +554,7 @@ public final class ShopkeepersImporter {
             for (String field : review.keySet()) report.field("/object/" + pointer(field), Status.REQUIRES_REVIEW, "mob settings are kept in the NPC's shopkeepers:review section");
         }
         definition.add("modules", modules);
-        report.note("a new " + entity + " NPC stands at the shopkeeper's place, despawned until the spawn review is accepted");
+        report.note("a new " + entity + " NPC stands at the shopkeeper's place");
         return Optional.of(definition);
     }
 
@@ -581,7 +580,7 @@ public final class ShopkeepersImporter {
         return villager.isEmpty() ? Optional.empty() : Optional.of(villager);
     }
 
-    /** The {@code animus:shop} section an imported shopkeeper binding writes; it opens nothing until reviewed. */
+    /** The {@code animus:shop} section an imported shopkeeper binding writes. */
     static JsonObject module(int number, String shopId) { return module(number, shopId, Optional.empty()); }
 
     private static JsonObject module(int number, String shopId, Optional<JsonObject> villager) {
@@ -589,7 +588,6 @@ public final class ShopkeepersImporter {
         module.addProperty("shop", shopId);
         module.addProperty("openOn", "right");
         villager.ifPresent((JsonObject look) -> module.add("villager", look));
-        module.addProperty("reviewAccepted", false);
         JsonObject imported = new JsonObject();
         imported.addProperty("source", "Shopkeepers");
         imported.addProperty("shopkeeper", number);
@@ -660,7 +658,7 @@ public final class ShopkeepersImporter {
             } else {
                 NpcDefinition definition = NpcDefinition.parse(content);
                 if (!definition.path().equals(relative) || before != null || !uuids.add(definition.uuid()) || !ids.add(definition.id())) throw new IOException("NPC collision: " + relative);
-                if (definition.spawned() || !definition.json().getAsJsonObject("migration").get("importId").getAsString().equals(id)) throw new IOException("Imported NPC must stay dormant and name this import: " + relative);
+                if (!definition.json().getAsJsonObject("migration").get("importId").getAsString().equals(id)) throw new IOException("Imported NPC must name this import: " + relative);
             }
             changes.add(new DocumentStore.Change(relative, "missing", content));
         }

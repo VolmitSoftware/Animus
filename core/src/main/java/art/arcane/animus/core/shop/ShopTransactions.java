@@ -35,9 +35,12 @@ public final class ShopTransactions<S> {
         void give(int levels);
     }
     public record Need<S>(S stack, int amount) {}
-    /** An entry with its platform stacks built once: a one-item stack of the goods, and the trade lists. */
-    public record Prepared<S>(ShopDocument.Entry entry, S goods, List<Need<S>> needs, List<Need<S>> gives) {
-        public Prepared { Objects.requireNonNull(entry); needs = List.copyOf(needs); gives = List.copyOf(gives); }
+    /**
+     * An entry with its platform stacks built once: a one-item stack of the goods, and the trade lists. {@code match} is
+     * {@link ShopDocument#rule}.
+     */
+    public record Prepared<S>(ShopDocument.Entry entry, MatchRule match, S goods, List<Need<S>> needs, List<Need<S>> gives) {
+        public Prepared { Objects.requireNonNull(entry); Objects.requireNonNull(match); needs = List.copyOf(needs); gives = List.copyOf(gives); }
     }
     public record Buyer<S>(UUID id, Predicate<String> permitted, TradeInventory<S> inventory, Consumer<S> drop, Levels levels) {}
     /** What happened. {@code units} are items for buy and sell, one for a trade or command purchase. */
@@ -80,7 +83,7 @@ public final class ShopTransactions<S> {
             default -> 1;
         };
         InventoryTransaction<S> inventory = InventoryTransaction.begin(buyer.inventory(), items);
-        MatchRule rule = entry.match().orElse(MatchRule.STRICT);
+        MatchRule rule = prepared.match();
         if (entry.type() == ShopDocument.Type.SELL) {
             int held = inventory.count(prepared.goods(), rule);
             if (held == 0) return Outcome.of(Status.NOTHING_TO_SELL);

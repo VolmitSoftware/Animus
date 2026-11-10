@@ -17,9 +17,8 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Converts a Sentinel trait record into the disabled {@code animus:combat} module of an import and its
+ * Converts a Sentinel trait record into the {@code animus:combat} module of an import, switched on, and its
  * {@code animus:health} module: health, armor, invincibility, drops, experience, respawn time and spawn point.
- * Nothing here activates combat: {@code enabled} and {@code reviewAccepted} stay false until the review is accepted.
  * A field absent from a save holds Sentinel's own default, so those defaults are written explicitly rather
  * than inheriting Animus defaults. A value that cannot be converted exactly is kept in preservedSettings.
  */
@@ -61,7 +60,9 @@ final class SentinelMapping {
 
     static Result convertRaw(JsonElement sentinel, JsonElement equipment, JsonArray references) {
         if (sentinel != null && sentinel.isJsonObject()) return convert(sentinel.getAsJsonObject(), equipment, references);
+        // A record that is not an object converts to nothing, so its combat stays off and the record is only kept.
         JsonObject module = base();
+        module.addProperty("enabled", false);
         module.add("preservedSettings", sentinel == null ? JsonNull.INSTANCE : sentinel.deepCopy());
         module.add("historicalStatistics", new JsonObject());
         return new Result(module, Optional.empty(), List.of());
@@ -83,8 +84,7 @@ final class SentinelMapping {
 
     private static JsonObject base() {
         JsonObject module = new JsonObject();
-        module.addProperty("enabled", false);
-        module.addProperty("reviewAccepted", false);
+        module.addProperty("enabled", true);
         return module;
     }
     private static String text(JsonElement value) {

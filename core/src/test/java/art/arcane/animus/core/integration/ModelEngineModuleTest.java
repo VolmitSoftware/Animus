@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class ModelEngineModuleTest {
     private static JsonObject definition(String module, String extra) {
         return JsonParser.parseString("""
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"drake","group":"",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"drake","group":"",
                  "name":"Drake","type":"minecraft:player","spawned":true,
                  "position":{"world":"world","x":0,"y":1,"z":0,"yaw":0,"pitch":0}%s%s}
                 """.formatted(module == null ? "" : ",\"modules\":{\"animus:modelengine\":" + module + "}", extra)).getAsJsonObject();

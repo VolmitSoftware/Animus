@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "241ebf4f-6deb-5455-8c60-4f0532d859e1",
+  "id": "elder-guardian",
+  "group": "types",
+  "name": "Body elder_guardian",
+  "type": "minecraft:elder_guardian",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

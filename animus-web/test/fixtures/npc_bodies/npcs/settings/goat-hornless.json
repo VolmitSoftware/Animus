@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "2d3567a5-f5e6-56b2-b225-2c18adf0df39",
+  "id": "goat-hornless",
+  "group": "settings",
+  "name": "Set goat-hornless",
+  "type": "minecraft:goat",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "goat": {
+    "leftHorn": "hidden"
+  }
+}

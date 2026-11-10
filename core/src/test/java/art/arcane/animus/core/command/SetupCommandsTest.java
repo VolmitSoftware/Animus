@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SetupCommandsTest {
-    private static final SetupState FRESH = new SetupState(0, new CitizensDropIn.Progress(CitizensDropIn.Phase.FOUND, Optional.of("plugins/Citizens/saves.yml"), 0), true, 0);
+    private static final SetupState FRESH = new SetupState(0, new CitizensDropIn.Progress(CitizensDropIn.Phase.FOUND, Optional.of("plugins/Citizens/saves.yml")), true, 0);
 
     @Test void aPlayerGetsTheClickableStepsInSixLinesOrFewer() {
         List<Object> sent = new ArrayList<>();

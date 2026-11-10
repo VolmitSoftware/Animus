@@ -1,12 +1,12 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "d52d42c9-1e34-36b1-b171-93d69aaaf298",
   "id": "shopkeeper-1",
   "group": "shopkeepers",
   "name": "Wanderer",
   "type": "minecraft:wandering_trader",
-  "spawned": false,
+  "spawned": true,
   "position": {
     "world": "world",
     "x": -2.5,
@@ -16,16 +16,14 @@
     "pitch": 0
   },
   "migration": {
-    "importId": "adfd9abeb1bda7862328cb01e90379d6842e36e5d2b5653c124a22426e7765d4",
+    "importId": "cd4657b7aeddd4f37afd84eab12a1954887bad044f4cb3b517a118de39f174d4",
     "source": "Shopkeepers",
-    "shopkeeper": 1,
-    "originalSpawned": true
+    "shopkeeper": 1
   },
   "modules": {
     "animus:shop": {
       "shop": "shopkeepers:shop-1",
       "openOn": "right",
-      "reviewAccepted": false,
       "imported": {
         "source": "Shopkeepers",
         "shopkeeper": 1

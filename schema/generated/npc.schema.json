@@ -16,7 +16,7 @@
   ],
   "properties": {
     "schemaVersion": {
-      "const": 1
+      "const": 2
     },
     "revision": {
       "type": "integer",
@@ -8042,9 +8042,6 @@
             "enabled": {
               "type": "boolean"
             },
-            "reviewAccepted": {
-              "type": "boolean"
-            },
             "route": {
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
@@ -8948,9 +8945,6 @@
             "enabled": {
               "description": "Literal true turns combat on; anything else leaves it off."
             },
-            "reviewAccepted": {
-              "description": "Imported NPCs fight only once this is literal true."
-            },
             "targets": {
               "$ref": "#/$defs/seekingRules",
               "description": "Who the NPC attacks."
@@ -9590,10 +9584,6 @@
             },
             "imported": {
               "description": "Kept from an import."
-            },
-            "reviewAccepted": {
-              "type": "boolean",
-              "description": "An imported binding opens nothing until this is true."
             }
           }
         },
@@ -9767,9 +9757,6 @@
           "description": "Lets a real player ride this NPC.",
           "properties": {
             "enabled": {
-              "type": "boolean"
-            },
-            "reviewAccepted": {
               "type": "boolean"
             },
             "permission": {
@@ -9946,10 +9933,6 @@
             "enabled": {
               "type": "boolean",
               "description": "True when the object is present."
-            },
-            "reviewAccepted": {
-              "type": "boolean",
-              "description": "An imported schedule runs only once this is true."
             },
             "speed": {
               "type": "number",
@@ -10956,65 +10939,6 @@
     }
   },
   "allOf": [
-    {
-      "if": {
-        "required": [
-          "migration"
-        ]
-      },
-      "then": {
-        "properties": {
-          "modules": {
-            "properties": {
-              "animus:navigation": {
-                "if": {
-                  "properties": {
-                    "enabled": {
-                      "const": true
-                    }
-                  },
-                  "required": [
-                    "enabled"
-                  ]
-                },
-                "then": {
-                  "required": [
-                    "reviewAccepted"
-                  ],
-                  "properties": {
-                    "reviewAccepted": {
-                      "const": true
-                    }
-                  }
-                }
-              },
-              "animus:riding": {
-                "if": {
-                  "properties": {
-                    "enabled": {
-                      "const": true
-                    }
-                  },
-                  "required": [
-                    "enabled"
-                  ]
-                },
-                "then": {
-                  "required": [
-                    "reviewAccepted"
-                  ],
-                  "properties": {
-                    "reviewAccepted": {
-                      "const": true
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     {
       "if": {
         "properties": {

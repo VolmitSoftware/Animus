@@ -13,8 +13,8 @@ import java.util.Set;
 /**
  * Converts the saves.yml trait of the Citizens add-on Builder ({@code traits.builder}) into an {@code animus:builder}
  * definition section, and reports the trait of its premium successor Constructor ({@code traits.constructor}), whose saved
- * keys are not published, so it is only kept for review. Nothing converted here starts on its own: the section needs
- * {@code "reviewAccepted": true} and an administrator's {@code /animus build start <npc>}.
+ * keys are not published, so it is only kept for review. A converted build starts with an administrator's
+ * {@code /animus build start <npc>}, or by itself when Builder saved it part way.
  */
 public final class BuilderMapping {
     public static final String BUILDER_TRAIT = "builder", CONSTRUCTOR_TRAIT = "constructor";
@@ -80,13 +80,12 @@ public final class BuilderMapping {
         }
         String state = text(source, "State");
         if (state != null && List.of("building", "collecting").contains(state.toLowerCase(Locale.ROOT)))
-            warnings.add("Builder was " + state.toLowerCase(Locale.ROOT) + " when saved; the build starts again on the NPC's first spawn after accept builder. Blocks already in place are skipped");
+            warnings.add("Builder was " + state.toLowerCase(Locale.ROOT) + " when saved; the build starts again on the NPC's first spawn. Blocks already in place are skipped");
         for (String task : List.of("onstart", "oncomplete", "oncancel"))
             if (source.has(task)) warnings.add("builder " + task + " names a Denizen task; recreate it with a build_finished or build_paused trigger");
         List<String> unknown = new ArrayList<>();
         for (String key : source.keySet()) if (!CONVERTED.contains(key) && !KEPT.contains(key)) unknown.add(key);
         if (!unknown.isEmpty()) warnings.add("builder fields kept for review without conversion: " + String.join(", ", unknown));
-        module.addProperty("reviewAccepted", false);
         JsonObject imported = new JsonObject();
         imported.add("builder", source.deepCopy());
         JsonArray notes = new JsonArray();
@@ -98,8 +97,7 @@ public final class BuilderMapping {
 
     /**
      * A behavior that starts the build again when Builder saved it in the middle of building or collecting materials.
-     * It runs on the NPC's first spawn after the builder review is accepted, once: the start refuses until then, and a
-     * flag remembers that it ran. Empty when Builder was not working.
+     * It runs once, on the NPC's first spawn, and a flag remembers that it ran. Empty when Builder was not working.
      */
     public static Optional<JsonObject> resume(JsonElement trait, String key) {
         if (trait == null || !trait.isJsonObject()) return Optional.empty();

@@ -106,7 +106,7 @@ void main() {
         values.add(entry.key, entry.value);
       }
       return JObject()
-        ..addInt('schemaVersion', 1)
+        ..addInt('schemaVersion', 2)
         ..addInt('revision', 1)
         ..addString('uuid', '00000000-0000-4000-8000-000000000000')
         ..addString('id', 'probe')

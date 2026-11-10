@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "ceba6752-5242-5792-9682-a65417aaf5dc",
+  "id": "painting",
+  "group": "types",
+  "name": "Body painting",
+  "type": "minecraft:painting",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "painting": {
+    "variant": "minecraft:pointer"
+  }
+}

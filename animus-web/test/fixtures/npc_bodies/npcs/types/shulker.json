@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "77f374d1-e8b5-5e05-84f0-4d0e3a6f5d7b",
+  "id": "shulker",
+  "group": "types",
+  "name": "Body shulker",
+  "type": "minecraft:shulker",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

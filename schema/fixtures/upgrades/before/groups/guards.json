@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "guards",
+  "values": {
+    "tags": [
+      "guard"
+    ],
+    "modules": {
+      "animus:combat": {
+        "enabled": true,
+        "reviewAccepted": false,
+        "targeting": {
+          "fightBack": true
+        }
+      },
+      "animus:riding": {
+        "enabled": true,
+        "reviewAccepted": true
+      }
+    }
+  }
+}

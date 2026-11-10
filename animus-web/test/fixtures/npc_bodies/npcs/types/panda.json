@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "e824728e-103f-5d34-a919-591dcd698032",
+  "id": "panda",
+  "group": "types",
+  "name": "Body panda",
+  "type": "minecraft:panda",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

@@ -53,8 +53,8 @@ public final class ProjectionChecks {
             var replaced=ImportProjection.project(id,original,List.of(edited),ImportProjection.Mode.REPLACE,null);
             check(replaced.definitions().getFirst().revision()==8 && replaced.definitions().get(1).revision()==1,"replacement revision / new additions");
             check(replaced.replacedPaths().equals(Set.of(edited.path())),"exact replacement list");
-            check(!replaced.definitions().getFirst().json().get("spawned").getAsBoolean(),"replacement dormant");
-            check(!replaced.definitions().getFirst().json().getAsJsonObject("modules").getAsJsonObject("animus:combat").get("enabled").getAsBoolean(),"replacement combat disabled");
+            check(replaced.definitions().getFirst().json().get("spawned").getAsBoolean(),"replacement spawns as converted");
+            check(replaced.definitions().getFirst().json().getAsJsonObject("modules").getAsJsonObject("animus:combat").get("enabled").getAsBoolean(),"replacement combat on as converted");
             NpcDefinition mismatched=with(edited,"uuid",new JsonPrimitive(UUID.randomUUID().toString()));
             rejects(()->ImportProjection.project(id,original,List.of(mismatched),ImportProjection.Mode.REPLACE,null),"retain the existing UUID");
             NpcDefinition elsewhere=with(edited,"group",new JsonPrimitive("elsewhere"));
@@ -93,11 +93,6 @@ public final class ProjectionChecks {
             corrupted.getAsJsonObject("migration").getAsJsonArray("references").get(0).getAsJsonObject().addProperty("npcUuid",UUID.randomUUID().toString());
             NpcDefinition bad=NpcDefinition.parse(JsonDocuments.write(corrupted));
             rejects(()->ImportProjection.project(id,List.of(bad,original.get(1)),List.of(),ImportProjection.Mode.DUPLICATE,"town"),"does not match");
-            JsonObject enabled=original.getFirst().json();enabled.getAsJsonObject("modules").getAsJsonObject("animus:combat").addProperty("reviewAccepted",true);
-            NpcDefinition reviewed=NpcDefinition.parse(JsonDocuments.write(enabled));
-            rejects(()->ImportProjection.project(id,List.of(reviewed),List.of(),ImportProjection.Mode.REPLACE,null),"disabled and unreviewed");
-            NpcDefinition spawned=with(original.getFirst(),"spawned",new JsonPrimitive(true));
-            rejects(()->ImportProjection.project(id,List.of(spawned),List.of(),ImportProjection.Mode.REJECT,null),"remain dormant");
             System.out.println("PASS "+checks+" isolated import projection checks; no active source/artifact changed");
         } finally {
             try(var paths=Files.walk(temp)){for(Path path:paths.sorted(Comparator.reverseOrder()).toList())Files.delete(path);}

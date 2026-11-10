@@ -7,7 +7,7 @@ import 'package:animus_editor/model/document_kind.dart';
 import 'package:test/test.dart';
 
 Map<String, Object?> _npc({String type = 'minecraft:player', Map<String, Object?> extra = const <String, Object?>{}}) => <String, Object?>{
-      'schemaVersion': 1,
+      'schemaVersion': 2,
       'revision': 1,
       'uuid': '00000000-0000-0000-0000-000000000001',
       'id': 'guard',

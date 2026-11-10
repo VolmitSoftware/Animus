@@ -28,4 +28,10 @@ class PluginPermissionsTest {
             assertTrue(!declared.getString("description", "").isBlank(), child + " has a description");
         }
     }
+
+    @Test void theJournalHasALabelNoQuestPluginTakes() throws Exception {
+        YamlConfiguration plugin = new YamlConfiguration();
+        plugin.load(Path.of("src/main/resources/plugin.yml").toFile());
+        assertEquals(List.of("questlog"), plugin.getStringList("commands.quests.aliases"), "Quests by PikaMug owns /quests when installed");
+    }
 }

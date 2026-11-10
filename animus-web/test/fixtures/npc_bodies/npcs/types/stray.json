@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "f6254850-c953-5a71-a128-0c7017fab701",
+  "id": "stray",
+  "group": "types",
+  "name": "Body stray",
+  "type": "minecraft:stray",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

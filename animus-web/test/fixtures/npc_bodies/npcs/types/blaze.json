@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "eb1db445-f214-53c0-abf9-b2cd01d3095d",
+  "id": "blaze",
+  "group": "types",
+  "name": "Body blaze",
+  "type": "minecraft:blaze",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

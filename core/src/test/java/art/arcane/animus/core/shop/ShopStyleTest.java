@@ -81,7 +81,7 @@ class ShopStyleTest {
 
     @Test void bareVillagerTypeAndProfessionAreMinecraftIds() throws Exception {
         JsonObject definition = JsonDocuments.object("""
-                {"schemaVersion": 1, "revision": 1, "uuid": "1fde8840-5f7a-5a37-bc24-357183d2e276", "id": "farmer", "group": "town", "name": "Farmer",
+                {"schemaVersion": 2, "revision": 1, "uuid": "1fde8840-5f7a-5a37-bc24-357183d2e276", "id": "farmer", "group": "town", "name": "Farmer",
                  "type": "villager", "spawned": true, "position": {"world": "world", "x": 0, "y": 64, "z": 0, "yaw": 0, "pitch": 0},
                  "modules": {"animus:shop": {"shop": "town:market", "villager": {"profession": "farmer", "level": 2}}}}
                 """);
@@ -91,7 +91,7 @@ class ShopStyleTest {
 
     @Test void bindingsOverrideTheStyleAndCarryVillagerLooks() throws Exception {
         JsonObject definition = JsonDocuments.object("""
-                {"schemaVersion": 1, "revision": 1, "uuid": "1fde8840-5f7a-5a37-bc24-357183d2e276", "id": "farmer", "group": "town", "name": "Farmer",
+                {"schemaVersion": 2, "revision": 1, "uuid": "1fde8840-5f7a-5a37-bc24-357183d2e276", "id": "farmer", "group": "town", "name": "Farmer",
                  "type": "minecraft:villager", "spawned": true, "position": {"world": "world", "x": 0, "y": 64, "z": 0, "yaw": 0, "pitch": 0},
                  "modules": {"animus:shop": {"shop": "town:market", "style": "native", "villager": {"profession": "minecraft:farmer", "level": 2}}}}
                 """);
@@ -111,7 +111,7 @@ class ShopStyleTest {
 
     @Test void aVillagerBodyWithoutSettingsIsANovice() throws Exception {
         JsonObject definition = JsonDocuments.object("""
-                {"schemaVersion": 1, "revision": 1, "uuid": "1fde8840-5f7a-5a37-bc24-357183d2e276", "id": "farmer", "group": "town", "name": "Farmer",
+                {"schemaVersion": 2, "revision": 1, "uuid": "1fde8840-5f7a-5a37-bc24-357183d2e276", "id": "farmer", "group": "town", "name": "Farmer",
                  "type": "minecraft:villager", "spawned": true, "position": {"world": "world", "x": 0, "y": 64, "z": 0, "yaw": 0, "pitch": 0},
                  "modules": {"animus:shop": {"shop": "town:market"}}}
                 """);

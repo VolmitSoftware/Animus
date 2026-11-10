@@ -6,13 +6,13 @@
     "mode": "reject",
     "report": "imports/4c1f0d2b8a9e7f6c5d4b3a2918273645f0e1d2c3b4a5968778695a4b3c2d1e0f/report.json"
   },
-  "pending": {"spawn": 3, "patrols": 1, "combat": 0, "riding": 0, "shops": 0, "builder": 0},
+  "commandNamespaces": ["citizens"],
   "preserved": {"denizen": 1},
   "npcs": 5,
   "transactions": ["7d0c3b0e-3f7a-4a51-9d0e-2b6c1e0f9a11"],
   "lines": [
     "Citizens import 4c1f0d2b8a9e: 5 NPCs installed",
-    "spawn: 3 waiting (NPCs Citizens had spawned; others stay despawned. Look-close and text start with them)"
+    "Converted: 1 patrol routes (4 points), look-close on 2 NPCs, 1 text and 1 command behaviors"
   ],
   "uploads": {"citizens": "imports/saves.yml"},
   "reports": {"citizens": {"importId": "4c1f0d2b8a9e7f6c5d4b3a2918273645f0e1d2c3b4a5968778695a4b3c2d1e0f", "records": 5, "valid": 5, "skins": 1, "issues": []}}

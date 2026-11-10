@@ -30,7 +30,7 @@ import java.util.function.Consumer;
  * staged set through {@link PreviewBodies} on the viewer's owner. Every method here may be called from any thread.
  * <p>
  * The hidden live NPC also stops affecting that viewer: platforms leave the viewer out of its speech, sounds and
- * particles through {@link #hides(UUID, NpcRuntime.ActiveNpc)}, and the trigger dispatcher drops the viewer's events for it.
+ * particles through {@link NpcRuntime#hidden()}, and the trigger dispatcher drops the viewer's events for it.
  * <p>
  * Preview bodies are inert: they run no behaviors or triggers, take and deal no damage, and an interaction with one
  * reaches no listener, selection, GUI, shop or ride.
@@ -164,8 +164,6 @@ public final class ViewerPreviews implements HiddenNpcs, AutoCloseable {
     /** Live NPCs another plugin hides from single viewers, such as a quest plugin's per-player visibility; hidden the same way as a preview's. */
     public void alsoHide(HiddenNpcs hidden) { plugins = Objects.requireNonNull(hidden); }
 
-    /** The viewer is left out of this live NPC's speech, sounds and particles while a preview of theirs stands in for it. */
-    public boolean hides(UUID viewer, NpcRuntime.ActiveNpc npc) { return hides(viewer, npc.id(), npc.state().npcId()); }
 
     public int count() { return byViewer.size(); }
 

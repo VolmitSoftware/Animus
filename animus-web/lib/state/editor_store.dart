@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import '../logic/data_folder.dart';
 import '../logic/gui/gui_json.dart';
 import '../logic/rig_validation.dart';
+import '../logic/schema_upgrades.dart';
 import '../logic/shared_schemas.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
@@ -136,6 +137,7 @@ class EditorStore {
   bool _listed = false;
   String? _listProblem;
   List<String> _ignored = const <String>[];
+  List<String> _upgraded = const <String>[];
   String? _problem;
   bool _unsaved = false;
   bool _gone = false;
@@ -154,6 +156,11 @@ class EditorStore {
 
   /// Paths in the last opened folder that are not documents.
   List<String> get ignored => _ignored;
+
+  /// NPC and group files of the workspace opened last that were below the
+  /// current schema and were upgraded as it opened, so an export or a send
+  /// writes the current version.
+  List<String> get upgraded => _upgraded;
 
   /// The last load or save failure, for the shell to show.
   String? get problem => _problem;
@@ -245,8 +252,17 @@ class EditorStore {
   /// back.
   WorkspaceSnapshot? get deleted => _deleted;
 
-  /// A stored workspace without opening it (for export from the list).
-  Future<WorkspaceSnapshot?> loadWorkspace(String id) async => _workspace?.id == id ? _workspace : repository.load(id);
+  /// A stored workspace without opening it (for export and copies from the
+  /// list), with its NPCs and groups at the current schema.
+  Future<WorkspaceSnapshot?> loadWorkspace(String id) async {
+    if (_workspace?.id == id) return _workspace;
+    final WorkspaceSnapshot? stored = await repository.load(id);
+    if (stored == null || stored.server != null) return stored;
+    final (List<AnimusDocument> documents, List<String> upgraded) = _upgradedDocuments(stored.documents);
+    return upgraded.isEmpty
+        ? stored
+        : WorkspaceSnapshot(id: stored.id, name: stored.name, generation: stored.generation, documents: documents, resources: stored.resources);
+  }
 
   /// A new, empty local workspace, opened.
   Future<WorkspaceSnapshot> createWorkspace(String name) => openFiles(name, const <String, Uint8List>{});
@@ -314,6 +330,7 @@ class EditorStore {
     onWorkspaceCreated?.call();
     _workspace = snapshot;
     _ignored = result.ignored;
+    _upgraded = result.upgraded;
     _codeDrafts.clear();
     _resetHistory();
     _problem = null;
@@ -337,6 +354,7 @@ class EditorStore {
     if (_workspace?.id != id) {
       _workspace = snapshot;
       _ignored = const <String>[];
+      _upgraded = const <String>[];
       _codeDrafts.clear();
       _resetHistory();
       _unsaved = false;
@@ -356,6 +374,7 @@ class EditorStore {
     final WorkspaceSnapshot? snapshot = await repository.load(id);
     _workspace = snapshot;
     _ignored = const <String>[];
+    _upgraded = const <String>[];
     _codeDrafts.clear();
     _resetHistory();
     if (snapshot != null) await _loadHistory(id);
@@ -363,6 +382,7 @@ class EditorStore {
     _problem = snapshot == null ? 'There is no workspace "$id" in this browser.' : null;
     if (snapshot != null) {
       await _claim(id);
+      await _upgrade(snapshot);
     } else {
       _release();
     }
@@ -370,8 +390,32 @@ class EditorStore {
     return snapshot != null;
   }
 
+  /// Upgrades a local workspace's NPCs and groups below the current schema
+  /// and stores the result, outside the undo history.
+  Future<void> _upgrade(WorkspaceSnapshot snapshot) async {
+    if (snapshot.server != null) return;
+    final (List<AnimusDocument> documents, List<String> upgraded) = _upgradedDocuments(snapshot.documents);
+    if (upgraded.isEmpty) return;
+    _upgraded = upgraded;
+    await _save(snapshot, snapshot.next(documents: documents));
+  }
+
+  /// [documents] with each NPC and group below the current schema upgraded
+  /// ([upgradeSource]) and validated again, and the paths that were.
+  (List<AnimusDocument>, List<String>) _upgradedDocuments(List<AnimusDocument> documents) {
+    final List<String> upgraded = <String>[];
+    final List<AnimusDocument> next = <AnimusDocument>[];
+    for (final AnimusDocument document in documents) {
+      final SchemaUpgrade? upgrade = upgradeSource(document.kind, document.source);
+      if (upgrade != null) upgraded.add(document.path);
+      next.add(upgrade == null ? document : validateSource(DocumentLocation(document.kind, document.id), document.path, upgrade.source, schemas));
+    }
+    return (next, upgraded);
+  }
+
   void closeWorkspace() {
     _workspace = null;
+    _upgraded = const <String>[];
     _codeDrafts.clear();
     _resetHistory();
     _unsaved = false;

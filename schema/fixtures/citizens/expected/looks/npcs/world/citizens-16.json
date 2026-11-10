@@ -1,16 +1,15 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "0a1b2c3d-0000-4000-8000-000000000616",
   "id": "citizens-16",
   "group": "world",
   "name": "Camel",
   "type": "minecraft:camel",
-  "spawned": false,
+  "spawned": true,
   "migration": {
-    "importId": "851ceffdf2b438f2987502d4250c12fdde95b8cb2caf090a47d291b0a9c4be75",
+    "importId": "738bb2fe8c754332ce4b3743598e24a4badb7537c61f87fe4428a46c22deeb73",
     "citizensId": 16,
-    "originalSpawned": null,
     "references": []
   },
   "position": {

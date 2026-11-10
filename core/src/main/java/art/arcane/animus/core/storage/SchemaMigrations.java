@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -59,8 +60,22 @@ public final class SchemaMigrations {
     public static final Kind SERVER_BEHAVIORS = new Kind("server behavior list", List.of("server-behaviors.json"));
     public static final Kind PACK = new Kind("pack manifest", List.of("packs/*/pack.json"));
     private static final Step IDENTITY = (JsonObject previous) -> previous;
-    private static final SchemaMigrations STANDARD = builder().identity(NPC).identity(BEHAVIOR).identity(SHOP).identity(ROUTE).identity(RECORDING)
-            .identity(GROUP).identity(INVENTORY).identity(HOLOGRAM, 3).identity(TEXT_ANIMATION).identity(RIG).identity(ANIMATION)
+    /** The module sections an import before version 2 could mark with {@code reviewAccepted}. */
+    private static final List<String> REVIEWED_MODULES = List.of("animus:combat", "animus:navigation", "animus:shop", "animus:riding", "animus:schedule", "animus:builder");
+    /**
+     * Version 2 has no import review: importing turns on everything that converts. The flag is dropped whatever its value,
+     * so a section an older import left at {@code false} runs as converted.
+     */
+    private static final Step NPC_WITHOUT_REVIEW = (JsonObject previous) -> {
+        JsonObject next = previous.deepCopy();
+        return withoutReview(next, next);
+    };
+    private static final Step GROUP_WITHOUT_REVIEW = (JsonObject previous) -> {
+        JsonObject next = previous.deepCopy();
+        return next.get("values") instanceof JsonObject values ? withoutReview(next, values) : next;
+    };
+    private static final SchemaMigrations STANDARD = builder().identity(NPC).step(NPC, NPC_WITHOUT_REVIEW).identity(BEHAVIOR).identity(SHOP).identity(ROUTE).identity(RECORDING)
+            .identity(GROUP).step(GROUP, GROUP_WITHOUT_REVIEW).identity(INVENTORY).identity(HOLOGRAM, 3).identity(TEXT_ANIMATION).identity(RIG).identity(ANIMATION)
             .identity(SERVER_BEHAVIORS).identity(PACK).build();
 
     /** One kind's steps, the first being the identity at version {@code first}. */
@@ -77,7 +92,7 @@ public final class SchemaMigrations {
         this.chains = Collections.unmodifiableMap(copy);
     }
 
-    /** The chains this build ships: every kind at its first version. */
+    /** The chains this build ships. */
     public static SchemaMigrations standard() { return STANDARD; }
     public static Builder builder() { return new Builder(); }
 
@@ -103,35 +118,63 @@ public final class SchemaMigrations {
         return result;
     }
 
+    /** One document as it was read: its rewrite commits only while the file still holds {@code text}. */
+    public record Document(Kind kind, String path, String text) {
+        public Document { Objects.requireNonNull(kind); Objects.requireNonNull(path); Objects.requireNonNull(text); }
+    }
+
     /** Migrates every stale document in the store, in batches. Call before the catalogs load. */
-    public Report apply(DocumentStore store) throws IOException {
+    public Report apply(DocumentStore store) throws IOException { return apply(store, chains.keySet()); }
+
+    /** Migrates every stale document of {@code kinds}, in batches, as a startup pass does. Owner of the store's writes only. */
+    public Report apply(DocumentStore store, Collection<Kind> kinds) throws IOException {
+        List<Document> documents = new ArrayList<>();
+        for (Kind kind : chains.keySet()) {
+            if (!kinds.contains(kind)) continue;
+            for (String path : paths(store, kind)) {
+                // An unreadable file is the loader's to report.
+                try {
+                    String text = store.read(path);
+                    if (text != null) documents.add(new Document(kind, path, text));
+                } catch (IOException | RuntimeException unreadable) { /* skipped */ }
+            }
+        }
+        return upgrade(store, documents);
+    }
+
+    /**
+     * Migrates the stale ones of {@code documents} in journaled batches with rollback receipts. A document that has
+     * changed on disk since it was read fails its batch's commit, which throws and writes nothing of that batch.
+     */
+    public Report upgrade(DocumentStore store, List<Document> documents) throws IOException {
         List<DocumentStore.Change> changes = new ArrayList<>();
         List<String> migrated = new ArrayList<>(), problems = new ArrayList<>();
-        for (Map.Entry<Kind, Chain> chain : chains.entrySet()) {
-            Kind kind = chain.getKey();
-            for (String path : paths(store, kind)) {
-                String before;
-                JsonObject document;
-                // An unreadable or malformed file is the loader's to report.
-                try {
-                    before = store.read(path);
-                    if (before == null) continue;
-                    document = JsonDocuments.object(before);
-                } catch (IOException | RuntimeException unreadable) { continue; }
-                int version = version(document);
-                if (version < chain.getValue().first() || version == chain.getValue().current()) continue;
-                try {
-                    JsonObject after = migrate(kind, document);
-                    changes.add(new DocumentStore.Change(path, JsonDocuments.hash(before), JsonDocuments.write(after)));
-                    migrated.add(path);
-                } catch (IOException | RuntimeException refused) {
-                    problems.add(path + ": " + refused.getMessage() + "; file left unchanged");
-                }
+        for (Document stored : documents) {
+            Chain chain = chain(stored.kind());
+            JsonObject document;
+            // A malformed file is the loader's to report.
+            try { document = JsonDocuments.object(stored.text()); }
+            catch (IOException | RuntimeException unreadable) { continue; }
+            int version = version(document);
+            if (version < chain.first() || version == chain.current()) continue;
+            try {
+                JsonObject after = migrate(stored.kind(), document);
+                changes.add(new DocumentStore.Change(stored.path(), JsonDocuments.hash(stored.text()), JsonDocuments.write(after)));
+                migrated.add(stored.path());
+            } catch (IOException | RuntimeException refused) {
+                problems.add(stored.path() + ": " + refused.getMessage() + "; file left unchanged");
             }
         }
         List<String> transactions = new ArrayList<>();
         for (int from = 0; from < changes.size(); from += BATCH) transactions.add(store.commit(changes.subList(from, Math.min(changes.size(), from + BATCH))));
         return new Report(transactions, migrated, problems);
+    }
+
+    /** Whether {@code document} is below its kind's current version and would be migrated. */
+    public boolean stale(Kind kind, JsonObject document) {
+        Chain chain = chain(kind);
+        int version = version(document);
+        return version >= chain.first() && version < chain.current();
     }
 
     private Chain chain(Kind kind) {
@@ -169,6 +212,13 @@ public final class SchemaMigrations {
             for (String name : names) folders.add("packs/" + name + "/" + root.substring("packs/*/".length()));
         }
         return folders;
+    }
+
+    /** Removes the review flag from {@code holder}'s module sections, which live inside {@code document}. */
+    private static JsonObject withoutReview(JsonObject document, JsonObject holder) {
+        if (holder.get("modules") instanceof JsonObject modules)
+            for (String module : REVIEWED_MODULES) if (modules.get(module) instanceof JsonObject section) section.remove("reviewAccepted");
+        return document;
     }
 
     private static int version(JsonObject document) {

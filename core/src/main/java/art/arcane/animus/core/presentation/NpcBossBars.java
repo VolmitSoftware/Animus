@@ -49,6 +49,8 @@ public final class NpcBossBars<P> {
         UUID id(P player);
         Vec3 position(P player);
         boolean permitted(P player, String node);
+        /** The node is set for the player and true, not held only as an operator's default. */
+        boolean granted(P player, String node);
     }
 
     private record Shown<P>(Bar<P> bar, BossBarSettings settings) {}
@@ -92,7 +94,7 @@ public final class NpcBossBars<P> {
             double distance = host.position(player).distance(where.point());
             if (distance > settings.range()) continue;
             if (settings.permission().isPresent() && !host.permitted(player, settings.permission().get())) continue;
-            if (definition.viewers().hides(host.id(player), distance, (String node) -> host.permitted(player, node))) continue;
+            if (definition.viewers().hides(host.id(player), distance, (String node) -> host.permitted(player, node), (String node) -> host.granted(player, node))) continue;
             wanted.add(player);
         }
         for (P player : bar.viewers()) if (!wanted.contains(player)) bar.hide(player);

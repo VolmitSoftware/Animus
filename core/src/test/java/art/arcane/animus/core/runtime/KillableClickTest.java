@@ -30,7 +30,7 @@ class KillableClickTest {
         Path npcs = directory.resolve("npcs/test");
         Files.createDirectories(npcs);
         Files.writeString(npcs.resolve("target.json"), """
-                {"schemaVersion": 1, "revision": 1, "uuid": "5d1c8a52-1f0c-4f43-a3a3-9d1f8f8a0c22", "id": "target", "group": "test",
+                {"schemaVersion": 2, "revision": 1, "uuid": "5d1c8a52-1f0c-4f43-a3a3-9d1f8f8a0c22", "id": "target", "group": "test",
                  "name": "Target", "type": "minecraft:villager", "spawned": true,
                  "position": {"world": "world", "x": 0.5, "y": 64, "z": 2.5, "yaw": 180, "pitch": 0}}
                 """);

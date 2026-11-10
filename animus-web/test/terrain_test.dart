@@ -18,7 +18,7 @@ import 'package:test/test.dart';
 import '../tool/fake_server/protocol.dart';
 import '../tool/fake_server/terrain.dart';
 
-const List<FakeAnchor> _anchors = <FakeAnchor>[(world: 'world', x: 0.5, z: 0.5)];
+const List<FakeReach> _anchors = <FakeReach>[(world: 'world', ax: 0.5, az: 0.5, bx: 0.5, bz: 0.5)];
 
 Map<String, Object?> _answer(FakeResponse response) {
   expect(response.status, 200);
@@ -116,6 +116,57 @@ void main() {
     test('a broken answer decodes to null', () {
       expect(TerrainSurfaceTile.fromJson(<String, Object?>{'size': 64}), isNull);
       expect(TerrainSlice.fromJson(<String, Object?>{'height': 16, 'palette': <String>['minecraft:air'], 'bits': 4, 'data': ''}), isNull);
+    });
+  });
+
+  group('reaches', () {
+    String status(List<FakeReach> reaches, String world, int cx, int cz) =>
+        _answer(fakeTerrainBlocks(_get('/v1/terrain/blocks?world=$world&cx=$cx&cz=$cz&y=60&height=4'), reaches))['status']! as String;
+
+    final Map<String, Object?> walker = <String, Object?>{
+      'position': <String, Object?>{'world': 'world', 'x': 0.5, 'y': 64, 'z': 0.5},
+      'anchors': <String, Object?>{
+        'dock': <String, Object?>{'x': -3000, 'y': 64, 'z': 0},
+      },
+      'modules': <String, Object?>{
+        'animus:schedule': <String, Object?>{
+          'locations': <Object?>[
+            <String, Object?>{'time': 12000, 'x': -2000, 'y': 64, 'z': -2000},
+            <String, Object?>{'time': 0, 'x': 0, 'y': 64, 'z': -2000},
+          ],
+        },
+        'animus:navigation': <String, Object?>{'route': 'far'},
+      },
+    };
+    Map<String, Object?>? far(String id) => id != 'far'
+        ? null
+        : <String, Object?>{
+            'points': <Object?>[
+              <String, Object?>{'x': -400, 'y': 64, 'z': 0},
+              <String, Object?>{
+                'x': -400,
+                'y': 64,
+                'z': -400,
+                'teleport': <String, Object?>{'x': 3000, 'y': 64, 'z': 0, 'world': 'world_nether'},
+              },
+              <String, Object?>{'x': 3000, 'y': 64, 'z': 800},
+            ],
+          };
+
+    test('route points and the legs between them open, as on the server', () {
+      final List<FakeReach> reaches = fakeReaches(walker, far);
+      expect(status(reaches, 'world', -13, 0), 'ok', reason: 'from the NPC to the first point');
+      expect(status(reaches, 'world', -25, -13), 'ok', reason: 'between the first two points');
+      expect(status(reaches, 'world', -13, -13), 'forbidden');
+      expect(status(reaches, 'world_nether', 187, 25), 'unloaded', reason: 'the leg after the teleport, in its world');
+      expect(status(reaches, 'world', 187, 25), 'forbidden');
+    });
+
+    test('schedule places, the legs between them and anchors open', () {
+      final List<FakeReach> reaches = fakeReaches(walker, far);
+      expect(status(reaches, 'world', -63, -125), 'ok', reason: 'between two schedule places');
+      expect(status(reaches, 'world', -188, 0), 'ok', reason: 'an anchor');
+      expect(status(reaches, 'world', -63, -63), 'forbidden');
     });
   });
 

@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class CombatDeletionsTest {
     private static final UUID GUARD = UUID.fromString("12345678-1234-1234-1234-123456789abc");
     private static final String JSON = """
-            {"schemaVersion":1,"revision":3,"uuid":"12345678-1234-1234-1234-123456789abc","id":"guard","group":"town","name":"Guard","type":"minecraft:player","spawned":true,"position":{"world":"world","x":0,"y":64,"z":0,"yaw":0,"pitch":0}}
+            {"schemaVersion":2,"revision":3,"uuid":"12345678-1234-1234-1234-123456789abc","id":"guard","group":"town","name":"Guard","type":"minecraft:player","spawned":true,"position":{"world":"world","x":0,"y":64,"z":0,"yaw":0,"pitch":0}}
             """;
     @TempDir Path root;
 

@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class MovementSettingsTest {
     private static JsonObject definition(String movement) {
         return JsonParser.parseString("""
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"walker","group":"test","name":"Walker",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"walker","group":"test","name":"Walker",
                  "type":"minecraft:player","spawned":true,"position":{"world":"world","x":0,"y":1,"z":0,"yaw":0,"pitch":0}%s}
                 """.formatted(movement == null ? "" : ",\"movement\":" + movement)).getAsJsonObject();
     }

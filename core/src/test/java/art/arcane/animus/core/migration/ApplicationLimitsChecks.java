@@ -38,7 +38,7 @@ public final class ApplicationLimitsChecks {
                 Path directory=store.resolve("imports/"+id);Files.createDirectories(directory.resolve("npcs/citizens"));
                 JsonObject manifest=new JsonObject(),ids=new JsonObject();
                 for(int i=0;i<5000;i++){
-                    JsonObject npc=new JsonObject();npc.addProperty("schemaVersion",1);npc.addProperty("revision",1);
+                    JsonObject npc=new JsonObject();npc.addProperty("schemaVersion",2);npc.addProperty("revision",1);
                     String uuid=UUID.nameUUIDFromBytes(("limit-"+i).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
                     npc.addProperty("uuid",uuid);npc.addProperty("id","citizens-"+i);npc.addProperty("group","citizens");npc.addProperty("name","Synthetic");npc.addProperty("type","minecraft:player");npc.addProperty("spawned",false);
                     JsonObject position=new JsonObject();position.addProperty("world","world");for(String key:List.of("x","y","z","yaw","pitch"))position.addProperty(key,0);npc.add("position",position);
@@ -57,7 +57,7 @@ public final class ApplicationLimitsChecks {
                 Path directory=store.resolve("imports/"+id);Files.createDirectories(directory.resolve("npcs/citizens"));
                 JsonObject manifest=new JsonObject(),ids=new JsonObject();
                 for(int i=1;i<=2;i++) {
-                    JsonObject npc=JsonDocuments.object("{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"00000000-0000-0000-0000-00000000000"+i+"\",\"id\":\"citizens-"+i+"\",\"group\":\"citizens\",\"name\":\"Synthetic\",\"type\":\"minecraft:player\",\"spawned\":false,\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0},\"migration\":{\"importId\":\""+id+"\",\"citizensId\":"+i+"}}");
+                    JsonObject npc=JsonDocuments.object("{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"00000000-0000-0000-0000-00000000000"+i+"\",\"id\":\"citizens-"+i+"\",\"group\":\"citizens\",\"name\":\"Synthetic\",\"type\":\"minecraft:player\",\"spawned\":false,\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0},\"migration\":{\"importId\":\""+id+"\",\"citizensId\":"+i+"}}");
                     npc.addProperty("preservedExtra","a".repeat(10*1024*1024));
                     String content=JsonDocuments.write(npc),path="npcs/citizens/citizens-"+i+".json";
                     Files.writeString(directory.resolve(path),content);manifest.addProperty(path,JsonDocuments.hash(content));ids.addProperty(Integer.toString(i),npc.get("uuid").getAsString());

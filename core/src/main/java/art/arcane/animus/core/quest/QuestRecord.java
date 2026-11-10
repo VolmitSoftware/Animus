@@ -91,8 +91,10 @@ public final class QuestRecord {
     /** Reads a saved record; throws {@link IllegalArgumentException} for anything malformed. */
     public static QuestRecord read(JsonObject root) {
         QuestRecord record = new QuestRecord();
-        if (!root.has("schemaVersion") || root.get("schemaVersion").getAsInt() != SCHEMA_VERSION) throw new IllegalArgumentException("expected schemaVersion " + SCHEMA_VERSION);
         try {
+            JsonElement version = root.get("schemaVersion");
+            if (version == null || !version.isJsonPrimitive() || !version.getAsJsonPrimitive().isNumber() || version.getAsInt() != SCHEMA_VERSION)
+                throw new IllegalArgumentException("expected schemaVersion " + SCHEMA_VERSION);
             for (Map.Entry<String, JsonElement> entry : root.getAsJsonObject("active").entrySet()) {
                 JsonObject state = entry.getValue().getAsJsonObject();
                 JsonArray counts = state.getAsJsonArray("progress");
@@ -107,6 +109,7 @@ public final class QuestRecord {
                 record.finished.put(entry.getKey(), new Finished(Math.max(1, done.get("count").getAsInt()), done.get("last").getAsLong(),
                         done.has("mirror") ? done.get("mirror").getAsLong() : -1));
             }
+        } catch (IllegalArgumentException malformed) { throw malformed;
         } catch (RuntimeException malformed) { throw new IllegalArgumentException(malformed.getMessage() == null ? "malformed quest record" : malformed.getMessage(), malformed); }
         return record;
     }

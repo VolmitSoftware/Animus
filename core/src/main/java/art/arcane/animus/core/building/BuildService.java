@@ -317,7 +317,6 @@ public final class BuildService<P, I> implements AutoCloseable {
         NpcDefinition definition = runtime.npcs().find(npc).orElseThrow(() -> new IllegalArgumentException("Unknown NPC: " + npc));
         BuilderModule module = BuilderModule.of(definition).orElseThrow(() -> new IllegalArgumentException(
                 "NPC " + npc + " has no " + BuilderModule.MODULE + " section; name a schematic: build start <npc-id> <schematic>"));
-        if (!module.reviewAccepted()) throw new IllegalStateException("The imported " + BuilderModule.MODULE + " section needs \"reviewAccepted\": true");
         start(new Start(npc, module.schematic(), module.origin(), module.options(), startedBy), reply);
     }
 

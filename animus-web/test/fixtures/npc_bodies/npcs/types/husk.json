@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "39a4fc6d-ebb4-52c2-8400-60fcff5c0103",
+  "id": "husk",
+  "group": "types",
+  "name": "Body husk",
+  "type": "minecraft:husk",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

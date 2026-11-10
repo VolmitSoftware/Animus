@@ -28,7 +28,7 @@
     "/members: kept in the shop's imported section; Animus does not use it",
     "/expiration: kept in the shop's imported section; Animus does not use it",
     "/object/baby: mob settings are kept in the NPC's shopkeepers:review section",
-    "a new minecraft:zombie NPC stands at the shopkeeper's place, despawned until the spawn review is accepted"
+    "a new minecraft:zombie NPC stands at the shopkeeper's place"
   ],
   "counts": {
     "CONVERTED": 13,

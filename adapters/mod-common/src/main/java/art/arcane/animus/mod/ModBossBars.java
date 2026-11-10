@@ -77,4 +77,5 @@ final class ModBossBars implements NpcBossBars.Host<ServerPlayer> {
     @Override public Vec3 position(ServerPlayer player) { return new Vec3(player.getX(), player.getY(), player.getZ()); }
 
     @Override public boolean permitted(ServerPlayer player, String node) { return VanillaRuntimeHost.permitted(player.permissions(), node); }
+    @Override public boolean granted(ServerPlayer player, String node) { return VanillaRuntimeHost.granted(player.permissions(), node); }
 }

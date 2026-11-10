@@ -65,6 +65,8 @@ class ViewerPreviewsTest {
         return bodies.update(player, packets, at, 48, (art.arcane.animus.core.virtual.ChunkPosition chunk) -> true, PARSE, Runnable::run, 0, 64);
     }
 
+    private boolean hides(UUID viewer, NpcRuntime.ActiveNpc npc) { return previews.hides(viewer, npc.id(), npc.state().npcId()); }
+
     private static void await(CompletionStage<Void> stage) throws Exception { stage.toCompletableFuture().get(5, TimeUnit.SECONDS); }
 
     @Test void present_showsCandidateToOneViewer_othersKeepLive() throws Exception {
@@ -135,21 +137,21 @@ class ViewerPreviewsTest {
         UUID liveUuid = UUID.randomUUID();
         NpcRuntime.ActiveNpc live = new NpcRuntime.ActiveNpc("guard", "Guard", new art.arcane.animus.core.virtual.VirtualNpcState(liveUuid, NEAR, 0.6, 1.8, 20).snapshot());
         NpcRuntime.ActiveNpc baker = new NpcRuntime.ActiveNpc("baker", "Baker", new art.arcane.animus.core.virtual.VirtualNpcState(UUID.randomUUID(), NEAR, 0.6, 1.8, 20).snapshot());
-        assertFalse(previews.hides(ALEX, live), "nothing is hidden before a preview");
+        assertFalse(hides(ALEX, live), "nothing is hidden before a preview");
         await(present(alex, "prev_a", "guard"));
 
-        assertTrue(previews.hides(ALEX, live), "the previewing viewer neither sees nor hears the live guard");
-        assertFalse(previews.hides(BLAKE, live), "other players are unaffected");
-        assertFalse(previews.hides(ALEX, baker), "NPCs outside the preview are unaffected");
+        assertTrue(hides(ALEX, live), "the previewing viewer neither sees nor hears the live guard");
+        assertFalse(hides(BLAKE, live), "other players are unaffected");
+        assertFalse(hides(ALEX, baker), "NPCs outside the preview are unaffected");
         assertTrue(previews.hides(ALEX, "guard", liveUuid));
 
         previews.end("prev_a");
-        assertFalse(previews.hides(ALEX, live), "ending the preview restores the live guard for the viewer");
+        assertFalse(hides(ALEX, live), "ending the preview restores the live guard for the viewer");
 
         await(present(alex, "prev_b", "guard"));
-        assertTrue(previews.hides(ALEX, live));
+        assertTrue(hides(ALEX, live));
         previews.left(ALEX);
-        assertFalse(previews.hides(ALEX, live), "leaving the server ends the hiding too");
+        assertFalse(hides(ALEX, live), "leaving the server ends the hiding too");
     }
 
     @Test void pluginHiding_hidesForItsViewerAlongsidePreviews() throws Exception {
@@ -157,14 +159,14 @@ class ViewerPreviewsTest {
         NpcRuntime.ActiveNpc live = new NpcRuntime.ActiveNpc("guard", "Guard", new art.arcane.animus.core.virtual.VirtualNpcState(guard, NEAR, 0.6, 1.8, 20).snapshot());
         Set<UUID> hiddenFromAlex = new HashSet<>();
         previews.alsoHide((UUID viewer, String id, UUID npc) -> viewer.equals(ALEX) && hiddenFromAlex.contains(npc));
-        assertFalse(previews.hides(ALEX, live));
+        assertFalse(hides(ALEX, live));
 
         hiddenFromAlex.add(guard);
-        assertTrue(previews.hides(ALEX, live), "a plugin's hiding applies with no preview staged");
-        assertFalse(previews.hides(BLAKE, live), "other viewers still see it");
+        assertTrue(hides(ALEX, live), "a plugin's hiding applies with no preview staged");
+        assertFalse(hides(BLAKE, live), "other viewers still see it");
 
         hiddenFromAlex.clear();
-        assertFalse(previews.hides(ALEX, live), "showing it again restores it");
+        assertFalse(hides(ALEX, live), "showing it again restores it");
     }
 
     @Test void endedBeforeStaging_neverShows() throws Exception {
@@ -177,7 +179,7 @@ class ViewerPreviewsTest {
 
     @Test void invalidCandidate_refusesPreview() throws Exception {
         NpcDefinition horse = NpcDefinition.parse("""
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000009","id":"horse","group":"test","name":"Horse",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-0000-0000-000000000009","id":"horse","group":"test","name":"Horse",
                  "type":"minecraft:horse","spawned":true,"position":{"world":"world","x":1,"y":64,"z":2,"yaw":0,"pitch":0}}
                 """);
         PreviewBodies<String, String> alex = new PreviewBodies<>(previews, ALEX);
@@ -190,7 +192,7 @@ class ViewerPreviewsTest {
 
     @Test void missingSkin_refusesPreview() throws Exception {
         NpcDefinition skinned = NpcDefinition.parse("""
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000008","id":"skinned","group":"test","name":"Skinned",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-0000-0000-000000000008","id":"skinned","group":"test","name":"Skinned",
                  "type":"minecraft:player","spawned":true,"skin":"%s","position":{"world":"world","x":1,"y":64,"z":2,"yaw":0,"pitch":0}}
                 """.formatted("a".repeat(64)));
         ExecutionException failure = assertThrows(ExecutionException.class, () -> await(previews.present("prev_a", ALEX, List.of(skinned), ending("prev_a"))));

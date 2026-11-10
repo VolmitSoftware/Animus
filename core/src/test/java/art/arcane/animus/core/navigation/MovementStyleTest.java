@@ -24,7 +24,7 @@ class MovementStyleTest {
 
     private static JsonObject definition(String type, String movement) {
         return JsonParser.parseString("""
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"walker","group":"test","name":"Walker",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"walker","group":"test","name":"Walker",
                  "type":"%s","spawned":true,"position":{"world":"world","x":0,"y":1,"z":0,"yaw":0,"pitch":0},"movement":%s}
                 """.formatted(type, movement)).getAsJsonObject();
     }
@@ -102,7 +102,7 @@ class MovementStyleTest {
 
     @Test void speedCombinesWithTheMovementSpeedAttribute() {
         MovementSettings settings = MovementSettings.parse(JsonParser.parseString("""
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"walker","group":"test","name":"Walker",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"walker","group":"test","name":"Walker",
                  "type":"minecraft:player","spawned":true,"position":{"world":"world","x":0,"y":1,"z":0,"yaw":0,"pitch":0},
                  "attributes":{"movement_speed":0.1},"movement":{"style":"sneak"}}""").getAsJsonObject());
         double base = settings.routeSpeed(false, 2);

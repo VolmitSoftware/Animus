@@ -121,15 +121,14 @@ class ImportRecoveryTest {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             dropIn(store, npcs).preview("reject", Optional.empty(), Map.of(), false);
             dropIn(store, npcs).applyStaged();
-            dropIn(store, npcs).acceptCategories(List.of("spawn"));
             List<String> applied = transactions(store);
-            assertEquals(3, applied.size(), applied.toString());
+            assertEquals(2, applied.size(), applied.toString());
             String shop = store.read("shops/dtltraders/bakery.json");
             Files.writeString(store.resolve("shops/dtltraders/bakery.json"), shop.replace("Bakery", "Edited bakery"));
 
             String stopped = String.join("\n", dropIn(store, npcs).rollbackApplied());
             assertTrue(stopped.contains("rollback again"), stopped);
-            assertEquals(applied.subList(0, 2), transactions(store), "the undone accept is no longer listed");
+            assertEquals(applied, transactions(store), "nothing was undone, so both stay listed");
             assertFalse(Files.exists(store.resolve("schematics/hut.schem")), "cleanup runs even when a transaction conflicts");
             assertEquals(2, npcs.all().size());
 

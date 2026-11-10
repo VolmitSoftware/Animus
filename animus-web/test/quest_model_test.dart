@@ -113,7 +113,7 @@ void main() {
       final List<Diagnostic> problems = questChecks(quest, npcs: <String>{'baker'}, quests: <String>{'town:bread'}).where((Diagnostic d) => d.severity != DiagnosticSeverity.info).toList();
       expect(problems.map((Diagnostic d) => d.path), containsAll(<String>[r'$.turnIn', r'$.requirements.quests[0]']));
       expect(problems.every((Diagnostic d) => d.severity == DiagnosticSeverity.warning), isTrue);
-      expect(questChecks(<String, Object?>{...twoStages(), 'rewards': <String, Object?>{'experience': 5}}, npcs: <String>{'baker'}, quests: <String>{'town:bread'}), isEmpty);
+      expect(questChecks(<String, Object?>{...twoStages(), 'rewards': <String, Object?>{'flags': <Object?>[]}}, npcs: <String>{'baker'}, quests: <String>{'town:bread'}), isEmpty);
     });
 
     test('should refuse repeated objective ids within a stage', () {
@@ -133,11 +133,12 @@ void main() {
       expect(problems.single.path, r'$.stages[0].objectives[0].item.id');
     });
 
-    test('should note that items, money and commands need the apply:commands scope', () {
+    test('should note that items, money, experience and commands need the apply:commands scope', () {
       final List<Diagnostic> notes = questChecks(twoStages());
       expect(notes.single.path, r'$.rewards');
       expect(notes.single.message, contains('apply:commands'));
-      expect(questChecks(<String, Object?>{...twoStages(), 'rewards': <String, Object?>{'experience': 5}}), isEmpty);
+      expect(questChecks(<String, Object?>{...twoStages(), 'rewards': <String, Object?>{'experience': 5}}).single.path, r'$.rewards');
+      expect(questChecks(<String, Object?>{...twoStages(), 'rewards': <String, Object?>{'flags': <Object?>[]}}), isEmpty);
     });
 
     test('should note that reward commands need the allow-list', () {

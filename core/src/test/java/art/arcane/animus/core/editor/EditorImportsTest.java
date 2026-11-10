@@ -24,7 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** Upload, stage, review, apply, accept and rollback of a Citizens save through {@code /v1/imports}. */
+/** Upload, stage, review, apply and rollback of a Citizens save through {@code /v1/imports}. */
 class EditorImportsTest {
     private static final List<EditorScope> IMPORTER = List.of(EditorScope.READ, EditorScope.IMPORT, EditorScope.APPLY_NPCS, EditorScope.APPLY_BEHAVIORS, EditorScope.APPLY_GUI);
 
@@ -63,7 +63,23 @@ class EditorImportsTest {
     private byte[] save() throws Exception { return Files.readAllBytes(SharedFixtures.fixture("citizens/runtime.yml")); }
 
     @Test
-    void import_uploadStageApplyAcceptRollback_runsTheDropInFlow() throws Exception {
+    void import_stagedByAnOlderConverter_isRefusedWithTheStepThatStagesItAgain() throws Exception {
+        ok(upload("?file=citizens", save(), EditorRequest.Transport.RELAY));
+        String importId = ok(harness.send("POST", "/v1/imports/stage", token, new JsonObject())).getAsJsonObject("citizens").get("importId").getAsString();
+        art.arcane.animus.core.migration.OlderPreviews.age(harness.root.resolve("imports/" + importId));
+        List<EditorScope> withCommands = new ArrayList<>(IMPORTER);
+        withCommands.add(EditorScope.APPLY_COMMANDS);
+        token = harness.token(EditorHarness.grant(withCommands));
+        JsonObject refused = EditorHarness.json(harness.send("POST", "/v1/imports/" + importId + "/apply", token, null)).getAsJsonObject("error");
+        assertEquals("conflict", refused.get("code").getAsString());
+        String message = refused.get("message").getAsString();
+        assertTrue(message.startsWith(art.arcane.animus.core.migration.OlderPreviews.refusal(importId)), message);
+        assertTrue(message.endsWith(" is schemaVersion 1, this one writes 2; upload and stage the save again, then apply"), message);
+        assertFalse(Files.exists(harness.root.resolve("npcs/citizens")), "nothing was installed");
+    }
+
+    @Test
+    void import_uploadStageApplyRollback_runsTheDropInFlow() throws Exception {
         assertEquals("none", ok(harness.send("GET", "/v1/imports", token, null)).get("state").getAsString());
         JsonObject uploaded = ok(upload("?file=citizens", save(), EditorRequest.Transport.RELAY));
         assertEquals("imports/saves.yml", uploaded.getAsJsonObject("uploads").get("citizens").getAsString());
@@ -79,24 +95,22 @@ class EditorImportsTest {
         String stale = "0".repeat(64);
         assertEquals("conflict", error(harness.send("POST", "/v1/imports/" + stale + "/apply", token, null)));
 
+        assertEquals("citizens", staged.getAsJsonArray("commandNamespaces").get(0).getAsString(), "the runtime fixture has a command NPC");
+        assertEquals("scope-missing", error(harness.send("POST", "/v1/imports/" + importId + "/apply", token, null)),
+                "applying adds citizens to the command allow-list, which needs apply:commands");
+        List<EditorScope> withCommands = new ArrayList<>(IMPORTER);
+        withCommands.add(EditorScope.APPLY_COMMANDS);
+        token = harness.token(EditorHarness.grant(withCommands));
         int before = harness.host.applied.size();
         JsonObject applied = ok(harness.send("POST", "/v1/imports/" + importId + "/apply", token, null));
         assertEquals("applied", applied.get("state").getAsString());
         assertEquals(6, applied.get("npcs").getAsInt());
         assertTrue(harness.host.applied.size() > before, "the platform reloads after apply");
-        int pending = 0;
-        for (Map.Entry<String, JsonElement> entry : applied.getAsJsonObject("pending").entrySet()) pending += entry.getValue().getAsInt();
-        assertTrue(pending > 0, "the runtime fixture has settings waiting for review: " + applied);
+        assertFalse(applied.has("pending"), "nothing waits once applied: " + applied);
+        assertTrue(harness.npcs.all().stream().anyMatch((art.arcane.animus.core.npc.NpcDefinition npc) -> npc.imported() && npc.spawned()), "imported NPCs spawn on apply");
         assertEquals("conflict", error(upload("?file=citizens", save(), EditorRequest.Transport.DIRECT)), "no upload over an applied import");
 
-        JsonArray categories = new JsonArray();
-        categories.add("all");
-        JsonObject accept = new JsonObject();
-        accept.add("categories", categories);
-        JsonObject accepted = ok(harness.send("POST", "/v1/imports/" + importId + "/accept", token, accept));
-        int waiting = 0;
-        for (Map.Entry<String, JsonElement> entry : accepted.getAsJsonObject("pending").entrySet()) waiting += entry.getValue().getAsInt();
-        assertEquals(0, waiting, accepted.toString());
+        assertEquals(404, harness.send("POST", "/v1/imports/" + importId + "/accept", token, new JsonObject()).status(), "there is no accept step");
 
         JsonObject rolled = ok(harness.send("POST", "/v1/imports/" + importId + "/rollback", token, null));
         assertEquals("rolled-back", rolled.get("state").getAsString());
@@ -106,7 +120,7 @@ class EditorImportsTest {
             try { events.add(Files.readString(file)); } catch (java.io.IOException failure) { throw new AssertionError(failure); }
         });
         String audit = String.join("\n", events);
-        for (String event : List.of("import-upload", "import-stage", "import-apply", "import-accept", "import-rollback")) assertTrue(audit.contains("\"" + event + "\""), event);
+        for (String event : List.of("import-upload", "import-stage", "import-apply", "import-rollback")) assertTrue(audit.contains("\"" + event + "\""), event);
     }
 
     @Test
@@ -132,7 +146,9 @@ class EditorImportsTest {
         ok(upload("", save(), EditorRequest.Transport.DIRECT));
         String importId = ok(harness.send("POST", "/v1/imports/stage", token, new JsonObject())).getAsJsonObject("citizens").get("importId").getAsString();
         harness.citizensRunning = true;
-        EditorResponse refused = harness.send("POST", "/v1/imports/" + importId + "/apply", token, null);
+        List<EditorScope> withCommands = new ArrayList<>(IMPORTER);
+        withCommands.add(EditorScope.APPLY_COMMANDS);
+        EditorResponse refused = harness.send("POST", "/v1/imports/" + importId + "/apply", harness.token(EditorHarness.grant(withCommands)), null);
         assertEquals("conflict", error(refused));
         assertTrue(EditorHarness.json(refused).getAsJsonObject("error").get("message").getAsString().contains("Citizens is still enabled"));
     }

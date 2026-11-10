@@ -48,7 +48,7 @@ class BuildServiceLiveSettingsTest {
         harness.service = new PersistedNpcService<>(harness.host, runtime, Runnable::run, PersistedNpcService.Settings.DEFAULT);
         harness.spawnNpc();
         Files.writeString(npcs.resolve("second.json"), """
-                {"schemaVersion": 1, "revision": 1, "uuid": "1f0c2c52-6f0e-4f43-a3a3-9d1f8f8a0c22", "id": "second", "group": "test",
+                {"schemaVersion": 2, "revision": 1, "uuid": "1f0c2c52-6f0e-4f43-a3a3-9d1f8f8a0c22", "id": "second", "group": "test",
                  "name": "Second", "type": "minecraft:villager", "spawned": true,
                  "position": {"world": "world", "x": 4.5, "y": 64, "z": 4.5, "yaw": 0, "pitch": 0}}
                 """);

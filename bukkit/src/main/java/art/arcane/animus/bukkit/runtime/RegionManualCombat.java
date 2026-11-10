@@ -118,7 +118,7 @@ public final class RegionManualCombat implements AutoCloseable {
     private RegionActor actor(String id) {
         available();
         NpcDefinition definition = host.runtime.npcs().find(id).orElseThrow(() -> new IllegalArgumentException("Unknown NPC: " + id));
-        if (!CombatModule.manualAllowed(definition)) throw new IllegalStateException("NPC combat is disabled or its migration review has not been accepted");
+        if (!CombatModule.manualAllowed(definition)) throw new IllegalStateException("NPC combat is disabled");
         RegionActor actor = host.actors.get(id);
         RegionActor.Publication view = actor == null ? null : actor.publication;
         if (view == null || !view.live()) throw new IllegalStateException("NPC must have an active runtime before combat");

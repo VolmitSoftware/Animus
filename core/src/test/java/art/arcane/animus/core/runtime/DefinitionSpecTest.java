@@ -24,7 +24,7 @@ class DefinitionSpecTest {
 
     @Test void activationReportsAllMissingPlatformCapabilitiesAndLeavesDefinitionUnchanged() throws Exception {
         var definition = NpcDefinition.parse("""
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"guard",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"guard",
                  "group":"test","name":"NameLongerThanSixteen","type":"minecraft:unimplemented","spawned":true,
                  "skin":"%s","position":{"world":"world","x":1,"y":64,"z":2,"yaw":0,"pitch":91}}
                 """.formatted("a".repeat(64)));
@@ -38,7 +38,7 @@ class DefinitionSpecTest {
 
     @Test void namesLongerThanAProfileActivateAndKeepTheirAppearance() throws Exception {
         var definition = NpcDefinition.parse("""
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"guard",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"guard",
                  "group":"test","name":"Captain of the Northern Watch","type":"minecraft:player","spawned":true,
                  "hologram":{"lines":["Quest"]},"pose":"sneaking",
                  "position":{"world":"world","x":1,"y":64,"z":2,"yaw":0,"pitch":0}}
@@ -52,7 +52,7 @@ class DefinitionSpecTest {
 
     @Test void aSittingBodyCannotAlsoRideAnotherNpc() throws Exception {
         var definition = NpcDefinition.parse("""
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"guard",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"guard",
                  "group":"test","name":"Guard","type":"minecraft:player","spawned":true,"pose":"sitting",
                  "modules":{"animus:mount":{"vehicle":"horse"}},
                  "position":{"world":"world","x":1,"y":64,"z":2,"yaw":0,"pitch":0}}
@@ -62,7 +62,7 @@ class DefinitionSpecTest {
 
     @Test void aMalformedModelEngineModuleRefusesTheSpawn() throws Exception {
         var definition = NpcDefinition.parse("""
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"guard",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"guard",
                  "group":"test","name":"Guard","type":"minecraft:player","spawned":true,
                  "modules":{"animus:modelengine":{"model":"drake","scale":99}},
                  "position":{"world":"world","x":1,"y":64,"z":2,"yaw":0,"pitch":0}}

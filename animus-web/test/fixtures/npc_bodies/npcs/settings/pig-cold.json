@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "bb4b566b-af8e-5f5b-a03c-8df5d7236fd0",
+  "id": "pig-cold",
+  "group": "settings",
+  "name": "Set pig-cold",
+  "type": "minecraft:pig",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "pig": {
+    "variant": "cold"
+  },
+  "equipment": {
+    "saddle": {
+      "id": "minecraft:saddle"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "e5c625d1-cd34-54c6-a8ec-22c9d0f41d89",
+  "id": "axolotl-dead",
+  "group": "settings",
+  "name": "Set axolotl-dead",
+  "type": "minecraft:axolotl",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "axolotl": {
+    "variant": "blue",
+    "playingDead": true
+  }
+}

@@ -50,7 +50,7 @@ public record HomeSettings(Vec3 position, Float yaw, Float pitch, int delayTicks
     public static boolean guards(JsonObject document) {
         try {
             return art.arcane.animus.core.combat.CombatSettings.parse(document).map((art.arcane.animus.core.combat.CombatSettings combat) -> combat.enabled()
-                    && (combat.reviewAccepted() || !document.has("migration")) && (combat.guard().player().isPresent() || combat.guard().npc().isPresent())).orElse(false);
+                    && (combat.guard().player().isPresent() || combat.guard().npc().isPresent())).orElse(false);
         } catch (IllegalArgumentException invalid) { return false; }
     }
 

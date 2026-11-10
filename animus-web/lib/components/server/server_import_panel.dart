@@ -1,6 +1,6 @@
 /// Import on a paired server: upload the saves chosen on the Citizens screen,
-/// stage them, read the server's review report, apply, accept reviewed
-/// categories and roll back, all through `/v1/imports`. The server runs the
+/// stage them, read the server's review report, apply and roll back, all
+/// through `/v1/imports`. The server runs the
 /// same steps as `/animus import citizens`.
 library;
 
@@ -26,22 +26,9 @@ import 'live_confirm.dart';
 String importStateLabel(String state) => switch (state) {
       'none' => 'Nothing staged',
       'staged' => 'Staged, not installed',
-      'applied' => 'Installed, waiting for review',
+      'applied' => 'Installed and running',
       'rolled-back' => 'Rolled back',
       _ => state,
-    };
-
-/// A review category in words.
-String importCategoryLabel(String category) => switch (category) {
-      'spawn' => 'Spawning',
-      'patrols' => 'Patrols',
-      'schedules' => 'Schedules',
-      'combat' => 'Combat',
-      'riding' => 'Riding',
-      'shops' => 'Shops',
-      'builder' => 'Builds',
-      'denizen' => 'Denizen behaviors',
-      _ => category,
     };
 
 /// One issue from a staged report: a line of text, or an object with a
@@ -86,9 +73,8 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
   ImportReview? _review;
   String? _error;
   String? _busy;
-  /// The write waiting for its inline confirm: apply, accept-all or rollback.
+  /// The write waiting for its inline confirm: apply or rollback.
   String? _confirm;
-  final Set<String> _accept = <String>{};
 
   static String _actionId(String action) => 'animus-import-$action';
 
@@ -129,13 +115,10 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
     try {
       final ImportReview review = await step(imports);
       if (!mounted) return;
-      setState(() {
-        _review = review;
-        _accept.retainAll(<String>{for (final String category in importCategories) if ((review.pending[category] ?? 0) > 0) category});
-      });
+      setState(() => _review = review);
       component.onState?.call(review.state);
     } on ImportRefused catch (refused) {
-      if (mounted) setState(() => _error = refused.detail == null ? refused.message : '${refused.message} Server: ${refused.detail}');
+      if (mounted) setState(() => _error = importRefusalText(refused));
     } on NotConnected catch (offline) {
       if (mounted) setState(() => _error = offline.status.message ?? 'Not connected. Use Connect, then try again.');
     } on TransportFailure catch (failure) {
@@ -172,7 +155,7 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
     return dom.section(classes: 'animus-panel animus-server-import', attributes: const <String, String>{'aria-label': 'Import on a server'}, <Widget>[
       const dom.h2(<Widget>[
         InfoTip(
-          tip: 'Nothing installs until you apply. Imported NPCs stay despawned with features off until accepted.',
+          tip: 'Nothing installs until you apply. Apply spawns the NPCs Citizens had spawned and turns on everything that converted.',
           docs: Docs.liveImports,
           child: Component.text('Import on a server'),
         ),
@@ -295,7 +278,9 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
       if (importId != null && _confirm == 'apply')
         LiveConfirm(
           question: 'Install this import on the server?',
-          detail: 'NPCs install despawned, with features off until accepted.',
+          detail: review.commandNamespaces.isEmpty
+              ? 'NPCs spawn as they were, with their patrols, combat, shops and other converted features on.'
+              : 'NPCs spawn as they were, with their converted features on. Their commands run as before: ${review.commandNamespaces.join(', ')} joins the command allow-list, which needs apply:commands.',
           confirmLabel: 'Install import',
           returnFocus: _actionId('apply'),
           onConfirm: () => _run('Applying', (ServerImports i) => i.apply(importId)),
@@ -304,7 +289,7 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
       else if (importId != null && _confirm == 'rollback')
         LiveConfirm(
           question: 'Roll back this import on the server?',
-          detail: 'Removes its NPCs, shops, behaviors and acceptances. The staged import stays.',
+          detail: 'Removes its NPCs, shops and behaviors, and the command namespaces it allowed. The staged import stays.',
           confirmLabel: 'Roll back',
           destructive: true,
           returnFocus: _actionId('rollback'),
@@ -332,59 +317,13 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
               onPressed: () => setState(() => _confirm = 'rollback'),
             ),
         ]),
-      if (importId != null && review.state == 'applied') ..._acceptView(review, importId),
+      if (_serverId != null && review.state == 'applied')
+        dom.p(attributes: const <String, String>{'data-testid': 'import-next'}, <Widget>[
+          dom.a(href: ServerRoute(_serverId!, const <String>[]).format(), const <Widget>[Component.text('Open the imported NPCs')]),
+          const dom.span(classes: 'animus-muted', <Widget>[Component.text(' in the server catalog; filter by citizens- or shopkeeper-.')]),
+        ]),
     ];
   }
-
-  List<Widget> _acceptView(ImportReview review, String importId) => <Widget>[
-        const dom.h3(<Widget>[
-          InfoTip(
-            tip: 'Each category stays off until accepted: spawning, patrols, schedules, combat, riding, shops, builds and Denizen behaviors.',
-            docs: Docs.liveImports,
-            child: Component.text('Review categories'),
-          ),
-        ]),
-        dom.div(classes: 'animus-import-categories', attributes: const <String, String>{'data-testid': 'import-categories'}, <Widget>[
-          for (final String category in importCategories)
-            ArcaneCheckbox(
-              checked: _accept.contains(category),
-              label: '${importCategoryLabel(category)}: ${review.pending[category] ?? 0} waiting',
-              size: ComponentSize.sm,
-              disabled: (review.pending[category] ?? 0) == 0,
-              onChanged: (bool on) => setState(() => on ? _accept.add(category) : _accept.remove(category)),
-            ),
-        ]),
-        if (_confirm == 'accept-all')
-          LiveConfirm(
-            question: 'Accept every waiting category on the server?',
-            detail: '${review.waiting} change${review.waiting == 1 ? '' : 's'} go live: NPCs spawn and their features turn on.',
-            confirmLabel: 'Accept all',
-            returnFocus: _actionId('accept-all'),
-            onConfirm: () => _run('Accepting', (ServerImports i) => i.accept(importId, const <String>['all'])),
-            onCancel: () => setState(() => _confirm = null),
-          )
-        else
-          dom.div(classes: 'animus-row', <Widget>[
-            Button.secondary(
-              label: 'Accept selected',
-              size: ButtonSize.small,
-              disabled: _busy != null || _accept.isEmpty,
-              onPressed: () => _run('Accepting', (ServerImports i) => i.accept(importId, _accept.toList())),
-            ),
-            Button.secondary(
-              label: 'Accept all',
-              size: ButtonSize.small,
-              disabled: _busy != null || review.waiting == 0,
-              attributes: <String, String>{'id': _actionId('accept-all')},
-              onPressed: () => setState(() => _confirm = 'accept-all'),
-            ),
-          ]),
-        if (_serverId != null)
-          dom.p(attributes: const <String, String>{'data-testid': 'import-next'}, <Widget>[
-            dom.a(href: ServerRoute(_serverId!, const <String>[]).format(), const <Widget>[Component.text('Open the imported NPCs')]),
-            const dom.span(classes: 'animus-muted', <Widget>[Component.text(' in the server catalog; filter by citizens- or shopkeeper-.')]),
-          ]),
-      ];
 
   Widget _stat(String value, String label) => dom.div(classes: 'animus-stat', <Widget>[
         dom.strong(<Widget>[Component.text(value)]),

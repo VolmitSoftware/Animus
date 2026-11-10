@@ -10,6 +10,7 @@ import '../gui/gui_json.dart';
 import '../shared_schemas.dart';
 import 'group_merge.dart';
 import 'npc_attributes.dart';
+import 'npc_paths.dart';
 
 /// Group ids as the server accepts them.
 final RegExp groupIdPattern = RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$');
@@ -112,7 +113,7 @@ List<Diagnostic> groupValueDiagnostics(Object? json, SharedSchemas schemas) {
   final Object? values = json['values'];
   if (values is! Map<String, Object?>) return const <Diagnostic>[];
   final JsonMap probe = <String, Object?>{
-    'schemaVersion': 1,
+    'schemaVersion': npcSchemaVersion,
     'revision': 1,
     'uuid': '00000000-0000-4000-8000-000000000000',
     'id': 'group-probe',

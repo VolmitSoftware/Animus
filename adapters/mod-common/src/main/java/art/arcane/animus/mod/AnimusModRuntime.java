@@ -192,7 +192,7 @@ public final class AnimusModRuntime {
                     () -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); }, LOGGER::info, null, null);
             if (next.builds.status().startsWith("Builds unavailable") && next.runtime.buildSettings().enabled()) LOGGER.warn(next.builds.status());
             DialogueTriggers dialogue = new DialogueTriggers(() -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); });
-            next.builtins = new BuiltinCapabilities(new VanillaBehaviorPlatform(server, next.living, next.combat, next.builds, next.ticks, () -> owner.guis),
+            next.builtins = new BuiltinCapabilities(new VanillaBehaviorPlatform(server, next.living, next.combat, next.builds, next.ticks, () -> owner.guis, next.screens::economy),
                     next.runtime.behaviorState(), dialogue::publish, next.runtime.behaviorSettings().actions(), LOGGER::info);
             next.builtins.quests(questService);
             next.extensions = new ExtensionRuntime(next.runtime.documents().resolve("modules"), modulePlatform(), next.runtime.definitionGateway(),
@@ -442,6 +442,7 @@ public final class AnimusModRuntime {
         active.living.joined(player);
         if (active.serverBehaviors != null) active.serverBehaviors.joined(player);
         if (active.onboarding != null) active.onboarding.joined(player);
+        if (active.quests != null) active.quests.joined(player);
     }
     void quit(ServerPlayer player) {
         Running active = running;

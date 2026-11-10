@@ -18,7 +18,7 @@ public final class FixtureSmoke {
         Path modules=Path.of(args[0]),data=Path.of(args[1]);Files.createDirectories(data.resolve("npcs/qa"));
         Path file=data.resolve("npcs/qa/module-qa-local.json");
         Files.writeString(file,"""
-                {"schemaVersion":1,"revision":1,"uuid":"1672fb38-c795-4bbe-8eda-8cb98e218c92","id":"module-qa-local","type":"minecraft:player","group":"qa","name":"Module Before","spawned":false,"position":{"world":"world","x":0,"y":61,"z":3,"yaw":0,"pitch":0},"modules":{"missing:module":{"retained":true}}}
+                {"schemaVersion":2,"revision":1,"uuid":"1672fb38-c795-4bbe-8eda-8cb98e218c92","id":"module-qa-local","type":"minecraft:player","group":"qa","name":"Module Before","spawned":false,"position":{"world":"world","x":0,"y":61,"z":3,"yaw":0,"pitch":0},"modules":{"missing:module":{"retained":true}}}
                 """);
         try(DocumentStore store=new DocumentStore(data);MutationLane lane=new MutationLane(16)){
             NpcRepository repository=new NpcRepository(store);repository.loadForStartup();

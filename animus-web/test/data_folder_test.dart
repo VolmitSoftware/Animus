@@ -79,7 +79,7 @@ void main() {
 
   test('should warn, not refuse, when an NPC group is not its folder', () {
     final AnimusDocument stale = validateSource(const DocumentLocation(DocumentKind.npc, 'town/market/crier'), 'npcs/town/market/crier.json',
-        jsonEncode(<String, Object?>{'schemaVersion': 1, 'revision': 1, 'uuid': '3b5d1f0e-8c2a-4e7b-9a61-0c4d2e8f1a35', 'id': 'crier', 'group': 'town', 'name': 'Crier', 'type': 'minecraft:player', 'spawned': true,
+        jsonEncode(<String, Object?>{'schemaVersion': 2, 'revision': 1, 'uuid': '3b5d1f0e-8c2a-4e7b-9a61-0c4d2e8f1a35', 'id': 'crier', 'group': 'town', 'name': 'Crier', 'type': 'minecraft:player', 'spawned': true,
             'position': <String, Object?>{'world': 'world', 'x': 0, 'y': 64, 'z': 0, 'yaw': 0, 'pitch': 0}}), SharedSchemas.embedded);
     final Diagnostic group = stale.diagnostics.singleWhere((Diagnostic d) => d.path == r'$.group');
     expect(group.severity, DiagnosticSeverity.warning);

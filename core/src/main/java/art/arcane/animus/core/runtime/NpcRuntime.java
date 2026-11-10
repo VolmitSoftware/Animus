@@ -51,6 +51,8 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     boolean available();
     /** Whether {@code npcs.enabled} turns this runtime on and off in place; false where that needs a restart (Folia). */
     default boolean switchesLive() { return true; }
+    /** Whether NPC bodies show their Model Engine model while Model Engine runs; false on Folia, which draws none. */
+    default boolean drawsModels() { return true; }
     /** Connect during startup. A later call replaces the listener. */
     void interactions(InteractionListener<P> listener);
     /** Connect during startup. A later call replaces the observer. */
@@ -98,6 +100,11 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     PlayerAccess<P> players();
     /** Viewer-private previews this runtime presents; inert packet bodies shown to one player only. */
     ViewerPreviews previews();
+    /**
+     * Live NPCs a viewer must neither see nor hear: those a preview or another plugin hides from them, and those their own
+     * {@code viewers} filter hides. Speech, sounds, particles, triggers, click redirects and GUI holograms all read it.
+     */
+    art.arcane.animus.core.behavior.trigger.HiddenNpcs hidden();
 
     /**
      * Runs work on the NPC's owner, now when the caller already owns it. False when the NPC is not active anywhere.

@@ -1,16 +1,15 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "0a1b2c3d-0000-4000-8000-000000000304",
   "id": "citizens-4",
   "group": "town",
   "name": "Mystery Walker",
   "type": "minecraft:player",
-  "spawned": false,
+  "spawned": true,
   "migration": {
-    "importId": "26786e3fe4d9e4df8b32a091dd88f50840260fb1ce3206e911cd2519db811589",
+    "importId": "60a0e695f7f223323837181e95b6057ebe03ac9d271d24acad25a527f1f3e2a5",
     "citizensId": 4,
-    "originalSpawned": null,
     "references": []
   },
   "position": {

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "f851d40e-f1ca-596d-8b39-dd770ec336d8",
+  "id": "copper-oxidized",
+  "group": "settings",
+  "name": "Set copper-oxidized",
+  "type": "minecraft:copper_golem",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "copperGolem": {
+    "weather": "oxidized"
+  }
+}

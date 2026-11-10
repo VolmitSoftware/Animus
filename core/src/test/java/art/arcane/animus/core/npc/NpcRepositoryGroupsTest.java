@@ -20,12 +20,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class NpcRepositoryGroupsTest {
     @TempDir Path root;
     static final String GUARD = """
-            {"schemaVersion":1,"revision":1,"uuid":"12345678-1234-1234-1234-123456789abc","id":"guard","group":"town","name":"Guard","type":"minecraft:player","spawned":false,"position":{"world":"world","x":0,"y":64,"z":0,"yaw":0,"pitch":0},"groups":["watch"],"tags":["gate"]}
+            {"schemaVersion":2,"revision":1,"uuid":"12345678-1234-1234-1234-123456789abc","id":"guard","group":"town","name":"Guard","type":"minecraft:player","spawned":false,"position":{"world":"world","x":0,"y":64,"z":0,"yaw":0,"pitch":0},"groups":["watch"],"tags":["gate"]}
             """;
     static final String BAKER = GUARD.replace("12345678-1234-1234-1234-123456789abc", "22345678-1234-1234-1234-123456789abc")
             .replace("\"id\":\"guard\"", "\"id\":\"baker\"").replace(",\"groups\":[\"watch\"]", "");
 
-    static String group(String values) { return "{\"schemaVersion\":1,\"revision\":1,\"id\":\"watch\",\"values\":" + values + "}"; }
+    static String group(String values) { return "{\"schemaVersion\":2,\"revision\":1,\"id\":\"watch\",\"values\":" + values + "}"; }
 
     private NpcRepository loaded(DocumentStore store, String watch) throws IOException {
         store.commit(List.of(new DocumentStore.Change("groups/watch.json", "missing", watch), new DocumentStore.Change("npcs/town/guard.json", "missing", GUARD),

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "d48afffe-7264-5450-99df-48f3053c2d15",
+  "id": "painting-east",
+  "group": "settings",
+  "name": "Set painting-east",
+  "type": "minecraft:painting",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "painting": {
+    "variant": "minecraft:kebab",
+    "facing": "east"
+  }
+}

@@ -106,12 +106,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {"method": "POST", "path": "/v1/imports", "scope": "import", "query": {"file": "citizens|shopkeepers|shopkeepers-config|dtltraders", "name": "dtltraders file: guis.yml, config.yml, messages.yml, data.dat or shops/<shop>/<shop>.yml"}, "request": "application/octet-stream", "responses": {"200": "import-review", "400": "error-response", "403": "error-response", "409": "error-response", "413": "error-response"}},
     {"method": "POST", "path": "/v1/imports/stage", "scope": "import", "request": "import-stage-request", "responses": {"200": "import-review", "400": "error-response", "403": "error-response"}},
     {"method": "POST", "path": "/v1/imports/{importId}/apply", "scope": "import", "applyScopes": ["apply:npcs", "apply:behaviors", "apply:gui"], "request": null, "responses": {"200": "import-review", "409": "error-response"}},
-    {"method": "POST", "path": "/v1/imports/{importId}/accept", "scope": "import", "applyScopes": ["apply:npcs", "apply:behaviors", "apply:gui"], "request": "import-accept-request", "responses": {"200": "import-review", "409": "error-response"}},
     {"method": "POST", "path": "/v1/imports/{importId}/rollback", "scope": "import", "applyScopes": ["apply:npcs", "apply:behaviors", "apply:gui"], "request": null, "responses": {"200": "import-review", "409": "error-response"}},
     {"method": "POST", "path": "/v1/npcs/{id}/spawn", "scope": "spawn", "request": null, "responses": {"200": "spawn-response"}},
     {"method": "POST", "path": "/v1/npcs/{id}/despawn", "scope": "spawn", "request": null, "responses": {"200": "spawn-response"}},
     {"method": "GET", "path": "/v1/terrain/surface", "scope": "terrain", "query": {"world": "world name", "tx": "tile x, blocks / 64", "tz": "tile z, blocks / 64"}, "headers": ["If-None-Match"], "request": null, "responses": {"200": "terrain-surface-response", "304": null, "400": "error-response", "404": "error-response", "413": "error-response", "504": "error-response"}},
     {"method": "GET", "path": "/v1/terrain/blocks", "scope": "terrain", "query": {"world": "world name", "cx": "chunk x", "cz": "chunk z", "y": "lowest layer", "height": "1 to 64 layers"}, "headers": ["If-None-Match"], "request": null, "responses": {"200": "terrain-blocks-response", "304": null, "400": "error-response", "404": "error-response", "413": "error-response", "504": "error-response"}},
+    {"method": "GET", "path": "/v1/terrain/position", "scope": "terrain", "query": {"npc": "NPC id, its path under npcs/ such as town/guard"}, "request": null, "responses": {"200": "terrain-position-response", "400": "error-response", "403": "error-response", "404": "error-response"}},
     {"method": "WS", "path": "/v1/events", "scope": "read", "request": "event-auth", "responses": {"frame": "event"}}
   ],
   "errorStatus": {
@@ -356,7 +356,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "minY": {"type": "integer", "description": "The world's lowest block y."},
         "maxY": {"type": "integer", "description": "One above the world's highest block y."},
         "hash": {"$ref": "#/$defs/hash"},
-        "chunks": {"type": "array", "minItems": 16, "maxItems": 16, "items": {"enum": ["ok", "unloaded", "forbidden"]}, "description": "Per chunk, index (cz - tz * 4) * 4 + (cx - tx * 4). unloaded: the server does not hold it and never loads it for the editor. forbidden: farther than [editor] terrainRadius from every NPC the token may see."},
+        "chunks": {"type": "array", "minItems": 16, "maxItems": 16, "items": {"enum": ["ok", "unloaded", "forbidden"]}, "description": "Per chunk, index (cz - tz * 4) * 4 + (cx - tx * 4). unloaded: the server does not hold it and never loads it for the editor. forbidden: farther than [editor] terrainRadius from everywhere an NPC the token may see stands, walks or goes: its position, its route points and the legs between them, its schedule places, its anchors and, while spawned, where it is now."},
         "palette": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"}, "description": "Block ids without state properties; index 0 is minecraft:air."},
         "heights": {"type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$", "description": "Int16 little-endian per cell: y of the highest non-air block, -32768 when unknown."},
         "blocks": {"type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$", "description": "Uint16 little-endian per cell: palette index of that block, 0 when unknown."},
@@ -380,6 +380,24 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "bits": {"type": "integer", "minimum": 0, "maximum": 12, "description": "Bits per index; 0 when the palette has one entry."},
         "data": {"type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$", "description": "Palette indices as an LSB-first bitstream, bits per index, entries running across bytes."}
       }
+    },
+    "terrain-position-response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["npc", "active"],
+      "description": "GET /v1/terrain/position: where a spawned NPC stands now, so the editor can load terrain around it while it walks. The server reads live positions at most once a second; an NPC that is not active answers active false without a position.",
+      "properties": {
+        "npc": {"$ref": "#/$defs/documentId"},
+        "active": {"type": "boolean"},
+        "world": {"type": "string", "minLength": 1, "maxLength": 256, "description": "The world by the name the definition or the server's world list uses, else the platform's world key."},
+        "x": {"type": "number"},
+        "y": {"type": "number"},
+        "z": {"type": "number"}
+      },
+      "oneOf": [
+        {"properties": {"active": {"const": true}}, "required": ["world", "x", "y", "z"]},
+        {"properties": {"active": {"const": false}}, "not": {"anyOf": [{"required": ["world"]}, {"required": ["x"]}, {"required": ["y"]}, {"required": ["z"]}]}}
+      ]
     },
     "lookups-response": {
       "type": "object",
@@ -612,18 +630,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "worlds": {"type": "object", "propertyNames": {"pattern": "^[A-Za-z0-9_.-]{1,64}$"}, "additionalProperties": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,64}$"}}
       }
     },
-    "import-accept-request": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["categories"],
-      "properties": {
-        "categories": {"type": "array", "minItems": 1, "maxItems": 9, "items": {"enum": ["spawn", "patrols", "schedules", "combat", "riding", "shops", "builder", "denizen", "all"]}}
-      }
-    },
     "import-review": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["state", "transactions", "lines", "uploads", "reports"],
+      "required": ["state", "commandNamespaces", "transactions", "lines", "uploads", "reports"],
       "description": "Where the drop-in import (Citizens, its dtlTraders shops and a Shopkeepers save) stands, the same steps and lines as /animus import citizens.",
       "properties": {
         "state": {"enum": ["none", "staged", "applied", "rolled-back"]},
@@ -643,8 +653,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "type": "object", "additionalProperties": false, "required": ["importId", "source", "state", "report"],
           "properties": {"importId": {"$ref": "#/$defs/importId"}, "source": {"type": "string"}, "state": {"enum": ["staged", "applied", "rolled-back"]}, "report": {"type": "string"}}
         },
-        "pending": {"type": "object", "description": "Applied: NPCs waiting in each review category.", "additionalProperties": {"type": "integer", "minimum": 0}},
-        "preserved": {"type": "object", "description": "Applied: Citizens data kept but not run, by kind.", "additionalProperties": {"type": "integer", "minimum": 0}},
+        "commandNamespaces": {"type": "array", "description": "Staged or applied: the namespaces whose imported behaviors and shops run commands; apply adds them to [behaviors.actions] commandNamespaces and needs apply:commands for that.", "items": {"type": "string"}},
+        "preserved": {"type": "object", "description": "Applied: Citizens data kept but not converted, by kind.", "additionalProperties": {"type": "integer", "minimum": 0}},
         "npcs": {"type": "integer", "minimum": 0},
         "transactions": {"type": "array", "items": {"type": "string"}},
         "lines": {"type": "array", "maxItems": 200, "items": {"type": "string", "maxLength": 2048}},
@@ -1160,6 +1170,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         {
           "const": "animus:can-afford",
           "description": "True when the triggering player, or the player named by player, holds the money, experience levels and items of the cost. False when there is no triggering player."
+        },
+        {
+          "const": "animus:commands-allowed",
+          "description": "True when the running behavior is on the command allow-list, so animus:command would run. Checks it before taking a cost for a command."
         },
         {
           "const": "animus:flag-state",
@@ -5326,6 +5340,64 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "if": {
             "properties": {
               "capability": {
+                "const": "animus:commands-allowed"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {},
+                  "description": "True when the running behavior is on the command allow-list, so animus:command would run. Checks it before taking a cost for a command."
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
                 "const": "animus:flag-state"
               }
             },
@@ -8734,6 +8806,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     },
     {
+      "id": "animus:commands-allowed",
+      "kind": "condition",
+      "description": "True when the running behavior is on the command allow-list, so animus:command would run. Checks it before taking a cost for a command.",
+      "privileged": false,
+      "available": true,
+      "reason": "available",
+      "reach": "both",
+      "arguments": {}
+    },
+    {
       "id": "animus:complete-quest",
       "kind": "action",
       "description": "Completes the player's active Animus quest, with its rewards unless rewards is false. Reports stage.",
@@ -12104,7 +12186,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   ],
   "properties": {
     "schemaVersion": {
-      "const": 1
+      "const": 2
     },
     "revision": {
       "type": "integer",
@@ -20130,9 +20212,6 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "enabled": {
               "type": "boolean"
             },
-            "reviewAccepted": {
-              "type": "boolean"
-            },
             "route": {
               "type": "string",
               "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
@@ -21036,9 +21115,6 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "enabled": {
               "description": "Literal true turns combat on; anything else leaves it off."
             },
-            "reviewAccepted": {
-              "description": "Imported NPCs fight only once this is literal true."
-            },
             "targets": {
               "$ref": "#/$defs/seekingRules",
               "description": "Who the NPC attacks."
@@ -21678,10 +21754,6 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             },
             "imported": {
               "description": "Kept from an import."
-            },
-            "reviewAccepted": {
-              "type": "boolean",
-              "description": "An imported binding opens nothing until this is true."
             }
           }
         },
@@ -21855,9 +21927,6 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Lets a real player ride this NPC.",
           "properties": {
             "enabled": {
-              "type": "boolean"
-            },
-            "reviewAccepted": {
               "type": "boolean"
             },
             "permission": {
@@ -22034,10 +22103,6 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "enabled": {
               "type": "boolean",
               "description": "True when the object is present."
-            },
-            "reviewAccepted": {
-              "type": "boolean",
-              "description": "An imported schedule runs only once this is true."
             },
             "speed": {
               "type": "number",
@@ -23044,65 +23109,6 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     }
   },
   "allOf": [
-    {
-      "if": {
-        "required": [
-          "migration"
-        ]
-      },
-      "then": {
-        "properties": {
-          "modules": {
-            "properties": {
-              "animus:navigation": {
-                "if": {
-                  "properties": {
-                    "enabled": {
-                      "const": true
-                    }
-                  },
-                  "required": [
-                    "enabled"
-                  ]
-                },
-                "then": {
-                  "required": [
-                    "reviewAccepted"
-                  ],
-                  "properties": {
-                    "reviewAccepted": {
-                      "const": true
-                    }
-                  }
-                }
-              },
-              "animus:riding": {
-                "if": {
-                  "properties": {
-                    "enabled": {
-                      "const": true
-                    }
-                  },
-                  "required": [
-                    "enabled"
-                  ]
-                },
-                "then": {
-                  "required": [
-                    "reviewAccepted"
-                  ],
-                  "properties": {
-                    "reviewAccepted": {
-                      "const": true
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     {
       "if": {
         "properties": {
@@ -31162,7 +31168,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   "additionalProperties": false,
   "required": ["schemaVersion", "revision", "id", "values"],
   "properties": {
-    "schemaVersion": {"const": 1},
+    "schemaVersion": {"const": 2},
     "revision": {"type": "integer", "minimum": 1},
     "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$", "description": "Matches the file name."},
     "description": {"type": "string", "maxLength": 256},

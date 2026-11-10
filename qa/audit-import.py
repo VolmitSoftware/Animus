@@ -113,10 +113,10 @@ for record in records:
     if 'skintrait' in original_traits:
         assert json.loads((stage / f"skins/{candidate['skin']}.json").read_text()) == original_traits['skintrait'], f'Skin mismatch in record {key}'
     assert candidate['uuid'] == summary['idMap'][key], f'Identity map mismatch for {key}'
-    assert candidate['spawned'] is False, f'Candidate {key} is not dormant'
+    assert candidate['spawned'] is (original_traits.get('spawned') is not False), f'Candidate {key} is not spawned as Citizens had it'
     if 'sentinel' in original_traits:
         combat = candidate['modules']['animus:combat']
-        assert combat['enabled'] is False and combat['reviewAccepted'] is False, f'Combat enabled without review in record {key}'
+        assert combat['enabled'] is True and 'reviewAccepted' not in combat, f'Converted combat is not on in record {key}'
         if version >= 3:
             assert candidate['modules']['citizens:review']['sentinel'] == reviewed['sentinel'], f'Sentinel settings mismatch in record {key}'
             assert not set(combat['preservedSettings']) & set(statistics), f'Sentinel history mixed into settings in record {key}'

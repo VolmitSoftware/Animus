@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "076e4d5b-fd28-5732-9377-02db16d034a3",
+  "id": "polar-bear",
+  "group": "types",
+  "name": "Body polar_bear",
+  "type": "minecraft:polar_bear",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

@@ -63,7 +63,7 @@ class TriggerScopedStateTest {
                 + ",\"routines\":" + routines + ",\"triggers\":" + triggers + "}").program().orElseThrow();
         BehaviorCatalog.Accepted accepted = new BehaviorCatalog.Accepted(1, "1".repeat(64), 100, program, Set.of());
         catalog.set(new BehaviorCatalog.Snapshot(1, Map.of(), Map.of(BEHAVIOR, new BehaviorCatalog.Resolution(BEHAVIOR, true, Optional.of(accepted), List.of())), List.of()));
-        definitions.set(Map.of("test", NpcDefinition.parse("{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"" + npc + "\",\"id\":\"test\",\"group\":\"test\",\"name\":\"Test\",\"type\":\"minecraft:player\",\"spawned\":true,\"behaviors\":[\"" + BEHAVIOR + "\"],\"position\":{\"world\":\"world\",\"x\":0,\"y\":61,\"z\":0,\"yaw\":0,\"pitch\":0}}")));
+        definitions.set(Map.of("test", NpcDefinition.parse("{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"" + npc + "\",\"id\":\"test\",\"group\":\"test\",\"name\":\"Test\",\"type\":\"minecraft:player\",\"spawned\":true,\"behaviors\":[\"" + BEHAVIOR + "\"],\"position\":{\"world\":\"world\",\"x\":0,\"y\":61,\"z\":0,\"yaw\":0,\"pitch\":0}}")));
         documents = new DocumentStore(root);
         state = BehaviorStateStore.open(documents, new BehaviorStateStore.Limits(64, 64, 4096, 65536, 100));
         state.attach(lane);

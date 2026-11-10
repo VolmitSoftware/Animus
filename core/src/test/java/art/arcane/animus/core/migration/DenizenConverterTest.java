@@ -607,7 +607,7 @@ class DenizenConverterTest {
         assertEquals("a.dsc:4", kept.get("source").getAsString());
         assertEquals("tag player.money has no Animus expression", kept.get("reason").getAsString());
         assertEquals("partial", output.report().getAsJsonObject("behaviorStatus").get("denizen:task/t").getAsString());
-        assertEquals(7, output.report().get("converterVersion").getAsInt());
+        assertEquals(8, output.report().get("converterVersion").getAsInt());
     }
 
     @Test void limitsCountLoopBodiesAndMissingElses() {

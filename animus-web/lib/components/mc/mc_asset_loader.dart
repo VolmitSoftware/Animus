@@ -61,6 +61,10 @@ final class McAssetPackData {
   /// True once decoding [id] failed (a missing texture or a broken PNG).
   bool failed(String id) => _failed.contains(id);
 
+  /// True for an image named with [register], such as a loaded skin, rather
+  /// than one from the client asset pack.
+  bool runtime(String id) => _registered.containsKey(id);
+
   /// Names a runtime image (a loaded skin) so nodes can bind it by [id]; a
   /// new [url] for the same id replaces the old image.
   void register(String id, String url) {
@@ -76,7 +80,9 @@ final class McAssetPackData {
     if (_images.containsKey(id) || _failed.contains(id)) return Future<void>.value();
     final String? url = _registered[id] ?? _packUrl(id);
     if (url == null) {
+      // Not in this pack: stages waiting on it draw again, white, with a note.
       _failed.add(id);
+      scheduleMicrotask(McAssetLoader.notify);
       return Future<void>.value();
     }
     return _decoding.putIfAbsent(id, () async {

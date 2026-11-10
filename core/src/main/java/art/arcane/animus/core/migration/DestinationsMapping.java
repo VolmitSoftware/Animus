@@ -1,5 +1,6 @@
 package art.arcane.animus.core.migration;
 
+import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.schedule.ScheduleSettings;
@@ -67,8 +68,7 @@ public final class DestinationsMapping {
         Optional<JsonObject> module = Optional.empty();
         if (!locations.isEmpty()) {
             JsonObject schedule = new JsonObject();
-            schedule.addProperty("enabled", false);
-            schedule.addProperty("reviewAccepted", false);
+            schedule.addProperty("enabled", true);
             schedule.add("locations", locations);
             module = Optional.of(schedule);
         }
@@ -263,7 +263,14 @@ public final class DestinationsMapping {
             JsonElement value = items.get(slot.getKey());
             if (value == null) continue;
             if (value.isJsonNull()) { converted.add(path + "/" + slot.getKey()); continue; }
-            item(value, path + "/" + slot.getKey()).ifPresent((JsonObject item) -> equipment.add(slot.getValue(), item));
+            String at = path + "/" + slot.getKey();
+            Optional<JsonObject> item = item(value, at);
+            if (item.isEmpty()) continue;
+            EquipmentSlot equipped = EquipmentSlot.fromKey(slot.getValue()).orElseThrow();
+            if (BodyRules.equipmentSlots(type).contains(equipped)) { equipment.add(slot.getValue(), item.get()); continue; }
+            converted.removeIf((String field) -> field.equals(at) || field.startsWith(at + "/"));
+            notes.keySet().removeIf((String field) -> field.equals(at) || field.startsWith(at + "/"));
+            note(at, CitizensImporter.Status.UNSUPPORTED_PRESERVED, "a " + type + " body does not show the " + equipped.key() + " slot");
         }
         if (!equipment.isEmpty()) location.add("equipment", sorted(equipment));
         if (truthy(items.get("Clear"))) location.addProperty("clearEquipment", true);
@@ -347,7 +354,7 @@ public final class DestinationsMapping {
         }
         if (kept.isEmpty()) return;
         location.add("commands", kept);
-        warnings.add(path + ": arrival commands run from the console once citizens is in [behaviors.actions] commandNamespaces (accept commands); read them first");
+        warnings.add(path + ": arrival commands run from the console, as they did under Citizens");
     }
 
     /** The add-ons' per-location data: the Animations add-on's sleep and sit become the arrival pose. */

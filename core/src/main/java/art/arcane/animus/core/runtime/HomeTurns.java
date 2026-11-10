@@ -44,12 +44,19 @@ final class HomeTurns<P, I> {
         value.idleSince = tick;
         WorldPosition destination = new WorldPosition(at.world(), home.position());
         if (home.strategy() == HomeSettings.Return.WALK) {
-            try { service.navigate(id, destination, MovementProfile.Mode.WALK, value.movement.routeSpeed(false, WALK_SPEED)); }
-            catch (IllegalArgumentException | IllegalStateException refused) { service.host.warn("NPC " + id + " could not walk home: " + refused.getMessage()); }
+            try { service.navigate(id, destination, MovementProfile.Mode.WALK, value.movement.routeSpeed(false, WALK_SPEED)); value.homeWarned = false; }
+            catch (IllegalArgumentException | IllegalStateException refused) { failed(value, "NPC " + id + " could not walk home: " + refused.getMessage()); }
             return;
         }
-        if (!service.relocate(id, destination)) { service.host.warn("NPC " + id + " could not teleport home: the place is not loaded or not clear"); return; }
+        if (!service.relocate(id, destination)) { failed(value, "NPC " + id + " could not teleport home: the place is not loaded or not clear"); return; }
+        value.homeWarned = false;
         PersistedNpcService.setPose(value, home.yaw() == null ? value.yaw : home.yaw(), home.pitch() == null ? value.pitch : home.pitch(), true);
+    }
+    /** Warns once for a run of failed returns home; a home that stays out of reach retries quietly. */
+    private void failed(PersistedNpcService<P, I>.Value value, String warning) {
+        if (value.homeWarned) return;
+        value.homeWarned = true;
+        service.host.warn(warning);
     }
     /** Walking, following a route or a recording, guarding, fighting, riding or carrying a rider: the NPC is not idle. */
     private boolean busy(PersistedNpcService<P, I>.Value value, String id) {

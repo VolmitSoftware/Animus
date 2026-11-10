@@ -420,6 +420,16 @@
       }
     },
     {
+      "id": "animus:commands-allowed",
+      "kind": "condition",
+      "description": "True when the running behavior is on the command allow-list, so animus:command would run. Checks it before taking a cost for a command.",
+      "privileged": false,
+      "available": true,
+      "reason": "available",
+      "reach": "both",
+      "arguments": {}
+    },
+    {
       "id": "animus:complete-quest",
       "kind": "action",
       "description": "Completes the player's active Animus quest, with its rewards unless rewards is false. Reports stage.",

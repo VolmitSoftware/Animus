@@ -38,11 +38,12 @@ class NpcBossBarsTest {
         @Override public UUID id(Player player) { return player.id(); }
         @Override public Vec3 position(Player player) { return player.at(); }
         @Override public boolean permitted(Player player, String node) { return player.nodes().contains(node); }
+        @Override public boolean granted(Player player, String node) { return player.nodes().contains(node); }
     });
 
     private static NpcDefinition npc(String bossBar) throws Exception {
         return NpcDefinition.parse("""
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-4000-8000-000000000001","id":"king","group":"","name":"&6King","type":"minecraft:zombie",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-4000-8000-000000000001","id":"king","group":"","name":"&6King","type":"minecraft:zombie",
                  "spawned":true,"position":{"world":"world","x":0,"y":64,"z":0,"yaw":0,"pitch":0},"bossBar":%s}
                 """.formatted(bossBar));
     }

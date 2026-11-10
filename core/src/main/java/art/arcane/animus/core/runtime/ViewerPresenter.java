@@ -253,7 +253,7 @@ final class ViewerPresenter<P, I> {
                 || !snapshot.position().world().equals(at.world())) return false;
         double distance = snapshot.position().point().distance(at.point());
         return distance <= service.settings.viewDistance() && delivered.test(snapshot.position().chunk())
-                && !value.spec.viewers().hides(viewer.id, distance, (String node) -> service.host.permitted(viewer.player, node));
+                && !value.spec.viewers().hides(viewer.id, distance, (String node) -> service.host.permitted(viewer.player, node), (String node) -> service.host.granted(viewer.player, node));
     }
     private boolean eligibleNow(Viewer viewer, PersistedNpcService<P, I>.Value value) {
         RuntimeHost<P, I> host = service.host;
@@ -274,7 +274,8 @@ final class ViewerPresenter<P, I> {
                     ? service.host.skin(viewer.player).orElse(value.displaySkin) : value.displaySkin;
             BodyTransport.Body body = NpcPresentation.body(service.packets, label, skin);
             Presented presented = new Presented(value, body); viewer.visible.put(body.uuid(), presented); showing.shown(body.uuid(), viewer);
-            if (service.runtime.placeholders().active() && NpcPresentation.placeholdered(value.spec, name)) { presented.labels = label.rows(); presented.labelledAt = service.tickNumber; }
+            presented.labels = label.rows(); presented.labelledAt = service.tickNumber; presented.deliveredBubbleRevision = value.bubbleRevision;
+            presented.placeholdered = service.runtime.placeholders().active() && NpcPresentation.placeholdered(value.spec, name);
             if (mirror != null && mirror.equipment()) presented.deliveredEquipmentRevision = -1;
             presented.deliveredSwings = value.swings; presented.deliveredGestures = value.gestures; presented.deliveredAttackSwings = value.attackSwings; presented.deliveredAttributeRevision = value.attributeRevision;
             viewer.presentationOrder.addLast(presented); viewer.cosmeticOrder.addLast(presented);
@@ -453,7 +454,7 @@ final class ViewerPresenter<P, I> {
                     sent++;
                 }
             }
-            if (body.spawnFinished && body.labels != null && refresh > 0 && sent < packetBudget && tickNumber - body.labelledAt >= refresh) {
+            if (body.spawnFinished && sent < packetBudget && (body.deliveredBubbleRevision != body.value.bubbleRevision || body.placeholdered && refresh > 0 && tickNumber - body.labelledAt >= refresh)) {
                 if (!relabel(viewer, body)) return sent;
                 sent++;
                 if (!current(viewer)) return sent;
@@ -465,16 +466,17 @@ final class ViewerPresenter<P, I> {
         return sent + service.mountRuntime.updateDragonPhases(viewer, packetBudget - sent);
     }
     /**
-     * Cosmetic, every {@code [placeholders] refreshTicks}: the body's name and hologram lines filled again for this viewer.
-     * Changed text goes out in place; a body whose rows changed shape, or whose transport cannot relabel, respawns.
+     * Cosmetic, when the speech bubble changes and every {@code [placeholders] refreshTicks}: the body's text filled again for
+     * this viewer. Changed text goes out in place; a body whose rows changed shape, or whose transport cannot relabel, respawns.
      */
     private boolean relabel(Viewer viewer, Presented body) {
         body.labelledAt = service.tickNumber;
+        long bubble = body.value.bubbleRevision;
         List<String> rows = NpcPresentation.label(body.value.spec, shownName(body.value, viewer), body.value.bubble, body.value.attributes, service.runtime.placeholders(), viewer.id).rows();
-        if (rows.equals(body.labels)) return true;
+        if (rows.equals(body.labels)) { body.deliveredBubbleRevision = bubble; return true; }
         if (rows.size() != body.labels.size()) { retire(viewer, body); return true; }
         if (!admit(viewer, PresentationPressure.Tier.COSMETIC)) return false;
-        body.labels = rows;
+        body.labels = rows; body.deliveredBubbleRevision = bubble;
         try {
             handOver(viewer, () -> service.packets.relabel(viewer.player, body.body, rows)).whenComplete((Void nothing, Throwable failure) -> {
                 if (failure != null) enqueue(viewer, () -> { if (current(viewer) && !body.retired) retire(viewer, body); });
@@ -649,9 +651,10 @@ final class ViewerPresenter<P, I> {
         ViewerSession.Validation validated = hit(viewer, body);
         if (validated == null) return;
         RuntimeHost.Interaction action = input.action() == BodyTransport.Action.ATTACK ? RuntimeHost.Interaction.ATTACK : RuntimeHost.Interaction.INTERACT;
-        // A click on an NPC that redirects its clicks counts as a click on the target, while that target is active.
-        UUID target = redirect(body.value);
-        boolean allowed = host.interactionAllowed(viewer.player, target, action, validated.distance());
+        // A click on an NPC that redirects its clicks counts as a click on the target, while that target is active and shown to
+        // this player. An attack still lands on the NPC that was hit: the interaction event, which deals combat damage, names it.
+        UUID target = redirect(viewer, body.value);
+        boolean allowed = host.interactionAllowed(viewer.player, action == RuntimeHost.Interaction.ATTACK ? body.body.uuid() : target, action, validated.distance());
         // A combat listener hurts and knocks the NPC back during that event; it is still this click unless the NPC left the world.
         VirtualNpcState.Snapshot now = body.value.state.snapshot();
         if (!allowed || !current(viewer) || host.dead(viewer.player) || viewer.visible.get(body.body.uuid()) != body || !eligibleNow(viewer, body.value)
@@ -677,13 +680,13 @@ final class ViewerPresenter<P, I> {
             if (refusal != null) host.tell(viewer.player, Palette.error("Cannot ride " + body.value.spec.name() + ": " + refusal));
         }
     }
-    /** The NPC that receives clicks on {@code value}: its redirect target when that NPC is active here, otherwise itself. */
-    private UUID redirect(PersistedNpcService<P, I>.Value value) {
+    /** The NPC that receives clicks on {@code value}: its redirect target when that NPC is active and not hidden from the viewer, otherwise itself. */
+    private UUID redirect(Viewer viewer, PersistedNpcService<P, I>.Value value) {
         UUID self = value.spec.definition().uuid();
         java.util.Optional<UUID> target = value.spec.definition().clickRedirect();
         if (target.isEmpty()) return self;
         PersistedNpcService<P, I>.Entry entry = service.byUuid.get(target.get());
-        return entry != null && entry.value != null && entry.value.state.snapshot().active() ? target.get() : self;
+        return entry != null && entry.value != null && entry.value.state.snapshot().active() && !service.hidden().hides(viewer.id, entry.id, target.get()) ? target.get() : self;
     }
     /** A key press aimed at an NPC in interaction reach, validated as a click is; see {@link NpcRuntime#pressed}. */
     boolean pressed(P player, TriggerEvent.Action key) {
@@ -780,8 +783,8 @@ final class ViewerPresenter<P, I> {
         List<Integer> sentRoster = List.of();
         int sentDragonPhase = DragonBody.PHASE_HOVERING;
         BodyTransport.Bones bones; RigView view; long rigIdentity, socketRevision; boolean bonesShown, rigFailed;
-        /** The filled text rows this viewer was sent, when the name or a hologram line holds a placeholder; otherwise null. */
-        List<String> labels; long labelledAt;
+        /** The filled text rows this viewer was sent, and whether the name or a hologram line holds a placeholder that refreshes. */
+        List<String> labels; long labelledAt, deliveredBubbleRevision; boolean placeholdered;
         Presented(PersistedNpcService<P, I>.Value value, BodyTransport.Body body) { this.value = value; this.body = body; }
     }
     final class Viewer {

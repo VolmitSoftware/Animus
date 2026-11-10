@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "466610b3-cbca-5194-b649-3790f223e99c",
+  "id": "mooshroom-brown",
+  "group": "settings",
+  "name": "Set mooshroom-brown",
+  "type": "minecraft:mooshroom",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "mooshroom": {
+    "variant": "brown"
+  }
+}

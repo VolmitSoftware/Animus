@@ -1,36 +1,44 @@
 package art.arcane.animus.core.editor;
 
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.storage.NpcPaths;
 import art.arcane.animus.core.npc.NpcRepository;
+import art.arcane.animus.core.virtual.WorldPosition;
 import art.arcane.animus.core.editor.transport.EditorRequest;
 import art.arcane.animus.core.editor.transport.EditorResponse;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
 import com.google.gson.JsonObject;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * {@code GET /v1/terrain/surface} and {@code GET /v1/terrain/blocks}: loaded terrain near the NPCs a token may see. A chunk
- * farther than {@code [editor] terrainRadius} from every such NPC in its world is {@code forbidden} and never read; a chunk
- * the server does not hold is {@code unloaded}. Reads run on the owning thread through {@link EditorTerrain}; encoding and
+ * {@code GET /v1/terrain/surface} and {@code GET /v1/terrain/blocks}: loaded terrain where the NPCs a token may see stand,
+ * walk or go ({@link TerrainReaches}), plus where each spawned one is now. A chunk farther than {@code [editor] terrainRadius}
+ * from all of that in its world is {@code forbidden} and never read; a chunk the server does not hold is {@code unloaded}. Reads run on the owning thread through {@link EditorTerrain}; encoding and
  * hashing run after, off that thread. Every answer carries its content hash as an ETag and fits the relay frame.
  */
 final class EditorTerrainReads {
@@ -42,11 +50,15 @@ final class EditorTerrainReads {
     private static final short UNKNOWN = Short.MIN_VALUE;
     private static final long READ_SECONDS = 10;
 
-    private record Anchor(String group, String world, double x, double z) {}
+    /** How often live NPC positions are read again, and the most NPCs one read covers. */
+    static final long LIVE_MILLIS = 1000;
+    static final int MAX_LIVE = 4096;
+    private static final int ROUTE_BYTES = 64 * 1024;
 
     private final Supplier<EditorApi.Parts> parts;
-    private volatile Map<String, NpcDefinition> anchoredFrom;
-    private volatile List<Anchor> anchors = List.of();
+    private volatile Map<String, NpcDefinition> indexedFrom;
+    private volatile ReachIndex indexed = ReachIndex.EMPTY;
+    private volatile Live lived;
 
     EditorTerrainReads(Supplier<EditorApi.Parts> parts) { this.parts = parts; }
 
@@ -134,12 +146,15 @@ final class EditorTerrainReads {
     }
 
     /** Which chunks the token may read in one world. */
-    private record Permission(double radius, List<Anchor> anchors) {
+    private record Permission(double radius, EditorTokens.Token token, Map<String, Boolean> sameWorld, Function<String, Boolean> matches, List<ReachIndex> indexes) {
         boolean allows(int chunkX, int chunkZ) {
-            double minX = chunkX * 16.0, minZ = chunkZ * 16.0, maxX = minX + 16, maxZ = minZ + 16;
-            for (Anchor anchor : anchors) {
-                double dx = Math.max(Math.max(minX - anchor.x(), 0), anchor.x() - maxX), dz = Math.max(Math.max(minZ - anchor.z(), 0), anchor.z() - maxZ);
-                if (dx * dx + dz * dz <= radius * radius) return true;
+            if (radius == 0) return false;
+            double minX = chunkX * 16.0, minZ = chunkZ * 16.0, maxX = minX + 16, maxZ = minZ + 16, limit = radius * radius;
+            for (ReachIndex index : indexes) {
+                for (TerrainReaches.Reach reach : index.near(chunkX, chunkZ)) {
+                    if (!token.group(reach.group()) || !sameWorld.computeIfAbsent(reach.world(), matches)) continue;
+                    if (reach.distanceSquared(minX, minZ, maxX, maxZ) <= limit) return true;
+                }
             }
             return false;
         }
@@ -147,31 +162,136 @@ final class EditorTerrainReads {
 
     private Permission permission(EditorTerrain source, EditorTerrain.World world, EditorTokens.Token token) {
         int radius = parts.get().settings().terrainRadius();
-        if (radius == 0) return new Permission(0, List.of());
-        Map<String, Boolean> sameWorld = new HashMap<>();
-        List<Anchor> near = new ArrayList<>();
-        for (Anchor anchor : anchors()) {
-            if (!token.group(anchor.group())) continue;
-            if (sameWorld.computeIfAbsent(anchor.world(), (String reference) -> source.world(reference).map((EditorTerrain.World found) -> found.key().equals(world.key())).orElse(false)))
-                near.add(anchor);
-        }
-        return new Permission(radius, near);
+        Function<String, Boolean> matches = (String reference) -> source.world(reference).map((EditorTerrain.World found) -> found.key().equals(world.key())).orElse(false);
+        if (radius == 0) return new Permission(0, token, new HashMap<>(), matches, List.of());
+        return new Permission(radius, token, new HashMap<>(), matches, List.of(definitions(radius), live(radius)));
     }
 
-    /** The NPC positions, rebuilt only when the repository swapped in new definitions. */
-    private List<Anchor> anchors() {
-        NpcRepository repository = parts.get().npcs().get();
-        if (repository == null) return List.of();
-        Map<String, NpcDefinition> current = repository.snapshot();
-        if (current == anchoredFrom) return anchors;
-        List<Anchor> next = new ArrayList<>(current.size());
-        for (NpcDefinition definition : current.values()) {
-            JsonObject position = definition.json().getAsJsonObject("position");
-            next.add(new Anchor(definition.group(), position.get("world").getAsString(), position.get("x").getAsDouble(), position.get("z").getAsDouble()));
+    /**
+     * Reaches bucketed by 512-block cell, each in every cell its bounds widened by the radius and one chunk touch, so the
+     * cell under a chunk's corner holds every reach that may come within the radius of that chunk. A reach that would fill
+     * more than {@link #MAX_CELLS} cells is checked for every chunk instead.
+     */
+    static final class ReachIndex {
+        static final int CELL = 512, MAX_CELLS = 1024;
+        static final ReachIndex EMPTY = new ReachIndex(List.of(), 0);
+        private final Map<Long, List<TerrainReaches.Reach>> cells = new HashMap<>();
+        private final List<TerrainReaches.Reach> wide = new ArrayList<>();
+        final int radius;
+
+        ReachIndex(List<TerrainReaches.Reach> reaches, int radius) {
+            this.radius = radius;
+            double margin = radius + 16;
+            for (TerrainReaches.Reach reach : reaches) {
+                long x0 = Math.floorDiv((long) Math.floor(Math.min(reach.ax(), reach.bx()) - margin), CELL), x1 = Math.floorDiv((long) Math.floor(Math.max(reach.ax(), reach.bx()) + margin), CELL);
+                long z0 = Math.floorDiv((long) Math.floor(Math.min(reach.az(), reach.bz()) - margin), CELL), z1 = Math.floorDiv((long) Math.floor(Math.max(reach.az(), reach.bz()) + margin), CELL);
+                if ((x1 - x0 + 1) * (z1 - z0 + 1) > MAX_CELLS) { wide.add(reach); continue; }
+                for (long cx = x0; cx <= x1; cx++) for (long cz = z0; cz <= z1; cz++) cells.computeIfAbsent(key(cx, cz), (Long ignored) -> new ArrayList<>()).add(reach);
+            }
         }
-        anchors = List.copyOf(next);
-        anchoredFrom = current;
-        return anchors;
+
+        private static long key(long cx, long cz) { return cx << 32 ^ (cz & 0xFFFFFFFFL); }
+
+        List<TerrainReaches.Reach> near(int chunkX, int chunkZ) {
+            List<TerrainReaches.Reach> cell = cells.getOrDefault(key(Math.floorDiv(chunkX * 16L, CELL), Math.floorDiv(chunkZ * 16L, CELL)), List.of());
+            if (wide.isEmpty()) return cell;
+            List<TerrainReaches.Reach> both = new ArrayList<>(cell);
+            both.addAll(wide);
+            return both;
+        }
+    }
+
+    /** Where every definition stands, walks or goes, rebuilt only when the repository swapped in new definitions or the radius changed. */
+    private ReachIndex definitions(int radius) {
+        NpcRepository repository = parts.get().npcs().get();
+        if (repository == null) return ReachIndex.EMPTY;
+        Map<String, NpcDefinition> current = repository.snapshot();
+        ReachIndex index = indexed;
+        if (current == indexedFrom && index.radius == radius) return index;
+        List<TerrainReaches.Reach> reaches = new ArrayList<>();
+        Map<String, Optional<JsonObject>> routes = new HashMap<>();
+        for (NpcDefinition definition : current.values())
+            reaches.addAll(TerrainReaches.of(definition.group(), definition.json(), (String id) -> routes.computeIfAbsent(id, this::route)));
+        index = new ReachIndex(reaches, radius);
+        indexed = index;
+        indexedFrom = current;
+        return index;
+    }
+
+    /** {@code routes/<id>.json}, or empty when it is missing, too large or not an object. */
+    private Optional<JsonObject> route(String id) {
+        if (!id.matches("[a-z0-9][a-z0-9_-]{0,63}")) return Optional.empty();
+        try {
+            String text = parts.get().documents().store().read("routes/" + id + ".json");
+            if (text == null || text.length() > ROUTE_BYTES) return Optional.empty();
+            JsonElement parsed = JsonParser.parseString(text);
+            return parsed.isJsonObject() ? Optional.of(parsed.getAsJsonObject()) : Optional.empty();
+        } catch (IOException | RuntimeException unreadable) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Where the spawned NPCs stand now, read from the platform at most once per {@link #LIVE_MILLIS} and for at most
+     * {@link #MAX_LIVE} NPCs; requests between reads use the last one.
+     */
+    private ReachIndex live(int radius) {
+        Live last = lived;
+        long now = parts.get().clock().millis();
+        NpcRepository repository = parts.get().npcs().get();
+        Map<String, NpcDefinition> current = repository == null ? Map.of() : repository.snapshot();
+        if (last != null && last.radius() == radius && last.from() == current && now >= last.read() && now - last.read() < LIVE_MILLIS) return last.index();
+        Map<UUID, WorldPosition> positions = new HashMap<>();
+        List<TerrainReaches.Reach> reaches = new ArrayList<>();
+        for (NpcDefinition definition : current.values()) {
+            if (!definition.spawned()) continue;
+            if (positions.size() >= MAX_LIVE) break;
+            Optional<WorldPosition> at = parts.get().host().located(definition.uuid());
+            if (at.isEmpty()) continue;
+            positions.put(definition.uuid(), at.get());
+            reaches.add(TerrainReaches.Reach.point(definition.group(), at.get().world(), at.get().point().x(), at.get().point().z()));
+        }
+        Live next = new Live(now, current, radius, new ReachIndex(reaches, radius), Map.copyOf(positions));
+        lived = next;
+        return next.index();
+    }
+
+    private record Live(long read, Map<String, NpcDefinition> from, int radius, ReachIndex index, Map<UUID, WorldPosition> positions) {}
+
+    /** {@code GET /v1/terrain/position?npc=}: where a spawned NPC the token may see stands now, by the last live read. */
+    CompletionStage<EditorResponse> position(EditorRequest request, EditorTokens.Token token) throws EditorError {
+        Map<String, String> query = query(request, Set.of("npc"));
+        String id = query.get("npc");
+        if (id == null || !NpcPaths.file("npcs/" + id + ".json")) throw EditorMessages.invalid("npc: an NPC id such as town/guard is required.");
+        String folder = id.contains("/") ? id.substring(0, id.lastIndexOf('/')) : "";
+        if (!token.group(folder)) throw new EditorError(EditorError.Code.GROUP_DENIED, "This token cannot reach NPC folder npcs/" + folder + ".");
+        NpcRepository repository = parts.get().npcs().get();
+        NpcDefinition definition = repository == null ? null : repository.find(id.substring(id.lastIndexOf('/') + 1)).filter((NpcDefinition found) -> found.qualifiedId().equals(id)).orElse(null);
+        if (definition == null) throw new EditorError(EditorError.Code.NOT_FOUND, "No NPC " + id + ".");
+        int radius = parts.get().settings().terrainRadius();
+        live(radius);
+        WorldPosition at = lived.positions().get(definition.uuid());
+        JsonObject body = new JsonObject();
+        body.addProperty("npc", id);
+        body.addProperty("active", at != null);
+        if (at != null) {
+            body.addProperty("world", worldName(definition, at.world()));
+            body.addProperty("x", at.point().x());
+            body.addProperty("y", at.point().y());
+            body.addProperty("z", at.point().z());
+        }
+        return CompletableFuture.completedFuture(EditorResponse.json(200, body));
+    }
+
+    /** The name the editor asks terrain by for a platform world key: the worlds the definition names first, then the server's list. */
+    private String worldName(NpcDefinition definition, String key) {
+        Optional<EditorTerrain> source = parts.get().host().terrain();
+        if (source.isEmpty()) return key;
+        Set<String> names = new LinkedHashSet<>();
+        for (TerrainReaches.Reach reach : TerrainReaches.of(definition.group(), definition.json(), this::route)) names.add(reach.world());
+        names.addAll(parts.get().host().lookups().registries().getOrDefault("worlds", List.of()));
+        for (String name : names) if (source.get().world(name).map((EditorTerrain.World found) -> found.key().equals(key)).orElse(false)) return name;
+        return key;
     }
 
     private static JsonObject surfaceBody(String reference, int tx, int tz, EditorTerrain.World world, String[] status, List<Optional<EditorTerrain.Surface>> chunks) {

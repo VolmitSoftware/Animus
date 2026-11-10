@@ -37,7 +37,6 @@ final class ImportProjection {
             if(!string(migration,"importId").equals(importId))throw new IOException("NPC import identity mismatch: "+npc.id());
             int legacy=ModuleImports.sourceNumber(migration);
             if(legacy<0 || !npc.id().equals(ModuleImports.sourcePrefix(migration)+"-"+legacy) || !npc.path().matches(CitizensImporter.NPC_PATH))throw new IOException("Unexpected source import path: "+npc.path());
-            dormant(data);
             UUID uuid=mode==Mode.DUPLICATE?UUID.nameUUIDFromBytes(("animus:import-copy:v1:"+importId+":"+label+":"+npc.uuid()).getBytes(StandardCharsets.UTF_8)):npc.uuid();
             String id=mode==Mode.DUPLICATE?npc.id()+"-"+label:npc.id();
             if(uuids.putIfAbsent(npc.uuid(),uuid)!=null || ids.putIfAbsent(npc.id(),id)!=null || byLegacyId.putIfAbsent(legacy,npc)!=null)
@@ -92,20 +91,6 @@ final class ImportProjection {
                 throw new IOException("Resolved migration reference does not match the source identity map");
             reference.addProperty("npcId",ids.get(target.id()));reference.addProperty("npcUuid",uuids.get(target.uuid()).toString());
             SentinelMapping.remapGuard(data,reference);
-        }
-    }
-    private static void dormant(JsonObject data) throws IOException {
-        if(!new JsonPrimitive(false).equals(data.get("spawned")))throw new IOException("Imported definition must remain dormant");
-        JsonObject modules=data.has("modules")?object(data,"modules"):new JsonObject();
-        if(modules.has("animus:combat")) {
-            JsonObject combat=object(modules,"animus:combat");
-            if(!new JsonPrimitive(false).equals(combat.get("enabled")) || !new JsonPrimitive(false).equals(combat.get("reviewAccepted")))
-                throw new IOException("Imported combat must remain disabled and unreviewed");
-        }
-        if(modules.has("animus:navigation")) {
-            JsonObject navigation=object(modules,"animus:navigation");
-            if(!new JsonPrimitive(false).equals(navigation.get("enabled")) || !new JsonPrimitive(false).equals(navigation.get("reviewAccepted")))
-                throw new IOException("Imported patrols must remain disabled and unreviewed");
         }
     }
     private static JsonObject object(JsonObject parent,String key) throws IOException {

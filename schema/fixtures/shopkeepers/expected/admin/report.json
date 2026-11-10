@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "importerVersion": 2,
-  "importId": "4a2af9315d2ea41e4c6d9dc01cf130b3de288d7d4e72451fd16dbbfbfe080950",
+  "importerVersion": 3,
+  "importId": "8c7cc99c3491a2877c3935c7d85ed28595dfee10ccd506f29836d9ae44585f46",
   "sourceSha256": "b325111394220d25b7f5c506800c7cebb0d031f2a0e6699792b14966d836789e",
   "citizensSha256": "75da4c22aee6e4db7e6fb57af88cd4f9c00291b9be311212b6658af63dbd3441",
-  "notice": "Data conversion only. Shops install under shops/shopkeepers/ and stay closed on their NPCs until the shops review is accepted. Try each shop in game before relying on it.",
+  "notice": "Data conversion only. Shops install under shops/shopkeepers/ and open on their NPCs. Try each shop in game before relying on it.",
   "dataVersion": "4|4189",
   "shops": 6,
   "npcs": 1,
@@ -117,7 +117,7 @@
     "shops/shopkeepers/shop-1.json": "762e84df1396925bc1ddba2c815af4a7a063d168a102e74cf5425fdd34a8f9b9",
     "shops/shopkeepers/shop-2.json": "d87518b3a3a84dcff8ba8ae79234bbbba5b8abd730947328a0fddaa9ea3db554",
     "shops/shopkeepers/shop-3.json": "8f7268103d0d0241f41682ea5d9e6ade4a09fc10df3ff509f22cf915bdb16281",
-    "npcs/shopkeepers/shopkeeper-3.json": "fe6e1b4ca6b2c965aa7ae5c412fcd0b25f2a99185903c7a94c7ee13fed3de139",
+    "npcs/shopkeepers/shopkeeper-3.json": "38be36881a72c4da5c16334eae6e72b2e29ba4982e8abe1ed9824ea37bc70480",
     "shops/shopkeepers/shop-4.json": "dbbd302428b4cdf0c652b673d96959e936099a98f79261da8621e57bf60ad5bd",
     "shops/shopkeepers/shop-5.json": "20a249cae6a6ceae6c5e88decb72449a022632fa686fa500061654bb39e9dbd0",
     "shops/shopkeepers/shop-6.json": "9aa16720b414dabdb8bd7a2c7f405e004e4da43d01a4ec41477886ff0f908223"

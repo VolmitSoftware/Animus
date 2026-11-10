@@ -18,6 +18,7 @@ final class ModelSetting {
     private record Field(String key, Kind kind) {}
     private static final Map<String, Field> FIELDS = fields();
     static final List<String> NAMES = List.copyOf(FIELDS.keySet());
+    static final String NOT_DRAWN = "Model Engine models are not drawn on Folia, so the NPC shows its own body on this server";
 
     private ModelSetting() {}
 
@@ -74,6 +75,9 @@ final class ModelSetting {
         String transaction = repository.apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
         return answer + "; tx " + transaction;
     }
+
+    /** The command's reply, with a note under it on a server that draws no models. */
+    static List<String> reply(String line, boolean drawn) { return drawn ? List.of(line) : List.of(line, NOT_DRAWN); }
 
     /** Values offered for a setting by completion. */
     static List<String> values(String setting) {

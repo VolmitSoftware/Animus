@@ -2,8 +2,8 @@
 /// fixture world: rolling grass with a flat plaza at the origin, a pond, an
 /// oak, a stone path that ends in a slab and stairs, a fence, a glass
 /// pillar, flowers and grass. Chunks east of x 128 read as unloaded. A
-/// chunk farther than [fakeTerrainRadius] from every NPC the token may see
-/// is forbidden, as on a real server.
+/// chunk farther than [fakeTerrainRadius] from everywhere an NPC stands,
+/// walks or goes ([fakeReaches]) is forbidden, as on a real server.
 library;
 
 import 'dart:convert';
@@ -79,18 +79,157 @@ String _id(String state) {
   return open < 0 ? state : state.substring(0, open);
 }
 
-/// One NPC position a token may see.
-typedef FakeAnchor = ({String world, double x, double z});
+/// A stretch an NPC stands on, walks or goes to: a point when both ends
+/// match, else the straight leg between them.
+typedef FakeReach = ({String world, double ax, double az, double bx, double bz});
 
-TerrainChunkState _chunkState(String world, int cx, int cz, List<FakeAnchor> anchors) {
-  final int x0 = cx * 16, z0 = cz * 16;
-  bool near = false;
-  for (final FakeAnchor anchor in anchors) {
-    if (anchor.world != world) continue;
-    final double dx = anchor.x < x0 ? x0 - anchor.x : (anchor.x > x0 + 16 ? anchor.x - x0 - 16 : 0);
-    final double dz = anchor.z < z0 ? z0 - anchor.z : (anchor.z > z0 + 16 ? anchor.z - z0 - 16 : 0);
-    if (math.sqrt(dx * dx + dz * dz) <= fakeTerrainRadius) near = true;
+FakeReach _point(String world, double x, double z) => (world: world, ax: x, az: z, bx: x, bz: z);
+
+double? _number(Object? map, String key) {
+  final Object? value = map is Map<String, Object?> ? map[key] : null;
+  return value is num ? value.toDouble() : null;
+}
+
+String? _text(Object? map, String key) {
+  final Object? value = map is Map<String, Object?> ? map[key] : null;
+  return value is String ? value : null;
+}
+
+List<Object?> _list(Object? map, String key) {
+  final Object? value = map is Map<String, Object?> ? map[key] : null;
+  return value is List<Object?> ? value : const <Object?>[];
+}
+
+Object? _child(Object? map, String key) => map is Map<String, Object?> ? map[key] : null;
+
+/// Where one definition stands, walks or goes, as the server's
+/// TerrainReaches reads it: its position, anchors, schedule places with the
+/// legs between them in time order, and its navigation points (inline or
+/// the route [route] returns) with the legs it walks between them.
+List<FakeReach> fakeReaches(Map<String, Object?> definition, Map<String, Object?>? Function(String id) route) {
+  final List<FakeReach> out = <FakeReach>[];
+  final Object? position = definition['position'];
+  final String? home = _text(position, 'world');
+  final double? homeX = _number(position, 'x'), homeZ = _number(position, 'z');
+  if (home == null || homeX == null || homeZ == null) return out;
+  out.add(_point(home, homeX, homeZ));
+  final Object? anchors = definition['anchors'];
+  if (anchors is Map<String, Object?>) {
+    for (final Object? anchor in anchors.values) {
+      final double? x = _number(anchor, 'x'), z = _number(anchor, 'z');
+      if (x != null && z != null) out.add(_point(_text(anchor, 'world') ?? home, x, z));
+    }
   }
+  final Object? modules = definition['modules'];
+  final List<(double, double, double)> places = <(double, double, double)>[
+    for (final Object? location in _list(_child(modules, 'animus:schedule'), 'locations'))
+      if ((_number(location, 'time'), _number(location, 'x'), _number(location, 'z')) case (final double time, final double x, final double z)) (time, x, z),
+  ]..sort(((double, double, double) a, (double, double, double) b) => a.$1.compareTo(b.$1));
+  for (int i = 0; i < places.length; i++) {
+    final (double, double, double) from = places[i], to = places[(i + 1) % places.length];
+    out.add((world: home, ax: from.$2, az: from.$3, bx: to.$2, bz: to.$3));
+  }
+  final Object? navigation = _child(modules, 'animus:navigation');
+  if (navigation is Map<String, Object?>) {
+    final String? id = _text(navigation, 'route');
+    final Map<String, Object?>? source = id == null ? navigation : route(id);
+    if (source != null) _route(home, homeX, homeZ, source, out);
+  }
+  return out;
+}
+
+typedef _Stop = ({String world, double x, double z, String leaveWorld, double leaveX, double leaveZ});
+
+void _route(String home, double homeX, double homeZ, Map<String, Object?> route, List<FakeReach> out) {
+  final String order = _text(route, 'order') ?? 'sequence';
+  final bool walked = order == 'sequence' || order == 'pingpong', sequence = order == 'sequence';
+  final List<_Stop?> stops = <_Stop?>[];
+  final Map<int, List<Object?>> branches = <int, List<Object?>>{};
+  String world = home;
+  _Stop? previous = (world: home, x: homeX, z: homeZ, leaveWorld: home, leaveX: homeX, leaveZ: homeZ);
+  void leg(_Stop from, _Stop to) {
+    if (from.leaveWorld == to.world) out.add((world: to.world, ax: from.leaveX, az: from.leaveZ, bx: to.x, bz: to.z));
+  }
+
+  final List<Object?> points = _list(route, 'points');
+  for (int index = 0; index < points.length; index++) {
+    final Object? point = points[index];
+    final double? x = _number(point, 'x'), z = _number(point, 'z');
+    if (x == null || z == null) {
+      stops.add(null);
+      previous = null;
+      continue;
+    }
+    _Stop stop = (world: world, x: x, z: z, leaveWorld: world, leaveX: x, leaveZ: z);
+    final Object? teleport = _child(point, 'teleport');
+    final double? tx = _number(teleport, 'x'), tz = _number(teleport, 'z');
+    if (tx != null && tz != null) {
+      world = _text(teleport, 'world') ?? world;
+      stop = (world: stop.world, x: x, z: z, leaveWorld: world, leaveX: tx, leaveZ: tz);
+      out.add(_point(world, tx, tz));
+    }
+    out.add(_point(stop.world, x, z));
+    if (walked && previous != null && !branches.containsKey(index - 1)) leg(previous, stop);
+    final List<Object?> next = _list(point, 'next');
+    if (sequence && next.isNotEmpty) branches[index] = next;
+    stops.add(stop);
+    previous = stop;
+  }
+  for (final Object? guide in _list(route, 'guides')) {
+    final double? x = _number(guide, 'x'), z = _number(guide, 'z');
+    if (x != null && z != null) out.add(_point(home, x, z));
+  }
+  final _Stop? first = stops.isEmpty ? null : stops.first;
+  if (sequence && route['loop'] == true && stops.length > 2 && previous != null && first != null && !branches.containsKey(stops.length - 1)) leg(previous, first);
+  for (final MapEntry<int, List<Object?>> branch in branches.entries) {
+    for (final Object? junction in branch.value) {
+      final double? to = _number(junction, 'to');
+      if (to == null || to < 0 || to >= stops.length) continue;
+      final _Stop? target = stops[to.toInt()];
+      if (target != null) leg(stops[branch.key]!, target);
+    }
+  }
+}
+
+double _toSquare(double x, double z, double minX, double minZ, double maxX, double maxZ) {
+  final double dx = math.max(math.max(minX - x, 0), x - maxX), dz = math.max(math.max(minZ - z, 0), z - maxZ);
+  return dx * dx + dz * dz;
+}
+
+/// The squared distance from [reach] to the 16-block square from [minX], [minZ].
+double _toChunk(FakeReach reach, double minX, double minZ) {
+  final double maxX = minX + 16, maxZ = minZ + 16;
+  double best = math.min(_toSquare(reach.ax, reach.az, minX, minZ, maxX, maxZ), _toSquare(reach.bx, reach.bz, minX, minZ, maxX, maxZ));
+  final double dx = reach.bx - reach.ax, dz = reach.bz - reach.az;
+  if (best == 0 || (dx == 0 && dz == 0)) return best;
+  // Clip the leg to the square: crossing it is distance 0.
+  double t0 = 0, t1 = 1;
+  bool crosses = true;
+  final List<double> p = <double>[-dx, dx, -dz, dz], q = <double>[reach.ax - minX, maxX - reach.ax, reach.az - minZ, maxZ - reach.az];
+  for (int i = 0; i < 4 && crosses; i++) {
+    if (p[i] == 0) {
+      if (q[i] < 0) crosses = false;
+      continue;
+    }
+    final double t = q[i] / p[i];
+    if (p[i] < 0) {
+      t0 = math.max(t0, t);
+    } else {
+      t1 = math.min(t1, t);
+    }
+    if (t0 > t1) crosses = false;
+  }
+  if (crosses) return 0;
+  for (final (double x, double z) in <(double, double)>[(minX, minZ), (maxX, minZ), (minX, maxZ), (maxX, maxZ)]) {
+    final double t = (((x - reach.ax) * dx + (z - reach.az) * dz) / (dx * dx + dz * dz)).clamp(0, 1).toDouble();
+    final double ex = reach.ax + t * dx - x, ez = reach.az + t * dz - z;
+    best = math.min(best, ex * ex + ez * ez);
+  }
+  return best;
+}
+
+TerrainChunkState _chunkState(String world, int cx, int cz, List<FakeReach> reaches) {
+  final bool near = reaches.any((FakeReach reach) => reach.world == world && _toChunk(reach, cx * 16.0, cz * 16.0) <= fakeTerrainRadius * fakeTerrainRadius);
   if (!near) return TerrainChunkState.forbidden;
   if (world != 'world' || cx >= fakeUnloadedChunkX) return TerrainChunkState.unloaded;
   return TerrainChunkState.ok;
@@ -120,7 +259,7 @@ FakeResponse _cached(FakeRequest request, String hash, Map<String, Object?> body
 }
 
 /// `GET /v1/terrain/surface?world=&tx=&tz=`.
-FakeResponse fakeTerrainSurface(FakeRequest request, List<FakeAnchor> anchors) {
+FakeResponse fakeTerrainSurface(FakeRequest request, List<FakeReach> anchors) {
   final Map<String, String> query = request.query;
   final String world = _world(query);
   final int tx = _int(query, 'tx', -468750, 468750), tz = _int(query, 'tz', -468750, 468750);
@@ -180,7 +319,7 @@ FakeResponse fakeTerrainSurface(FakeRequest request, List<FakeAnchor> anchors) {
 }
 
 /// `GET /v1/terrain/blocks?world=&cx=&cz=&y=&height=`.
-FakeResponse fakeTerrainBlocks(FakeRequest request, List<FakeAnchor> anchors) {
+FakeResponse fakeTerrainBlocks(FakeRequest request, List<FakeReach> anchors) {
   final Map<String, String> query = request.query;
   final String world = _world(query);
   final int cx = _int(query, 'cx', -1875000, 1875000), cz = _int(query, 'cz', -1875000, 1875000);

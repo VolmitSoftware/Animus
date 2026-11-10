@@ -218,7 +218,7 @@ public final class HoloService<P, S> implements AutoCloseable {
                 Optional<GuiBinding.Hologram> hologram = bound.getValue().hologram();
                 if (hologram.isEmpty()) continue;
                 Optional<HologramDocument> document = current.hologram(hologram.get().id());
-                Optional<double[]> at = npcAnchor(bound.getKey(), hologram.get(), pose);
+                Optional<double[]> at = npcAnchor(viewer, bound.getKey(), hologram.get(), pose);
                 if (document.isPresent() && at.isPresent() && near(pose, at.get()[0], at.get()[1], at.get()[2], document.get().viewDistance()))
                     wanted.put("npc:" + bound.getKey(), new Candidate(document.get(), Optional.of(bound.getKey())));
             }
@@ -253,7 +253,7 @@ public final class HoloService<P, S> implements AutoCloseable {
         double[] at = {document.x(), document.y(), document.z()};
         if (view.npc.isPresent()) {
             GuiBinding binding = bindings().get(view.npc.get());
-            Optional<double[]> moved = binding == null ? Optional.empty() : binding.hologram().flatMap((GuiBinding.Hologram bound) -> npcAnchor(view.npc.get(), bound, pose));
+            Optional<double[]> moved = binding == null ? Optional.empty() : binding.hologram().flatMap((GuiBinding.Hologram bound) -> npcAnchor(viewer, view.npc.get(), bound, pose));
             if (moved.isEmpty()) { view.displays.clear(viewer.player); view.shown = false; return; }
             at = moved.get();
         }
@@ -303,9 +303,10 @@ public final class HoloService<P, S> implements AutoCloseable {
         return readable.getFirst();
     }
 
-    private Optional<double[]> npcAnchor(UUID npc, GuiBinding.Hologram bound, ScreenHost.Pose pose) {
+    /** Where an NPC's hologram stands for this viewer; empty while the NPC is inactive, elsewhere or hidden from them. */
+    private Optional<double[]> npcAnchor(Viewer viewer, UUID npc, GuiBinding.Hologram bound, ScreenHost.Pose pose) {
         Optional<NpcRuntime.ActiveNpc> active = living.active(npc);
-        if (active.isEmpty()) return Optional.empty();
+        if (active.isEmpty() || living.hidden().hides(viewer.id, active.get().id(), npc)) return Optional.empty();
         VirtualNpcState.Snapshot state = active.get().state();
         if (!pose.in(state.position().world())) return Optional.empty();
         double height = state.bounds().max().y() - state.bounds().min().y();

@@ -15,7 +15,7 @@ class CombatSettingsTest {
     private static JsonObject module(String json) { return JsonParser.parseString(json).getAsJsonObject(); }
     private static CombatSettings parse(String json) { return CombatSettings.parseModule(module(json), HealthSettings.UNKILLABLE); }
     private static String definition(String combat, String extra) {
-        return "{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"" + new UUID(0, 1) + "\",\"id\":\"guard\",\"group\":\"town\",\"name\":\"Guard\",\"type\":\"minecraft:player\",\"spawned\":false,"
+        return "{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"" + new UUID(0, 1) + "\",\"id\":\"guard\",\"group\":\"town\",\"name\":\"Guard\",\"type\":\"minecraft:player\",\"spawned\":false,"
                 + "\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0},\"modules\":{\"animus:combat\":" + combat + "}" + extra + "}";
     }
     private static void assertField(String json, String field) {
@@ -84,18 +84,15 @@ class CombatSettingsTest {
         assertTrue(CombatSettings.active(NpcDefinition.parse(definition("{\"enabled\":\"true\"}", ""))).isEmpty());
         assertTrue(CombatSettings.active(NpcDefinition.parse(definition("{\"enabled\":true}", ""))).isPresent());
     }
-    @Test void importedDefinitionsNeedAnAcceptedReview() throws IOException {
+    @Test void importedDefinitionsFightWhenEnabled() throws IOException {
         String migration = ",\"migration\":{\"importId\":\"a\",\"citizensId\":1}";
-        assertEquals(Optional.empty(), CombatSettings.active(NpcDefinition.parse(definition("{\"enabled\":true,\"reviewAccepted\":false}", migration))));
-        assertEquals(Optional.empty(), CombatSettings.active(NpcDefinition.parse(definition("{\"enabled\":true,\"reviewAccepted\":\"true\"}", migration))));
-        assertTrue(CombatSettings.active(NpcDefinition.parse(definition("{\"enabled\":true,\"reviewAccepted\":true}", migration))).isPresent());
+        assertTrue(CombatSettings.active(NpcDefinition.parse(definition("{\"enabled\":true}", migration))).isPresent());
+        assertEquals(Optional.empty(), CombatSettings.active(NpcDefinition.parse(definition("{\"enabled\":\"true\"}", migration))));
     }
-    @Test void importedHealthWaitsForTheCombatReview() throws IOException {
+    @Test void importedHealthRunsWithCombatOff() throws IOException {
         String migration = ",\"migration\":{\"importId\":\"a\",\"citizensId\":1}";
-        String waiting = definition("{\"enabled\":false,\"reviewAccepted\":false},\"animus:health\":{\"killable\":true}", migration);
-        assertEquals(Optional.empty(), CombatSettings.active(NpcDefinition.parse(waiting)));
-        String accepted = definition("{\"enabled\":false,\"reviewAccepted\":true},\"animus:health\":{\"killable\":true}", migration);
-        assertTrue(CombatSettings.active(NpcDefinition.parse(accepted)).orElseThrow().passive());
+        String passive = definition("{\"enabled\":false},\"animus:health\":{\"killable\":true}", migration);
+        assertTrue(CombatSettings.active(NpcDefinition.parse(passive)).orElseThrow().passive());
     }
     @Test void anAbsentModuleIsNotActive() throws IOException {
         JsonObject plain = JsonParser.parseString(definition("{}", "")).getAsJsonObject();
@@ -113,6 +110,6 @@ class CombatSettingsTest {
         assertFalse(settings.passive(), "It still fights");
     }
     @Test void reviewNotesAndPreservedDataAreAccepted() {
-        assertDoesNotThrow(() -> parse("{\"enabled\":false,\"reviewAccepted\":false,\"preservedSettings\":{\"needsAmmo\":true},\"historicalStatistics\":{\"stats_punches\":1},\"migrationReport\":{\"notes\":[]}}"));
+        assertDoesNotThrow(() -> parse("{\"enabled\":false,\"preservedSettings\":{\"needsAmmo\":true},\"historicalStatistics\":{\"stats_punches\":1},\"migrationReport\":{\"notes\":[]}}"));
     }
 }

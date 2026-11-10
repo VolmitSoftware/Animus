@@ -15,15 +15,23 @@ import java.util.Optional;
 /**
  * What a definition declares about how its body looks: equipment, text above it, nameplate visibility, pose and
  * armor stand parts. Every viewer is shown the same thing, and it is restored from the definition after a restart.
+ * {@code bubble} is the speech bubble over the text: empty for an NPC that runs no behaviors, which never speaks in one,
+ * and otherwise the bubble's text, blank while it says nothing, so the body keeps the same rows as bubbles come and go.
  */
 public record NpcAppearance(Map<EquipmentSlot, NpcItem> equipment, List<String> hologram, boolean nameplateVisible,
-                            NpcPose pose, Optional<ArmorStandLook> armorStand, HologramStyle hologramStyle, BodyTraits traits) {
+                            NpcPose pose, Optional<ArmorStandLook> armorStand, HologramStyle hologramStyle, BodyTraits traits, Optional<String> bubble) {
     public static final int MAX_TEXT = 256, MAX_LINES = 16;
     public static final NpcAppearance PLAIN = new NpcAppearance(Map.of(), List.of(), true, NpcPose.STANDING, Optional.empty());
 
     public NpcAppearance {
         equipment = Map.copyOf(equipment); hologram = List.copyOf(hologram);
-        Objects.requireNonNull(pose); Objects.requireNonNull(armorStand); Objects.requireNonNull(hologramStyle); Objects.requireNonNull(traits);
+        Objects.requireNonNull(pose); Objects.requireNonNull(armorStand); Objects.requireNonNull(hologramStyle); Objects.requireNonNull(traits); Objects.requireNonNull(bubble);
+    }
+
+    /** An appearance with no speech bubble. */
+    public NpcAppearance(Map<EquipmentSlot, NpcItem> equipment, List<String> hologram, boolean nameplateVisible, NpcPose pose, Optional<ArmorStandLook> armorStand,
+                         HologramStyle hologramStyle, BodyTraits traits) {
+        this(equipment, hologram, nameplateVisible, pose, armorStand, hologramStyle, traits, Optional.empty());
     }
 
     /** An appearance with the default hologram style and body traits. */
@@ -31,25 +39,19 @@ public record NpcAppearance(Map<EquipmentSlot, NpcItem> equipment, List<String> 
         this(equipment, hologram, nameplateVisible, pose, armorStand, HologramStyle.DEFAULT, BodyTraits.DEFAULT);
     }
 
-    /** This appearance with other attributes, as a runtime attribute change presents it. */
     /** The same appearance showing other hologram lines, such as the lines filled for one viewer. */
     public NpcAppearance withHologram(List<String> lines) {
-        return new NpcAppearance(equipment, lines, nameplateVisible, pose, armorStand, hologramStyle, traits);
+        return new NpcAppearance(equipment, lines, nameplateVisible, pose, armorStand, hologramStyle, traits, bubble);
     }
 
-    /** The same appearance with a speech bubble: {@code text} as the top hologram line. */
+    /** The same appearance saying {@code text} in its speech bubble; a blank text keeps the bubble's row empty. */
     public NpcAppearance withBubble(String text) {
-        List<String> lines = new ArrayList<>();
-        lines.add(text);
-        lines.addAll(hologram);
-        List<HologramStyle.Margin> margins = new ArrayList<>();
-        margins.add(HologramStyle.Margin.NONE);
-        margins.addAll(hologramStyle.margins().size() == hologram.size() ? hologramStyle.margins() : java.util.Collections.nCopies(hologram.size(), HologramStyle.Margin.NONE));
-        return new NpcAppearance(equipment, lines, nameplateVisible, pose, armorStand, hologramStyle.withMargins(margins), traits);
+        return new NpcAppearance(equipment, hologram, nameplateVisible, pose, armorStand, hologramStyle, traits, Optional.of(text));
     }
 
+    /** This appearance with other attributes, as a runtime attribute change presents it. */
     public NpcAppearance withAttributes(NpcAttributes attributes) {
-        return new NpcAppearance(equipment, hologram, nameplateVisible, pose, armorStand, hologramStyle, traits.withAttributes(attributes));
+        return new NpcAppearance(equipment, hologram, nameplateVisible, pose, armorStand, hologramStyle, traits.withAttributes(attributes), bubble);
     }
 
     /** Names and text lines: at most 256 UTF-16 units, no control characters. */
@@ -141,6 +143,9 @@ public record NpcAppearance(Map<EquipmentSlot, NpcItem> equipment, List<String> 
         }
         BodyTraits traits = BodyTraits.read(definition, errors);
         if (lines.size() != style.margins().size()) style = HologramStyle.DEFAULT;
-        return new NpcAppearance(equipment, lines, nameplate, pose, armorStand, style, traits);
+        // Only an NPC's own behaviors make it speak in a bubble, so only an NPC with behaviors keeps a row for one.
+        JsonElement behaviors = definition.get("behaviors");
+        Optional<String> bubble = behaviors != null && behaviors.isJsonArray() && !behaviors.getAsJsonArray().isEmpty() ? Optional.of("") : Optional.empty();
+        return new NpcAppearance(equipment, lines, nameplate, pose, armorStand, style, traits, bubble);
     }
 }

@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class NpcAppearanceTest {
     static JsonObject definition(String type, String extra) {
         String base = """
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"guard","group":"town",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"guard","group":"town",
                  "name":"Captain of the Northern Watch","type":"%s","spawned":false,
                  "position":{"world":"world","x":0,"y":64,"z":0,"yaw":0,"pitch":0}%s}
                 """;
@@ -219,11 +219,15 @@ class NpcAppearanceTest {
                 errors("minecraft:cow", "\"glowing\":1,\"teamColor\":\"pink\""));
     }
 
-    @Test void aBubbleIsTheTopLineAndKeepsTheOtherLinesMargins() throws IOException {
-        NpcAppearance appearance = NpcAppearance.of(NpcDefinition.parse(JsonDocuments.write(definition("minecraft:player",
-                "\"hologram\":{\"lines\":[{\"text\":\"Shop\",\"marginTop\":0.5}]}"))));
-        NpcAppearance spoken = appearance.withBubble("Hello there");
-        assertEquals(List.of("Hello there", "Shop"), spoken.hologram());
-        assertEquals(List.of(HologramStyle.Margin.NONE, new HologramStyle.Margin(0.5, 0)), spoken.hologramStyle().margins());
+    @Test void anNpcWithBehaviorsReservesARowForSpeechBubbles() throws IOException {
+        NpcAppearance silent = NpcAppearance.of(NpcDefinition.parse(JsonDocuments.write(definition("minecraft:player", ""))));
+        assertEquals(Optional.empty(), silent.bubble(), "an NPC without behaviors never speaks in a bubble");
+        NpcAppearance speaker = NpcAppearance.of(NpcDefinition.parse(JsonDocuments.write(definition("minecraft:player",
+                "\"behaviors\":[\"town:greet\"],\"hologram\":{\"lines\":[{\"text\":\"Shop\",\"marginTop\":0.5}]}"))));
+        assertEquals(Optional.of(""), speaker.bubble(), "an empty bubble keeps its row");
+        NpcAppearance spoken = speaker.withBubble("Hello there");
+        assertEquals(Optional.of("Hello there"), spoken.bubble());
+        assertEquals(List.of("Shop"), spoken.hologram(), "the bubble is not a hologram line");
+        assertEquals(speaker.hologramStyle(), spoken.hologramStyle());
     }
 }

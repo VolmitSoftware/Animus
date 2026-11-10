@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "d5cc820f-4ee2-5f7a-9a55-c1104e587a77",
+  "id": "squid",
+  "group": "types",
+  "name": "Body squid",
+  "type": "minecraft:squid",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

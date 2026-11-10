@@ -53,6 +53,9 @@ public class FakeNpcRuntime<P> implements NpcRuntime<P, Object> {
         };
     }
     @Override public art.arcane.animus.core.runtime.ViewerPreviews previews() { throw new UnsupportedOperationException(); }
+    /** Viewer and NPC pairs {@link #hidden} answers for, as "viewer/npc". */
+    final java.util.Set<String> hiddenFrom = new java.util.HashSet<>();
+    @Override public art.arcane.animus.core.behavior.trigger.HiddenNpcs hidden() { return (UUID viewer, String id, UUID npc) -> hiddenFrom.contains(viewer + "/" + npc); }
     @Override public boolean onOwner(UUID npc, Runnable work, Consumer<String> refused) { work.run(); return true; }
     @Override public boolean onOwner(String id, Runnable work, Consumer<String> refused) { work.run(); return true; }
     @Override public WorldPosition navigationOrigin(String id) { throw new UnsupportedOperationException(); }

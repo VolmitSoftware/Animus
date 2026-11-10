@@ -66,6 +66,8 @@ final class EditorHarness implements AutoCloseable {
         List<String> rawTextBehaviors = List.of();
         List<String> activation = List.of(), reloadProblems = List.of();
         volatile EditorTerrain terrain;
+        /** Where each active NPC stands now, by uuid. */
+        final Map<UUID, art.arcane.animus.core.virtual.WorldPosition> live = new java.util.concurrent.ConcurrentHashMap<>();
 
         @Override public String platform() { return "paper"; }
 
@@ -128,6 +130,8 @@ final class EditorHarness implements AutoCloseable {
         @Override public String previewsUnavailable() { return "not built for this platform"; }
 
         @Override public Optional<EditorTerrain> terrain() { return Optional.ofNullable(terrain); }
+
+        @Override public Optional<art.arcane.animus.core.virtual.WorldPosition> located(UUID npc) { return Optional.ofNullable(live.get(npc)); }
     }
 
     final Path root;

@@ -2,6 +2,7 @@
 /// `animus:schedule` module, installed off and unreviewed. The shared golden fixtures prove the two agree.
 library;
 
+import '../../mc/npc/npc_look.dart' show NpcSlot, mcDrawnSlots;
 import 'citizens_converter.dart' show unusedSkin;
 import 'field_notes.dart';
 import 'java_json.dart';
@@ -52,8 +53,7 @@ DestinationsResult convertDestinations(JElement? trait, String type, String worl
   JObject? module;
   if (locations.isNotEmpty) {
     module = JObject()
-      ..addBool('enabled', false)
-      ..addBool('reviewAccepted', false)
+      ..addBool('enabled', true)
       ..add('locations', locations);
   }
   return DestinationsResult(module, mapping.movement, mapping.skins, mapping.converted, mapping.notes, mapping.warnings);
@@ -307,8 +307,17 @@ class _Mapping {
         converted.add('$path/${slot.key}');
         continue;
       }
-      final JObject? item = _item(value, '$path/${slot.key}');
-      if (item != null) equipment[slot.value] = item;
+      final String at = '$path/${slot.key}';
+      final JObject? item = _item(value, at);
+      if (item == null) continue;
+      if (mcDrawnSlots(type).any((NpcSlot drawn) => drawn.key == slot.value)) {
+        equipment[slot.value] = item;
+        continue;
+      }
+      bool under(String field) => field == at || field.startsWith('$at/');
+      converted.removeWhere(under);
+      notes.removeWhere((String field, FieldNote _) => under(field));
+      note(at, unsupportedPreserved, 'a $type body does not show the ${slot.value} slot');
     }
     if (equipment.isNotEmpty) {
       final JObject sorted = JObject();
@@ -423,7 +432,7 @@ class _Mapping {
     }
     if (kept.isEmpty) return;
     location.add('commands', kept);
-    warnings.add('$path: arrival commands run from the console once citizens is in [behaviors.actions] commandNamespaces (accept commands); read them first');
+    warnings.add('$path: arrival commands run from the console, as they did under Citizens');
   }
 
   void _addons(JObject source, JObject location, String path) {

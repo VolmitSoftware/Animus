@@ -17,6 +17,7 @@ import 'npc/combat_settings.dart';
 import 'npc/group_model.dart';
 import 'npc/npc_paths.dart';
 import 'rig_validation.dart';
+import 'schema_upgrades.dart';
 import 'shared_schemas.dart';
 
 /// A file's kind and id, from its path relative to the data folder.
@@ -161,7 +162,7 @@ bool isResourcePath(String path) =>
 final RegExp _editorSkin = RegExp(r'^editor/skins/[a-f0-9]{64}\.png$');
 
 class DataFolderResult {
-  const DataFolderResult(this.documents, this.ignored, this.prefix, [this.resources = const <String, Uint8List>{}]);
+  const DataFolderResult(this.documents, this.ignored, this.prefix, {this.resources = const <String, Uint8List>{}, this.upgraded = const <String>[]});
 
   /// Sorted by path.
   final List<AnimusDocument> documents;
@@ -172,6 +173,10 @@ class DataFolderResult {
 
   /// Files under `pack/assets/`, by data-folder path.
   final Map<String, Uint8List> resources;
+
+  /// Paths of the NPCs and groups below the current schema, upgraded as they
+  /// opened ([upgradeSource]), sorted.
+  final List<String> upgraded;
 }
 
 /// Parses and validates every document in [files] (path to bytes).
@@ -180,6 +185,7 @@ DataFolderResult openDataFolder(Map<String, Uint8List> files, SharedSchemas sche
   final List<AnimusDocument> documents = <AnimusDocument>[];
   final List<String> ignored = <String>[];
   final Map<String, Uint8List> resources = <String, Uint8List>{};
+  final List<String> upgraded = <String>[];
   final List<String> paths = files.keys.where((String path) => path.startsWith(prefix)).toList()..sort();
   for (final String fullPath in paths) {
     final String path = fullPath.substring(prefix.length);
@@ -192,7 +198,10 @@ DataFolderResult openDataFolder(Map<String, Uint8List> files, SharedSchemas sche
       ignored.add(path);
       continue;
     }
-    documents.add(parseDocument(location, path, files[fullPath]!, schemas));
+    final AnimusDocument document = parseDocument(location, path, files[fullPath]!, schemas);
+    final SchemaUpgrade? upgrade = upgradeSource(location.kind, document.source);
+    if (upgrade != null) upgraded.add(path);
+    documents.add(upgrade == null ? document : validateSource(location, path, upgrade.source, schemas));
   }
   final Map<String, Object?> rigs = <String, Object?>{
     for (final AnimusDocument document in documents)
@@ -213,7 +222,7 @@ DataFolderResult openDataFolder(Map<String, Uint8List> files, SharedSchemas sche
         document.copyWith(diagnostics: <Diagnostic>[...document.diagnostics, ...validateRigAnimations(document.json, animations)])
       else
         document,
-  ], ignored, prefix, resources);
+  ], ignored, prefix, resources: resources, upgraded: upgraded);
 }
 
 AnimusDocument parseDocument(DocumentLocation location, String path, Uint8List bytes, SharedSchemas schemas) {

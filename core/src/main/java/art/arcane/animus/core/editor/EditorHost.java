@@ -2,6 +2,7 @@ package art.arcane.animus.core.editor;
 
 import art.arcane.animus.api.Capabilities;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.virtual.WorldPosition;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -99,6 +100,9 @@ public interface EditorHost {
 
     /** Loaded-chunk reads for {@code GET /v1/terrain/...}, or empty when the platform has none. */
     default Optional<EditorTerrain> terrain() { return Optional.empty(); }
+
+    /** Where the active NPC with this uuid stands now, its world by platform key, from any thread without blocking; empty when it is not active. */
+    default Optional<WorldPosition> located(UUID npc) { return Optional.empty(); }
 
     /** Shows candidate NPCs to one player only. */
     interface PreviewPresenter {

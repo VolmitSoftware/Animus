@@ -238,7 +238,7 @@ class AnimusDirectorTest {
         });
         Actor admin = new Actor(true, AnimusDirector.ADMIN);
         real.execute(admin, new String[]{"import"});
-        assertEquals(List.of("apply", "beautyquests", "betonquest", "citizens", "denizen", "gloss", "plan", "preview", "quests", "shops", "stage", "typewriter"), admin.entries(), "every import lives under /animus import");
+        assertEquals(List.of("apply", "beautyquests", "betonquest", "citizens", "denizen", "gloss", "plan", "preview", "quests", "shops", "stage"), admin.entries(), "every import lives under /animus import");
         real.execute(admin, new String[]{"shop"});
         assertFalse(admin.entries().contains("import"));
         real.execute(admin, new String[]{"gui"});
@@ -324,7 +324,7 @@ class AnimusDirectorTest {
     }
 
     @Test void npcReferencesResolveThroughNestedFolders() throws Exception {
-        art.arcane.animus.core.npc.NpcDefinition smith = art.arcane.animus.core.npc.NpcDefinition.parse("{\"schemaVersion\":1,\"revision\":1,\"uuid\":\""
+        art.arcane.animus.core.npc.NpcDefinition smith = art.arcane.animus.core.npc.NpcDefinition.parse("{\"schemaVersion\":2,\"revision\":1,\"uuid\":\""
                 + UUID.randomUUID() + "\",\"id\":\"smith\",\"type\":\"minecraft:player\",\"group\":\"world/town/market\",\"name\":\"Smith\",\"spawned\":false,"
                 + "\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}}");
         java.util.function.Function<String, Optional<art.arcane.animus.core.npc.NpcDefinition>> find = (String id) -> id.equals("smith") ? Optional.of(smith) : Optional.empty();
@@ -349,7 +349,7 @@ class AnimusDirectorTest {
         return "sample";
     }
 
-    private static final List<String> LINKS = List.of("beautyquests", "betonquest", "quests", "typewriter");
+    private static final List<String> LINKS = List.of("beautyquests", "betonquest", "quests");
 
     /** Integration commands show in help, completion and the client tree only while their plugin runs; typed anyway, they name it. */
     @Test void integrationCommandsNeedTheirPlugin() {
@@ -368,12 +368,12 @@ class AnimusDirectorTest {
         assertEquals(List.of(), without.complete(admin, new String[]{"npc", "model", ""}));
         assertFalse(without.complete(admin, new String[]{"create", "guard", ""}).contains("mythic="), "create takes no Mythic mob");
         for (String[] typed : List.of(new String[]{"npc", "model", "guard"}, new String[]{"npc", "disguise", "guard", "zombie"}, new String[]{"import", "quests", "preview"},
-                new String[]{"import", "beautyquests", "apply"}, new String[]{"import", "betonquest", "preview"}, new String[]{"import", "typewriter", "rollback"},
+                new String[]{"import", "beautyquests", "apply"}, new String[]{"import", "betonquest", "preview"},
                 new String[]{"mythic", "boss", "SkeletonKing"})) {
             admin.lines.clear();
             without.execute(admin, typed);
             assertEquals(1, admin.lines.size(), admin.text());
-            assertTrue(admin.lines.getFirst().matches(".* needs (ModelEngine|LibsDisguises|Quests|BeautyQuests|BetonQuest|Typewriter|MythicMobs)"), admin.text());
+            assertTrue(admin.lines.getFirst().matches(".* needs (ModelEngine|LibsDisguises|Quests|BeautyQuests|BetonQuest|MythicMobs)"), admin.text());
         }
         AnimusDirector with = new AnimusDirector(new AnimusCommandTree(null), (String parameter, CommandActor actor) -> List.of(), (String plugin) -> true);
         with.execute(admin, new String[]{"import"});

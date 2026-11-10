@@ -14,7 +14,7 @@ class HealthMaximumTest {
 
     private static double maximum(String modules) throws Exception {
         NpcDefinition definition = NpcDefinition.parse("""
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000040","id":"walker","group":"test","name":"Walker",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-0000-0000-000000000040","id":"walker","group":"test","name":"Walker",
                  "type":"minecraft:player","spawned":true,"position":{"world":"world","x":1,"y":64,"z":2,"yaw":0,"pitch":0}%s}
                 """.formatted(modules));
         DefinitionSpec<String> spec = DefinitionSpec.parse(definition, Set.of("minecraft:player"), (String world) -> world,

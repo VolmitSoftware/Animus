@@ -18,7 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class DisguiseSettingTest {
     @TempDir Path root;
-    private static final String GUARD = "{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"12345678-1234-1234-1234-123456789abc\",\"id\":\"guard\",\"group\":\"\",\"name\":\"N\","
+    private static final String GUARD = "{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"12345678-1234-1234-1234-123456789abc\",\"id\":\"guard\",\"group\":\"\",\"name\":\"N\","
             + "\"type\":\"minecraft:player\",\"spawned\":false,\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}}";
     private final NpcDisguise.Resolver pigs = (String text) -> {
         if (!text.equals("pig setBurning")) throw new IllegalArgumentException("LibsDisguises cannot read '" + text + "'");

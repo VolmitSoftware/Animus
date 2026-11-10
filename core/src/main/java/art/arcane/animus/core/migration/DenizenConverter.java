@@ -39,11 +39,11 @@ import java.util.UUID;
  * had the assignment; task scripts become routines and manual-run behaviors, procedures routines that return a value;
  * world, command and book scripts become server behaviors; inventory scripts chest GUIs. Tags become expressions and
  * templates. Flags become typed {@code denizen} flags with their expiry, and interact steps relationship quest stages.
- * Everything else is kept and listed in the report with its reason. Generated behaviors stay off until the review
- * accepts them.
+ * Everything else is kept and listed in the report with its reason. A behavior whose guard or stop did not convert is
+ * held: apply leaves it unbound and off until an administrator releases it.
  */
 final class DenizenConverter {
-    static final int CONVERTER_VERSION = 7;
+    static final int CONVERTER_VERSION = 8;
     /** The author a converted book gets when its Denizen author is blank. */
     static final String BLANK_BOOK_AUTHOR = "Server";
     static final String NAMESPACE = "denizen";
@@ -282,7 +282,7 @@ final class DenizenConverter {
         report.addProperty("schemaVersion", 1);
         report.addProperty("converterVersion", CONVERTER_VERSION);
         report.addProperty("importId", id);
-        report.addProperty("notice", "Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.");
+        report.addProperty("notice", "Data conversion only. Apply lists the generated behaviors on their NPCs and turns the server behaviors on, except held behaviors, whose guard did not convert.");
         report.add("sources", sources);
         report.addProperty("behaviors", documents.size());
         report.add("containers", containerCounts());

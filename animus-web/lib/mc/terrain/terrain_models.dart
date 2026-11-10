@@ -67,6 +67,38 @@ bool _matches(Map<String, String> properties, String key) {
   return true;
 }
 
+/// Property values a block takes by default whenever it has them.
+const Set<String> _defaultValues = <String>{'bottom', 'straight', 'false', 'none', 'floor', 'lower', 'single', 'y', '0'};
+
+/// For a state written with only some properties (`oak_stairs[facing=east]`,
+/// as a definition writes one): the variant agreeing with every property
+/// given that takes the most default values for the rest.
+MapEntry<String, Object?>? _closest(Map<String, Object?> variants, Map<String, String> properties) {
+  MapEntry<String, Object?>? best;
+  int bestScore = -1;
+  for (final MapEntry<String, Object?> entry in variants.entries) {
+    int score = 0;
+    bool agrees = true;
+    for (final String pair in entry.key.split(',')) {
+      final int equals = pair.indexOf('=');
+      if (equals < 0) continue;
+      final String? given = properties[pair.substring(0, equals)];
+      final String value = pair.substring(equals + 1);
+      if (given == null) {
+        if (_defaultValues.contains(value)) score++;
+      } else if (given != value) {
+        agrees = false;
+        break;
+      }
+    }
+    if (agrees && score > bestScore) {
+      best = entry;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
 bool _when(Map<String, String> properties, Object? condition) {
   if (condition is! Map<String, Object?>) return true;
   final Object? any = condition['OR'], all = condition['AND'];
@@ -89,13 +121,16 @@ McBlockstateVariantJson? _first(Object? apply) {
 List<McBlockstateVariantJson> terrainVariants(Map<String, Object?> blockstate, TerrainBlockState state) {
   final Object? variants = blockstate['variants'];
   if (variants is Map<String, Object?>) {
+    MapEntry<String, Object?>? found;
     for (final MapEntry<String, Object?> entry in variants.entries) {
       if (_matches(state.properties, entry.key)) {
-        final McBlockstateVariantJson? variant = _first(entry.value);
-        return variant == null ? const <McBlockstateVariantJson>[] : <McBlockstateVariantJson>[variant];
+        found = entry;
+        break;
       }
     }
-    return const <McBlockstateVariantJson>[];
+    found ??= _closest(variants, state.properties);
+    final McBlockstateVariantJson? variant = found == null ? null : _first(found.value);
+    return variant == null ? const <McBlockstateVariantJson>[] : <McBlockstateVariantJson>[variant];
   }
   final Object? parts = blockstate['multipart'];
   if (parts is! List<Object?>) return const <McBlockstateVariantJson>[];

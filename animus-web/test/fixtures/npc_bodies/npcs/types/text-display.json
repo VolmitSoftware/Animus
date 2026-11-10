@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "c8a7dcea-e9b9-5e29-815e-47b618299e1a",
+  "id": "text-display",
+  "group": "types",
+  "name": "Body text_display",
+  "type": "minecraft:text_display",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "textDisplay": {
+    "text": "&6Welcome\n&7to the shop",
+    "billboard": "center"
+  }
+}

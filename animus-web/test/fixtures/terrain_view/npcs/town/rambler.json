@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "7a6b5c4d-3e2f-4a1b-9c8d-7e6f5a4b3c2d",
+  "id": "rambler",
+  "group": "town",
+  "name": "Rambler",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": -20.5,
+    "y": 63,
+    "z": 20.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "animus:navigation": {
+      "enabled": true,
+      "order": "sequence",
+      "points": [
+        {
+          "x": -500,
+          "y": 61,
+          "z": 20
+        },
+        {
+          "x": -500,
+          "y": 65,
+          "z": -450
+        },
+        {
+          "x": -260,
+          "y": 68,
+          "z": -450
+        }
+      ]
+    }
+  }
+}

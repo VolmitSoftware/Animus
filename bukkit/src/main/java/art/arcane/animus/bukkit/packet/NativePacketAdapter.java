@@ -410,7 +410,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         Presentation presentation = session.visible.get(body.entityId);
         if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
         Object packet;
-        try { packet = nativeApi.metadataPacket.newInstance(body.entityId, nativeApi.presentation.lookValues(look, VariantWire.living(body.typeKey))); }
+        try { packet = nativeApi.metadataPacket.newInstance(body.entityId, nativeApi.presentation.lookValues(look, body.typeKey)); }
         catch (ReflectiveOperationException | RuntimeException failure) { return failed("Body look update failed: " + failure.getClass().getSimpleName()); }
         CompletableFuture<Void> result = new CompletableFuture<>();
         submit(session, result, false, () -> {
@@ -448,7 +448,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         Presentation presentation = session.visible.get(body.entityId);
         if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
         List<Object> packets = new ArrayList<>(rows.size());
-        try { for (int row = 0; row < rows.size(); row++) packets.add(nativeApi.metadataPacket.newInstance(body.displayIds[row], List.of(nativeApi.presentation.textValue(rows.get(row))))); }
+        try { for (int row = 0; row < rows.size(); row++) packets.add(nativeApi.metadataPacket.newInstance(body.displayIds[row], nativeApi.presentation.textValue(rows.get(row)))); }
         catch (ReflectiveOperationException | RuntimeException failure) { return failed("Body relabel failed: " + failure.getClass().getSimpleName()); }
         CompletableFuture<Void> result = new CompletableFuture<>();
         submit(session, result, false, () -> {

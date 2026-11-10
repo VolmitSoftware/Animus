@@ -50,8 +50,7 @@ Disposition sentinelDisposition(String field) {
 }
 
 JObject _base() => JObject()
-  ..addBool('enabled', false)
-  ..addBool('reviewAccepted', false);
+  ..addBool('enabled', true);
 
 /// Sentinel's own `text`: string primitives only.
 String? _text(JElement? value) => value is JString ? value.value : null;
@@ -61,7 +60,8 @@ typedef SentinelModules = ({JObject combat, JObject? health});
 
 SentinelModules convertSentinel(JElement? sentinel, JElement? equipment, JArray references) {
   if (sentinel is JObject) return _Converter(sentinel, equipment, references).run();
-  final JObject module = _base();
+  // A record that is not an object converts to nothing, so its combat stays off and the record is only kept.
+  final JObject module = _base()..addBool('enabled', false);
   module.add('preservedSettings', sentinel == null ? JNull.instance : sentinel.deepCopy());
   module.add('historicalStatistics', JObject());
   return (combat: module, health: null);

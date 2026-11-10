@@ -1,6 +1,7 @@
 package art.arcane.animus.core.editor;
 
 import art.arcane.animus.api.Capabilities;
+import art.arcane.animus.core.schedule.ScheduleSettings;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
@@ -24,7 +25,10 @@ import java.util.TreeSet;
  *   and reach that behavior's raw command text;</li>
  *   <li>a chest GUI, menu or hologram with an action of {@code type} {@code command}, {@code give} or {@code economy};</li>
  *   <li>a shop with a non-empty {@code commands} list or any entry that buys, sells or trades, since its prices and goods
- *   create items and money.</li>
+ *   create items and money;</li>
+ *   <li>a quest whose rewards run commands or give items, money or experience, or a quest in the namespace of a
+ *   {@code rawTextBehaviors} entry, since its reward flags and stages reach that behavior;</li>
+ *   <li>an NPC or trait group with {@code animus:schedule} arrival commands.</li>
  * </ul>
  */
 final class EditorCommandGuard {
@@ -32,6 +36,7 @@ final class EditorCommandGuard {
     private static final Set<String> VALUE_CAPABILITIES = Set.of("animus:give-item");
     private static final Set<String> GUI_TYPES = Set.of("command", "give", "economy");
     private static final Set<String> TRADING_ENTRIES = Set.of("buy", "sell", "trade", "command");
+    private static final Set<String> QUEST_VALUE_REWARDS = Set.of("commands", "items", "money", "experience");
 
     /** The live registry's privileged keys and {@code [behaviors.actions] rawTextBehaviors}. */
     record Rules(Set<String> privileged, Set<String> rawTextNamespaces) {
@@ -72,10 +77,15 @@ final class EditorCommandGuard {
             case SHOP -> any(source, (JsonObject object) -> (object.has("commands") && object.get("commands").isJsonArray() && !object.getAsJsonArray("commands").isEmpty())
                     || text(object, "type").map((String type) -> TRADING_ENTRIES.contains(type.toLowerCase(java.util.Locale.ROOT))).orElse(false))
                     ? Optional.of("runs commands or sets prices") : Optional.empty();
-            case QUEST -> source.isJsonObject() && source.getAsJsonObject().has("rewards") && source.getAsJsonObject().get("rewards").isJsonObject()
-                    && source.getAsJsonObject().getAsJsonObject("rewards").entrySet().stream().anyMatch((java.util.Map.Entry<String, JsonElement> reward) ->
-                            List.of("commands", "items", "money").contains(reward.getKey()))
-                    ? Optional.of("runs commands or creates items or money") : Optional.empty();
+            case QUEST -> {
+                if (id.indexOf(':') > 0 && rules.rawTextNamespaces().contains(id.substring(0, id.indexOf(':'))))
+                    yield Optional.of("shares flags with a behavior that has a raw text grant");
+                yield source.isJsonObject() && source.getAsJsonObject().has("rewards") && source.getAsJsonObject().get("rewards").isJsonObject()
+                        && source.getAsJsonObject().getAsJsonObject("rewards").entrySet().stream().anyMatch((Map.Entry<String, JsonElement> reward) ->
+                                QUEST_VALUE_REWARDS.contains(reward.getKey()))
+                        ? Optional.of("runs commands or creates items, money or experience") : Optional.empty();
+            }
+            case NPC, GROUP -> ScheduleSettings.runsCommands(source) ? Optional.of("runs schedule arrival commands") : Optional.empty();
             default -> Optional.empty();
         };
     }
@@ -111,13 +121,13 @@ final class EditorCommandGuard {
     }
 
     /**
-     * Import apply and accept through the editor. Accepting the {@code commands} category adds the imported namespaces to the
+     * Import apply through the editor. Apply adds the namespaces of the import's command behaviors ({@code grants}) to the
      * allow-list, and while the allow-list names anything an imported document may land under it, so both need the scope.
      */
-    static void requireForImport(EditorTokens.Token token, String step, List<String> categories, boolean commandGrants) throws EditorError {
+    static void requireForImport(EditorTokens.Token token, String step, List<String> grants, boolean commandGrants) throws EditorError {
         if (token.has(EditorScope.APPLY_COMMANDS) || step.equals("rollback")) return;
-        boolean commands = categories.stream().anyMatch((String category) -> category.equalsIgnoreCase(art.arcane.animus.core.migration.CitizensDropIn.COMMANDS));
-        if (commands) throw new EditorError(EditorError.Code.SCOPE_MISSING, "Accepting commands lets imported behaviors run console commands, which needs apply:commands.");
+        if (!grants.isEmpty()) throw new EditorError(EditorError.Code.SCOPE_MISSING, "This import runs console commands as it did before, so applying it adds "
+                + String.join(", ", grants) + " to [behaviors.actions] commandNamespaces, which needs apply:commands.");
         if (commandGrants) throw new EditorError(EditorError.Code.SCOPE_MISSING, "[behaviors.actions] lets some behaviors run commands and an import could add to them,"
                 + " so this step needs apply:commands.");
     }

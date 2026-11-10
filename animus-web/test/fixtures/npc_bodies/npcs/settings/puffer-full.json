@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "9b65677e-683c-52a5-91e3-257ee4a611f3",
+  "id": "puffer-full",
+  "group": "settings",
+  "name": "Set puffer-full",
+  "type": "minecraft:pufferfish",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "pufferfish": {
+    "puff": "full"
+  }
+}

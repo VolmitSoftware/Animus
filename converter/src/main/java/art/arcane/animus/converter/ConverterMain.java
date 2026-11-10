@@ -71,14 +71,14 @@ public final class ConverterMain {
         }
         try (DocumentStore store = args[0].equals("validate") ? DocumentStore.readOnly(Path.of(args[1])) : new DocumentStore(Path.of(args[1]))) {
             return switch (args[0]) {
-                case "apply" -> { require(args, 3); yield "Installed dormant; tx " + importer.apply(store, args[2]); }
+                case "apply" -> { require(args, 3); yield "Installed NPCs; tx " + importer.apply(store, args[2]); }
                 case "stage" -> {
                     if (args.length < 3 || args.length > 5) throw new IllegalArgumentException("stage <data-dir> <import-id> [reject|replace|duplicate <label>]");
                     var application = ImportApplications.stage(store, args[2], args.length > 3 ? args[3] : "reject", args.length > 4 ? args[4] : null);
                     yield "Application " + application.applicationId() + "\nMode: " + application.mode() + "; records: " + application.records() + "; replacements: " + application.replacements()
                             + "\nReview " + application.report() + "\nNothing installed; review, then apply-plan";
                 }
-                case "apply-plan" -> { require(args, 4); yield "Installed dormant; tx " + ImportApplications.apply(store, args[2], args[3]); }
+                case "apply-plan" -> { require(args, 4); yield "Installed NPCs; tx " + ImportApplications.apply(store, args[2], args[3]); }
                 case "rollback" -> { require(args, 3); yield "Rolled back; tx " + store.rollback(args[2]); }
                 case "validate" -> {
                     require(args, 2);

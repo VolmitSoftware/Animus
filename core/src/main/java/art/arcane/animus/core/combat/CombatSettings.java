@@ -29,7 +29,7 @@ import java.util.UUID;
  * death and respawn are set; without it the NPC cannot be hurt. An NPC with health but no enabled combat runs
  * {@code passive}: it can be hurt, dies and respawns, but never scans, targets or fights back.
  */
-public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRules targets, TargetRules ignores, TargetRules avoids,
+public record CombatSettings(boolean enabled, TargetRules targets, TargetRules ignores, TargetRules avoids,
                              Targeting targeting, Avoidance avoidance, Squad squad, Guard guard, Pursuit pursuit, Melee melee,
                              Ranged ranged, Greetings greetings, boolean targetableByMobs, boolean victimDrops, HealthSettings health, boolean passive) {
     /** The farthest {@code avoidance.range} may reach, in blocks. */
@@ -91,7 +91,6 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
     /**
      * Parses combat and health from a raw definition document; empty when it has neither module. With only
      * {@code animus:health}, or with combat switched off, the settings are passive and enabled exactly when the NPC is killable.
-     * Health on an imported NPC with an unreviewed combat module stays off like its combat.
      */
     public static Optional<CombatSettings> parse(JsonObject definition) {
         JsonElement modules = definition.get("modules");
@@ -108,36 +107,32 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
         boolean player = type != null && type.isJsonPrimitive() && type.getAsString().equals(BodyRules.PLAYER);
         HealthSettings health = HealthSettings.parse(healthModule.orElseGet(JsonObject::new), attributes);
         CombatSettings settings = parseModule(attributes.isEmpty() ? module : CombatAttributes.fill(module, attributes, player), health);
-        boolean enabled = settings.enabled(), accepted = settings.reviewAccepted(), passive = false;
+        boolean enabled = settings.enabled(), passive = false;
         if (healthModule.isPresent() && (!known.has(MODULE) || !enabled)) {
-            // An import's health waits for the same review as its combat.
             passive = true;
             enabled = health.killable();
-            accepted = !known.has(MODULE) || accepted;
         }
-        return Optional.of(new CombatSettings(enabled, accepted, settings.targets(), settings.ignores(), settings.avoids(), settings.targeting(), settings.avoidance(),
+        return Optional.of(new CombatSettings(enabled, settings.targets(), settings.ignores(), settings.avoids(), settings.targeting(), settings.avoidance(),
                 settings.squad(), settings.guard(), settings.pursuit(), settings.melee(), settings.ranged(), settings.greetings(), settings.targetableByMobs(),
                 settings.victimDrops(), health, passive));
     }
 
     /**
-     * The settings to run, or empty when combat is absent, off, or an import whose review was not accepted. A health-only
+     * The settings to run, or empty when combat is absent or off. A health-only
      * NPC runs when it is killable; a permanently dead one does not run until it is revived.
      */
     public static Optional<CombatSettings> active(NpcDefinition definition) {
-        JsonObject document = definition.json();
-        Optional<CombatSettings> settings = parse(document);
+        Optional<CombatSettings> settings = parse(definition.json());
         if (settings.isEmpty() || !settings.get().enabled() || settings.get().health().respawn().dead()) return Optional.empty();
-        if (document.has("migration") && !settings.get().reviewAccepted()) return Optional.empty();
         return settings;
     }
 
     /** The combat module alone, with {@code health} as the NPC's damage rules. */
     public static CombatSettings parseModule(JsonObject module, HealthSettings health) {
         Reader root = new Reader(module, ROOT);
-        root.known("enabled", "reviewAccepted", "targets", "ignores", "avoids", "targeting", "avoidance", "squad", "guard", "pursuit",
+        root.known("enabled", "targets", "ignores", "avoids", "targeting", "avoidance", "squad", "guard", "pursuit",
                 "melee", "ranged", "greetings", "targetableByMobs", "victimDrops", "preservedSettings", "historicalStatistics", "migrationReport");
-        return new CombatSettings(literalTrue(module, "enabled"), literalTrue(module, "reviewAccepted"),
+        return new CombatSettings(literalTrue(module, "enabled"),
                 rules(root.child("targets"), Level.SEEKING), rules(root.child("ignores"), Level.IGNORING), rules(root.child("avoids"), Level.SEEKING),
                 targeting(root.child("targeting")), avoidance(root.child("avoidance")), squad(root.child("squad")), guard(root.child("guard")),
                 pursuit(root.child("pursuit")), melee(root.child("melee")), ranged(root.child("ranged")), greetings(root.child("greetings")),

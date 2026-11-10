@@ -120,7 +120,7 @@ final class CombatFixture implements Listener, AutoCloseable {
                 MobSnapshot snapshot = capture(zombie);
                 if (snapshot.path.isEmpty()) throw new IllegalStateException("Restoration proof requires a nonempty original path");
                 snapshots.put(zombie.getUniqueId(), snapshot);
-                targetCommand(npcId(args[1]), zombie.getUniqueId().toString());
+                mobCommand(npcId(args[1]), zombie.getUniqueId().toString());
                 MobSnapshot controlled = capture(zombie);
                 boolean goals = controlled.movement.isEmpty() && controlled.targeting.isEmpty();
                 boolean targetCleared = zombie.getTarget() == null; boolean pathCleared = controlled.path.isEmpty();
@@ -134,7 +134,7 @@ final class CombatFixture implements Listener, AutoCloseable {
                 if (!(entity instanceof Zombie zombie)) throw new IllegalArgumentException("Use fixture zombie UUID");
                 MobSnapshot original = snapshots.get(zombie.getUniqueId());
                 if (original == null) throw new IllegalArgumentException("No original mob snapshot");
-                targetCommand(npcId(args[1]), "stop");
+                mobCommand(npcId(args[1]), "stop");
                 MobSnapshot restored = capture(zombie);
                 boolean goals = original.movement.equals(restored.movement) && original.targeting.equals(restored.targeting);
                 boolean target = Objects.equals(original.target, restored.target);
@@ -206,12 +206,12 @@ final class CombatFixture implements Listener, AutoCloseable {
     private static String npcId(String value) {
         if (!value.matches("[A-Za-z0-9_./:-]{1,100}")) throw new IllegalArgumentException("Invalid NPC command identifier"); return value;
     }
-    private void targetCommand(String npc, String target) {
+    private void mobCommand(String npc, String mob) {
         JavaPlugin animus = (JavaPlugin) plugin.getServer().getPluginManager().getPlugin("Animus");
         // Paper can enqueue nested dispatchCommand calls until the current Brigadier command returns.
         // The fixture needs an immediate registered executor call to inspect before any vanilla tick runs.
         Objects.requireNonNull(Objects.requireNonNull(animus).getCommand("animus"))
-                .execute(plugin.getServer().getConsoleSender(), "animus", new String[]{"target", npc, target});
+                .execute(plugin.getServer().getConsoleSender(), "animus", new String[]{"combat", "mob", npc, mob});
     }
     private static Location location(Player player, String[] args, int start) {
         double x = Double.parseDouble(args[start]), y = Double.parseDouble(args[start + 1]), z = Double.parseDouble(args[start + 2]);

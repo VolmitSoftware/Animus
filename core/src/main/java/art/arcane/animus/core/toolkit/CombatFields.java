@@ -72,7 +72,6 @@ final class CombatFields {
     static Settings riding() {
         List<Field> fields = List.of(
                 plain("enabled", "Enabled", Kind.BOOLEAN, "Players with the permission may ride this NPC."),
-                plain("reviewAccepted", "Review accepted", Kind.BOOLEAN, "Imported NPCs can be ridden only once this is true."),
                 plain("permission", "Permission", Kind.TEXT, "The node a rider needs. " + RideSettings.DEFAULT_PERMISSION + " by default."),
                 number("speed", "Speed", Kind.NUMBER, RideSettings.MINIMUM_SPEED, RideSettings.MAXIMUM_SPEED, 0.5, "Blocks a second. " + RideSettings.DEFAULT_SPEED + " by default."),
                 number("leash", "Leash", Kind.NUMBER, RideSettings.MINIMUM_LEASH, RideSettings.MAXIMUM_LEASH, 4, "How far from its start a ride may go. " + RideSettings.DEFAULT_LEASH + " by default."),

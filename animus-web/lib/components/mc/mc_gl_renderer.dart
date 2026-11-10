@@ -27,6 +27,8 @@ import '../../mc/rigs/mc_rig_mesher.dart';
 import '../../mc/scene/mc_camera.dart';
 import '../../mc/scene/mc_math.dart';
 import '../../mc/scene/mc_scene.dart';
+import '../../mc/terrain/terrain_models.dart';
+import '../terrain/terrain_assets.dart';
 import 'mc_asset_loader.dart';
 import 'mc_gl.dart';
 
@@ -56,6 +58,7 @@ final class _Drawable {
   final web.HTMLImageElement? image;
   McMat4 model = McMat4.identity();
   bool glint = false;
+  double opacity = 1;
 }
 
 final class McGlRenderer {
@@ -158,7 +161,7 @@ final class McGlRenderer {
         if ((node is McMeshNode && node.translucent) != blended) continue;
         final _Drawable? d = _nodes[node.key];
         if (d == null) continue;
-        _setDraw(d.model, d.glint ? _glint : _noOverlay);
+        _setDraw(d.model, d.glint ? _glint : _noOverlay, opacity: d.opacity);
         gl.bindTexture(web.WebGL2RenderingContext.TEXTURE_2D, d.texture.texture);
         _gl.draw(d.buffer);
       }
@@ -228,13 +231,13 @@ final class McGlRenderer {
     gl.depthMask(true);
   }
 
-  void _setDraw(McMat4 model, List<double> overlay) {
+  void _setDraw(McMat4 model, List<double> overlay, {double opacity = 1}) {
     final web.WebGL2RenderingContext gl = _gl.gl;
     final McGlProgram p = _gl.program;
     gl.uniformMatrix4fv(p.uniforms['uModel'], false, model.toFloat32().toJS);
     gl.uniform4f(p.uniforms['uOverlay'], overlay[0], overlay[1], overlay[2], overlay[3]);
     gl.uniform4f(p.uniforms['uFlat'], _noFlat[0], _noFlat[1], _noFlat[2], _noFlat[3]);
-    gl.uniform1f(p.uniforms['uOpacity'], 1);
+    gl.uniform1f(p.uniforms['uOpacity'], opacity);
     gl.uniform1f(p.uniforms['uAlphaCutoff'], _cutoff);
   }
 
@@ -272,6 +275,7 @@ final class McGlRenderer {
       }
       d.model = node.transform;
       d.glint = node.glint;
+      d.opacity = node is McRigNode ? node.opacity : 1;
     }
     return waiting;
   }
@@ -309,8 +313,9 @@ final class McGlRenderer {
         });
         if (mesh.isEmpty) return null;
         return _Drawable(_gl.upload(mesh), itemAtlas ? _items : _blocks, node.signature, null);
-      case McBlockNode(:final String blockKey):
-        final McResolvedModel? model = _pack.resolver.resolveBlock(blockKey);
+      case McBlockNode(:final String blockKey, :final String? state, :final String? modelId):
+        if (state != null && state.contains('[')) return _stateBlock(node.signature, state);
+        final McResolvedModel? model = modelId != null ? _pack.resolver.resolveModel(modelId) : _pack.resolver.resolveBlock(blockKey);
         if (model == null || model.elements.isEmpty) return null;
         final McBlockstateVariantJson? variant = _pack.resolver.blockVariant(blockKey);
         final McMesh mesh = _meshCache.putIfAbsent(node.signature, () {
@@ -319,7 +324,7 @@ final class McGlRenderer {
             uv: _pack.manifest.blocks.uv,
             tint: (int? index) => mcTintForBlock(blockKey, index),
           );
-          if (variant == null || (variant.x == 0 && variant.y == 0)) return raw;
+          if (modelId != null || variant == null || (variant.x == 0 && variant.y == 0)) return raw;
           // Blockstate turns are clockwise seen from +X and from above.
           return raw.transformed(McMat4.translation(0.5, 0.5, 0.5)
               .multiply(McMat4.rotationY(-variant.y.toDouble()))
@@ -339,6 +344,29 @@ final class McGlRenderer {
         );
         return _Drawable(_gl.upload(mesh), texture, node.signature, _pack.hasImage(textureId) ? _pack.image(textureId) : null);
     }
+  }
+
+  /// A block state with properties, from the pack's full blockstates (which
+  /// load once, on first use); null while they load.
+  _Drawable? _stateBlock(String signature, String state) {
+    final TerrainAssets? terrain = TerrainAssets.loaded;
+    if (terrain == null) {
+      TerrainAssets.load().then((_) => McAssetLoader.notify(), onError: (Object _) {});
+      return null;
+    }
+    final McMesh mesh = _meshCache.putIfAbsent(signature, () {
+      final McMeshBuilder builder = McMeshBuilder();
+      for (final TerrainQuad quad in terrain.models.of(state).quads) {
+        builder.quad(
+          <List<double>>[for (int i = 0; i < 4; i++) <double>[quad.corners[i * 3], quad.corners[i * 3 + 1], quad.corners[i * 3 + 2]]],
+          <List<double>>[for (int i = 0; i < 4; i++) <double>[quad.uvs[i * 2], quad.uvs[i * 2 + 1]]],
+          quad.shade,
+          quad.tint,
+        );
+      }
+      return builder.build();
+    });
+    return _Drawable(_gl.upload(mesh), _blocks, signature, null);
   }
 
   /// Grass tops over a square patch, the y = 0 plane, plains-tinted.

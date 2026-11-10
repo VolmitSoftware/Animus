@@ -17,22 +17,17 @@ class LinkRemapTest {
     private static final java.util.UUID FOUR = java.util.UUID.fromString("00000000-0000-4000-8000-000000000004");
     private static final NpcLinks LINKS = NpcLinks.of(List.of(new NpcLinks.Link("citizens-3", INNKEEPER, 3, "Innkeeper"), new NpcLinks.Link("citizens-4", FOUR, 4, "Baker")));
     private static final String PACKAGE = "npcs:\n  innkeeper: citizens 3\nobjectives:\n  kill: npckill innkeeper\n";
-    private static final String PAGE = "{\"id\": \"p\", \"name\": \"town\", \"type\": \"static\", \"entries\": [{\"id\": \"inn\", \"type\": \"reference_npc\", \"npcId\": 3}]}";
 
     @TempDir Path plugins;
     @TempDir Path data;
     private DocumentStore store;
     private Path quest;
-    private Path page;
 
     @BeforeEach void files() throws IOException {
         store = new DocumentStore(data);
         quest = plugins.resolve("BetonQuest/QuestPackages/town/package.yml");
         Files.createDirectories(quest.getParent());
         Files.writeString(quest, PACKAGE);
-        page = plugins.resolve("Typewriter/pages/town.json");
-        Files.createDirectories(page.getParent());
-        Files.writeString(page, PAGE);
     }
 
     @AfterEach void close() throws IOException { store.close(); }
@@ -67,11 +62,8 @@ class LinkRemapTest {
         assertTrue(Files.readString(quest).contains("edited by hand"));
     }
 
-    @Test void typewriterPagesRelinkAndRollBack() throws IOException {
-        remap(LinkRemap.Plugin.TYPEWRITER).apply();
-        assertTrue(Files.readString(page).contains("\"animus_npc\""));
-        remap(LinkRemap.Plugin.TYPEWRITER).rollback();
-        assertEquals(PAGE, Files.readString(page));
+    @Test void relinksOnlyTheSupportedQuestPlugins() {
+        assertEquals(List.of("quests", "beautyquests", "betonquest"), java.util.Arrays.stream(LinkRemap.Plugin.values()).map(LinkRemap.Plugin::key).toList());
     }
 
     @Test void missingPluginFolderIsExplained() {
@@ -114,10 +106,10 @@ class LinkRemapTest {
 
     @Test void linksIndexEveryNpcAndTheImportedOnesByCitizensId() throws Exception {
         java.util.UUID made = java.util.UUID.fromString("00000000-0000-4000-8000-000000000009");
-        art.arcane.animus.core.npc.NpcDefinition imported = art.arcane.animus.core.npc.NpcDefinition.parse(("{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"%s\",\"id\":\"citizens-4\",\"group\":\"citizens\",\"name\":\"Baker\","
+        art.arcane.animus.core.npc.NpcDefinition imported = art.arcane.animus.core.npc.NpcDefinition.parse(("{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"%s\",\"id\":\"citizens-4\",\"group\":\"citizens\",\"name\":\"Baker\","
                 + "\"type\":\"minecraft:player\",\"spawned\":true,\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0},"
                 + "\"migration\":{\"importId\":\"a\",\"citizensId\":4}}").formatted(FOUR));
-        art.arcane.animus.core.npc.NpcDefinition guard = art.arcane.animus.core.npc.NpcDefinition.parse(("{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"%s\",\"id\":\"guard\",\"group\":\"\",\"name\":\"Guard\","
+        art.arcane.animus.core.npc.NpcDefinition guard = art.arcane.animus.core.npc.NpcDefinition.parse(("{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"%s\",\"id\":\"guard\",\"group\":\"\",\"name\":\"Guard\","
                 + "\"type\":\"minecraft:player\",\"spawned\":true,\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}}").formatted(made));
         NpcLinks links = NpcLinks.from(List.of(imported, guard));
         assertEquals(java.util.Optional.of("citizens-4"), links.citizens(4));

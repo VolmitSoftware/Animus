@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "f98155ca-fd8b-5692-8a7d-222b8e25699c",
+  "id": "crystal-bare",
+  "group": "settings",
+  "name": "Set crystal-bare",
+  "type": "minecraft:end_crystal",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "endCrystal": {
+    "base": "hidden"
+  }
+}

@@ -191,8 +191,7 @@ final class CitizensBehaviors {
         points = route.size(); guides = helpers.size();
         arrivals();
         JsonObject module = new JsonObject();
-        module.addProperty("enabled", false);
-        module.addProperty("reviewAccepted", false);
+        module.addProperty("enabled", true);
         module.addProperty("mode", "walk");
         module.addProperty("speed", speed());
         module.addProperty("order", order);

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "56056a17-cc5e-5250-afe9-136e0d5d376a",
+  "id": "enderman-angry",
+  "group": "settings",
+  "name": "Set enderman-angry",
+  "type": "minecraft:enderman",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "enderman": {
+    "angry": true
+  }
+}

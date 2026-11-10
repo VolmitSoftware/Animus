@@ -21,7 +21,6 @@ import art.arcane.volmlib.util.director.annotations.Director;
 import art.arcane.volmlib.util.director.annotations.Param;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -242,7 +241,6 @@ final class ContentCommands {
         LinkCommands.Quests quests;
         LinkCommands.BeautyQuests beautyquests;
         LinkCommands.BetonQuest betonquest;
-        LinkCommands.Typewriter typewriter;
 
         Import(CommandServices services) {
             super(services);
@@ -253,7 +251,6 @@ final class ContentCommands {
             shops = new ServiceCommands.ShopImport(services);
             gloss = new ServiceCommands.GuiImport(services);
             betonquest = new LinkCommands.BetonQuest(services);
-            typewriter = new LinkCommands.Typewriter(services);
         }
 
         @Director(description = "Convert a file in imports/inbox/ into a reviewable preview")
@@ -334,7 +331,7 @@ final class ContentCommands {
         }
     }
 
-    @Director(name = "citizens", description = "Migrate a Citizens server: preview, apply, review, accept, rollback")
+    @Director(name = "citizens", description = "Migrate a Citizens server: preview, apply, review, rollback")
     static final class Citizens extends CommandGroup {
         Citizens(CommandServices services) { super(services); }
 
@@ -360,21 +357,20 @@ final class ContentCommands {
             step((CitizensDropIn dropIn) -> dropIn.preview(mode.name().toLowerCase(Locale.ROOT), given(copy), renames, factorGroups));
         }
 
-        @Director(description = "Install the staged preview")
-        void apply() { step(CitizensDropIn::applyStaged); }
-
-        @Director(description = "List the imported settings still waiting for review")
-        void review() { step(CitizensDropIn::reviewApplied); }
-
-        @Director(description = "Turn on reviewed categories, or allow the command namespaces converted behaviors run")
-        void accept(@Param(name = "categories", description = "Comma-separated categories, all, or commands") String categories) {
-            List<String> chosen = Arrays.stream(categories.split(",")).map(String::strip).filter((String category) -> !category.isEmpty()).toList();
-            Optional<String> refused = art.arcane.animus.core.editor.EditorCommands.acceptRefusal(actor(), chosen);
-            if (refused.isPresent()) { actor().tell(Palette.error(refused.get())); return; }
-            step((CitizensDropIn dropIn) -> dropIn.acceptCategories(chosen));
+        @Director(description = "Install the staged preview with everything it converted turned on")
+        void apply() {
+            CommandActor actor = actor();
+            step((CitizensDropIn dropIn) -> {
+                Optional<String> refused = art.arcane.animus.core.editor.EditorCommands.applyRefusal(actor, dropIn.commandGrants());
+                if (refused.isPresent()) throw new java.io.IOException(refused.get());
+                return dropIn.applyStaged();
+            });
         }
 
-        @Director(description = "Undo the import and every acceptance")
+        @Director(description = "List what the applied import converted and what it kept without converting")
+        void review() { step(CitizensDropIn::reviewApplied); }
+
+        @Director(description = "Undo the import")
         void rollback() { step(CitizensDropIn::rollbackApplied); }
     }
 }

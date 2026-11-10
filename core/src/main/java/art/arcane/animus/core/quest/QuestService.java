@@ -110,7 +110,7 @@ public final class QuestService<P, S> implements QuestControl, AutoCloseable {
     public String status() {
         QuestCatalog current = catalog;
         return "Quests " + (closed ? "stopped" : "enabled") + " | quests=" + current.quests().size() + " | problems=" + current.problems().size()
-                + " | players=" + store.players().size() + " | offers=" + play.offers();
+                + " | players=" + store.loaded() + " | offers=" + play.offers();
     }
 
     /** Reads the catalog on the file lane; the result completes once the new catalog is live, or at once when the queue refuses the work. */
@@ -157,7 +157,9 @@ public final class QuestService<P, S> implements QuestControl, AutoCloseable {
         living.players().deliver(player, (P online) -> play.killed(online, entity, npcId));
     }
 
-    public void quit(P player) { play.forget(host().id(player)); markers.quit(player); }
+    /** On the player's owner as they join: reads their record. */
+    public void joined(P player) { if (!closed) store.record(host().id(player)); }
+    public void quit(P player) { UUID id = host().id(player); play.forget(id); markers.quit(player); store.release(id); }
     public void worldChanged(P player) { markers.reset(player); }
 
     /** Opens the journal on the player's owner. */
@@ -193,8 +195,16 @@ public final class QuestService<P, S> implements QuestControl, AutoCloseable {
     /** An offer button click from the command; false when the player is offline. */
     public boolean choice(UUID player, String token, String option) { return living.players().deliver(player, (P online) -> choice(online, token, option)); }
 
-    /** Forgets one quest, or all of them, for a player online or not, and sets their stages back to 0; any thread. */
-    public void reset(UUID player, Optional<String> quest) { play.reset(player, quest.map((String id) -> quest(id, Optional.empty()))); }
+    /**
+     * Forgets one quest, or all the player has, and sets their stages back to 0; any thread. An online player's reset
+     * runs on their owner, an offline player's record is read, reset and written.
+     */
+    public void reset(UUID player, Optional<String> quest) {
+        Optional<QuestDocument> only = quest.map((String id) -> quest(id, Optional.empty()));
+        if (onPlayer(player, () -> play.reset(player, only))) return;
+        play.reset(player, only);
+        store.release(player);
+    }
 
     /** Loaded quest ids, for completion. */
     public List<String> questIds() { return catalog.quests().keySet().stream().sorted().toList(); }
@@ -222,7 +232,7 @@ public final class QuestService<P, S> implements QuestControl, AutoCloseable {
 
     /** One player's active and finished quests; any thread. */
     public List<String> playerRows(UUID player) {
-        QuestRecord record = store.record(player);
+        QuestRecord record = store.peek(player).orElseGet(QuestRecord::new);
         List<String> rows = new java.util.ArrayList<>();
         record.active().forEach((String id, QuestRecord.Active active) -> {
             Optional<QuestDocument> quest = catalog.quest(id);

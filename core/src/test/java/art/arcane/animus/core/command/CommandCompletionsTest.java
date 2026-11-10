@@ -86,7 +86,7 @@ class CommandCompletionsTest {
     @Test void npcIdsAreNotCutBeforeThePrefixIsApplied() throws Exception {
         List<art.arcane.animus.core.npc.NpcDefinition> many = new ArrayList<>();
         for (int index = 0; index < 300; index++)
-            many.add(art.arcane.animus.core.npc.NpcDefinition.parse("{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"" + UUID.randomUUID() + "\",\"id\":\"citizens-" + index
+            many.add(art.arcane.animus.core.npc.NpcDefinition.parse("{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"" + UUID.randomUUID() + "\",\"id\":\"citizens-" + index
                     + "\",\"type\":\"minecraft:player\",\"group\":\"\",\"name\":\"N\",\"spawned\":false,\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}}"));
         List<String> ids = CommandCompletions.ids(many, true);
         assertTrue(ids.contains("citizens-299") && ids.contains(CommandGroup.SELECTED), "every id is offered: " + ids.size());

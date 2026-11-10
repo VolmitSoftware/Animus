@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "232f57e5-1006-52d8-89aa-5daec5e68e02",
+  "id": "zombie-armed",
+  "group": "settings",
+  "name": "Set zombie-armed",
+  "type": "minecraft:zombie",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "equipment": {
+    "main_hand": {
+      "id": "minecraft:iron_sword"
+    },
+    "head": {
+      "id": "minecraft:golden_helmet"
+    },
+    "chest": {
+      "id": "minecraft:chainmail_chestplate"
+    }
+  }
+}

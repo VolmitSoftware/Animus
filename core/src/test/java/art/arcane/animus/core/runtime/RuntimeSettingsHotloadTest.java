@@ -247,7 +247,7 @@ class RuntimeSettingsHotloadTest {
         Path file = harness.npcs.resolve(id + ".json");
         int revision = Files.exists(file) ? Integer.parseInt(Files.readString(file).replaceAll("(?s).*\"revision\": (\\d+).*", "$1")) + 1 : 1;
         Files.writeString(file, """
-                {"schemaVersion": 1, "revision": %d, "uuid": "%s", "id": "%s", "group": "test",
+                {"schemaVersion": 2, "revision": %d, "uuid": "%s", "id": "%s", "group": "test",
                  "name": "%s", "type": "minecraft:villager", "spawned": %s,
                  "position": {"world": "world", "x": %s, "y": 64, "z": 6.5, "yaw": 0, "pitch": 0}%s}
                 """.formatted(revision, uuid(id), id, id, spawned, x, extra));

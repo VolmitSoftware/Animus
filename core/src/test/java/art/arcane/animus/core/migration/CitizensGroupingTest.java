@@ -59,22 +59,19 @@ class CitizensGroupingTest {
         assertEquals("survival", horse.get("group").getAsString());
     }
 
-    @Test void controllableBecomesDisabledRidingAndImportedShopsWaitForReview() throws Exception {
+    @Test void controllableBecomesRidingAndImportedShopsOpen() throws Exception {
         Path source = Files.writeString(root.resolve("saves.yml"), SAVES);
         CitizensImporter.Preview preview = new CitizensImporter().preview(source, root.resolve("data"), Map.of());
         JsonObject horse = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/old/citizens-2.json")));
         JsonObject riding = horse.getAsJsonObject("modules").getAsJsonObject(RideSettings.MODULE);
-        assertFalse(riding.get("enabled").getAsBoolean());
-        assertFalse(riding.get("reviewAccepted").getAsBoolean());
-        assertTrue(RideSettings.parse(horse).isEmpty());
+        assertTrue(riding.get("enabled").getAsBoolean() && !riding.has("reviewAccepted"));
+        assertTrue(RideSettings.parse(horse).isPresent());
         JsonObject parked = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/old/citizens-4.json")));
         assertFalse(parked.getAsJsonObject("modules").has(RideSettings.MODULE));
 
         JsonObject baker = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/world-nether/citizens-1.json")));
         JsonObject shop = baker.getAsJsonObject("modules").getAsJsonObject(ShopBinding.MODULE);
-        assertFalse(shop.get("reviewAccepted").getAsBoolean());
-        assertTrue(ShopBinding.parse(baker).isEmpty());
-        shop.addProperty("reviewAccepted", true);
+        assertFalse(shop.has("reviewAccepted"));
         assertEquals("dtltraders:bakery", ShopBinding.parse(baker).orElseThrow().shop());
     }
 

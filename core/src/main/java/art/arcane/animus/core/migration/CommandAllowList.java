@@ -54,16 +54,6 @@ final class CommandAllowList {
         return names;
     }
 
-    /** What the review says about these namespaces: already allowed, or how accept commands allows them. */
-    static String advice(DocumentStore store, List<String> needed) throws IOException {
-        List<String> missing = new ArrayList<>(needed);
-        missing.removeAll(allowed(read(store)));
-        String names = String.join(", ", needed);
-        if (missing.isEmpty()) return "command namespace" + (needed.size() == 1 ? " " : "s ") + names + (needed.size() == 1 ? " is" : " are") + " already allowed by commandNamespaces";
-        return "the import needs command namespace" + (missing.size() == 1 ? " " : "s ") + String.join(", ", missing)
-                + "; after apply, /animus import citizens accept commands allows " + (missing.size() == 1 ? "it" : "them");
-    }
-
     /** {@code toml} with {@code commandNamespaces} set to exactly {@code namespaces}; the rest of the text is unchanged. */
     static String with(String toml, List<String> namespaces) throws IOException {
         StringBuilder rendered = new StringBuilder("commandNamespaces = [");

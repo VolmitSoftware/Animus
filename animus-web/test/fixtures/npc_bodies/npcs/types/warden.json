@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "188daacf-f2fd-5d2b-8de0-96975938abfe",
+  "id": "warden",
+  "group": "types",
+  "name": "Body warden",
+  "type": "minecraft:warden",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

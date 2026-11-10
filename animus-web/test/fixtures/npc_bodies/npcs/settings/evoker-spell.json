@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "f3d854e3-f4ba-5507-b225-731a6785ed24",
+  "id": "evoker-spell",
+  "group": "settings",
+  "name": "Set evoker-spell",
+  "type": "minecraft:evoker",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "evoker": {
+    "spell": "fangs"
+  }
+}

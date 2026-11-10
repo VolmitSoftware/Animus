@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "0e8339e4-e241-5057-93fb-37d0525836ff",
+  "id": "block-display",
+  "group": "types",
+  "name": "Body block_display",
+  "type": "minecraft:block_display",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "blockDisplay": {
+    "block": "minecraft:oak_stairs[facing=east]"
+  }
+}

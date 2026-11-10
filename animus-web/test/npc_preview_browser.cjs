@@ -6,7 +6,8 @@
 // from the keyboard, loads a skin PNG from the inspector, and checks that a
 // PNG of the wrong size says why. A player with no skin wears its built-in
 // placeholder (served, decoded, not blank), and picking a built-in skin in
-// the inspector wears it. Needs the asset pack (tool/extract_minecraft_world_assets.dart)
+// the inspector wears it. A pack without a body's texture still settles
+// and says the body is drawn white. Needs the asset pack (tool/extract_minecraft_world_assets.dart)
 // in the build.
 //
 //   python3 tool/serve_site.py --port <port>
@@ -220,11 +221,40 @@ async function run(browser, viewport, label, dark) {
   await page.close();
 }
 
+// A pack built before a body's texture was added lacks it: the stage still
+// settles, draws the body white and says which texture is missing.
+async function missingTexture(browser) {
+  const page = await browser.newPage({viewport: {width: 1440, height: 900}});
+  page.setDefaultTimeout(15000);
+  await page.route('**/assets/mc/*/pack.json', async route => {
+    const response = await route.fetch();
+    const pack = await response.json();
+    delete pack.entityTextures['entity/frog/frog_temperate'];
+    await route.fulfill({response, json: pack});
+  });
+  await page.goto(process.env.ANIMUS_WEB_URL);
+  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', {name: 'Open folder'}).first().click();
+  await (await chooser).setFiles(folder);
+  await (await sidebar(page)).getByText('Ribbit', {exact: true}).waitFor();
+  const workspace = page.url().split('#')[1].split('?')[0];
+  await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/${encodeURIComponent('animals/frog')}?view=preview`);
+  await page.waitForFunction(() => {
+    const element = document.querySelector('.animus-mc-gl-host');
+    return element && Number(element.getAttribute('data-frames')) > 0 && element.getAttribute('data-unbuilt') === '0';
+  });
+  assert.ok(Number(await page.locator('.animus-mc-gl-host').getAttribute('data-drawn')) > 0, 'missing texture: no mesh drawn');
+  await page.locator('.animus-mc-status').getByText(/is not in the asset pack and is drawn white/).waitFor();
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']});
   try {
     await run(browser, {width: 1440, height: 900}, 'desktop-dark', true);
     await run(browser, {width: 390, height: 844}, 'phone-light', false);
+    await missingTexture(browser);
     console.log('npc_preview_browser: ok');
   } finally {
     await browser.close();

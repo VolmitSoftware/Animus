@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "deb7055e-5698-5b3e-8184-235f514c7e01",
+  "id": "silverfish",
+  "group": "types",
+  "name": "Body silverfish",
+  "type": "minecraft:silverfish",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

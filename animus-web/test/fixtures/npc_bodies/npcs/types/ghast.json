@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "f6f27676-337c-50d4-ba5f-e57a4bc4c15e",
+  "id": "ghast",
+  "group": "types",
+  "name": "Body ghast",
+  "type": "minecraft:ghast",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

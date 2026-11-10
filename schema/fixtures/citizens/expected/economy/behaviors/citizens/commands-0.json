@@ -6,135 +6,247 @@
   "routines": {
     "right": {
       "type": "condition",
-      "capability": "animus:can-afford",
-      "arguments": {
-        "levels": 2
-      },
+      "capability": "animus:commands-allowed",
+      "arguments": {},
       "then": {
-        "type": "sequence",
-        "steps": [
-          {
-            "type": "action",
-            "capability": "animus:charge",
-            "arguments": {
-              "levels": 2
-            }
-          },
-          {
-            "type": "sequence",
-            "steps": [
-              {
-                "type": "condition",
-                "capability": "animus:flag-state",
-                "arguments": {
-                  "name": "commands-0-0-cooldown",
-                  "scope": "relationship"
-                },
-                "then": {
-                  "type": "action",
-                  "capability": "animus:message",
-                  "arguments": {
-                    "text": "Not yet, {player_name}."
-                  }
-                },
-                "else": {
+        "type": "condition",
+        "capability": "animus:can-afford",
+        "arguments": {
+          "levels": 2
+        },
+        "then": {
+          "type": "sequence",
+          "steps": [
+            {
+              "type": "action",
+              "capability": "animus:charge",
+              "arguments": {
+                "levels": 2
+              }
+            },
+            {
+              "type": "sequence",
+              "steps": [
+                {
                   "type": "condition",
-                  "capability": "animus:quest-state",
-                  "arguments": {
-                    "name": "commands-0-0-uses",
-                    "scope": "relationship",
-                    "atLeast": 3
-                  },
+                  "capability": "animus:commands-allowed",
+                  "arguments": {},
                   "then": {
-                    "type": "action",
-                    "capability": "animus:message",
-                    "arguments": {
-                      "text": "You have reached the maximum number of uses (3)."
-                    }
-                  },
-                  "else": {
                     "type": "condition",
-                    "capability": "animus:can-afford",
+                    "capability": "animus:flag-state",
                     "arguments": {
-                      "money": 2.5
+                      "name": "commands-0-0-cooldown",
+                      "scope": "relationship"
                     },
                     "then": {
-                      "type": "condition",
-                      "capability": "animus:can-afford",
+                      "type": "action",
+                      "capability": "animus:message",
                       "arguments": {
-                        "items": [
-                          {
-                            "item": {
-                              "id": "minecraft:gold_nugget"
-                            },
-                            "amount": 4
-                          }
-                        ]
+                        "text": "Not yet, {player_name}."
+                      }
+                    },
+                    "else": {
+                      "type": "condition",
+                      "capability": "animus:quest-state",
+                      "arguments": {
+                        "name": "commands-0-0-uses",
+                        "scope": "relationship",
+                        "atLeast": 3
                       },
                       "then": {
+                        "type": "action",
+                        "capability": "animus:message",
+                        "arguments": {
+                          "text": "You have reached the maximum number of uses (3)."
+                        }
+                      },
+                      "else": {
+                        "type": "condition",
+                        "capability": "animus:can-afford",
+                        "arguments": {
+                          "money": 2.5
+                        },
+                        "then": {
+                          "type": "condition",
+                          "capability": "animus:can-afford",
+                          "arguments": {
+                            "items": [
+                              {
+                                "item": {
+                                  "id": "minecraft:gold_nugget"
+                                },
+                                "amount": 4
+                              }
+                            ]
+                          },
+                          "then": {
+                            "type": "sequence",
+                            "steps": [
+                              {
+                                "type": "action",
+                                "capability": "animus:charge",
+                                "arguments": {
+                                  "money": 2.5,
+                                  "items": [
+                                    {
+                                      "item": {
+                                        "id": "minecraft:gold_nugget"
+                                      },
+                                      "amount": 4
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "type": "action",
+                                "capability": "animus:set-flag",
+                                "arguments": {
+                                  "name": "commands-0-0-cooldown",
+                                  "scope": "relationship",
+                                  "expireSeconds": 30
+                                }
+                              },
+                              {
+                                "type": "action",
+                                "capability": "animus:advance-quest-state",
+                                "arguments": {
+                                  "name": "commands-0-0-uses",
+                                  "scope": "relationship"
+                                }
+                              },
+                              {
+                                "type": "action",
+                                "capability": "animus:command",
+                                "arguments": {
+                                  "command": "give {player_name} minecraft:map 1",
+                                  "as": "console"
+                                }
+                              }
+                            ]
+                          },
+                          "else": {
+                            "type": "action",
+                            "capability": "animus:message",
+                            "arguments": {
+                              "text": "Missing 4 Gold nugget"
+                            }
+                          }
+                        },
+                        "else": {
+                          "type": "action",
+                          "capability": "animus:message",
+                          "arguments": {
+                            "text": "Bring $2.5 next time."
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "condition",
+                  "capability": "animus:commands-allowed",
+                  "arguments": {},
+                  "then": {
+                    "type": "condition",
+                    "capability": "animus:flag-state",
+                    "arguments": {
+                      "name": "commands-0-1-global-cooldown",
+                      "scope": "npc"
+                    },
+                    "then": {
+                      "type": "action",
+                      "capability": "animus:message",
+                      "arguments": {
+                        "text": "Please wait before using this again."
+                      }
+                    },
+                    "else": {
+                      "type": "condition",
+                      "capability": "animus:quest-state",
+                      "arguments": {
+                        "name": "commands-0-1-global-uses",
+                        "scope": "npc",
+                        "atLeast": 100
+                      },
+                      "then": {
+                        "type": "action",
+                        "capability": "animus:message",
+                        "arguments": {
+                          "text": "You have reached the maximum number of uses (100)."
+                        }
+                      },
+                      "else": {
                         "type": "sequence",
                         "steps": [
                           {
                             "type": "action",
-                            "capability": "animus:charge",
-                            "arguments": {
-                              "money": 2.5,
-                              "items": [
-                                {
-                                  "item": {
-                                    "id": "minecraft:gold_nugget"
-                                  },
-                                  "amount": 4
-                                }
-                              ]
-                            }
-                          },
-                          {
-                            "type": "action",
                             "capability": "animus:set-flag",
                             "arguments": {
-                              "name": "commands-0-0-cooldown",
-                              "scope": "relationship",
-                              "expireSeconds": 30
+                              "name": "commands-0-1-global-cooldown",
+                              "scope": "npc",
+                              "expireSeconds": 600
                             }
                           },
                           {
                             "type": "action",
                             "capability": "animus:advance-quest-state",
                             "arguments": {
-                              "name": "commands-0-0-uses",
-                              "scope": "relationship"
+                              "name": "commands-0-1-global-uses",
+                              "scope": "npc"
                             }
                           },
                           {
                             "type": "action",
                             "capability": "animus:command",
                             "arguments": {
-                              "command": "give {player_name} minecraft:map 1",
+                              "command": "say Toll Keeper paid the toll",
                               "as": "console"
                             }
                           }
                         ]
-                      },
-                      "else": {
-                        "type": "action",
-                        "capability": "animus:message",
-                        "arguments": {
-                          "text": "Missing 4 Gold nugget"
-                        }
-                      }
-                    },
-                    "else": {
-                      "type": "action",
-                      "capability": "animus:message",
-                      "arguments": {
-                        "text": "Bring $2.5 next time."
                       }
                     }
                   }
                 }
-              },
-              {
+              ]
+            }
+          ]
+        },
+        "else": {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": "You need at least 2 experience."
+          }
+        }
+      }
+    },
+    "left": {
+      "type": "condition",
+      "capability": "animus:commands-allowed",
+      "arguments": {},
+      "then": {
+        "type": "condition",
+        "capability": "animus:can-afford",
+        "arguments": {
+          "levels": 2
+        },
+        "then": {
+          "type": "sequence",
+          "steps": [
+            {
+              "type": "action",
+              "capability": "animus:charge",
+              "arguments": {
+                "levels": 2
+              }
+            },
+            {
+              "type": "condition",
+              "capability": "animus:commands-allowed",
+              "arguments": {},
+              "then": {
                 "type": "condition",
                 "capability": "animus:flag-state",
                 "arguments": {
@@ -195,102 +307,15 @@
                   }
                 }
               }
-            ]
-          }
-        ]
-      },
-      "else": {
-        "type": "action",
-        "capability": "animus:message",
-        "arguments": {
-          "text": "You need at least 2 experience."
-        }
-      }
-    },
-    "left": {
-      "type": "condition",
-      "capability": "animus:can-afford",
-      "arguments": {
-        "levels": 2
-      },
-      "then": {
-        "type": "sequence",
-        "steps": [
-          {
-            "type": "action",
-            "capability": "animus:charge",
-            "arguments": {
-              "levels": 2
             }
-          },
-          {
-            "type": "condition",
-            "capability": "animus:flag-state",
-            "arguments": {
-              "name": "commands-0-1-global-cooldown",
-              "scope": "npc"
-            },
-            "then": {
-              "type": "action",
-              "capability": "animus:message",
-              "arguments": {
-                "text": "Please wait before using this again."
-              }
-            },
-            "else": {
-              "type": "condition",
-              "capability": "animus:quest-state",
-              "arguments": {
-                "name": "commands-0-1-global-uses",
-                "scope": "npc",
-                "atLeast": 100
-              },
-              "then": {
-                "type": "action",
-                "capability": "animus:message",
-                "arguments": {
-                  "text": "You have reached the maximum number of uses (100)."
-                }
-              },
-              "else": {
-                "type": "sequence",
-                "steps": [
-                  {
-                    "type": "action",
-                    "capability": "animus:set-flag",
-                    "arguments": {
-                      "name": "commands-0-1-global-cooldown",
-                      "scope": "npc",
-                      "expireSeconds": 600
-                    }
-                  },
-                  {
-                    "type": "action",
-                    "capability": "animus:advance-quest-state",
-                    "arguments": {
-                      "name": "commands-0-1-global-uses",
-                      "scope": "npc"
-                    }
-                  },
-                  {
-                    "type": "action",
-                    "capability": "animus:command",
-                    "arguments": {
-                      "command": "say Toll Keeper paid the toll",
-                      "as": "console"
-                    }
-                  }
-                ]
-              }
-            }
+          ]
+        },
+        "else": {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": "You need at least 2 experience."
           }
-        ]
-      },
-      "else": {
-        "type": "action",
-        "capability": "animus:message",
-        "arguments": {
-          "text": "You need at least 2 experience."
         }
       }
     }

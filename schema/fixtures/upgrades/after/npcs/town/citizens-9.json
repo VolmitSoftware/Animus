@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 2,
+  "revision": 3,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000901",
+  "id": "citizens-9",
+  "group": "town",
+  "name": "Guard",
+  "type": "minecraft:player",
+  "spawned": true,
+  "migration": {
+    "importId": "b9d1c92d1f83ee36c92bc8a4e748154c66ab0090897e96d3bb3f9eea90b0e660",
+    "citizensId": 9
+  },
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64.0,
+    "z": 0.5,
+    "yaw": 0.0,
+    "pitch": 0.0
+  },
+  "groups": [
+    "guards"
+  ],
+  "modules": {
+    "animus:combat": {
+      "enabled": true,
+      "targeting": {
+        "fightBack": true
+      }
+    },
+    "animus:navigation": {
+      "enabled": true,
+      "route": "market-loop"
+    },
+    "animus:riding": {
+      "enabled": true
+    },
+    "animus:builder": {
+      "schematic": "hall.schem"
+    }
+  }
+}

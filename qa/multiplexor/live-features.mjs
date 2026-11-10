@@ -21,10 +21,12 @@ import { quests as questHosts } from './live-betonquest.mjs';
 import { schedules } from './live-schedules.mjs';
 import { mythic } from './live-mythic.mjs';
 import { citizensEconomy } from './live-citizens-economy.mjs';
+import { importApply } from './live-import-apply.mjs';
 import { nativeQuests } from './live-native-quests.mjs';
 import { motion } from './live-motion.mjs';
 import { presentation } from './live-presentation.mjs';
-import { looks, gatedCommands } from './live-looks.mjs';
+import { looks, gatedCommands, disguiseSkins } from './live-looks.mjs';
+import { foliaHome } from './live-folia-home.mjs';
 
 const args = parseArgs();
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -48,7 +50,6 @@ const fixture = args.get('fixture') ? path.resolve(args.get('fixture')) : null;
 // Other plugins a scenario needs beside Animus, such as PlaceholderAPI for the placeholders scenario.
 const extraPlugins = (args.get('extra-plugins') ?? '').split(',').filter(Boolean).map(file => path.resolve(file));
 const papiExpansions = (args.get('papi-expansions') ?? '').split(',').filter(Boolean).map(file => path.resolve(file));
-const typewriterExtensions = (args.get('typewriter-extensions') ?? '').split(',').filter(Boolean).map(file => path.resolve(file));
 const javaHome = args.get('java-home') ?? '/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home';
 // Fabric, NeoForge and Forge run the mod jar on a vanilla server: data lives in config/animus and no Bukkit fixture exists.
 const MOD = ['fabric', 'neoforge', 'forge'].includes(project);
@@ -59,7 +60,7 @@ const scenarios = (args.get('scenarios') ?? defaultScenarios).split(',');
 const dashed = version.replaceAll('.', '-');
 const name = args.get('instance-name') ?? (MOD ? `animus-mod-${project}-${dashed}` : `animus-live-${project}-${dashed}`);
 // A Folia run may also use the animus-folia-paper-<version> instance a Folia check was asked to run on.
-assert(new RegExp(MOD ? `^animus-(?:mod|r3-live(?:-[a-z]+)?|r3-merge(?:-[a-z]+)?)-${project}-${dashed}$` : `^animus-(?:live|gate-live|guarddebug|foliafinal|builderscaffold|combatedges|shopstyle|swinglook|npckeys|parity|movestyles|commandfeel|placeholders|r3-quests-pq-(?:pika|bq)|r3-quests-bq|r3-destinations|r3-mythic|r3-cz-shop|r3-quest-core|r3-cz-motion|presentation|r3-cz-presentation|r3-live(?:-[a-z]+)?)-${project}-${dashed}$`).test(name)
+assert(new RegExp(MOD ? `^animus-(?:mod|r3-live(?:-[a-z]+)?|r3-merge(?:-[a-z]+)?|r4-[a-z0-9]+(?:-[a-z0-9]+)?)-${project}-${dashed}$` : `^animus-(?:live|gate-live|guarddebug|foliafinal|builderscaffold|combatedges|shopstyle|swinglook|npckeys|parity|movestyles|commandfeel|placeholders|r3-quests-pq-(?:pika|bq)|r3-quests-bq|r3-destinations|r3-mythic|r3-cz-shop|r3-quest-core|r3-cz-motion|presentation|r3-cz-presentation|r3-live(?:-[a-z]+)?|r4-[a-z0-9]+(?:-[a-z0-9]+)?)-${project}-${dashed}$`).test(name)
   || project === 'folia' && name === `animus-folia-paper-${dashed}`, 'Instance name must bind the requested platform/version');
 assert(!MOD || !fixture, 'The QA event fixture is a Bukkit plugin; mod servers run without it');
 const instances = path.join(workspace, `consumers/${MOD ? `${project}-mod` : 'plugin'}-consumers/instances`);
@@ -139,7 +140,7 @@ class Server {
     writeFileSync(path.join(instance, 'eula.txt'), existsSync(path.join(template, 'eula.txt')) ? readFileSync(path.join(template, 'eula.txt')) : 'eula=true\n');
     const plugins = path.join(instance, MOD ? 'mods' : 'plugins');
     // Every run starts from empty plugin data so no earlier revision, checkpoint or state answers for this run.
-    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|guarddebug|foliafinal|builderscaffold|combatedges|shopstyle|swinglook|npckeys|parity|movestyles|commandfeel|placeholders|r3-quests-pq|r3-quests-bq|r3-destinations|r3-mythic|r3-cz-shop|r3-quest-core|r3-cz-motion|presentation|r3-cz-presentation|r3-live|r3-merge|mod|folia-paper)-/.test(path.basename(instance)));
+    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|guarddebug|foliafinal|builderscaffold|combatedges|shopstyle|swinglook|npckeys|parity|movestyles|commandfeel|placeholders|r3-quests-pq|r3-quests-bq|r3-destinations|r3-mythic|r3-cz-shop|r3-quest-core|r3-cz-motion|presentation|r3-cz-presentation|r3-live|r3-merge|r4-[a-z0-9]+|mod|folia-paper)-/.test(path.basename(instance)));
     rmSync(data, { recursive: true, force: true });
     mkdirSync(data, { recursive: true });
     mkdirSync(plugins, { recursive: true });
@@ -168,7 +169,8 @@ class Server {
   }
   async start() {
     if (existsSync(logFile)) { copyFileSync(logFile, path.join(results, `${name}-${++this.logs}.log`)); unlinkSync(logFile); }
-    mux('runtime', 'start', name, '--no-console');
+    const started = mux('runtime', 'start', name, '--no-console');
+    assert(!/Already running/.test(started), `Multiplexor did not start ${name}: ${started.trim().slice(0, 200)}`);
     await this.waitLog(/Done \([\d.]+s\)!/, 0, 180_000);
     if (project === 'folia') return;
     await this.cmd('gamerule minecraft:spawn_mobs false', /spawn_mobs/);
@@ -228,7 +230,9 @@ class Server {
     });
     await this.cmd('stop');
     const leftover = await threads;
-    for (let i = 0; i < 900 && (await portOpen(this.port) || this.pidOf()); i++) await delay(100);
+    // A mod JVM can close its port well before it exits; Multiplexor answers "Already running" to a start until it has.
+    const alive = () => { try { return pid !== '' && process.kill(Number(pid), 0); } catch { return false; } };
+    for (let i = 0; i < 900 && (await portOpen(this.port) || this.pidOf() || alive()); i++) await delay(100);
     note(`threads after disable: ${JSON.stringify(leftover)}`);
     this.lastThreads = leftover;
     assert.equal(await portOpen(this.port), false, 'Server port still open after stop');
@@ -1767,6 +1771,8 @@ async function combat() {
     assert(after >= before, `still hit after disengage: ${before} -> ${after}`);
     results.disengaged = await combatOf('cmelee');
     assert(/disengaged/.test(results.disengaged) && /target=none/.test(results.disengaged), results.disengaged);
+    // Engage lets the brawler land hits until release; resistance keeps the owner alive for the target and guard commands.
+    await server.cmd(`effect give ${OWNER.name} minecraft:resistance 30 4 true`, /Applied|effect/i);
     results.engage = await combatCommand('cmelee', 'engage');
     await until(async () => { const s = await combatOf('cmelee'); return { ok: /target=PLAYER:/.test(s), s }; }, 6000, 'engage did not retarget');
     results.release = await combatCommand('cmelee', 'release');
@@ -1778,6 +1784,7 @@ async function combat() {
     assert(/Unknown NPC|No NPC named nobody/.test(results.unknown), results.unknown);
     await combatCommand('cmelee', 'disengage');
     await server.cmd('animus delete cmelee', /Deleted/);
+    await server.cmd(`effect clear ${OWNER.name} minecraft:resistance`, /Removed|effect/i);
     note(JSON.stringify(results));
     return Object.entries(results).map(([k, v]) => `${k}=${v.replace(/^Combat [^:]*: /, '').slice(0, 60)}`).join('; ').slice(0, 300);
   });
@@ -1869,6 +1876,8 @@ async function combat() {
     await server.cmd(`effect give ${OWNER.name} minecraft:instant_health 1 5 true`, /Applied|effect/i);
     await owner.tp(-20, 61, -12);
     const peer = await join(PEER.name, 'survival');
+    // The peer rejoins where it last stood, which an earlier check may have left inside the sentry's scan range.
+    await peer.tp(20, 61, 20);
     await server.npc('cowned', 'minecraft:player', -20.5, 61, -14.5, 'Sentry', { owner: OWNER.uuid, ...combatNpc({
       targets: { categories: ['players'] }, ignores: { owner: true }, targeting: { scanRange: 16, scanIntervalTicks: 5, lineOfSight: 'ignored' },
       melee: { damage: 1, reach: 3, cooldownTicks: 20 }, pursuit: { speed: 3, giveUpRange: 24, leashRange: 24 },
@@ -2310,10 +2319,7 @@ async function scaffolding() {
       const together = [];
       for (const [a, b, label] of pairs) {
         const first = `${ox + a[0]},${oy + a[1]},${oz + a[2]}`, second = `${ox + b[0]},${oy + b[1]},${oz + b[2]}`;
-        const packet = packets.find(p => p.cells.some(c => (key(c) === first || key(c) === second) && c.state !== 'minecraft:air'));
-        assert(packet, `${label} never arrived`);
-        const keys = packet.cells.filter(c => c.state !== 'minecraft:air').map(key);
-        assert(keys.includes(first) && keys.includes(second), `${label} halves arrived apart: ${JSON.stringify(packet.cells)}`);
+        assert(halvesTogether(owner.events.slice(watched), first, second, a, b, ox, oz), `${label} halves arrived apart: ${JSON.stringify(packets.filter(p => p.cells.some(c => key(c) === first || key(c) === second)).map(p => p.cells))}`);
         together.push(label);
       }
       const placedScaffold = new Map(), cleared = new Set();
@@ -2554,7 +2560,7 @@ async function foliaManual(owner, at) {
 // pillar in the next, and the rigger starts a chunk further west, so its walk, its scaffold and the blocks cross owners.
 async function foliaBuilds(owner, at) {
   const [sx, ground, sz] = at(0, 0);
-  const ox = (Math.floor((Math.floor(sx) + 28) / 16) + 1) * 16 - 2, oy = ground, oz = Math.floor(sz) - 34;
+  const ox = (Math.floor((Math.floor(sx) + 28) / 16) + 1) * 16 - 2, oy = ground, oz = Math.floor((Math.floor(sz) - 34) / 16) * 16 + 14; // the bed's foot and head sit on either side of a chunk border
   const file = path.join(data, 'schematics', SCAFFOLD.file);
   const area = `${ox - 16} ${oy} ${oz - 4} ${ox + 8} ${oy + 18} ${oz + 10}`;
   const startPattern = new RegExp(`Started build ${SCAFFOLD.npc}[^\\n]*|Cannot start build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*`);
@@ -2601,10 +2607,7 @@ async function foliaBuilds(owner, at) {
       const together = [];
       for (const [a, b, label] of [[[2, 1, 0], [2, 2, 0], 'door'], [[0, 1, 1], [0, 1, 2], 'bed']]) {
         const first = `${ox + a[0]},${oy + a[1]},${oz + a[2]}`, second = `${ox + b[0]},${oy + b[1]},${oz + b[2]}`;
-        const packet = packets.find(p => p.cells.some(c => (key(c) === first || key(c) === second) && c.state !== 'minecraft:air'));
-        assert(packet, `${label} never arrived`);
-        const keys = packet.cells.filter(c => c.state !== 'minecraft:air').map(key);
-        assert(keys.includes(first) && keys.includes(second), `${label} halves arrived apart: ${JSON.stringify(packet.cells)}`);
+        assert(halvesTogether(owner.events.slice(watched), first, second, a, b, ox, oz), `${label} halves arrived apart: ${JSON.stringify(packets.filter(p => p.cells.some(c => key(c) === first || key(c) === second)).map(p => p.cells))}`);
         together.push(label);
       }
       const placedScaffold = new Map(), cleared = new Set();
@@ -2984,17 +2987,35 @@ const movestyles = () => movementStyles({ server, join, check, inspect, until, O
 const schedulesScenario = () => schedules({ server, join, check, inspect, until, data, floor, OWNER });
 const commandfeel = () => commandFeel({ server, join, check, data, results, OWNER });
 const placeholdersScenario = () => placeholders({ server, join, check, data, instance, expansions: papiExpansions, OWNER });
-const questHostsScenario = () => questHosts({ server, join, check, instance, OWNER, click, logText, typewriterExtensions });
+const questHostsScenario = () => questHosts({ server, join, check, instance, OWNER, click, logText });
 const questsScenario = flavor => () => questPlugins({ server, join, check, data, instance, results, flavor, OWNER });
 const mythicScenario = () => mythic({ server, join, check, data, instance, OWNER });
 const czshop = () => citizensEconomy({ server, join, check, data, click, windowOpened, clickSlot, closeWindow, itemCount, entityCount, until, plain, OWNER });
+const importapply = () => importApply({ server, join, check, data, inspect, click, windowOpened, closeWindow, summon, until, plain, OWNER });
 const nativequests = () => nativeQuests({ server, join, check, data, results, mod: MOD, OWNER });
 const motionScenario = () => motion({ server, join, check, inspect, until, floor, folia: project === 'folia', OWNER, PEER });
-const presentationScenario = () => presentation({ server, join, check, OWNER, PEER });
+const presentationScenario = () => presentation({ server, join, check, inspect, combatNpc, OWNER, PEER });
+const disguiseSkinsScenario = () => disguiseSkins({ server, check, instance, data });
+const foliaHomeScenario = () => foliaHome({ server, join, check, inspect, until, logText, OWNER, PEER });
 const looksScenario = () => looks({ server, join, check, instance, model: path.resolve(args.get('model') ?? ''), OWNER });
 // Each integration command shows exactly when its plugin enabled on this server.
 const gatedScenario = () => gatedCommands({ join, check, OWNER }, plugin => new RegExp(`\\[${plugin}\\] Enabling ${plugin} v`).test(logText()));
-const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, combatedges, swinglook, npckeys, movestyles, schedules: schedulesScenario, toolkit: toolkitScenario, commandfeel, placeholders: placeholdersScenario, motion: motionScenario, czshop, quests: questsScenario('quests'), beautyquests: questsScenario('beautyquests'), betonquest: questHostsScenario, packs, appearance, building, scaffolding, shops, folia, smoke, worlds, guardsoak, mythic: mythicScenario, nativequests, presentation: presentationScenario, looks: looksScenario, gated: gatedScenario };
+const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, combatedges, swinglook, npckeys, movestyles, schedules: schedulesScenario, toolkit: toolkitScenario, commandfeel, placeholders: placeholdersScenario, motion: motionScenario, czshop, importapply, quests: questsScenario('quests'), beautyquests: questsScenario('beautyquests'), betonquest: questHostsScenario, packs, appearance, building, scaffolding, shops, folia, smoke, worlds, guardsoak, mythic: mythicScenario, nativequests, presentation: presentationScenario, looks: looksScenario, gated: gatedScenario, disguiseskins: disguiseSkinsScenario, foliahome: foliaHomeScenario };
+// Both cells of a door or bed reach the client in one server tick. Cells in one chunk share a block packet; cells in two
+// chunks come in two block packets of the same flush, which has nothing else between them, as every tick also sends motion.
+function halvesTogether(events, first, second, a, b, ox, oz) {
+  const key = c => `${c.x},${c.y},${c.z}`;
+  const placed = e => e.event === 'blocks' && e.cells.some(c => (key(c) === first || key(c) === second) && c.state !== 'minecraft:air');
+  const start = events.findIndex(placed);
+  if (start < 0) return false;
+  const seen = new Set(events[start].cells.filter(c => c.state !== 'minecraft:air').map(key));
+  for (let i = start + 1; i < events.length && events[i].event === 'blocks' && !(seen.has(first) && seen.has(second)); i++)
+    for (const c of events[i].cells) if (c.state !== 'minecraft:air') seen.add(key(c));
+  const sameChunk = Math.floor((ox + a[0]) / 16) === Math.floor((ox + b[0]) / 16) && Math.floor((oz + a[2]) / 16) === Math.floor((oz + b[2]) / 16);
+  const firstPacket = new Set(events[start].cells.filter(c => c.state !== 'minecraft:air').map(key));
+  return sameChunk ? firstPacket.has(first) && firstPacket.has(second) : seen.has(first) && seen.has(second);
+}
+
 function finalLogReview(text, label) {
   const lines = text.split('\n');
   const bad = lines.filter(line => /\b(ERROR|SEVERE)\b|Exception|Nag author|Could not pass event/.test(line) || (MOD && /[Mm]ixin[^\n]*(?:fail|error|could not|not applied)/i.test(line)));

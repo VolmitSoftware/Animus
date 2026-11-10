@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "3d1dc5ef-9845-523a-bfff-3eeae8759a1c",
+  "id": "breeze",
+  "group": "types",
+  "name": "Body breeze",
+  "type": "minecraft:breeze",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

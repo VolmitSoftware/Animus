@@ -10,8 +10,7 @@ import java.util.Set;
 
 /**
  * {@code modules["animus:shop"]} in an NPC definition: the shop a click opens. A sneaking administrator's click keeps
- * its selection meaning and opens nothing. An imported section opens nothing until its {@code "reviewAccepted"} is
- * literal {@code true}. {@code style} overrides the shop's window style for this NPC, and {@code villager} gives a
+ * its selection meaning and opens nothing. {@code style} overrides the shop's window style for this NPC, and {@code villager} gives a
  * villager body the profession and level its trading screen title shows; other bodies ignore it.
  */
 public record ShopBinding(String shop, OpenOn openOn, Optional<ShopDocument.Style> style, Optional<Villager> villager) {
@@ -35,7 +34,7 @@ public record ShopBinding(String shop, OpenOn openOn, Optional<ShopDocument.Styl
         if (!value.isJsonObject()) throw new IllegalArgumentException(path + ": expected object");
         JsonObject module = value.getAsJsonObject();
         for (String key : module.keySet())
-            if (!Set.of("shop", "openOn", "style", "villager", "imported", "reviewAccepted").contains(key)) throw new IllegalArgumentException(path + "." + key + ": unknown field");
+            if (!Set.of("shop", "openOn", "style", "villager", "imported").contains(key)) throw new IllegalArgumentException(path + "." + key + ": unknown field");
         JsonElement shop = module.get("shop");
         if (shop == null || !shop.isJsonPrimitive() || !shop.getAsJsonPrimitive().isString() || !shop.getAsString().matches(ShopDocument.ID))
             throw new IllegalArgumentException(path + ".shop: expected a shop id such as town:baker");
@@ -54,13 +53,6 @@ public record ShopBinding(String shop, OpenOn openOn, Optional<ShopDocument.Styl
         }
         Villager villager = villager(module.get("villager"), path + ".villager");
         boolean villagerBody = definition.has("type") && definition.get("type").isJsonPrimitive() && definition.get("type").getAsString().equals("minecraft:villager");
-        boolean reviewed = false;
-        if (module.has("reviewAccepted")) {
-            JsonElement accepted = module.get("reviewAccepted");
-            if (!accepted.isJsonPrimitive() || !accepted.getAsJsonPrimitive().isBoolean()) throw new IllegalArgumentException(path + ".reviewAccepted: expected boolean");
-            reviewed = accepted.getAsBoolean();
-        }
-        if (definition.has("migration") && module.has("imported") && !reviewed) return Optional.empty();
         return Optional.of(new ShopBinding(shop.getAsString(), openOn, style, villagerBody ? Optional.of(villager) : Optional.empty()));
     }
 

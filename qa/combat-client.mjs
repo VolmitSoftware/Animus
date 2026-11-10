@@ -23,10 +23,13 @@ async function immediateCommand(text, expected) {
   return owner.wait(e => e.event === 'chat' && e.text.includes(expected), from);
 }
 async function observe(entity) { return (await command(`animusqa observe ${entity}`, `QA observed entity=${entity}`)).text; }
+// A player's inspect reply keeps the stored JSON and the full runtime line behind [JSON] and [Details], as copy clicks.
+const copied = (e, test) => e.event === 'chat' && (e.actions ?? []).filter(a => a.startsWith('copy ')).map(a => a.slice(5).split('\t')[0]).find(test);
 async function npcHealth() {
   const from = owner.events.length;
   await command(`animus inspect ${id}`);
-  return number((await owner.wait(e => e.event === 'chat' && e.text.replace(/^\[Animus\]: /, '').startsWith(`Runtime ${id}:`) && e.text.includes('health='), from)).text, 'health');
+  const runtime = text => text.startsWith(`Runtime ${id}:`) && text.includes('health=');
+  return number(copied(await owner.wait(e => copied(e, runtime), from), runtime), 'health');
 }
 async function spawn(type, x, y, z) {
   const receipt = await command(`animusqa spawn ${type} ${x} ${y} ${z}`, `QA spawned type=${type}`);
@@ -40,11 +43,12 @@ try {
   await command('execute in minecraft:overworld run tp @s 0.0 61.0 0.0 0 0');
   await owner.wait(e => e.event === 'position' && e.x === 0 && e.y === 61 && e.z === 0, origin);
   await command('animus combat status', 'Combat ready');
-  await command(`animus create ${id} type=minecraft:player world=world x=0 y=61 z=3 folder=combatqa name="Town Guard"`, `Created dormant ${id}`);
+  await command(`animus create ${id} type=minecraft:player world=world x=0 y=61 z=3 folder=combatqa name="Town Guard" spawned=false`, new RegExp(`Created ${id} at [^;]*, despawned; tx `));
   created = true;
   const from = owner.events.length;
   await command(`animus inspect ${id}`);
-  const document = JSON.parse((await owner.wait(e => e.event === 'chat' && e.text.replace(/^\[Animus\]: /, '').startsWith('{') && e.text.includes(`"id":"${id}"`), from)).text.replace(/^\[Animus\]: /, ''));
+  const stored = text => { try { return JSON.parse(text).id === id; } catch { return false; } };
+  const document = JSON.parse(copied(await owner.wait(e => copied(e, stored), from), stored));
   const shown = owner.events.length;
   await command(`animus spawn ${id}`, `Spawning ${id}`);
   await owner.wait(e => e.event === 'spawn' && e.uuid === document.uuid, shown, 20_000);
@@ -119,13 +123,13 @@ try {
 
   // Restored vanilla goals may kill the original cow; policy checks need their own living target.
   const policyTarget = await spawn('cow', 0, 61, 5.8);
-  await command(`animus edit ${id} {"modules":{"animus:combat":{"enabled":false,"reviewAccepted":false}}}`, /Saved[^;]*; tx /);
-  await command(`animus combat attack ${id} ${policyTarget} damage=2`, 'combat is disabled or its migration review has not been accepted');
-  await command(`animus edit ${id} {"modules":{"animus:combat":{"enabled":"true","reviewAccepted":true}}}`, /Saved[^;]*; tx /);
-  await command(`animus combat attack ${id} ${policyTarget} damage=2`, 'combat is disabled or its migration review has not been accepted');
-  passed('unreviewed combat and string booleans cannot bypass the import gate');
+  await command(`animus edit ${id} {"modules":{"animus:combat":{"enabled":false}}}`, /Saved[^;]*; tx /);
+  await command(`animus combat attack ${id} ${policyTarget} damage=2`, 'NPC combat is disabled');
+  await command(`animus edit ${id} {"modules":{"animus:combat":{"enabled":"true"}}}`, /Saved[^;]*; tx /);
+  await command(`animus combat attack ${id} ${policyTarget} damage=2`, 'NPC combat is disabled');
+  passed('disabled combat and string booleans cannot fight');
 
-  await command(`animus edit ${id} {"modules":{"animus:combat":{"enabled":true,"reviewAccepted":true}}}`, /Saved[^;]*; tx /);
+  await command(`animus edit ${id} {"modules":{"animus:combat":{"enabled":true}}}`, /Saved[^;]*; tx /);
   await delay(250);
   await command(`animusqa move ${zombie} 5 61 3`, 'QA moved');
   await command(`animus combat mob ${id} ${zombie}`, 'Mob control started');

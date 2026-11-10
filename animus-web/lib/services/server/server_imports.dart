@@ -1,6 +1,6 @@
 /// The editor side of `/v1/imports`: upload a Citizens saves.yml, a
 /// Shopkeepers save.yml and config.yml and dtlTraders files to a paired
-/// server, stage them, and apply, accept and roll back the server's drop-in
+/// server, stage them, and apply and roll back the server's drop-in
 /// import (wiki animus/13-migrating-from-citizens). Every answer is the server's
 /// `import-review`.
 library;
@@ -46,9 +46,6 @@ String? dtlTradersName(String fileName) {
   return shop == null ? null : 'shops/${shop.group(1)}/$fileName';
 }
 
-/// The review categories `accept` turns on, in the server's order.
-const List<String> importCategories = <String>['spawn', 'patrols', 'schedules', 'combat', 'riding', 'shops', 'builder', 'denizen'];
-
 /// The server's `import-review`.
 class ImportReview {
   const ImportReview({
@@ -57,7 +54,7 @@ class ImportReview {
     this.citizens,
     this.shopkeepers,
     this.dtltraders,
-    this.pending = const <String, int>{},
+    this.commandNamespaces = const <String>[],
     this.preserved = const <String, int>{},
     this.npcs,
     this.transactions = const <String>[],
@@ -71,7 +68,9 @@ class ImportReview {
   final Map<String, Object?>? citizens;
   final Map<String, Object?>? shopkeepers;
   final Map<String, Object?>? dtltraders;
-  final Map<String, int> pending;
+  /// Namespaces whose imported behaviors and shops run commands; apply adds
+  /// them to the server's command allow-list.
+  final List<String> commandNamespaces;
   final Map<String, int> preserved;
   final int? npcs;
   final List<String> transactions;
@@ -80,11 +79,9 @@ class ImportReview {
   final Map<String, String> uploads;
   final Map<String, Map<String, Object?>> reports;
 
-  /// The id apply, accept and rollback name: the Citizens import, or the
+  /// The id apply and rollback name: the Citizens import, or the
   /// Shopkeepers import when there is no Citizens save.
   String? get importId => (citizens?['importId'] ?? shopkeepers?['importId']) as String?;
-
-  int get waiting => pending.values.fold(0, (int sum, int count) => sum + count);
 
   static Map<String, int> _counts(Object? value) => <String, int>{
         if (value is Map<String, Object?>)
@@ -100,7 +97,7 @@ class ImportReview {
         citizens: _object(json['citizens']),
         shopkeepers: _object(json['shopkeepers']),
         dtltraders: _object(json['dtltraders']),
-        pending: _counts(json['pending']),
+        commandNamespaces: <String>[for (final Object? namespace in (json['commandNamespaces'] as List<Object?>?) ?? const <Object?>[]) '$namespace'],
         preserved: _counts(json['preserved']),
         npcs: json['npcs'] is num ? (json['npcs']! as num).toInt() : null,
         transactions: <String>[for (final Object? id in (json['transactions'] as List<Object?>?) ?? const <Object?>[]) '$id'],
@@ -130,6 +127,16 @@ class ImportRefused implements Exception {
 
   @override
   String toString() => message;
+}
+
+/// What the import screen says for a refused step. An import conflict is
+/// never an edit that changed on the server: the server's explanation says
+/// what is in the way and the step to take (stage again, roll back first), so
+/// it stands alone. Other refusals lead with the editor's copy.
+String importRefusalText(ImportRefused refused) {
+  final String? detail = refused.detail;
+  if (detail == null) return refused.message;
+  return refused.code == 'conflict' ? detail : '${refused.message} Server: $detail';
 }
 
 int _limit(String name) => ((SharedSchemas.embedded.endpoints['limits']! as Map<String, Object?>)[name]! as num).toInt();
@@ -196,9 +203,6 @@ class ServerImports {
       }));
 
   Future<ImportReview> apply(String importId) => _review(ApiRequest('POST', '/v1/imports/${Uri.encodeComponent(importId)}/apply'));
-
-  Future<ImportReview> accept(String importId, List<String> categories) =>
-      _review(ApiRequest('POST', '/v1/imports/${Uri.encodeComponent(importId)}/accept', body: <String, Object?>{'categories': categories}));
 
   Future<ImportReview> rollback(String importId) => _review(ApiRequest('POST', '/v1/imports/${Uri.encodeComponent(importId)}/rollback'));
 }

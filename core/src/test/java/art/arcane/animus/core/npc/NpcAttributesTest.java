@@ -71,10 +71,10 @@ class NpcAttributesTest {
 
     @Test void groupsSetAttributesThatMergePerAttributeWithProvenance() {
         GroupDocument giants = GroupDocument.parse("giants", """
-                {"schemaVersion":1,"revision":1,"id":"giants","values":{"attributes":{"minecraft:scale":2,"gravity":0.04}}}
+                {"schemaVersion":2,"revision":1,"id":"giants","values":{"attributes":{"minecraft:scale":2,"gravity":0.04}}}
                 """).group().orElseThrow();
         GroupDocument slow = GroupDocument.parse("slow", """
-                {"schemaVersion":1,"revision":1,"id":"slow","values":{"attributes":{"movement_speed":0.05}}}
+                {"schemaVersion":2,"revision":1,"id":"slow","values":{"attributes":{"movement_speed":0.05}}}
                 """).group().orElseThrow();
         GroupMerge.Result result = GroupMerge.merge(json("\"attributes\":{\"scale\":3}"), List.of(giants, slow));
         JsonObject attributes = result.effective().getAsJsonObject("attributes");
@@ -86,7 +86,7 @@ class NpcAttributesTest {
 
     @Test void aGroupWithABadAttributeFailsTheGroupFile() {
         GroupDocument.Result result = GroupDocument.parse("bad", """
-                {"schemaVersion":1,"revision":1,"id":"bad","values":{"attributes":{"scale":99}}}
+                {"schemaVersion":2,"revision":1,"id":"bad","values":{"attributes":{"scale":99}}}
                 """);
         assertEquals(List.of("$.values.attributes.scale: expected 0.0625..16 for scale"), result.problems());
     }

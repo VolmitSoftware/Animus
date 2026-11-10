@@ -64,6 +64,22 @@ class AnimusLogTest {
         assertEquals(1, lines.size());
     }
 
+    @Test void theWindowTimerRunsOnlyBetweenStartAndStop() throws Exception {
+        log.start();
+        log.start();
+        assertEquals(1, logThreads(), "one timer however often it starts");
+        log.stop();
+        for (int i = 0; i < 200 && logThreads() > 0; i++) Thread.sleep(10);
+        assertEquals(0, logThreads(), "stopping leaves no thread holding the plugin's classes");
+        log.start();
+        assertEquals(1, logThreads(), "a later start runs the timer again");
+        log.stop();
+    }
+
+    private static long logThreads() {
+        return Thread.getAllStackTraces().keySet().stream().filter((Thread thread) -> thread.isAlive() && thread.getName().equals("Animus-Log")).count();
+    }
+
     @Test void shutdownFlushesTheLastBatch() {
         log.routine("NPCs hit route legs the planner could not path", "guard", "detail", java.util.Optional.of("guard, failed: PARTIAL"), lines::add);
         minutes(1);

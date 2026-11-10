@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "9692c655-78b7-568d-92c9-22a3a96bffe6",
+  "id": "fish-glitter",
+  "group": "settings",
+  "name": "Set fish-glitter",
+  "type": "minecraft:tropical_fish",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "tropicalFish": {
+    "pattern": "glitter",
+    "baseColor": "blue",
+    "patternColor": "yellow"
+  }
+}

@@ -113,6 +113,9 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
     @Override public float yaw(Player player) { return player.getLocation().getYaw(); }
     @Override public float pitch(Player player) { return player.getLocation().getPitch(); }
     @Override public boolean permitted(Player player, String node) { return player.hasPermission(node); }
+    @Override public boolean granted(Player player, String node) { return setAndHeld(player, node); }
+    /** Set for the player and true; Bukkit answers true for every unregistered node an operator asks about, which this leaves out. */
+    public static boolean setAndHeld(org.bukkit.permissions.Permissible player, String node) { return player.isPermissionSet(node) && player.hasPermission(node); }
     @Override public void tell(Player player, String message) { player.sendMessage(RichText.colorize(message)); }
     @Override public boolean teleport(Player player, WorldPosition destination, float yaw, float pitch) {
         World world = terrain.world(destination.world());

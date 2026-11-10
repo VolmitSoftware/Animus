@@ -132,7 +132,7 @@ class ControlPath {
         final int times = int.tryParse(uri.queryParameters['times'] ?? '1') ?? -1;
         if (times < 1) throw invalid('times: a positive whole number');
         try {
-          server.api.failNext(code, times, route: uri.queryParameters['route']);
+          server.api.failNext(code, times, route: uri.queryParameters['route'], message: uri.queryParameters['message']);
         } on Object {
           throw invalid('code: an error-code from editor-v1.schema.json');
         }
@@ -153,6 +153,24 @@ class ControlPath {
         if (online != 'true' && online != 'false') throw invalid('online: true or false');
         server.api.playerOnline = online == 'true';
         return FakeResponse(200, body: <String, Object?>{'online': server.api.playerOnline});
+      case 'POST /plugins':
+        final String running = uri.queryParameters['running'] ?? '';
+        final Set<String> plugins = <String>{for (final String plugin in running.split(',')) if (plugin.isNotEmpty) plugin};
+        const Set<String> known = <String>{'modelengine', 'mythicmobs', 'libsdisguises'};
+        if (!known.containsAll(plugins)) throw invalid('running: a comma separated list of ${known.join(', ')}');
+        server.api.runningPlugins = plugins;
+        return FakeResponse(200, body: <String, Object?>{'running': plugins.toList()..sort()});
+      case 'POST /live':
+        final Map<String, Object?> live = _object(body);
+        final Object? npc = live['npc'], world = live['world'], x = live['x'], y = live['y'], z = live['z'];
+        if (npc is! String) throw invalid('npc: an NPC id');
+        if (x == null) {
+          server.api.live.remove(npc);
+        } else {
+          if (world is! String || x is! num || y is! num || z is! num) throw invalid('world, x, y and z: where the NPC stands, or leave x out to clear it');
+          server.api.live[npc] = (world: world, x: x.toDouble(), y: y.toDouble(), z: z.toDouble());
+        }
+        return FakeResponse(200, body: <String, Object?>{'npc': npc, 'live': x != null});
       case 'POST /restore':
         server.restore();
         return const FakeResponse(200, body: <String, Object?>{'restored': true});

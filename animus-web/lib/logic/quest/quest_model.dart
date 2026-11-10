@@ -176,11 +176,11 @@ List<Diagnostic> questChecks(JsonMap quest, {Set<String>? npcs, Set<String>? que
   for (int index = 0; index < items.length; index++) {
     itemAt('\$.rewards.items[$index].item', asMap(items[index])['item']);
   }
-  if (items.isNotEmpty || rewards['money'] != null || asList(rewards['commands']).isNotEmpty) {
+  if (items.isNotEmpty || rewards['money'] != null || rewards['experience'] != null || asList(rewards['commands']).isNotEmpty) {
     out.add(const Diagnostic(
       DiagnosticSeverity.info,
       r'$.rewards',
-      'items, money and commands create value, so applying this quest from the editor needs the apply:commands scope',
+      'items, money, experience and commands create value, so applying this quest from the editor needs the apply:commands scope',
       code: questCheckCode,
     ));
   }

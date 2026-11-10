@@ -290,7 +290,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     @Override public void observeInteractions(InteractionObserver observer) { this.observer = observer; }
     /** Who hears of falls that hurt, as the combat module applies them. */
     public void onLanding(BiConsumer<UUID, Double> listener) { landings = Objects.requireNonNull(listener); }
-    @Override public void bindTriggers(TriggerDispatcher dispatcher) { owner(); dispatcher.hide(previews); triggers = new TriggerBridge(dispatcher, index); }
+    @Override public void bindTriggers(TriggerDispatcher dispatcher) { owner(); dispatcher.hide(hidden()); triggers = new TriggerBridge(dispatcher, index); }
     @Override public void animationEvents(NpcRig.Events events) { animationEvents = events; }
     @Override public String status() {
         if (!available()) return down();
@@ -356,6 +356,27 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     /** Owner only: online players near a point, from an index rebuilt at most once per tick. */
     List<P> playersNear(WorldPosition at, double radius, int limit) { return players.near(at, radius, limit); }
     @Override public ViewerPreviews previews() { return previews; }
+    /** Previews, plugin hiding and each NPC's viewers filter, as one check for speech, sounds, particles, triggers and GUIs. */
+    @Override public art.arcane.animus.core.behavior.trigger.HiddenNpcs hidden() { return this::hiddenFrom; }
+    private boolean hiddenFrom(UUID viewer, String id, UUID npc) { return previews.hides(viewer, id, npc) || filtered(viewer, id, npc); }
+    /**
+     * The NPC's viewers filter hides it from this online player. The filter comes from the published definitions, so any
+     * thread may ask; a filter with a range measures the distance on the owner and applies in full elsewhere.
+     */
+    private boolean filtered(UUID viewer, String id, UUID npc) {
+        NpcDefinition definition = runtime.npcs().snapshot().get(id);
+        if (definition == null || !definition.uuid().equals(npc) || definition.viewers() == art.arcane.animus.core.npc.ViewerFilter.NONE) return false;
+        Optional<P> online = host.player(viewer);
+        if (online.isEmpty()) return false;
+        P player = online.get();
+        double distance = 0;
+        if (definition.viewers().range().isPresent() && host.ownerThread()) {
+            Entry entry = byUuid.get(npc);
+            WorldPosition at = entry == null || entry.value == null ? null : entry.value.state.snapshot().position(), from = host.position(player);
+            distance = at == null || !at.world().equals(from.world()) ? Double.POSITIVE_INFINITY : at.point().distance(from.point());
+        }
+        return definition.viewers().hides(viewer, distance, (String node) -> host.permitted(player, node), (String node) -> host.granted(player, node));
+    }
 
     // ---- Movement, routes and recordings ----
 
@@ -654,12 +675,13 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         changeLook(value, pose, 0);
         if (seated != (pose == NpcPose.SITTING)) views.represent(value);
     }
+    /** The bubble's text goes out in place on the body's top row; the body is never shown again for it. */
     @Override public void bubble(String id, String text, int ticks) {
         Value value = navigable(id);
         value.bubble = text;
         value.bubbleUntil = tickNumber + Math.max(1, ticks);
+        value.bubbleRevision++;
         bubbles.add(value);
-        views.represent(value);
     }
     /** Bubbles whose time ended leave their bodies. */
     private void endBubbles() {
@@ -669,7 +691,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             shown.remove();
             if (value.bubble == null) continue;
             value.bubble = null;
-            views.represent(value);
+            value.bubbleRevision++;
         }
     }
     /** An empty stack clears the slot. Runtime-only, like appearance. */
@@ -990,6 +1012,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         final RoutePause pause; final RoutePause.Clock pauseClock = new RoutePause.Clock();
         /** The animus:home module, the tick the NPC last stopped being busy or at home, and its next check. */
         final HomeSettings home; long idleSince, nextHome;
+        /** A failed return home was warned about; the next one that works clears it. */
+        boolean homeWarned;
         /** Each viewer sees its own skin or name on this NPC; null shows the NPC's own. */
         final art.arcane.animus.core.presentation.MirrorSettings mirror;
         /** The NPC guards a player or NPC by its definition, and the tick of its last attack: either keeps it from going home. */
@@ -1001,7 +1025,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         CompletableFuture<Void> routeWatch;
         String displayName; BodySkin displaySkin; DocumentReads<P, I>.AppearanceRead appearanceTask;
         /** The speech bubble shown over the body, or null, and the tick it ends on. */
-        String bubble; long bubbleUntil;
+        String bubble; long bubbleUntil, bubbleRevision;
         final Map<EquipmentSlot, I> equipment = new EnumMap<>(EquipmentSlot.class);
         long equipmentRevision;
         final String rigId; NpcRig<I> rig; String rigProblem; long rigGeneration;

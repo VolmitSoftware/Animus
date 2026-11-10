@@ -413,12 +413,26 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (session == null) return unwatched("Viewer is not watched");
         if (session.visible.get(body.entityId) != body) return failed("Body is not visible to this viewer");
         boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
-        Pose pose = look.pose() == NpcPose.SITTING ? Pose.STANDING : Pose.valueOf(look.nativePose());
+        Pose pose = Pose.valueOf(look.lookPose(body.typeKey));
         List<SynchedEntityData.DataValue<?>> values = new ArrayList<>(List.of(SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), look.sharedFlags(invisible)),
                 SynchedEntityData.DataValue.create(EntityDataAccess.animus$pose(), pose)));
         if (art.arcane.animus.core.presentation.VariantWire.living(body.typeKey))
             values.add(SynchedEntityData.DataValue.create(LivingDataAccess.animus$livingFlags(), BodyLook.livingFlags(look.usingItem())));
         return send(session, body, PacketKind.METADATA, List.of(new ClientboundSetEntityDataPacket(body.entityId, values)));
+    }
+
+    /** New text on each of the body's text display rows, as a placeholder refresh or a speech bubble sends; refused when the row count differs. */
+    @Override public CompletionStage<Void> relabel(ServerPlayer viewer, BodyTransport.Body presented, List<String> rows) {
+        Body body = checkBody(presented);
+        if (rows.size() != body.displayIds.length) return failed("Body text rows changed shape");
+        Session session = existing(viewer);
+        if (session == null) return unwatched("Viewer is not watched");
+        if (session.visible.get(body.entityId) != body) return failed("Body is not visible to this viewer");
+        List<Packet<ClientGamePacketListener>> packets = new ArrayList<>(rows.size());
+        for (int row = 0; row < rows.size(); row++)
+            packets.add(new ClientboundSetEntityDataPacket(body.displayIds[row], List.of(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$text(), (Component) ModText.component(rows.get(row))),
+                    SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$background(), BodyLook.background(rows.get(row))))));
+        return send(session, body, PacketKind.METADATA, packets);
     }
 
     @Override public CompletionStage<Void> equipment(ServerPlayer viewer, BodyTransport.Body presented, Map<EquipmentSlot, ItemStack> items) {
@@ -767,6 +781,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
                 SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$lineWidth(), BodyLook.LINE_WIDTH),
                 SynchedEntityData.DataValue.create(DisplayDataAccess.animus$translation(), new Vector3f(0f, (float) lift, 0f))));
         if (style.flags() != 0) values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$styleFlags(), style.flags()));
+        if (content.isEmpty()) values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$background(), BodyLook.background(content)));
         if (style.viewRange() != 1f) values.add(SynchedEntityData.DataValue.create(DisplayDataAccess.animus$viewRange(), style.viewRange()));
         if (style.interpolationDelay() != 0) values.add(SynchedEntityData.DataValue.create(DisplayDataAccess.animus$interpolationStart(), style.interpolationDelay()));
         if (style.interpolationDuration() != 0) values.add(SynchedEntityData.DataValue.create(DisplayDataAccess.animus$transformInterpolation(), style.interpolationDuration()));

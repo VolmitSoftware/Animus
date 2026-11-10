@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "f2ad34eb-8eea-5a02-a751-39d6cb358a97",
+  "id": "mooshroom",
+  "group": "types",
+  "name": "Body mooshroom",
+  "type": "minecraft:mooshroom",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

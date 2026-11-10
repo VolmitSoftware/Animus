@@ -67,7 +67,6 @@ public final class Onboarding {
         String found = switch (migration.phase()) {
             case FOUND -> "Found " + migration.source().orElse("Citizens data") + "; nothing imported yet";
             case STAGED -> "Citizens import staged, not installed yet";
-            case APPLIED -> "Citizens import installed; " + migration.waiting() + " imported settings still off";
             case NONE, DONE -> npcs.all().isEmpty() ? "Animus is running with no NPCs yet" : null;
         };
         if (found == null || !hinted.add(player)) return Optional.empty();

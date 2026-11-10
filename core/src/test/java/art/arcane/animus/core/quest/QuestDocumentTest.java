@@ -74,4 +74,29 @@ class QuestDocumentTest {
     @Test void namesWithSlashesAreRefused() {
         assertFalse(QuestDocument.parse("town:a/b", HERBS.replace("town:herbs", "town:a/b")).problems().isEmpty());
     }
+
+    private static String requiring(String id, String... quests) {
+        return "{\"schemaVersion\": 1, \"id\": \"" + id + "\", \"title\": \"Quest\", \"givers\": [\"healer\"], \"requirements\": {\"quests\": [" + String.join(", ", java.util.Arrays.stream(quests).map((String quest) -> "\"" + quest + "\"").toList())
+                + "]}, \"stages\": [{\"objectives\": [{\"type\": \"talk\", \"npc\": \"farmer\"}]}]}";
+    }
+
+    @Test void aQuestCannotRequireItself() {
+        assertTrue(QuestDocument.parse("town:loop", requiring("town:loop", "town:loop")).problems().contains("$.requirements.quests[0]: a quest cannot require itself"));
+    }
+
+    @Test void requirementsOnUnknownQuestsAndCyclesRefuseTheQuests(@org.junit.jupiter.api.io.TempDir Path data) throws Exception {
+        Files.createDirectories(data.resolve("quests/town"));
+        Files.writeString(data.resolve("quests/town/egg.json"), requiring("town:egg", "town:hen"));
+        Files.writeString(data.resolve("quests/town/hen.json"), requiring("town:hen", "town:egg"));
+        Files.writeString(data.resolve("quests/town/lost.json"), requiring("town:lost", "town:nowhere"));
+        Files.writeString(data.resolve("quests/town/after.json"), requiring("town:after", "town:lost"));
+        Files.writeString(data.resolve("quests/town/first.json"), requiring("town:first"));
+        Files.writeString(data.resolve("quests/town/second.json"), requiring("town:second", "town:first"));
+        QuestCatalog catalog = QuestCatalog.load(data, (String id) -> true);
+        assertEquals(Set.of("town:first", "town:second"), catalog.quests().keySet());
+        assertTrue(catalog.problems().contains("quests/town/lost.json $.requirements.quests: requires town:nowhere, which is not loaded"), catalog.problems().toString());
+        assertTrue(catalog.problems().contains("quests/town/after.json $.requirements.quests: requires town:lost, which is not loaded"), catalog.problems().toString());
+        assertTrue(catalog.problems().contains("quests/town/egg.json $.requirements.quests: requires town:hen, which requires it back"), catalog.problems().toString());
+        assertTrue(catalog.problems().contains("quests/town/hen.json $.requirements.quests: requires town:egg, which requires it back"), catalog.problems().toString());
+    }
 }

@@ -215,20 +215,6 @@ class ModeledTransportTest {
         assertEquals(List.of("show drake Drake", "view alex"), models.calls);
     }
 
-    @Test void anOverrideDrawsAndRemovesAModelOnABodyAlreadyShown() {
-        FakeBody guard = new FakeBody(GUARD);
-        transport.spawn(ALEX, guard, at(0));
-        assertTrue(models.calls.isEmpty());
-        shapes.put(GUARD, new ModeledTransport.Shape(ModelEngineModule.of("golem"), "Guard"));
-        transport.refresh(GUARD);
-        assertEquals(List.of("show golem Guard", "view alex"), models.calls);
-        assertEquals("hide body alex", packets.calls.getLast());
-        shapes.remove(GUARD);
-        transport.refresh(GUARD);
-        assertEquals("remove", models.calls.getLast());
-        assertEquals("show body alex", packets.calls.getLast());
-    }
-
     @Test void aChangedModelIsRedrawnWhenTheBodyRespawns() {
         FakeBody drake = new FakeBody(DRAKE);
         transport.spawn(ALEX, drake, at(0));

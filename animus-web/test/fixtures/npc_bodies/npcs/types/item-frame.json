@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "6251198e-4e4e-53b2-9149-32df561888ed",
+  "id": "item-frame",
+  "group": "types",
+  "name": "Body item_frame",
+  "type": "minecraft:item_frame",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "itemFrame": {
+    "item": {
+      "id": "minecraft:compass"
+    },
+    "rotation": 1
+  }
+}

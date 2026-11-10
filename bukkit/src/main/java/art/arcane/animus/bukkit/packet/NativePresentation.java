@@ -19,7 +19,7 @@ import java.util.*;
  */
 final class NativePresentation {
     private final Method dataValue;
-    private final Object sharedFlags, pose, standFlags, translation, billboard, text, lineWidth, styleFlags, viewRange, interpolationStart,
+    private final Object sharedFlags, pose, standFlags, translation, billboard, text, background, lineWidth, styleFlags, viewRange, interpolationStart,
             interpolationDuration, livingFlags;
     private final Map<BodyRules.BabyFlag, Object> babies = new EnumMap<>(BodyRules.BabyFlag.class);
     /** The team colour setter, and the enum its argument names: ChatFormatting on 26.1, TeamColor inside an Optional later. */
@@ -48,7 +48,7 @@ final class NativePresentation {
                 ArmorStandLook.Part.LEFT_LEG, "DATA_LEFT_LEG_POSE", ArmorStandLook.Part.RIGHT_LEG, "DATA_RIGHT_LEG_POSE");
         for (Map.Entry<ArmorStandLook.Part, String> part : names.entrySet()) standPoses.put(part.getKey(), accessor(stand, part.getValue()));
         translation = accessor(display, "DATA_TRANSLATION_ID"); billboard = accessor(display, "DATA_BILLBOARD_RENDER_CONSTRAINTS_ID");
-        text = accessor(textDisplay, "DATA_TEXT_ID"); lineWidth = accessor(textDisplay, "DATA_LINE_WIDTH_ID");
+        text = accessor(textDisplay, "DATA_TEXT_ID"); background = accessor(textDisplay, "DATA_BACKGROUND_COLOR_ID"); lineWidth = accessor(textDisplay, "DATA_LINE_WIDTH_ID");
         styleFlags = accessor(textDisplay, "DATA_STYLE_FLAGS_ID"); viewRange = accessor(display, "DATA_VIEW_RANGE_ID");
         interpolationStart = accessor(display, "DATA_TRANSFORMATION_INTERPOLATION_START_DELTA_TICKS_ID");
         interpolationDuration = accessor(display, "DATA_TRANSFORMATION_INTERPOLATION_DURATION_ID");
@@ -132,14 +132,17 @@ final class NativePresentation {
                 dataValue.invoke(null, lineWidth, BodyLook.LINE_WIDTH),
                 dataValue.invoke(null, translation, vector.newInstance(0f, (float) lift, 0f))));
         if (style.flags() != 0) values.add(dataValue.invoke(null, styleFlags, style.flags()));
+        if (content.isEmpty()) values.add(dataValue.invoke(null, background, BodyLook.background(content)));
         if (style.viewRange() != 1f) values.add(dataValue.invoke(null, viewRange, style.viewRange()));
         if (style.interpolationDelay() != 0) values.add(dataValue.invoke(null, interpolationStart, style.interpolationDelay()));
         if (style.interpolationDuration() != 0) values.add(dataValue.invoke(null, interpolationDuration, style.interpolationDuration()));
         return values;
     }
 
-    /** Only the text of a text display row, as a placeholder refresh changes it. */
-    Object textValue(String content) throws ReflectiveOperationException { return dataValue.invoke(null, text, component(content)); }
+    /** The text of a text display row and its background, which a blank row leaves out, as a refresh or speech bubble changes it. */
+    List<Object> textValue(String content) throws ReflectiveOperationException {
+        return List.of(dataValue.invoke(null, text, component(content)), dataValue.invoke(null, background, BodyLook.background(content)));
+    }
 
     /** The body's shared flags, invisible when a rig hides it; its pose flags are kept. */
     Object visibility(BodyLook look, boolean hidden) throws ReflectiveOperationException {
@@ -148,11 +151,11 @@ final class NativePresentation {
     }
 
     /** The shared flags, pose and item use of a body whose look changed in place; all are always sent, so standing again clears a crouch. */
-    List<Object> lookValues(BodyLook look, boolean living) throws ReflectiveOperationException {
+    List<Object> lookValues(BodyLook look, String typeKey) throws ReflectiveOperationException {
         boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
         List<Object> values = new ArrayList<>(List.of(dataValue.invoke(null, sharedFlags, look.sharedFlags(invisible)),
-                dataValue.invoke(null, pose, Enum.valueOf((Class) poses, look.pose() == NpcPose.SITTING ? "STANDING" : look.nativePose()))));
-        if (living) values.add(dataValue.invoke(null, livingFlags, BodyLook.livingFlags(look.usingItem())));
+                dataValue.invoke(null, pose, Enum.valueOf((Class) poses, look.lookPose(typeKey)))));
+        if (VariantWire.living(typeKey)) values.add(dataValue.invoke(null, livingFlags, BodyLook.livingFlags(look.usingItem())));
         return values;
     }
 

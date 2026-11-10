@@ -1,16 +1,15 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "0a1b2c3d-0000-4000-8000-000000000024",
   "id": "citizens-24",
   "group": "world",
   "name": "Herald",
   "type": "minecraft:player",
-  "spawned": false,
+  "spawned": true,
   "migration": {
-    "importId": "87c9f64e72a9a6c35bb7eaac6aedc577495e67d7b7d365ba731bdee1b09190a3",
+    "importId": "e86d0e2ae1703042e7591993455d288f45419271ed8cf708aa190b14f8056c46",
     "citizensId": 24,
-    "originalSpawned": null,
     "references": []
   },
   "position": {

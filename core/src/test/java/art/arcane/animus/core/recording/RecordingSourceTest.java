@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class RecordingSourceTest {
     private static JsonObject definition(String navigation) {
-        return JsonParser.parseString("{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"8667ba71-b85a-4004-af54-457a9734eed7\",\"id\":\"guard\",\"group\":\"town\",\"name\":\"Guard\","
+        return JsonParser.parseString("{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"8667ba71-b85a-4004-af54-457a9734eed7\",\"id\":\"guard\",\"group\":\"town\",\"name\":\"Guard\","
                 + "\"type\":\"minecraft:player\",\"spawned\":true,\"position\":{\"world\":\"world\",\"x\":0.5,\"y\":64,\"z\":0.5,\"yaw\":0,\"pitch\":0},"
                 + "\"modules\":{\"animus:navigation\":" + navigation + "}}").getAsJsonObject();
     }

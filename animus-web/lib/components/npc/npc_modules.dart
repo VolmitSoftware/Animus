@@ -28,7 +28,6 @@ class ShopBindingEditor extends StatelessWidget {
     required this.value,
     required this.shops,
     required this.onChanged,
-    this.imported = false,
     this.diagnostics = const <Diagnostic>[],
     this.onOpen,
     super.key,
@@ -43,8 +42,6 @@ class ShopBindingEditor extends StatelessWidget {
   /// The whole new module, null to remove it.
   final void Function(Object? value) onChanged;
 
-  /// The definition came from an import and needs its review accepted.
-  final bool imported;
   final List<Diagnostic> diagnostics;
   final void Function(DocumentKind kind, String id)? onOpen;
 
@@ -137,12 +134,6 @@ class ShopBindingEditor extends StatelessWidget {
           },
         ),
       ),
-      if (imported)
-        GuiSwitch(
-          value: module['reviewAccepted'] == true,
-          label: 'Review accepted',
-          onChanged: (bool accepted) => onChanged(<String, Object?>{...module, 'reviewAccepted': accepted}),
-        ),
     ]);
   }
 }
@@ -157,7 +148,6 @@ class NavigationEditor extends StatelessWidget {
     this.recordings = const <String, int?>{},
     this.origin,
     this.world,
-    this.imported = false,
     this.diagnostics = const <Diagnostic>[],
     this.onOpen,
     this.onCopyRoute,
@@ -191,7 +181,6 @@ class NavigationEditor extends StatelessWidget {
 
   /// The NPC's world, whose terrain the route grid draws.
   final String? world;
-  final bool imported;
   final List<Diagnostic> diagnostics;
   final void Function(DocumentKind kind, String id)? onOpen;
 
@@ -215,7 +204,7 @@ class NavigationEditor extends StatelessWidget {
   };
 
   /// The module moved to [source]: the old source's fields go, enabled,
-  /// reviewAccepted and unknown keys stay.
+  /// unknown keys stay.
   JsonMap _withSource(JsonMap module, NavigationSource source, List<String> routeIds) {
     final JsonMap next = <String, Object?>{
       for (final MapEntry<String, Object?> entry in module.entries)
@@ -278,12 +267,6 @@ class NavigationEditor extends StatelessWidget {
     return dom.div(classes: 'animus-npc-route', <Widget>[
       dom.div(classes: 'animus-row', <Widget>[
         GuiSwitch(value: module['enabled'] == true, label: 'Enabled', onChanged: (bool on) => onChanged(<String, Object?>{...module, 'enabled': on})),
-        if (imported)
-          GuiSwitch(
-            value: module['reviewAccepted'] == true,
-            label: 'Review accepted',
-            onChanged: (bool accepted) => onChanged(<String, Object?>{...module, 'reviewAccepted': accepted}),
-          ),
         GuiIconButton(
           icon: ArcaneIcon.x(size: IconSize.sm),
           label: 'Remove the route',

@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class HotloadServiceTest {
     static final String NPC = """
-            {"schemaVersion":1,"revision":1,"uuid":"12345678-1234-1234-1234-123456789abc","id":"guard","group":"town","name":"Guard","type":"minecraft:player","spawned":false,"position":{"world":"world","x":0,"y":64,"z":0,"yaw":0,"pitch":0}}
+            {"schemaVersion":2,"revision":1,"uuid":"12345678-1234-1234-1234-123456789abc","id":"guard","group":"town","name":"Guard","type":"minecraft:player","spawned":false,"position":{"world":"world","x":0,"y":64,"z":0,"yaw":0,"pitch":0}}
             """;
     @TempDir Path root;
     private AnimusRuntime runtime;
@@ -208,6 +208,28 @@ class HotloadServiceTest {
         settle();
         assertTrue(runtime.npcs().delete("guard").endsWith("; removed the refused hand edits in npcs/town/guard.json"));
         assertFalse(Files.exists(file));
+    }
+
+    @Test void aVersionOneNpcAndGroupCopiedInAreUpgradedWithAReceiptAndLoad() throws Exception {
+        Path before = art.arcane.animus.core.editor.SharedFixtures.fixture("upgrades/before"), after = art.arcane.animus.core.editor.SharedFixtures.fixture("upgrades/after");
+        List<String> paths = List.of("groups/guards.json", "npcs/town/citizens-9.json");
+        for (String path : paths) {
+            Files.createDirectories(root.resolve(path).getParent());
+            Files.writeString(root.resolve(path), Files.readString(before.resolve(path)));
+        }
+        settle(() -> runtime.npcs().find("citizens-9").isPresent() && shown().stream().filter((String line) -> line.contains("schemaVersion 1 -> 2")).count() == 2, "the upgraded NPC loading");
+        for (String path : paths) assertEquals(Files.readString(after.resolve(path)), Files.readString(root.resolve(path)), path);
+        assertEquals(List.of("guards"), runtime.npcs().find("citizens-9").orElseThrow().groups());
+        assertTrue(runtime.npcs().groups().find("guards").isPresent());
+        java.util.regex.Matcher upgraded = java.util.regex.Pattern.compile("\\[Animus]: Upgraded \\[npcs/town/citizens-9.json] \\[schemaVersion 1 -> 2] \\[rollback ([a-f0-9-]{36})]").matcher(String.join("\n", shown()));
+        assertTrue(upgraded.find(), shown().toString());
+        assertTrue(logged.stream().anyMatch((String line) -> line.equals("Upgraded npcs/town/citizens-9.json to schemaVersion 2; rollback " + upgraded.group(1))), logged.toString());
+        assertTrue(warned.stream().noneMatch((String line) -> line.contains("refused")), warned.toString());
+        assertNotNull(runtime.documents().read("backups/" + upgraded.group(1) + ".json"), "a rollback receipt holds the original");
+        lines.clear();
+        quiet();
+        quiet();
+        assertTrue(lines.isEmpty(), "the upgrade write is not reported as a hand edit: " + shown());
     }
 
     @Test void aValidNpcEditAppliesWhileAnotherNpcFileIsInvalid() throws Exception {

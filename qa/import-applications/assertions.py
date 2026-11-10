@@ -42,10 +42,10 @@ def checkpoint(data,path):
     return pointer
 
 def dormant(document):
-    assert document['spawned'] is False
+    assert isinstance(document['spawned'],bool)
     combat=document.get('modules',{}).get('animus:combat')
     if combat:
-        assert combat['enabled'] is False and combat['reviewAccepted'] is False
+        assert combat['enabled'] is True and 'reviewAccepted' not in combat
 
 def application(data,import_id,application_id):
     assert HASH.fullmatch(import_id) and HASH.fullmatch(application_id)
@@ -72,7 +72,7 @@ def installed(data,import_id,application_id):
         assert (data/relative).read_text()==content,relative+' differs from reviewed candidate'
         if relative.startswith('npcs/'):checkpoint(data,relative)
     receipt=read(data/'imports'/import_id/'applications'/application_id/'receipt.json')
-    assert receipt['state']=='installed-dormant' and receipt['importId']==import_id
+    assert receipt['state']=='installed' and receipt['importId']==import_id
     assert receipt['applicationId']==application_id and receipt['mode']==plan['mode']
     assert receipt['records']==plan['records']
     return plan,candidates

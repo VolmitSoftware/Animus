@@ -1,6 +1,5 @@
 package art.arcane.animus.core.migration;
 
-import art.arcane.animus.core.behavior.catalog.ServerBehaviorList;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
@@ -56,8 +55,7 @@ final class DenizenDropIn {
         JsonObject report = preview.report();
         lines.add("Denizen " + found.label() + ": " + scripts(report) + " scripts; " + preview.behaviors() + " behaviors for " + preview.bindings() + " NPCs; "
                 + preview.flagsImported() + " flag values imported, " + preview.flagsPreserved() + " kept; " + preview.preserved() + " items kept, reasons in " + part.get("report").getAsString());
-        if (preview.held() > 0) lines.add(preview.held() + " behaviors held: a guard or stop in them did not convert, so accept leaves them unbound and off; heldBehaviors in the report lists the lines");
-        commandLine(report, store).ifPresent(lines::add);
+        if (preview.held() > 0) lines.add(preview.held() + " behaviors held: a guard or stop in them did not convert, so apply leaves them unbound and off; heldBehaviors in the report lists the lines");
         return lines;
     }
 
@@ -67,19 +65,13 @@ final class DenizenDropIn {
         return total;
     }
 
-    static Optional<String> commandLine(JsonObject report, DocumentStore store) throws IOException {
-        JsonArray commands = report.getAsJsonArray("commandBehaviors");
-        if (commands == null || commands.isEmpty()) return Optional.empty();
-        List<String> ids = new ArrayList<>();
-        for (JsonElement id : commands) ids.add(id.getAsString());
-        return Optional.of("Denizen commands: " + commands.size() + " behaviors stay denied (such as " + commands.get(0).getAsString()
-                + "); review behaviors/denizen/, then list them in commandBehaviors or set commandNamespaces = [\"denizen\"]; "
-                + CommandAllowList.advice(store, CommandAllowList.namespaces(ids)));
-    }
-
     /** The applied import's behaviors that run server commands; none when no Denizen import is applied. */
-    static List<String> commandBehaviors(DocumentStore store, JsonObject state) throws IOException {
-        if (!applied(state)) return List.of();
+    static List<String> commandBehaviors(DocumentStore store, JsonObject state) throws IOException { return applied(state) ? reportCommands(store, state) : List.of(); }
+
+    /** The staged import's behaviors that run server commands; none when no Denizen import is staged. */
+    static List<String> stagedCommandBehaviors(DocumentStore store, JsonObject state) throws IOException { return staged(state) ? reportCommands(store, state) : List.of(); }
+
+    private static List<String> reportCommands(DocumentStore store, JsonObject state) throws IOException {
         String report = store.read(state.getAsJsonObject("denizen").get("report").getAsString());
         if (report == null) return List.of();
         JsonArray commands = JsonDocuments.object(report).getAsJsonArray("commandBehaviors");
@@ -96,8 +88,8 @@ final class DenizenDropIn {
         DenizenImporter.Applied applied = result[0];
         part.addProperty("state", "applied");
         List<String> lines = new ArrayList<>();
-        lines.add("Denizen behaviors installed in behaviors/denizen/; " + applied.states() + " flag state files; "
-                + applied.bound() + " NPCs wait for accept denizen; tx " + applied.transaction());
+        lines.add("Denizen behaviors installed in behaviors/denizen/ and listed on " + applied.bound() + " NPCs; " + applied.servers() + " server behaviors on; "
+                + applied.states() + " flag state files; tx " + applied.transaction());
         lines.add("Imported flag values load at the next restart; Denizen can stay removed");
         applied.problems().stream().limit(10).forEach((String problem) -> lines.add("Not bound: " + problem));
         return lines;
@@ -108,24 +100,6 @@ final class DenizenDropIn {
         JsonObject part = state.getAsJsonObject("denizen");
         return Optional.of("Denizen import " + part.get("importId").getAsString().substring(0, 12) + ": behaviors in behaviors/denizen/, kept items in "
                 + part.get("report").getAsString());
-    }
-
-    /**
-     * The change that appends the applied import's server behaviors to {@code server-behaviors.json}, or empty when there are
-     * none or every one is already listed. Rolling the accepting transaction back restores the file.
-     */
-    static Optional<DocumentStore.Change> serverBehaviors(DocumentStore store, JsonObject state) throws IOException {
-        if (!applied(state)) return Optional.empty();
-        String receipt = store.read(DenizenImporter.IMPORTS + "/" + state.getAsJsonObject("denizen").get("importId").getAsString() + "/receipt.json");
-        if (receipt == null) return Optional.empty();
-        JsonArray listed = DenizenImporter.serverBehaviors(JsonDocuments.object(receipt));
-        if (listed.isEmpty()) return Optional.empty();
-        List<String> ids = new ArrayList<>();
-        for (JsonElement id : listed) ids.add(id.getAsString());
-        String before = store.read(ServerBehaviorList.PATH);
-        String after = ServerBehaviorList.append(before, ids);
-        if (after.equals(before)) return Optional.empty();
-        return Optional.of(new DocumentStore.Change(ServerBehaviorList.PATH, before == null ? "missing" : store.hash(ServerBehaviorList.PATH), after));
     }
 
     /** A behavior the converter held back: a guard or stop in it did not convert. */

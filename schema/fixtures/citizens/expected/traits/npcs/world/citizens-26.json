@@ -1,16 +1,15 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "41afabca-c7d7-3fbb-98c3-cc41f70c72a5",
   "id": "citizens-26",
   "group": "world",
   "name": "No UUID",
   "type": "minecraft:zombie",
-  "spawned": false,
+  "spawned": true,
   "migration": {
-    "importId": "87c9f64e72a9a6c35bb7eaac6aedc577495e67d7b7d365ba731bdee1b09190a3",
+    "importId": "e86d0e2ae1703042e7591993455d288f45419271ed8cf708aa190b14f8056c46",
     "citizensId": 26,
-    "originalSpawned": null,
     "references": []
   },
   "position": {

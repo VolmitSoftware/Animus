@@ -53,6 +53,31 @@ class BodyLookTest {
         assertFalse(shown.aboveNativeNameplate());
     }
 
+    @Test void aSpeechBubbleChangesTheTopRowsTextAndNeverTheRowCount() {
+        NpcAppearance plain = NpcAppearance.PLAIN.withBubble("");
+        BodyLook quiet = BodyLook.of(ID, "minecraft:player", "Guard", plain);
+        assertEquals(List.of(new BodyLook.TextRow("", 0)), quiet.rows(), "a player with a native name keeps an empty row for its bubble");
+        assertTrue(quiet.aboveNativeNameplate(), "the bubble row sits above the native nameplate");
+        BodyLook speaking = BodyLook.of(ID, "minecraft:player", "Guard", NpcAppearance.PLAIN.withBubble("&eHello"));
+        assertEquals(List.of(new BodyLook.TextRow("§eHello", 0)), speaking.rows());
+
+        BodyLook named = BodyLook.of(ID, "minecraft:villager", "Baker", appearance(List.of("Bread"), true, NpcPose.STANDING).withBubble(""));
+        BodyLook talking = BodyLook.of(ID, "minecraft:villager", "Baker", appearance(List.of("Bread"), true, NpcPose.STANDING).withBubble("&eFresh!"));
+        assertEquals(named.rows().size(), talking.rows().size());
+        assertEquals(Optional.of("Bread\nBaker"), named.text());
+        assertEquals(Optional.of("§eFresh!\n§rBread\nBaker"), talking.text());
+
+        HologramStyle separate = new HologramStyle("center", false, false, OptionalDouble.empty(), OptionalDouble.of(0.3), 0, 0, List.of(HologramStyle.Margin.NONE));
+        NpcAppearance rows = new NpcAppearance(Map.of(), List.of("Bread"), true, NpcPose.STANDING, Optional.empty(), separate, BodyTraits.DEFAULT);
+        BodyLook stacked = BodyLook.of(ID, "minecraft:villager", "Baker", rows.withBubble(""));
+        BodyLook stackedTalking = BodyLook.of(ID, "minecraft:villager", "Baker", rows.withBubble("Fresh!"));
+        assertEquals(stacked.rows().size(), stackedTalking.rows().size());
+        assertEquals("Fresh!\nBread", stackedTalking.rows().getFirst().text());
+        assertEquals(stacked.rows().getFirst().offset(), stackedTalking.rows().getFirst().offset());
+
+        assertEquals(Optional.empty(), BodyLook.of(ID, "minecraft:player", "Guard", NpcAppearance.PLAIN).text(), "no row without a bubble reserved");
+    }
+
     @Test void hiddenNameplatesShowOnlyHologramLines() {
         BodyLook player = BodyLook.of(ID, "minecraft:player", "Guard", appearance(List.of(), false, NpcPose.STANDING));
         assertTrue(player.hideProfileName());
@@ -88,6 +113,16 @@ class BodyLookTest {
         assertEquals("SLEEPING", BodyLook.nativePose(NpcPose.SLEEPING));
         assertEquals("SWIMMING", BodyLook.nativePose(NpcPose.SWIMMING));
         assertEquals("STANDING", BodyLook.nativePose(NpcPose.SITTING));
+    }
+
+    @Test void aSittingCamelStaysSeatedWhenItsLookIsSentAgain() {
+        BodyTraits sitting = new BodyTraits(false, Optional.empty(), false, false, false, false, NpcAttributes.NONE, new BodyVariant("camel", Map.of(), java.util.Set.of("sitting")));
+        NpcAppearance camel = new NpcAppearance(Map.of(), List.of(), true, NpcPose.STANDING, Optional.empty(), HologramStyle.DEFAULT, sitting);
+        BodyLook look = BodyLook.of(ID, "minecraft:camel", "Dune", camel);
+        assertEquals("SITTING", look.lookPose("minecraft:camel"), "a glow or a playback look must not stand the camel up");
+        assertEquals("STANDING", BodyLook.of(ID, "minecraft:camel", "Dune", NpcAppearance.PLAIN).lookPose("minecraft:camel"));
+        assertEquals("CROUCHING", BodyLook.of(ID, "minecraft:player", "Guard", appearance(List.of(), true, NpcPose.SNEAKING)).lookPose("minecraft:player"));
+        assertEquals("STANDING", BodyLook.of(ID, "minecraft:player", "Guard", appearance(List.of(), true, NpcPose.SITTING)).lookPose("minecraft:player"), "a seated player rides its seat standing");
     }
 
     @Test void armorStandFlagsMatchClientBits() {

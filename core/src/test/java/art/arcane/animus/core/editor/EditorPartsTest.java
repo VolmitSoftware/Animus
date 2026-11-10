@@ -218,17 +218,35 @@ class EditorPartsTest {
     }
 
     @Test
-    void importAccept_commandsNeedsTheCommandsPermissionInGameToo() {
+    void npcEdit_scheduleArrivalCommandsNeedTheCommandsPermissionInGame() throws Exception {
+        CommandActor editor = new CommandActor() {
+            @Override public boolean permitted(String node) { return !node.equals(EditorCommands.COMMANDS_PERMISSION); }
+            @Override public void tell(String message) {}
+            @Override public Optional<UUID> player() { return Optional.of(EditorHarness.ADMIN); }
+            @Override public boolean reply(Runnable action) { action.run(); return true; }
+        };
+        com.google.gson.JsonObject scheduled = art.arcane.animus.core.storage.JsonDocuments.object(
+                "{\"modules\":{\"animus:schedule\":{\"locations\":[{\"time\":1000,\"x\":0,\"y\":64,\"z\":0,\"commands\":[\"op Mallory\"]}]}}}");
+        assertTrue(EditorCommands.scheduleRefusal(editor, scheduled).orElseThrow().contains(EditorCommands.COMMANDS_PERMISSION));
+        assertTrue(EditorCommands.scheduleRefusal(actor(EditorHarness.ADMIN), scheduled).isEmpty());
+        assertTrue(EditorCommands.scheduleRefusal(actor(null), scheduled).isEmpty(), "the console may");
+        com.google.gson.JsonObject quiet = scheduled.deepCopy();
+        quiet.getAsJsonObject("modules").getAsJsonObject("animus:schedule").getAsJsonArray("locations").get(0).getAsJsonObject().remove("commands");
+        assertTrue(EditorCommands.scheduleRefusal(editor, quiet).isEmpty(), "a schedule without commands needs only animus.npc.edit");
+    }
+
+    @Test
+    void importApply_commandGrantsNeedTheCommandsPermissionInGameToo() {
         CommandActor admin = new CommandActor() {
             @Override public boolean permitted(String node) { return !node.equals(EditorCommands.COMMANDS_PERMISSION); }
             @Override public void tell(String message) {}
             @Override public Optional<UUID> player() { return Optional.of(EditorHarness.ADMIN); }
             @Override public boolean reply(Runnable action) { action.run(); return true; }
         };
-        assertTrue(EditorCommands.acceptRefusal(admin, List.of("shops", "Commands")).orElseThrow().contains(EditorCommands.COMMANDS_PERMISSION));
-        assertTrue(EditorCommands.acceptRefusal(admin, List.of("shops", "all")).isEmpty(), "all never includes commands");
-        assertTrue(EditorCommands.acceptRefusal(actor(EditorHarness.ADMIN), List.of("commands")).isEmpty());
-        assertTrue(EditorCommands.acceptRefusal(actor(null), List.of("commands")).isEmpty(), "the console may");
+        assertTrue(EditorCommands.applyRefusal(admin, List.of("citizens")).orElseThrow().contains(EditorCommands.COMMANDS_PERMISSION));
+        assertTrue(EditorCommands.applyRefusal(admin, List.of()).isEmpty(), "an import that runs no commands needs no grant");
+        assertTrue(EditorCommands.applyRefusal(actor(EditorHarness.ADMIN), List.of("citizens")).isEmpty());
+        assertTrue(EditorCommands.applyRefusal(actor(null), List.of("citizens")).isEmpty(), "the console may");
         assertTrue(EditorCommands.releaseRefusal(admin, true).orElseThrow().contains(EditorCommands.COMMANDS_PERMISSION), "releasing a held behavior that runs commands");
         assertTrue(EditorCommands.releaseRefusal(admin, false).isEmpty());
         assertTrue(EditorCommands.releaseRefusal(actor(null), true).isEmpty(), "the console may");

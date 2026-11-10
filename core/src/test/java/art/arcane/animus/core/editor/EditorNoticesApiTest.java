@@ -212,7 +212,7 @@ class EditorNoticesApiTest {
 
     @Test
     void stagedImportApplied_isOneNotice() throws Exception {
-        List<EditorScope> importer = List.of(EditorScope.READ, EditorScope.IMPORT, EditorScope.APPLY_NPCS, EditorScope.APPLY_BEHAVIORS, EditorScope.APPLY_GUI);
+        List<EditorScope> importer = List.of(EditorScope.READ, EditorScope.IMPORT, EditorScope.APPLY_NPCS, EditorScope.APPLY_BEHAVIORS, EditorScope.APPLY_GUI, EditorScope.APPLY_COMMANDS);
         String token = harness.token(EditorHarness.grant(importer));
         java.util.Map<String, String> headers = new java.util.LinkedHashMap<>();
         headers.put("Origin", EditorHarness.ORIGIN);

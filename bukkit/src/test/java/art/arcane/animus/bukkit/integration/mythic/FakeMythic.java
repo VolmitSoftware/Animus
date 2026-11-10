@@ -61,6 +61,11 @@ class FakeMythic implements MythicBridge, MythicHost {
     @Override public void runTimers(String mob, Caster caster, Location origin, long tick) { calls.add("timer " + mob + " by " + caster.id() + " at tick " + tick); }
 
     @Override public Optional<Npc> npc(UUID npc) { return Optional.ofNullable(npcs.get(npc)); }
+    @Override public Set<UUID> bound() {
+        Set<UUID> bound = new java.util.LinkedHashSet<>();
+        for (Npc npc : npcs.values()) if (npc.binding().map(MythicBinding::enabled).orElse(false)) bound.add(npc.uuid());
+        return bound;
+    }
     @Override public Optional<Npc> npc(String id) { return npcs.values().stream().filter((Npc npc) -> npc.id().equals(id)).findFirst(); }
     @Override public Optional<Entity> entity(UUID id) { return Optional.of(player(id)); }
     @Override public Optional<Location> location(art.arcane.animus.bukkit.api.NpcPosition position) { return Optional.of(new Location(null, position.x(), position.y(), position.z())); }

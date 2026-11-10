@@ -20,7 +20,7 @@ import java.util.stream.Stream;
 
 /**
  * Points a quest plugin's files at the Animus NPCs a Citizens import created, the same way for every plugin: Quests,
- * BeautyQuests, BetonQuest and Typewriter. {@link #preview} only writes a report,
+ * BeautyQuests and BetonQuest. {@link #preview} only writes a report,
  * {@link #apply} keeps each original under {@code imports/links/<plugin>/originals/} before writing, and {@link #rollback}
  * puts the originals back unless a file was edited after the apply. Call from the file lane.
  */
@@ -29,8 +29,7 @@ public final class LinkRemap {
     public enum Plugin {
         QUESTS("Quests", "Quests", ".yml"),
         BEAUTYQUESTS("BeautyQuests", "BeautyQuests", ".yml"),
-        BETONQUEST("BetonQuest", "BetonQuest/QuestPackages", ".yml"),
-        TYPEWRITER("Typewriter", "Typewriter/pages", ".json");
+        BETONQUEST("BetonQuest", "BetonQuest/QuestPackages", ".yml");
 
         private final String label, folder, extension;
         Plugin(String label, String folder, String extension) { this.label = label; this.folder = folder; this.extension = extension; }
@@ -161,18 +160,12 @@ public final class LinkRemap {
                 yield new Rewritten(result.text(), result.changes().size(), result.changes().stream()
                         .map((BetonQuestLinks.Change change) -> relative + ":" + change.line() + " " + change.before().strip() + " -> " + change.after().strip()).toList(), result.notes());
             }
-            case TYPEWRITER -> {
-                TypewriterLinks.Result result = TypewriterLinks.rewrite(relative, before, links, linked);
-                yield new Rewritten(result.text(), result.changes().size(), result.changes().stream()
-                        .map((TypewriterLinks.Change change) -> relative + " " + change.entry() + ": " + change.before() + " -> " + change.after()).toList(), result.notes());
-            }
         };
     }
 
     private Set<String> firstPass(String relative, String text) {
         return switch (plugin) {
             case BETONQUEST -> BetonQuestLinks.rewrite(relative, text, links, Set.of()).linkedNpcs();
-            case TYPEWRITER -> TypewriterLinks.rewrite(relative, text, links, Set.of()).linkedEntries();
             case QUESTS, BEAUTYQUESTS -> Set.of();
         };
     }

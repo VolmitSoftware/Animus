@@ -62,7 +62,6 @@ class ScheduleServiceTest {
         world.time = 14000;
         seconds(1);
         assertEquals(new Vec3(-9.5, 64, 0.5), world.legs.getLast().point());
-        assertTrue(service.status().contains("npcs=1"), service.status());
     }
 
     @Test void arrivalAppliesPoseEquipmentSkinAndCommandsThenStandsBeforeLeaving() throws Exception {
@@ -90,7 +89,7 @@ class ScheduleServiceTest {
     }
 
     @Test void importedCommandsWaitForTheCitizensNamespace() throws Exception {
-        define("{\"reviewAccepted\":true,\"locations\":[{\"time\":0,\"x\":4,\"y\":64,\"z\":4,\"commands\":[\"say hi\"]}]}", ",\"migration\":{}");
+        define("{\"locations\":[{\"time\":0,\"x\":4,\"y\":64,\"z\":4,\"commands\":[\"say hi\"]}]}", ",\"migration\":{}");
         seconds(1);
         world.leg.complete(null);
         seconds(1);
@@ -99,11 +98,29 @@ class ScheduleServiceTest {
 
     @Test void importedCommandsRunOnceTheCitizensNamespaceIsAllowed() throws Exception {
         namespaces.add(ScheduleService.IMPORTED_COMMANDS);
-        define("{\"reviewAccepted\":true,\"locations\":[{\"time\":0,\"x\":4,\"y\":64,\"z\":4,\"commands\":[\"say hi\"]}]}", ",\"migration\":{}");
+        define("{\"locations\":[{\"time\":0,\"x\":4,\"y\":64,\"z\":4,\"commands\":[\"say hi\"]}]}", ",\"migration\":{}");
         seconds(1);
         world.leg.complete(null);
         seconds(1);
         assertTrue(world.calls.contains("command say hi"), world.calls.toString());
+    }
+
+    @Test void anEditThatLeavesTheScheduleAloneDoesNotRunArrivalAgain() throws Exception {
+        String module = "{\"locations\":[{\"time\":0,\"x\":4,\"y\":64,\"z\":4,\"commands\":[\"say hi\"]}]}";
+        define(module, "");
+        seconds(1);
+        world.leg.complete(null);
+        seconds(1);
+        assertEquals(1, world.calls.stream().filter("command say hi"::equals).count());
+        define(module, ",\"attributes\":{\"minecraft:gravity\":0.04}");
+        world.calls.clear();
+        seconds(3);
+        assertTrue(world.calls.isEmpty(), "the NPC stays where it is: " + world.calls);
+        define(module.replace("say hi", "say hello"), "");
+        seconds(1);
+        world.leg.complete(null);
+        seconds(1);
+        assertTrue(world.calls.contains("command say hello"), "a changed schedule starts again: " + world.calls);
     }
 
     @Test void aMissedLegIsTriedAgainLater() throws Exception {

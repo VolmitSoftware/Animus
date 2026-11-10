@@ -141,7 +141,7 @@ class CitizensTraitsTest {
         assertTrue(CitizensTraits.wanders("minecraft:zombie", json(record)));
         assertFalse(CitizensTraits.wanders("minecraft:player", json(record)), "player bodies have no vanilla AI");
         assertEquals(json("""
-                {"enabled":false,"reviewAccepted":false,"mode":"walk","speed":"SPEED","order":"wander","waitTicks":120,"points":[],"wander":{"radius":10,"height":7}}
+                {"enabled":true,"mode":"walk","speed":"SPEED","order":"wander","waitTicks":120,"points":[],"wander":{"radius":10,"height":7}}
                 """.replace("\"SPEED\"", Double.toString(CitizensBehaviors.speed(1.5)))), CitizensTraits.vanillaWander(json(record)));
         assertEquals(CitizensImporter.Status.CONVERTED, map("zombie", record, false, true).notes().get("/metadata/minecraft-ai").status());
         assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, map("zombie", record, false, false).notes().get("/metadata/minecraft-ai").status());
@@ -151,7 +151,7 @@ class CitizensTraitsTest {
         JsonObject traits = json("{\"targetable\":{\"targetable\":true}}");
         assertTrue(CitizensTraits.targetable(traits));
         assertFalse(CitizensTraits.targetable(json("{\"targetable\":{\"targetable\":false}}")));
-        assertEquals(json("{\"enabled\":false,\"reviewAccepted\":false,\"targeting\":{\"fightBack\":false}}"), CitizensTraits.targetableCombat());
+        assertEquals(json("{\"enabled\":true,\"targeting\":{\"fightBack\":false}}"), CitizensTraits.targetableCombat());
         assertEquals(json("{\"killable\":false}"), CitizensTraits.targetableHealth(json("{}")));
         assertEquals(json("{\"killable\":true}"), CitizensTraits.targetableHealth(json("{\"metadata\":{\"protected\":false}}")));
         assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, map("player", "{\"traits\":{\"targetable\":{\"targetable\":true}}}", false)

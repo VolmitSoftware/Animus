@@ -11,6 +11,7 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 
+import '../npc/npc_paths.dart' show npcSchemaVersion;
 import 'citizens_stacks.dart';
 import 'citizens_looks.dart';
 import 'citizens_traits.dart';
@@ -29,12 +30,12 @@ import 'trader_builder.dart';
 export 'snake_yaml.dart' show CitizensImportException;
 
 /// Must equal `CitizensImporter.CONVERTER_VERSION`; the shared golden fixtures fail when they drift.
-const int citizensConverterVersion = 16;
+const int citizensConverterVersion = 20;
 const String _healthModule = 'animus:health';
 const String _scheduleModule = 'animus:schedule';
 
 const String _notice =
-    'Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.';
+    'Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs spawn as Citizens had them, and converted patrols, schedules, combat, riding, shops and builds are on.';
 
 const Set<String> _integrations = <String>{'sentinel', 'denizen', 'assignment', 'denizen_flags', 'denizenflags', 'triggers', 'constants'};
 const Set<String> _review = <String>{
@@ -193,7 +194,7 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     final String type = javaLower(_scalar(traits, 'type', 'PLAYER'));
     _increment(types, type);
     final JObject definition = JObject();
-    definition.addInt('schemaVersion', 1);
+    definition.addInt('schemaVersion', npcSchemaVersion);
     definition.addInt('revision', 1);
     final String uuid = mapping.get(key)!.asPrimitive.asString;
     definition.addString('uuid', uuid);
@@ -201,11 +202,11 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     definition.addString('group', 'citizens');
     definition.addString('name', _scalar(record, 'name', 'Citizen $key'));
     definition.addString('type', type.contains(':') ? type : 'minecraft:$type');
-    definition.addBool('spawned', false);
+    final JElement? spawned = traits.get('spawned');
+    definition.addBool('spawned', !(spawned is JBool && !spawned.value));
     final JObject migration = JObject();
     migration.addString('importId', id);
     migration.addInt('citizensId', numeric);
-    migration.add('originalSpawned', traits.has('spawned') ? traits.get('spawned')!.deepCopy() : JNull.instance);
     definition.add('migration', migration);
     final JArray worldRemaps = JArray();
     final JObject reviewed = traits.deepCopy();
@@ -486,8 +487,7 @@ JObject? _riding(JElement? trait) {
   final JElement? enabled = trait.get('enabled');
   if (enabled is JBool && !enabled.value) return null;
   return JObject()
-    ..addBool('enabled', false)
-    ..addBool('reviewAccepted', false);
+    ..addBool('enabled', true);
 }
 
 String _scalar(JObject object, String key, String fallback) {

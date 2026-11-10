@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 7,
-  "importId": "43763ef8bb734c644dfa1df0cd85fb1f7cfc534fc17c844f02405a6ca81b5ab8",
-  "notice": "Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.",
+  "converterVersion": 8,
+  "importId": "24268a96499b952e6200880b4f248db884b917449144b8a6e16bbe65d7b00923",
+  "notice": "Data conversion only. Apply lists the generated behaviors on their NPCs and turns the server behaviors on, except held behaviors, whose guard did not convert.",
   "sources": {
     "scripts/broken.dsc": "ed429b9bba7215abe689fb88c25d060937970fdf6b4c75311ad50e5ae0200fd9",
     "scripts/crier.dsc": "939ee8652e863f9bba4f06f475985d7844b91114c02581b0e003496d1c8f9269",

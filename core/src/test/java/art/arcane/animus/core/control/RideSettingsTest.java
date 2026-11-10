@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class RideSettingsTest {
     private static JsonObject document(String module, String extra) throws IOException {
         return JsonDocuments.object("""
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"horse",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"horse",
                  "group":"test","name":"Horse","type":"minecraft:horse","spawned":false,
                  "position":{"world":"world","x":0,"y":64,"z":0,"yaw":0,"pitch":0},
                  "modules":{"animus:riding":%s}%s}
@@ -44,11 +44,10 @@ class RideSettingsTest {
             assertTrue(errors.stream().anyMatch(error -> error.startsWith("$.modules.animus:riding")), bad + " -> " + errors);
         }
     }
-    @Test void importedDefinitionsRequireLiteralReviewAcceptance() throws IOException {
+    @Test void importedDefinitionsRideWhenEnabled() throws IOException {
         String imported = ",\"migration\":{\"importId\":\"x\"}";
-        assertTrue(NpcDefinition.validate(document("{\"enabled\":true}", imported)).stream().anyMatch(error -> error.contains("reviewAccepted")));
-        assertTrue(NpcDefinition.validate(document("{\"enabled\":true,\"reviewAccepted\":\"true\"}", imported)).stream().anyMatch(error -> error.contains("reviewAccepted")));
-        assertEquals(List.of(), NpcDefinition.validate(document("{\"enabled\":true,\"reviewAccepted\":true}", imported)));
-        assertTrue(RideSettings.parse(document("{\"enabled\":true,\"reviewAccepted\":true}", imported)).isPresent());
+        assertEquals(List.of(), NpcDefinition.validate(document("{\"enabled\":true}", imported)));
+        assertTrue(RideSettings.parse(document("{\"enabled\":true}", imported)).isPresent());
+        assertFalse(NpcDefinition.validate(document("{\"enabled\":true,\"reviewAccepted\":true}", imported)).isEmpty(), "the old review flag is an unknown field");
     }
 }

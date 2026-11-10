@@ -38,6 +38,7 @@ class QuestServiceTest {
     private final List<String> log = new ArrayList<>();
     private QuestService<Player, Stack> quests;
     private UUID healer, farmer;
+    private final int[] factReads = {0}, lookups = {0};
 
     @BeforeEach void start() throws Exception {
         runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", directory));
@@ -49,13 +50,28 @@ class QuestServiceTest {
         farmer = runtime.npcs().find("farmer").orElseThrow().uuid();
         Files.createDirectories(directory.resolve("quests/town"));
         Files.writeString(directory.resolve("quests/town/herbs.json"), QuestDocumentTest.HERBS);
+        Files.writeString(directory.resolve("quests/town/lever.json"), LEVER);
+        alex.permissions.add("animus.quests.use");
         quests = service();
     }
 
-    private QuestService<Player, Stack> service() throws IOException {
-        FakeNpcRuntime<Player> living = new FakeNpcRuntime<>((UUID id) -> id.equals(alex.id) ? Optional.of(alex) : Optional.empty());
+    /** A quest with one custom objective and no turn-in, which a lever behavior counts. */
+    static final String LEVER = """
+            {"schemaVersion": 1, "id": "town:lever", "title": "Pull the lever", "givers": [],
+             "stages": [{"objectives": [{"type": "custom", "id": "lever", "amount": 5}]}]}
+            """;
+
+    private QuestService<Player, Stack> service() throws IOException { return service(DisplayTransport.unavailable("none")); }
+
+    private QuestService<Player, Stack> service(DisplayTransport<Player> displays) throws IOException {
+        FakeNpcRuntime<Player> living = new FakeNpcRuntime<>((UUID id) -> { lookups[0]++; return id.equals(alex.id) ? Optional.of(alex) : Optional.empty(); });
+        BehaviorFacts facts = new BehaviorFacts() {
+            @Override public Optional<Map<String, Object>> player(UUID player) { return Optional.empty(); }
+            @Override public Optional<Map<String, Object>> npc(UUID npc) { return Optional.empty(); }
+            @Override public Map<String, Object> server() { factReads[0]++; return Map.of("online_players", 1L); }
+        };
         QuestService<Player, Stack> service = new QuestService<>(runtime, new ScreenManager<>(host, (UUID npc) -> true, log::add), living,
-                DisplayTransport.unavailable("none"), (Player watched) -> {}, Runnable::run, () -> null, () -> BehaviorFacts.NONE, (String name) -> Optional.empty(), log::add);
+                displays, (Player watched) -> {}, Runnable::run, () -> null, () -> facts, (String name) -> Optional.empty(), log::add);
         service.reload((QuestCatalog ignored) -> {});
         assertEquals(List.of(), service.catalog().problems());
         return service;
@@ -154,5 +170,75 @@ class QuestServiceTest {
         quests.screens().click(alex, alex.window, QuestJournal.FINISHED_TAB, art.arcane.animus.core.gui.GuiModel.Click.LEFT);
         assertTrue(alex.frame.items().values().stream().flatMap((var item) -> item.lore().stream()).map(RichText::plain).anyMatch((String line) -> line.startsWith("Finished")),
                 alex.frame.items().toString());
+    }
+
+    private long stored(String quest, String name) {
+        return (Long) runtime.behaviorState().read(BehaviorFlags.subject(BehaviorFlags.QUESTS, quest, ServerNpc.HANDLE.uuid(), Optional.of(alex.id)), name,
+                BehaviorFlags.declaration("player"), new BehaviorProgram.Value(BehaviorProgram.Type.INTEGER, -7L), BehaviorProgram.Type.INTEGER).value();
+    }
+
+    @Test void aStagePastTheEndOfAShortenedQuestWaitsForTheTurnIn() {
+        quests.store().record(alex.id).put("town:herbs", new QuestRecord.Active(5, new int[0], System.currentTimeMillis(), false, 0));
+        quests.tick(alex);
+        assertEquals("ready", quests.status(alex.id, "town:herbs"), "a stage the file no longer has counts as every stage done");
+        assertTrue(quests.interacted(alex, healer, false, false));
+        assertEquals("finished", quests.status(alex.id, "town:herbs"));
+    }
+
+    @Test void aPlayerWithoutTheUseNodeGetsNoOffer() {
+        alex.permissions.clear();
+        assertFalse(quests.interacted(alex, healer, false, false));
+        assertTrue(alex.messages.stream().noneMatch((String line) -> line.contains("/animus quest choice")), alex.messages.toString());
+    }
+
+    @Test void aHugeObjectiveAmountCompletesInsteadOfOverflowing() {
+        quests.start(alex.id, "town:lever", true);
+        assertEquals(1, quests.objective(alex.id, "town:lever", "lever", 1));
+        assertEquals(5, quests.objective(alex.id, "town:lever", "lever", Integer.MAX_VALUE));
+        assertEquals("finished", quests.status(alex.id, "town:lever"));
+    }
+
+    @Test void resetRunsOnThePlayersOwnerAndTouchesOnlyTheirQuests() {
+        quests.start(alex.id, "town:herbs", false);
+        int before = lookups[0];
+        quests.reset(alex.id, Optional.empty());
+        assertTrue(lookups[0] > before, "an online player's reset goes to their owner");
+        assertEquals("none", quests.status(alex.id, "town:herbs"));
+        assertEquals(0, stored("town:herbs", "herbs"), "the quest the player had goes back to stage 0");
+        assertEquals(-7, stored("town:lever", "lever"), "a quest the player never had is not written");
+    }
+
+    @Test void offerMarkersSkipGiversOutOfRangeBeforeCheckingRequirements() throws Exception {
+        Files.writeString(directory.resolve("quests/town/herbs.json"), QuestDocumentTest.HERBS.replace("\"repeat\"", "\"requirements\": {\"condition\": \"server.online_players > 0\"}, \"repeat\""));
+        quests.close();
+        DisplayTransport<Player> displays = new DisplayTransport<>() {
+            @Override public String unavailable() { return null; }
+            @Override public int reserve() { return 1; }
+            @Override public void watch(Player viewer, java.util.function.Consumer<Click> clicks) {}
+            @Override public void spawn(Player viewer, List<art.arcane.animus.core.presentation.DisplayEntity> entities) {}
+            @Override public void update(Player viewer, List<art.arcane.animus.core.presentation.DisplayEntity> entities) {}
+            @Override public void remove(Player viewer, int[] ids) {}
+            @Override public void forget(Player viewer) {}
+            @Override public void close() {}
+        };
+        quests = service(displays);
+        alex.pose = new art.arcane.animus.core.gui.ScreenHost.Pose(java.util.Set.of("world"), 5000, 64, 5000, 65.6, 0, 0, false);
+        factReads[0] = 0;
+        quests.tick(alex);
+        assertEquals(0, factReads[0], "no NPC is near, so no requirement is read");
+    }
+
+    @Test void recordsLoadOnJoinAndLeaveMemoryOnQuit() throws Exception {
+        quests.start(alex.id, "town:herbs", false);
+        quests.quit(alex);
+        quests.store().flush();
+        assertEquals(0, quests.store().loaded(), "a written record of a player who left is dropped");
+        assertEquals(1, quests.playerRows(alex.id).size(), "an offline player's quests are still listed");
+        assertEquals(0, quests.store().loaded(), "listing an offline player loads nothing");
+        assertTrue(quests.playerRows(UUID.randomUUID()).isEmpty());
+        assertEquals(0, quests.store().loaded(), "nor does listing a stranger");
+        quests.joined(alex);
+        assertEquals(1, quests.store().loaded());
+        assertEquals("active", quests.status(alex.id, "town:herbs"));
     }
 }

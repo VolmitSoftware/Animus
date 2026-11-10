@@ -2,9 +2,9 @@
 // desktop and phone widths in both themes: pair with the import scope, choose
 // a Citizens saves.yml and a dtlTraders shop file (and a file dtlTraders does
 // not use, listed as skipped), upload and stage them, read the server's
-// review, apply through its inline confirm (cancelled once with Escape),
-// accept one category and then the rest through the Accept all confirm, roll
-// back through its confirm, check a forced refusal's copy, and finally check
+// review, apply through its inline confirm (cancelled once with Escape) and
+// see that nothing is left to accept, roll back through its confirm, check that an
+// import staged by an older converter is refused in the server's words, check a forced refusal's copy, and finally check
 // that a save larger than a relay frame is refused over the relay with a
 // pointer to the direct path. No console errors other than the browser's own
 // lines while the direct path is cut or a refusal is forced, and no sideways
@@ -133,24 +133,14 @@ async function run(browser, width, height, label, scratch, theme) {
   assert.equal((await control('state')).documents.length, before, 'cancel installs nothing');
   await page.getByRole('button', {name: /^\W*Apply$/}).click();
   await confirm(page, 'Install this import on the server?', 'Install import');
-  await state(page, 'Installed, waiting for review');
+  await state(page, 'Installed and running');
   assert.equal(await stat(page, 'NPCs installed'), '6');
   assert.ok((await control('state')).documents.length > before, 'apply installs documents on the server');
-  const categories = page.locator('[data-testid="import-categories"]');
-  await categories.waitFor();
-  const spawn = page.getByRole('checkbox', {name: /^Spawning: [1-9]\d* waiting$/});
-  await spawn.check();
-  await shot(page, `${label}-import-03-review`);
-  await page.getByRole('button', {name: 'Accept selected'}).click();
-  await page.getByRole('checkbox', {name: 'Spawning: 0 waiting'}).waitFor();
-  await page.locator('[data-testid="import-lines"] li', {hasText: 'Accepted spawn'}).waitFor();
-  const acceptAll = page.getByRole('button', {name: 'Accept all'});
-  if (await acceptAll.isEnabled()) {
-    await acceptAll.click();
-    await confirm(page, 'Accept every waiting category on the server?', 'Accept all');
-    await page.locator('[data-testid="import-lines"] li', {hasText: /Accepted|Nothing waiting/}).waitFor();
-  }
-  await shot(page, `${label}-import-04-accepted`);
+  await page.locator('[data-testid="import-lines"] li', {hasText: 'NPCs spawn with their patrols, schedules, combat, riding, shops and builds on'}).waitFor();
+  assert.equal(await page.locator('.animus-server-import').getByRole('button', {name: /Accept/}).count(), 0, 'apply leaves nothing to accept');
+  assert.equal(await page.locator('.animus-server-import').getByRole('checkbox').count(), 0, 'no review categories');
+  await page.locator('[data-testid="import-next"]').waitFor();
+  await shot(page, `${label}-import-03-applied`);
 
   await page.getByRole('button', {name: /^\W*Roll back$/}).click();
   await confirm(page, 'Roll back this import on the server?', 'Roll back');
@@ -158,6 +148,21 @@ async function run(browser, width, height, label, scratch, theme) {
   assert.equal((await control('state')).documents.length, before, 'rollback removes what the import installed');
   await page.getByRole('button', {name: /^\W*Apply$/}).waitFor();
   await shot(page, `${label}-import-05-rolled-back`);
+
+  // An import staged by an older converter is refused at apply in the server's
+  // own words, which name the step that stages it again.
+  forced = true;
+  const stale = 'Import 0d7bc5863a64 was previewed by an older Animus and is not applied: npcs/world/citizens-1.json is schemaVersion 1, '
+    + 'this one writes 2; upload and stage the save again, then apply';
+  await control(`fail?code=conflict&times=1&route=${encodeURIComponent(`/v1/imports/${importId}/apply`)}&message=${encodeURIComponent(stale)}`, {});
+  await page.getByRole('button', {name: /^\W*Apply$/}).click();
+  await confirm(page, 'Install this import on the server?', 'Install import');
+  const staleError = page.locator('[data-testid="import-error"]', {hasText: stale});
+  await staleError.waitFor();
+  assert.ok(!(await staleError.textContent()).includes('Changed on the server'), 'an import conflict is not an edit conflict');
+  await state(page, 'Rolled back');
+  await shot(page, `${label}-import-05a-stale-preview`);
+  forced = false;
 
   // A forced refusal reads as its cause and next step, plus the server's words.
   forced = true;

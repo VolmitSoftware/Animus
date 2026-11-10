@@ -34,7 +34,6 @@ class CombatEditor extends StatefulWidget {
     this.diagnostics = const <Diagnostic>[],
     this.npcIds = const <String>[],
     this.squads = const <String>[],
-    this.imported = false,
     this.origin,
     this.schema,
     super.key,
@@ -54,9 +53,6 @@ class CombatEditor extends StatefulWidget {
 
   /// Squad names in the workspace, offered for `squads` rules and the squad name.
   final List<String> squads;
-
-  /// Whether the NPC was imported, so combat also needs `reviewAccepted`.
-  final bool imported;
 
   /// The NPC's x, y and z, drawn on the location grids.
   final (double, double, double)? origin;
@@ -243,7 +239,7 @@ class _CombatEditorState extends State<CombatEditor> {
 
   Widget _enabled() {
     final JsonMap module = _module;
-    final Set<String> edited = <String>{'enabled', 'reviewAccepted', ..._rootSwitches.keys, ...combatRuleSections, ...combatSectionKeys.keys};
+    final Set<String> edited = <String>{'enabled', ..._rootSwitches.keys, ...combatRuleSections, ...combatSectionKeys.keys};
     return GuiSection(
       title: 'Enabled',
       tip: 'Whether combat runs. Without it the NPC is invulnerable and never fights.',
@@ -258,14 +254,6 @@ class _CombatEditorState extends State<CombatEditor> {
             problems: _at(const <JsonStep>['enabled']),
             onChanged: (bool next) => _put(const <JsonStep>['enabled'], next),
           ),
-          if (component.imported || module.containsKey('reviewAccepted'))
-            _checkbox(
-              label: 'reviewAccepted',
-              value: module['reviewAccepted'] == true,
-              description: 'Imported NPCs fight only once reviewed.',
-              problems: _at(const <JsonStep>['reviewAccepted']),
-              onChanged: (bool next) => _put(const <JsonStep>['reviewAccepted'], next),
-            ),
           for (final MapEntry<String, (bool, String)> entry in _rootSwitches.entries)
             if (module[entry.key] case final Object? value when value == null || value is bool)
               _checkbox(

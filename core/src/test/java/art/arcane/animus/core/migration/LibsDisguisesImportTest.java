@@ -93,6 +93,22 @@ class LibsDisguisesImportTest {
         }
     }
 
+    @Test void scriptsAndSavesThatAreNotUtf8AreStillRead() throws Exception {
+        Path skript = plugins().resolve("Skript/scripts/npcs.sk");
+        Files.createDirectories(skript.getParent());
+        Files.writeString(skript, "# Café du marché\non load:\n\texecute console command \"/duuid 00000000-0000-4000-8000-000000000003 zombie\"\n",
+                java.nio.charset.StandardCharsets.ISO_8859_1);
+        Path saved = plugins().resolve("LibsDisguises/SavedDisguises/00000000-0000-4000-8000-000000000001");
+        Files.createDirectories(saved.getParent());
+        Files.write(saved, new byte[] {(byte) 0xAC, (byte) 0xED, 0, 5, 's', 'r'});
+        try (DocumentStore store = new DocumentStore(plugins().resolve("Animus"))) {
+            LibsDisguisesSaves.Result read = LibsDisguisesSaves.read(store, Optional.of(plugins()));
+            assertEquals("zombie", read.found().get(UUID.fromString("00000000-0000-4000-8000-000000000003")).disguise());
+            assertEquals(1, read.problems().size(), read.problems().toString());
+            assertTrue(read.problems().getFirst().contains("saved in LibsDisguises' old format"), read.problems().toString());
+        }
+    }
+
     @Test void onlyAPlayerBodyLooksUpItsEntityUuid() {
         UUID npc = UUID.fromString("00000000-0000-4000-8000-000000000002");
         LibsDisguisesSaves.Result result = new LibsDisguisesSaves.Result(Map.of(UUID.fromString("00000000-0000-2000-8000-000000000002"),

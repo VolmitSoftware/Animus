@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "3cd3bfa7-a085-5f20-bb7c-3a86e49fb0d2",
+  "id": "zombie-nautilus",
+  "group": "types",
+  "name": "Body zombie_nautilus",
+  "type": "minecraft:zombie_nautilus",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

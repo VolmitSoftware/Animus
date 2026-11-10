@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "a2b66ea2-a189-5d11-9851-f5d8087f7b86",
+  "id": "bat",
+  "group": "types",
+  "name": "Body bat",
+  "type": "minecraft:bat",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

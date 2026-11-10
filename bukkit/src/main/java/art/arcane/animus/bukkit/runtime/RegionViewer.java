@@ -219,7 +219,7 @@ final class RegionViewer {
         if (!now.live() || host.previews.hides(id, now.spec().definition().id(), now.spec().definition().uuid()) || !now.snapshot().position().world().equals(at.world())) return false;
         double distance = now.snapshot().position().point().distance(at.point());
         return distance <= host.settings().viewDistance() && sentChunk.test(now.snapshot().position().chunk())
-                && !now.spec().viewers().hides(id, distance, player::hasPermission);
+                && !now.spec().viewers().hides(id, distance, player::hasPermission, (String node) -> BukkitRuntimeHost.setAndHeld(player, node));
     }
     private boolean eligibleNow(RegionActor actor) {
         if (!host.current(this) || !player.isOnline() || player.isDead()) return false;
@@ -228,14 +228,15 @@ final class RegionViewer {
     }
     private void spawn(RegionActor actor, RegionActor.Publication now) {
         try {
-            art.arcane.animus.core.presentation.MirrorSettings mirror = art.arcane.animus.core.presentation.MirrorSettings.parse(now.spec().definition().json()).orElse(null);
+            art.arcane.animus.core.presentation.MirrorSettings mirror = now.mirror();
             NpcPresentation.Label label = NpcPresentation.label(now.spec(), shownName(now), now.bubble(), now.attributes(), host.runtime.placeholders(), id);
             // A mirrored skin shows only on a player body; a viewer without a readable skin sees the NPC's own.
             art.arcane.animus.core.presentation.BodySkin skin = mirror != null && mirror.skin() && now.type().equals(art.arcane.animus.core.presentation.BodyRules.PLAYER)
                     ? art.arcane.animus.bukkit.recording.RecorderLook.skin(player).orElse(now.skin()) : now.skin();
             NativePacketAdapter.Body body = (NativePacketAdapter.Body) NpcPresentation.body(host.packets, label, skin);
             Presented presented = new Presented(actor, body, now);
-            if (host.runtime.placeholders().active() && NpcPresentation.placeholdered(now.spec(), shownName(now))) { presented.labels = label.rows(); presented.labelledAt = ticks; }
+            presented.labels = label.rows(); presented.labelledAt = ticks; presented.bubbleRevision = now.bubbleRevision();
+            presented.placeholdered = host.runtime.placeholders().active() && NpcPresentation.placeholdered(now.spec(), shownName(now));
             visible.put(actor.uuid, presented); presentationOrder.addLast(presented); cosmeticOrder.addLast(presented);
             nativeIds += presented.ids; pendingSpawns++; shown.incrementAndGet();
             handOver(() -> host.packets.spawn(player, body, pose(now))).whenComplete((nothing, failure) -> enqueue(() -> {
@@ -394,7 +395,7 @@ final class RegionViewer {
                 if (!swing(body, now.swings())) return sent;
                 sent++; if (!host.current(this)) return sent;
             }
-            if (body.spawnFinished && body.labels != null && refresh > 0 && sent < packetBudget && ticks - body.labelledAt >= refresh) {
+            if (body.spawnFinished && sent < packetBudget && (body.bubbleRevision != now.bubbleRevision() || body.placeholdered && refresh > 0 && ticks - body.labelledAt >= refresh)) {
                 if (!relabel(body, now)) return sent;
                 sent++; if (!host.current(this)) return sent;
                 if (body.retired) continue;
@@ -405,16 +406,16 @@ final class RegionViewer {
         return sent;
     }
     /**
-     * Cosmetic, every {@code [placeholders] refreshTicks}: the body's name and hologram lines filled again for this player.
-     * Changed text goes out in place; a body whose rows changed shape, or whose relabel failed, respawns.
+     * Cosmetic, when the speech bubble changes and every {@code [placeholders] refreshTicks}: the body's text filled again for
+     * this player. Changed text goes out in place; a body whose rows changed shape, or whose relabel failed, respawns.
      */
     private boolean relabel(Presented body, RegionActor.Publication now) {
         body.labelledAt = ticks;
         List<String> rows = NpcPresentation.label(now.spec(), shownName(now), now.bubble(), now.attributes(), host.runtime.placeholders(), id).rows();
-        if (rows.equals(body.labels)) return true;
+        if (rows.equals(body.labels)) { body.bubbleRevision = now.bubbleRevision(); return true; }
         if (rows.size() != body.labels.size()) { retire(body); return true; }
         if (!admit(PresentationPressure.Tier.COSMETIC)) return false;
-        body.labels = rows;
+        body.labels = rows; body.bubbleRevision = now.bubbleRevision();
         try {
             handOver(() -> host.packets.relabel(player, body.body, rows)).whenComplete((nothing, failure) -> {
                 if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) retire(body); });
@@ -517,10 +518,11 @@ final class RegionViewer {
         ViewerSession.Validation validated = hit(body);
         if (validated == null) return;
         RegionActor actor = body.actor;
-        // A click on an NPC that redirects its clicks counts as a click on the target, while this region owns that target.
+        // A click on an NPC that redirects its clicks counts as a click on the target, while this region owns that target and
+        // it is shown to this player. An attack still lands on the NPC that was hit: the event, which deals combat damage, names it.
         UUID target = redirect(actor);
         VirtualNpcInteractionEvent.Action action = input.action() == NativePacketAdapter.Action.ATTACK ? VirtualNpcInteractionEvent.Action.ATTACK : VirtualNpcInteractionEvent.Action.INTERACT;
-        VirtualNpcInteractionEvent event = new VirtualNpcInteractionEvent(player, target, action, validated.distance(), false);
+        VirtualNpcInteractionEvent event = new VirtualNpcInteractionEvent(player, action == VirtualNpcInteractionEvent.Action.ATTACK ? actor.uuid : target, action, validated.distance(), false);
         host.plugin.getServer().getPluginManager().callEvent(event);
         // Listeners run on this region and may teleport, clear or hand the NPC elsewhere: authority is read again. A combat
         // listener's hurt and knockback leave it the same click, so only a move to another world voids it.
@@ -548,12 +550,12 @@ final class RegionViewer {
         }
     }
 
-    /** The NPC that receives clicks on {@code actor}: its redirect target when this region owns it and it is shown, otherwise itself. */
+    /** The NPC that receives clicks on {@code actor}: its redirect target when this region owns it, it is shown and not hidden from this player, otherwise itself. */
     private UUID redirect(RegionActor actor) {
         java.util.Optional<UUID> target = actor.spec.definition().clickRedirect();
         if (target.isEmpty()) return actor.uuid;
         RegionActor other = host.byUuid.get(target.get());
-        return other != null && other.owner.owned() && other.presentable() ? target.get() : actor.uuid;
+        return other != null && other.owner.owned() && other.presentable() && !host.hiddenFrom(id, other.id, other.uuid) ? target.get() : actor.uuid;
     }
 
     /**
@@ -732,12 +734,11 @@ final class RegionViewer {
     }
 
     private static boolean mirrorsEquipment(RegionActor.Publication now) {
-        return art.arcane.animus.core.presentation.MirrorSettings.parse(now.spec().definition().json()).filter(art.arcane.animus.core.presentation.MirrorSettings::equipment).isPresent();
+        return now.mirror() != null && now.mirror().equipment();
     }
     /** The name this player sees: its own on an NPC that mirrors names, else the NPC's. */
     private String shownName(RegionActor.Publication now) {
-        return art.arcane.animus.core.presentation.MirrorSettings.parse(now.spec().definition().json()).filter(art.arcane.animus.core.presentation.MirrorSettings::name).isPresent()
-                ? player.getName() : now.name();
+        return now.mirror() != null && now.mirror().name() ? player.getName() : now.name();
     }
     /** The body's pose for this viewer: a per-player look-close NPC looks at a viewer in its range who may be looked at. */
     private BodyPose pose(RegionActor.Publication now) {
@@ -765,8 +766,8 @@ final class RegionViewer {
         /** The passenger roster last sent for this vehicle; null when unknown, so the next update sends it again. */
         List<Integer> sentRoster;
         BodyTransport.Bones bones; RigView view;
-        /** The filled text rows this player was sent, when the name or a hologram line holds a placeholder; otherwise null. */
-        List<String> labels; long labelledAt;
+        /** The filled text rows this player was sent, and whether the name or a hologram line holds a placeholder that refreshes. */
+        List<String> labels; long labelledAt, bubbleRevision; boolean placeholdered;
         Presented(RegionActor actor, NativePacketAdapter.Body body, RegionActor.Publication now) {
             this.actor = actor; this.body = body; appearance = now.appearance(); ids = body.entityIds().length; pose = now.pose();
             equipment = now.equipment().isEmpty() && !mirrorsEquipment(now) ? now.equipmentRevision() : -1;

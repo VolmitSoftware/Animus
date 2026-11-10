@@ -3,6 +3,7 @@ package art.arcane.animus.bukkit.integration.mythic;
 import art.arcane.animus.bukkit.api.NpcPosition;
 import art.arcane.animus.core.integration.MythicBinding;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
@@ -15,6 +16,9 @@ interface MythicHost {
     Optional<Npc> npc(UUID npc);
 
     Optional<Npc> npc(String id);
+
+    /** The UUIDs of loaded NPCs whose definition binds an enabled Mythic mob, active or not. Cheap enough to call every tick. */
+    Set<UUID> bound();
 
     /** An online player, else a loaded entity, by UUID. Call it on the owner of where the entity is expected. */
     Optional<org.bukkit.entity.Entity> entity(UUID id);

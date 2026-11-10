@@ -56,7 +56,7 @@ class RouteStepRuntimeTest {
         harness.terrain = FLAT;
         harness.service = new PersistedNpcService<>(harness.host, runtime, Runnable::run, PersistedNpcService.Settings.DEFAULT);
         Files.writeString(npcs.resolve(NPC + ".json"), """
-                {"schemaVersion": 1, "revision": 1, "uuid": "%s", "id": "%s", "group": "test",
+                {"schemaVersion": 2, "revision": 1, "uuid": "%s", "id": "%s", "group": "test",
                  "name": "Performer", "type": "minecraft:player", "spawned": true,
                  "position": {"world": "world", "x": 2.5, "y": 64, "z": 2.5, "yaw": 0, "pitch": 0},
                  "modules": {"animus:navigation": %s}}

@@ -68,9 +68,7 @@ public final class SetupGuide {
             case FOUND -> steps.add(new Step("Import " + migration.source().orElse("the Citizens data"), false, "Preview", Click.RUN,
                     "/animus import citizens preview", "Check what converts; nothing installs until apply", false));
             case STAGED -> steps.add(new Step("Install the staged import", false, "Apply", Click.SUGGEST,
-                    "/animus import citizens apply", "Installs the NPCs despawned; press Enter to run", false));
-            case APPLIED -> steps.add(new Step("Turn on imported settings, " + migration.waiting() + " still off", false, "Review", Click.RUN,
-                    "/animus import citizens review", "List what waits, then accept it", false));
+                    "/animus import citizens apply", "Installs the NPCs and turns on what converted; press Enter to run", false));
             case DONE -> steps.add(Step.done("Citizens import done"));
         }
         if (state.npcs() == 0) steps.add(new Step("Create an NPC where you stand", false, "Create", Click.SUGGEST, CREATE, "Pick an id, then press Enter", true));

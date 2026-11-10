@@ -198,7 +198,16 @@ class AnimusRuntimeTest {
             runtime.applySettings(art.arcane.animus.core.config.PluginSettings.parse(text, directory.resolve("config.toml")));
             java.util.concurrent.Executor lane = runtime.fileExecutor((Runnable task, art.arcane.animus.core.extension.MutationLane.EngineTaskEvent event, Throwable failure) -> {});
             java.util.concurrent.CountDownLatch hold = new java.util.concurrent.CountDownLatch(1);
-            lane.execute(() -> { try { hold.await(); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); } });
+            Runnable held = () -> { try { hold.await(); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); } };
+            // The startup maintenance pass may still hold the one slot; the hold is admitted once it ends.
+            long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(10);
+            while (true) {
+                try { lane.execute(held); break; }
+                catch (java.util.concurrent.RejectedExecutionException busy) {
+                    if (System.nanoTime() - deadline >= 0) throw busy;
+                    Thread.sleep(10);
+                }
+            }
             assertThrows(java.util.concurrent.RejectedExecutionException.class, () -> lane.execute(() -> {}));
             hold.countDown();
         } finally { runtime.close(); }

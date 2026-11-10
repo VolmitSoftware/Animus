@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "18218db1-baaa-586e-ad16-58a1ec339079",
+  "id": "snow-golem",
+  "group": "types",
+  "name": "Body snow_golem",
+  "type": "minecraft:snow_golem",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

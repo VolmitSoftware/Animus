@@ -59,7 +59,7 @@ class SkinScreenTest {
         store.commit(List.of(
                 new DocumentStore.Change("skins/" + WORN + ".json", "missing", WORN_TEXT),
                 new DocumentStore.Change("skins/" + SPARE + ".json", "missing", SPARE_TEXT),
-                new DocumentStore.Change("groups/looks.json", "missing", "{\"schemaVersion\":1,\"revision\":1,\"id\":\"looks\",\"values\":{\"skins\":[\"" + WORN + "\"]}}"),
+                new DocumentStore.Change("groups/looks.json", "missing", "{\"schemaVersion\":2,\"revision\":1,\"id\":\"looks\",\"values\":{\"skins\":[\"" + WORN + "\"]}}"),
                 new DocumentStore.Change("npcs/town/guard.json", "missing", ToolkitScreensTest.npc("guard", GUARD, ",\"skin\":\"" + WORN + "\"")),
                 new DocumentStore.Change("npcs/town/cow.json", "missing", ToolkitScreensTest.npc("cow", COW, "").replace("minecraft:player", "minecraft:cow"))));
         npcs = new NpcRepository(store);

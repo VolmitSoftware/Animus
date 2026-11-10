@@ -42,7 +42,6 @@ TraderResult mapTrader(JElement? value, String npcName) {
   final JObject module = JObject();
   module.addString('shop', 'dtltraders:${traderPath(name)}');
   module.addString('openOn', 'right');
-  module.addBool('reviewAccepted', false);
   final JObject imported = JObject();
   imported.addString('source', 'dtlTraders');
   imported.addString('shopName', name);
@@ -162,7 +161,7 @@ BuilderResult convertBuilder(JElement? trait) {
   }
   final String? state = _text(source, 'State');
   if (state != null && (javaLower(state) == 'building' || javaLower(state) == 'collecting')) {
-    warnings.add("Builder was ${javaLower(state)} when saved; the build starts again on the NPC's first spawn after accept builder. Blocks already in place are skipped");
+    warnings.add("Builder was ${javaLower(state)} when saved; the build starts again on the NPC's first spawn. Blocks already in place are skipped");
   }
   for (final String task in const <String>['onstart', 'oncomplete', 'oncancel']) {
     if (source.has(task)) warnings.add('builder $task names a Denizen task; recreate it with a build_finished or build_paused trigger');
@@ -172,7 +171,6 @@ BuilderResult convertBuilder(JElement? trait) {
       if (!_builderConverted.contains(key) && !_builderKept.contains(key)) key,
   ];
   if (unknown.isNotEmpty) warnings.add('builder fields kept for review without conversion: ${unknown.join(', ')}');
-  module.addBool('reviewAccepted', false);
   final JObject imported = JObject();
   imported.add('builder', source.deepCopy());
   imported.add('notes', JArray(<JElement>[for (final String warning in warnings) JString(warning)]));
@@ -180,7 +178,7 @@ BuilderResult convertBuilder(JElement? trait) {
   return BuilderResult(module, List<String>.unmodifiable(warnings));
 }
 
-/// `BuilderMapping.resume`: a behavior that starts a build Builder saved mid-way once, after the builder review is accepted.
+/// `BuilderMapping.resume`: a behavior that starts a build Builder saved mid-way once, on the NPC's first spawn.
 JObject? builderResume(JElement? trait, String key) {
   if (trait is! JObject) return null;
   final String? state = _text(trait, 'State');

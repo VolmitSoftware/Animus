@@ -61,7 +61,7 @@ class CitizensBehaviorsTest {
                 + "{\"location\":{\"world\":\"world\",\"x\":9,\"y\":64.5,\"z\":-3.2},\"triggers\":[{\"type\":\"delay\",\"delay\":40},{\"type\":\"delay\",\"delay\":20},{\"type\":\"chat\",\"lines\":[\"hi\"]}]},"
                 + "{\"location\":{\"world\":\"elsewhere\",\"x\":0,\"y\":64,\"z\":0}}]}}}", "{\"navigator\":{\"speedmodifier\":0.4}}");
         JsonObject navigation = result.navigation().orElseThrow();
-        assertEquals(json("{\"enabled\":false,\"reviewAccepted\":false,\"mode\":\"walk\",\"speed\":1.72,\"order\":\"sequence\",\"loop\":true,\"waitTicks\":0,"
+        assertEquals(json("{\"enabled\":true,\"mode\":\"walk\",\"speed\":1.72,\"order\":\"sequence\",\"loop\":true,\"waitTicks\":0,"
                 + "\"points\":[{\"x\":1.5,\"y\":64,\"z\":2.5},{\"x\":9.5,\"y\":64,\"z\":-3.5,\"waitTicks\":60}]}"), navigation);
         assertEquals(2, result.points());
         assertEquals(List.of("citizens:waypoints-7"), result.behaviors());
@@ -105,7 +105,7 @@ class CitizensBehaviorsTest {
 
     @Test void wanderKeepsItsRangesAndDelay() {
         JsonObject navigation = map("{\"waypoints\":{\"provider\":\"wander\",\"wander\":{\"xrange\":40,\"yrange\":2,\"delay\":-1,\"pathfind\":true}}}").navigation().orElseThrow();
-        assertEquals(json("{\"enabled\":false,\"reviewAccepted\":false,\"mode\":\"walk\",\"speed\":4.3,\"order\":\"wander\",\"waitTicks\":60,\"points\":[],\"wander\":{\"radius\":32,\"height\":2}}"), navigation);
+        assertEquals(json("{\"enabled\":true,\"mode\":\"walk\",\"speed\":4.3,\"order\":\"wander\",\"waitTicks\":60,\"points\":[],\"wander\":{\"radius\":32,\"height\":2}}"), navigation);
     }
 
     @Test void unknownProvidersAndEmptyRoutesStayPreservedOnly() {
@@ -207,14 +207,17 @@ class CitizensBehaviorsTest {
         assertEquals(json("{\"command\":\"say Guard greets you\",\"as\":\"player\"}"), delayed.getAsJsonArray("steps").get(1).getAsJsonObject().getAsJsonObject("arguments"));
         JsonObject gated = right.get(1).getAsJsonObject();
         assertEquals("animus:has-permission", gated.get("capability").getAsString());
-        JsonObject cooling = gated.getAsJsonObject("then");
+        JsonObject allowed = gated.getAsJsonObject("then");
+        assertEquals("animus:commands-allowed", allowed.get("capability").getAsString(), "the allow-list is checked before the cooldown is set");
+        JsonObject cooling = allowed.getAsJsonObject("then");
         assertEquals(json("{\"name\":\"commands-7-1-cooldown\",\"scope\":\"relationship\"}"), cooling.getAsJsonObject("arguments"), "the per-player cooldown is a flag per NPC and player");
         JsonArray ready = cooling.getAsJsonObject("else").getAsJsonArray("steps");
         assertEquals(json("{\"name\":\"commands-7-1-cooldown\",\"scope\":\"relationship\",\"expireSeconds\":5}"), ready.get(0).getAsJsonObject().getAsJsonObject("arguments"));
-        assertEquals(json("{\"command\":\"give {player_name} minecraft:bread 1\",\"as\":\"console\"}"), ready.get(1).getAsJsonObject().getAsJsonObject("arguments"));
+        assertEquals(json("{\"command\":\"give {player_name} minecraft:bread 1\",\"as\":\"console\"}"), ready.get(1).getAsJsonObject().getAsJsonObject("arguments"), "the command runs once its cooldown is set");
         JsonArray left = behavior.getAsJsonObject("routines").getAsJsonObject("left").getAsJsonArray("steps");
         assertEquals(3, left.size(), "the costed command converts too");
-        assertEquals("animus:can-afford", left.get(1).getAsJsonObject().get("capability").getAsString());
+        assertEquals("animus:commands-allowed", left.get(1).getAsJsonObject().get("capability").getAsString());
+        assertEquals("animus:can-afford", left.get(1).getAsJsonObject().getAsJsonObject("then").get("capability").getAsString());
         assertEquals("console", left.get(2).getAsJsonObject().getAsJsonObject("arguments").get("as").getAsString(), "operator commands run from the console");
         List<String> warnings = result.warnings();
         assertEquals(json("{\"id\":\"sneak-right\",\"event\":\"interaction\",\"action\":\"sneak_interact\",\"routine\":\"sneak-right\"}"), triggers.get(2));
@@ -260,9 +263,11 @@ class CitizensBehaviorsTest {
         CitizensBehaviors.Result result = map("{\"commandtrait\":{\"cost\":5.0,\"commands\":{\"0\":{\"command\":\"a\",\"hand\":\"BOTH\"}}}}");
         String content = result.documents().getFirst().content();
         accepted(content);
-        JsonObject click = JsonDocuments.object(content).getAsJsonObject("routines").getAsJsonObject("click");
+        JsonObject allowed = JsonDocuments.object(content).getAsJsonObject("routines").getAsJsonObject("click");
+        assertEquals("animus:commands-allowed", allowed.get("capability").getAsString(), "the allow-list is checked before the charge");
+        JsonObject click = allowed.getAsJsonObject("then");
         assertEquals(json("{\"money\":5}"), click.getAsJsonObject("arguments"));
-        assertEquals("animus:charge", click.getAsJsonObject("then").getAsJsonArray("steps").get(0).getAsJsonObject().get("capability").getAsString());
+        assertEquals("animus:charge", click.getAsJsonObject("then").getAsJsonArray("steps").get(0).getAsJsonObject().get("capability").getAsString(), "charged before the commands run");
         assertEquals(json("{\"text\":\"You need at least $5.\"}"), click.getAsJsonObject("else").getAsJsonObject("arguments"));
     }
 

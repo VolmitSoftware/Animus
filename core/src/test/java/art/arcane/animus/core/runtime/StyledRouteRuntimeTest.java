@@ -38,7 +38,7 @@ class StyledRouteRuntimeTest {
         harness.service = new PersistedNpcService<>(harness.host, runtime, Runnable::run, PersistedNpcService.Settings.DEFAULT);
         harness.transport.presentation = true;
         Files.writeString(npcs.resolve(NPC + ".json"), """
-                {"schemaVersion": 1, "revision": 1, "uuid": "%s", "id": "%s", "group": "test",
+                {"schemaVersion": 2, "revision": 1, "uuid": "%s", "id": "%s", "group": "test",
                  "name": "Walker", "type": "%s", "spawned": true,
                  "position": {"world": "world", "x": 2.5, "y": 64, "z": 2.5, "yaw": 0, "pitch": 0}, "movement": %s,
                  "modules": {"animus:navigation": {"enabled": true, "speed": 2, "waitTicks": 0, %s}}}

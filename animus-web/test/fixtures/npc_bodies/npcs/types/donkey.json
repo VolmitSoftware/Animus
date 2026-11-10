@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "f48cb75d-a977-5460-82cb-649608f43e7b",
+  "id": "donkey",
+  "group": "types",
+  "name": "Body donkey",
+  "type": "minecraft:donkey",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

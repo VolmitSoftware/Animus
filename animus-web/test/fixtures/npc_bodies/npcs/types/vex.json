@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "7b039962-2ab7-57cf-9782-af6e53ac13bb",
+  "id": "vex",
+  "group": "types",
+  "name": "Body vex",
+  "type": "minecraft:vex",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

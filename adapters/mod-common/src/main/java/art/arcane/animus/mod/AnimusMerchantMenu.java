@@ -80,9 +80,14 @@ final class AnimusMerchantMenu extends MerchantMenu {
 
     @Override public void setSelectionHint(int offer) { selected = offer >= 0 && offer < offers.size() ? offer : -1; }
 
-    /** Vanilla moves the payment in here; this screen shows the chosen result instead. */
+    /**
+     * Vanilla moves the payment in here; this screen shows the chosen result instead. It goes straight into the trade
+     * container: a slot set would mark the container changed, and vanilla then recomputes the result from the empty
+     * payment slots and clears it.
+     */
     @Override public void tryMoveItems(int offer) {
-        getSlot(RESULT).set(selected >= 0 ? offers.get(selected).result().copy() : ItemStack.EMPTY);
+        Slot result = getSlot(RESULT);
+        result.container.setItem(result.getContainerSlot(), selected >= 0 ? offers.get(selected).result().copy() : ItemStack.EMPTY);
         sendAllDataToRemote();
     }
 

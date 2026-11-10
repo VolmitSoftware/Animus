@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "2b489744-c914-59ff-9465-d7b41c395b6b",
+  "id": "endermite",
+  "group": "types",
+  "name": "Body endermite",
+  "type": "minecraft:endermite",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

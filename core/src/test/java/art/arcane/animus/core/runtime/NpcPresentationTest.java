@@ -15,7 +15,7 @@ class NpcPresentationTest {
 
     private static DefinitionSpec<String> spec(String type, String extra) throws Exception {
         return DefinitionSpec.parse(NpcDefinition.parse("""
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"guard",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"guard",
                  "group":"test","name":"Captain of the Northern Watch","type":"%s","spawned":true,
                  "position":{"world":"world","x":1,"y":64,"z":2,"yaw":0,"pitch":0}%s}
                 """.formatted(type, extra)), TYPES, ignored -> WORLD, ITEMS);

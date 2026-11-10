@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "aace5bb6-9bf2-5d71-843e-2136e06b7fc8",
+  "id": "cat-sitting",
+  "group": "settings",
+  "name": "Set cat-sitting",
+  "type": "minecraft:cat",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "cat": {
+    "variant": "calico",
+    "sitting": true,
+    "collar": "lime"
+  }
+}

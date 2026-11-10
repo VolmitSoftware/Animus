@@ -7,31 +7,25 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * The model each NPC shows: a runtime override from another integration first, then its definition's
- * {@code animus:modelengine} module. The definition index is rebuilt only when the definition snapshot changes.
+ * The model each NPC shows: its definition's {@code animus:modelengine} module. The definition index is rebuilt only when the definition snapshot changes.
  */
 final class DefinitionModels implements Function<UUID, Optional<ModeledTransport.Shape>> {
     private record Index(Map<String, NpcDefinition> source, Map<UUID, ModelEngineModule> models, Map<UUID, String> names) {}
 
     private final Supplier<Map<String, NpcDefinition>> definitions;
-    private final Map<UUID, ModelEngineModule> overrides = new ConcurrentHashMap<>();
     private volatile Index index = new Index(null, Map.of(), Map.of());
 
     DefinitionModels(Supplier<Map<String, NpcDefinition>> definitions) { this.definitions = Objects.requireNonNull(definitions); }
 
     @Override public Optional<ModeledTransport.Shape> apply(UUID npc) {
         Index current = current();
-        ModelEngineModule model = overrides.getOrDefault(npc, current.models().get(npc));
+        ModelEngineModule model = current.models().get(npc);
         return model == null ? Optional.empty() : Optional.of(new ModeledTransport.Shape(model, current.names().getOrDefault(npc, "")));
     }
-
-    void override(UUID npc, ModelEngineModule model) { overrides.put(Objects.requireNonNull(npc), Objects.requireNonNull(model)); }
-    void clear(UUID npc) { overrides.remove(npc); }
 
     private Index current() {
         Map<String, NpcDefinition> source = definitions.get();

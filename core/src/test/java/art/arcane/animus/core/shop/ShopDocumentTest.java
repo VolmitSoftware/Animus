@@ -59,7 +59,7 @@ class ShopDocumentTest {
 
     @Test void npcDefinitionsBindShopsThroughTheirModule() throws Exception {
         JsonObject definition = JsonDocuments.object("""
-                {"schemaVersion": 1, "revision": 1, "uuid": "1fde8840-5f7a-5a37-bc24-357183d2e276", "id": "baker", "group": "town", "name": "Baker",
+                {"schemaVersion": 2, "revision": 1, "uuid": "1fde8840-5f7a-5a37-bc24-357183d2e276", "id": "baker", "group": "town", "name": "Baker",
                  "type": "minecraft:player", "spawned": true, "position": {"world": "world", "x": 0, "y": 64, "z": 0, "yaw": 0, "pitch": 0},
                  "modules": {"animus:shop": {"shop": "town:baker", "openOn": "both"}}}
                 """);

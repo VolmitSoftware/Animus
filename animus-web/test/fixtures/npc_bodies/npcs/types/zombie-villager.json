@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "dc94e701-c00e-5499-b9a5-b8eb3b543b5a",
+  "id": "zombie-villager",
+  "group": "types",
+  "name": "Body zombie_villager",
+  "type": "minecraft:zombie_villager",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

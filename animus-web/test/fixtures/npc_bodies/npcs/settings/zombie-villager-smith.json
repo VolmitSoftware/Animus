@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "2422f17e-2179-5dea-a32c-a3fa0d434baf",
+  "id": "zombie-villager-smith",
+  "group": "settings",
+  "name": "Set zombie-villager-smith",
+  "type": "minecraft:zombie_villager",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "zombieVillager": {
+    "type": "snow",
+    "profession": "weaponsmith"
+  }
+}

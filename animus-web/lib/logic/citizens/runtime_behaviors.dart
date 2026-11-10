@@ -184,6 +184,26 @@ JObject _otherwise(JObject condition, JObject? otherwise) {
   return condition;
 }
 
+/// `node` only when the behavior may run commands, checked before it takes anything for one.
+JObject _allowed(JObject node) => _condition('animus:commands-allowed', JObject(), node);
+
+/// Whether `node` or a step inside it runs `animus:command`.
+bool _runsCommand(JElement? node) {
+  if (node is JArray) {
+    for (final JElement step in node.elements) {
+      if (_runsCommand(step)) return true;
+    }
+    return false;
+  }
+  if (node is! JObject) return false;
+  final JElement? capability = node.get('capability');
+  if (capability is JPrimitive && capability.asString == 'animus:command') return true;
+  for (final String field in const <String>['steps', 'then', 'else']) {
+    if (_runsCommand(node.get(field))) return true;
+  }
+  return false;
+}
+
 JObject _check(String capability, JObject arguments) => JObject()
   ..addString('type', 'condition')
   ..addString('capability', capability)
@@ -326,8 +346,7 @@ class _Runtime {
     guides = helpers.length;
     _arrivals();
     final JObject module = JObject();
-    module.addBool('enabled', false);
-    module.addBool('reviewAccepted', false);
+    module.addBool('enabled', true);
     module.addString('mode', 'walk');
     module.addDouble('speed', _speed());
     module.addString('order', order);
@@ -933,7 +952,7 @@ class _Runtime {
       if (hand.value.isEmpty) continue;
       final String routine = hand.key == 'attack' && _sameCommands(right, hand.value) ? 'right' : names[hand.key]!;
       JObject body = _mode(hand.value, mode, 'commands-$key-$routine');
-      if (clickCost.$2 != null) body = clickCost.$2!.gate(body);
+      if (clickCost.$2 != null) body = _runsCommand(body) ? _allowed(clickCost.$2!.gate(body)) : clickCost.$2!.gate(body);
       clicks[hand.key]!.add(body);
     }
     if ((hands['sneak_interact']!.isNotEmpty || hands['sneak_attack']!.isNotEmpty) && commands.any((_Command command) => !command.hand.startsWith('SHIFT_'))) {
@@ -998,14 +1017,16 @@ class _Runtime {
       if (globalCooldown > 0) _setFlag('$flag-global-cooldown', 'npc', globalCooldown),
       if (uses > 0) _action('animus:advance-quest-state', _quest('$flag-uses', 'relationship')),
       if (globalUses > 0) _action('animus:advance-quest-state', _quest('$flag-global-uses', 'npc')),
-      run,
     ];
+    final bool taxed = effects.isNotEmpty;
+    effects.add(run);
     JObject node = _sequence(effects);
     if (cost.$2 != null) node = cost.$2!.afford(node);
     if (globalUses > 0) node = _refuse(_stage('$flag-global-uses', 'npc', globalUses), 'GLOBAL_MAXIMUM_TIMES_USED', '$globalUses', '', node);
     if (uses > 0) node = _refuse(_stage('$flag-uses', 'relationship', uses), 'MAXIMUM_TIMES_USED', '$uses', '', node);
     if (globalCooldown > 0) node = _refuse(_check('animus:flag-state', _quest('$flag-global-cooldown', 'npc')), 'ON_GLOBAL_COOLDOWN', '', '', node);
     if (cooldown > 0) node = _refuse(_check('animus:flag-state', _quest('$flag-cooldown', 'relationship')), 'ON_COOLDOWN', '', '', node);
+    if (taxed && run.get('capability')!.asPrimitive.asString == 'animus:command') node = _allowed(node);
     final List<MapEntry<String, JElement>> permissions = listEntries(data.get('permissions'));
     for (int index = permissions.length - 1; index >= 0; index--) {
       final JElement permission = permissions[index].value;

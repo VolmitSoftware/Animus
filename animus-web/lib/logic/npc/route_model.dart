@@ -663,7 +663,7 @@ NavigationSource navigationSource(JsonMap module) => module.containsKey('recordi
     : (module.containsKey('route') ? NavigationSource.route : NavigationSource.points);
 
 /// The module playing [recording]: `route` and every route field go, the
-/// rest (enabled, reviewAccepted, unknown keys) stay. A null [playback]
+/// rest (enabled, unknown keys) stay. A null [playback]
 /// leaves it out, which plays `loop`.
 JsonMap setNavigationRecording(JsonMap module, String recording, {String? playback}) => <String, Object?>{
       for (final MapEntry<String, Object?> entry in module.entries)

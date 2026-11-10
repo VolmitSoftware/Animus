@@ -16,10 +16,11 @@ import '../citizens/citizens_converter.dart' show importOutputHash;
 import '../citizens/java_json.dart';
 import '../citizens/java_lang.dart';
 import '../citizens/snake_yaml.dart';
+import '../npc/npc_paths.dart' show npcSchemaVersion;
 import 'shopkeepers_items.dart';
 
 /// Must equal `ShopkeepersImporter.VERSION`; the shared golden fixtures fail when they drift.
-const int shopkeepersImporterVersion = 2;
+const int shopkeepersImporterVersion = 3;
 
 const String _namespace = 'shopkeepers';
 const int _maximumShopkeepers = 10000;
@@ -30,7 +31,7 @@ const int _maximumContainers = 8;
 const int _shopSchemaVersion = 1;
 const String _shopModule = 'animus:shop';
 const String _notice =
-    'Data conversion only. Shops install under shops/shopkeepers/ and stay closed on their NPCs until the shops review is accepted. Try each shop in game before relying on it.';
+    'Data conversion only. Shops install under shops/shopkeepers/ and open on their NPCs. Try each shop in game before relying on it.';
 
 const Set<String> _handled = <String>{
   'type', 'uniqueId', 'name', 'world', 'x', 'y', 'z', 'yaw', 'open', 'object', 'tradePerm', 'recipes', 'offers', //
@@ -680,7 +681,7 @@ JObject? _mob(String importId, int number, String shopId, String objectType, JOb
     return null;
   }
   final JObject definition = JObject();
-  definition.addInt('schemaVersion', 1);
+  definition.addInt('schemaVersion', npcSchemaVersion);
   definition.addInt('revision', 1);
   final String? unique = _string(record, 'uniqueId');
   definition.addString('uuid', unique != null && canonicalUuid(unique) ? unique : nameUuid('animus:shopkeepers:$number'));
@@ -691,7 +692,7 @@ JObject? _mob(String importId, int number, String shopId, String objectType, JOb
   final bool usable = stripped != null && stripped.isNotEmpty && stripped.length <= 256 && !stripped.runes.any(javaIsIsoControl);
   definition.addString('name', usable ? stripped : 'Shopkeeper $number');
   definition.addString('type', entity);
-  definition.addBool('spawned', false);
+  definition.addBool('spawned', true);
   final JObject position = JObject();
   position.addString('world', world);
   position.addDouble('x', x + 0.5);
@@ -707,8 +708,7 @@ JObject? _mob(String importId, int number, String shopId, String objectType, JOb
       JObject()
         ..addString('importId', importId)
         ..addString('source', 'Shopkeepers')
-        ..addInt('shopkeeper', number)
-        ..addBool('originalSpawned', true));
+        ..addInt('shopkeeper', number));
   final JObject modules = JObject();
   final JObject review = object.deepCopy();
   review.remove('type');
@@ -721,7 +721,7 @@ JObject? _mob(String importId, int number, String shopId, String objectType, JOb
     }
   }
   definition.add('modules', modules);
-  report.note("a new $entity NPC stands at the shopkeeper's place, despawned until the spawn review is accepted");
+  report.note("a new $entity NPC stands at the shopkeeper's place");
   return definition;
 }
 
@@ -749,14 +749,13 @@ JObject? _villager(JObject review, _Report report) {
   return villager.isEmpty ? null : villager;
 }
 
-/// `ShopkeepersImporter.module`: the `animus:shop` section an imported binding writes; it opens nothing until reviewed.
+/// `ShopkeepersImporter.module`: the `animus:shop` section an imported binding writes.
 JObject _module(int number, String shopId, [JObject? villager]) {
   final JObject module = JObject()
     ..addString('shop', shopId)
     ..addString('openOn', 'right');
   if (villager != null) module.add('villager', villager);
   return module
-    ..addBool('reviewAccepted', false)
     ..add(
         'imported',
         JObject()

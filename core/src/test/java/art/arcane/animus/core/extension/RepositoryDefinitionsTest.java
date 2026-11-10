@@ -17,7 +17,7 @@ class RepositoryDefinitionsTest {
     @TempDir Path root;
     private static final String PATH="npcs/town/guard.json";
     private static final String JSON="""
-      {"schemaVersion":1,"revision":1,"uuid":"12345678-1234-1234-1234-123456789abc","id":"guard","group":"town","name":"Guard","type":"minecraft:player","spawned":false,"position":{"world":"world","x":0,"y":64,"z":0,"yaw":0,"pitch":0},"modules":{"absent:module":{"preserve":true}}}
+      {"schemaVersion":2,"revision":1,"uuid":"12345678-1234-1234-1234-123456789abc","id":"guard","group":"town","name":"Guard","type":"minecraft:player","spawned":false,"position":{"world":"world","x":0,"y":64,"z":0,"yaw":0,"pitch":0},"modules":{"absent:module":{"preserve":true}}}
       """;
     private static final NpcHandle NPC=new NpcHandle(UUID.fromString("12345678-1234-1234-1234-123456789abc"));
     private DocumentStore store;private NpcRepository repository;private MutationLane lane;private RepositoryDefinitions service;

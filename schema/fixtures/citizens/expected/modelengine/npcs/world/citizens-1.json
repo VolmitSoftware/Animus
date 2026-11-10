@@ -1,16 +1,15 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "0a1b2c3d-0000-4000-8000-000000000301",
   "id": "citizens-1",
   "group": "world",
   "name": "Golem",
   "type": "minecraft:player",
-  "spawned": false,
+  "spawned": true,
   "migration": {
-    "importId": "8052ce6cf1ebea6a52e492926bbae33141853ec87a339ae9af7301a5d2bf4667",
+    "importId": "a18b98fa5c26eb5e396d81ba68a62c779da7fafbf0b9ae9dcedf37cbfde42c36",
     "citizensId": 1,
-    "originalSpawned": null,
     "references": []
   },
   "position": {

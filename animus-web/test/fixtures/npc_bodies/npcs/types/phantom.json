@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "a741eaf9-5200-5b10-b2c1-7d1932120a71",
+  "id": "phantom",
+  "group": "types",
+  "name": "Body phantom",
+  "type": "minecraft:phantom",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

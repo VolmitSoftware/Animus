@@ -5,7 +5,6 @@ import art.arcane.animus.core.editor.EditorScope;
 import art.arcane.animus.core.extension.ModuleHooks;
 import art.arcane.animus.core.extension.ModuleHost;
 import art.arcane.animus.core.gui.exchange.GlossIds;
-import art.arcane.animus.core.migration.CitizensDropIn;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
@@ -134,7 +133,6 @@ final class CommandCompletions {
             case "wander" -> List.of("0", "4", "8");
             case "pose" -> List.of("standing", "sneaking", "sleeping", "sitting");
             case "location" -> ScheduleCommands.references(tree.runtime().npcs().find(given.getOrDefault("npc", "")).map(NpcDefinition::json).orElse(new JsonObject()));
-            case "categories" -> { List<String> categories = new ArrayList<>(CitizensDropIn.CATEGORIES); categories.add("all"); categories.add(CitizensDropIn.COMMANDS); yield categories; }
             default -> List.of();
         };
     }

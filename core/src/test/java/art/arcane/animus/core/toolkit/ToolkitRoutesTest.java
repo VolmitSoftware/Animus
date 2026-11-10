@@ -56,7 +56,7 @@ class ToolkitRoutesTest {
     Toolkit<Player, Stack> toolkit;
 
     static String npc(String id, UUID uuid, String modules) {
-        return "{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"" + uuid + "\",\"id\":\"" + id + "\",\"group\":\"town\",\"name\":\"N\",\"type\":\"minecraft:player\",\"spawned\":true,"
+        return "{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"" + uuid + "\",\"id\":\"" + id + "\",\"group\":\"town\",\"name\":\"N\",\"type\":\"minecraft:player\",\"spawned\":true,"
                 + "\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}" + modules + "}";
     }
 

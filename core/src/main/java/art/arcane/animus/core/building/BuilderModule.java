@@ -9,12 +9,12 @@ import java.util.Set;
 
 /**
  * The {@code animus:builder} section of an NPC definition: a saved build request that {@code /animus build start <npc>}
- * runs. An imported section also needs literal {@code "reviewAccepted": true}. Nothing here starts on its own.
+ * runs. Nothing here starts on its own.
  */
-public record BuilderModule(String schematic, Optional<BlockPos> origin, BuildOptions options, boolean reviewAccepted) {
+public record BuilderModule(String schematic, Optional<BlockPos> origin, BuildOptions options) {
     public static final String MODULE = "animus:builder";
     private static final String ROOT = "$.modules." + MODULE;
-    private static final Set<String> FIELDS = Set.of("schematic", "origin", "options", "reviewAccepted", "imported");
+    private static final Set<String> FIELDS = Set.of("schematic", "origin", "options", "imported");
 
     /** Empty when the definition has no builder section; invalid sections throw with the field path. */
     public static Optional<BuilderModule> of(NpcDefinition definition) {
@@ -38,8 +38,6 @@ public record BuilderModule(String schematic, Optional<BlockPos> origin, BuildOp
             if (!module.get("options").isJsonObject()) throw new IllegalArgumentException(ROOT + ".options: expected object");
             options = BuildOptions.fromJson(module.getAsJsonObject("options"), ROOT + ".options");
         }
-        JsonElement accepted = module.get("reviewAccepted");
-        boolean review = accepted != null && accepted.isJsonPrimitive() && accepted.getAsJsonPrimitive().isBoolean() && accepted.getAsBoolean();
-        return Optional.of(new BuilderModule(schematic.getAsString(), origin, options, review || !document.has("migration")));
+        return Optional.of(new BuilderModule(schematic.getAsString(), origin, options));
     }
 }

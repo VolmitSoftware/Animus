@@ -12,7 +12,7 @@
     "/z": "CONVERTED"
   },
   "notes": [
-    "a new minecraft:wandering_trader NPC stands at the shopkeeper's place, despawned until the spawn review is accepted"
+    "a new minecraft:wandering_trader NPC stands at the shopkeeper's place"
   ],
   "counts": {
     "CONVERTED": 9

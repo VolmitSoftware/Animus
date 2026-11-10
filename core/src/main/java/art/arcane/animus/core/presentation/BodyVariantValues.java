@@ -51,7 +51,7 @@ public final class BodyVariantValues {
         holder = Class.forName("net.minecraft.core.HolderGetter").getMethod("getOrThrow", keys);
         Class<?> identifiers = Class.forName("net.minecraft.resources.Identifier");
         resourceKey = keys.getMethod("create", keys, identifiers);
-        identifier = identifiers.getMethod("withDefaultNamespace", String.class);
+        identifier = identifiers.getMethod("parse", String.class);
         try {
             villagerData = Class.forName(ENTITY + "npc.villager.VillagerData").getConstructor(Class.forName("net.minecraft.core.Holder"),
                     Class.forName("net.minecraft.core.Holder"), int.class);
@@ -77,7 +77,7 @@ public final class BodyVariantValues {
         return found;
     }
 
-    /** The registry entry {@code minecraft:<name>} of the registry {@code registry} names in {@code Registries}, or null. */
+    /** The registry entry {@code name}, {@code minecraft:} unless it names a namespace, of the registry {@code registry} names in {@code Registries}, or null. */
     private Object holder(String registry, String name) {
         String key = registry + "/" + name;
         if (holders.containsKey(key)) return holders.get(key);
@@ -204,7 +204,7 @@ public final class BodyVariantValues {
                 if (variant.flag("dashing")) out.put(accessor("DASH", "animal.camel.Camel"), Boolean.TRUE);
             }
             case "minecraft:painting" -> {
-                Object holder = variant.id("variant").map((String id) -> holder("PAINTING_VARIANT", id.substring(id.indexOf(':') + 1))).orElse(null);
+                Object holder = variant.id("variant").map((String id) -> holder("PAINTING_VARIANT", id)).orElse(null);
                 out.put(accessor("DATA_PAINTING_VARIANT_ID", "decoration.painting.Painting"), holder);
             }
             case "minecraft:item_frame", "minecraft:glow_item_frame" -> {

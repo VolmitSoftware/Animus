@@ -68,21 +68,19 @@ class ShopkeepersImporterTest {
         assertEquals(2, summary.getAsJsonArray("issues").size());
     }
 
-    @Test void mobShopkeepersBecomeDormantNpcsBoundToTheirShop() throws IOException {
+    @Test void mobShopkeepersBecomeSpawnedNpcsBoundToTheirShop() throws IOException {
         ShopkeepersImporter.Conversion conversion = ShopkeepersImporter.convert(fixture("admin.yml"), Optional.empty(), Optional.empty());
         NpcDefinition farmer = NpcDefinition.parse(conversion.files().get("npcs/shopkeepers/shopkeeper-3.json"));
         assertEquals("minecraft:villager", farmer.json().get("type").getAsString());
-        assertFalse(farmer.spawned());
+        assertTrue(farmer.spawned());
         assertEquals("6c1b7a43-9a0e-4d7f-8a39-1f9f0f2a0003", farmer.uuid().toString());
         assertEquals(-7.5, farmer.json().getAsJsonObject("position").get("x").getAsDouble());
-        assertTrue(ShopBinding.of(farmer).isEmpty(), "an imported binding opens nothing until reviewed");
+        assertTrue(ShopBinding.of(farmer).isPresent(), "an imported binding opens its shop");
         assertEquals("shopkeepers:shop-3", farmer.json().getAsJsonObject("modules").getAsJsonObject("animus:shop").get("shop").getAsString());
         JsonObject module = farmer.json().getAsJsonObject("modules").getAsJsonObject("animus:shop");
         assertEquals("minecraft:farmer", module.getAsJsonObject("villager").get("profession").getAsString(), "the profession shows in the trading screen title");
         assertEquals(2, module.getAsJsonObject("villager").get("level").getAsInt());
         assertFalse(farmer.json().getAsJsonObject("modules").getAsJsonObject("shopkeepers:review").has("profession"));
-        assertTrue(CitizensDropIn.waiting(farmer.json(), "spawn"));
-        assertTrue(CitizensDropIn.waiting(farmer.json(), "shops"));
         NpcDefinition wanderer = NpcDefinition.parse(ShopkeepersImporter.convert(fixture("minimal.yml"), Optional.empty(), Optional.empty()).files().get("npcs/shopkeepers/shopkeeper-1.json"));
         assertEquals("minecraft:wandering_trader", wanderer.json().get("type").getAsString());
     }

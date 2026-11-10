@@ -194,6 +194,21 @@ export async function nativeQuests(t) {
 
   await check('native quests: the journal lists the quest as finished', async () => note(`finished tab: ${await journal()}`));
 
+  await check('native quests: a record leaves memory when its player leaves and is read when they join', async () => {
+    const online = await server.cmd('animus quest status', /Quests [^\n]*players=(\d+)[^\n]*/);
+    assert.equal(online[1], '1', online[0]);
+    await owner.close();
+    let left = null;
+    for (let tries = 0; tries < 40 && left?.[1] !== '0'; tries++) { await delay(250); left = await server.cmd('animus quest status', /Quests [^\n]*players=(\d+)[^\n]*/); }
+    assert.equal(left[1], '0', left[0]);
+    const offline = await server.capture(`animus quest progress ${OWNER.uuid}`, /live:rescue \| finished 1x/);
+    owner = await join(OWNER.name, 'survival');
+    let back = null;
+    for (let tries = 0; tries < 40 && back?.[1] !== '1'; tries++) { await delay(250); back = await server.cmd('animus quest status', /Quests [^\n]*players=(\d+)[^\n]*/); }
+    assert.equal(back[1], '1', back[0]);
+    return `${online[0]} | after quit ${left[0]} | ${offline.match(/live:rescue \| finished 1x/)[0]} offline | after join ${back[0]}`;
+  });
+
   await check('native quests: progress, the stage value and the journal survive a restart', async () => {
     await owner.close();
     await delay(300);

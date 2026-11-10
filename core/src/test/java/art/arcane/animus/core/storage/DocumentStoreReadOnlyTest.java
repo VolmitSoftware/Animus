@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class DocumentStoreReadOnlyTest {
     @TempDir Path root;
     private static final String DEFINITION = """
-        {"schemaVersion":1,"revision":1,"uuid":"12345678-1234-1234-1234-123456789abc",
+        {"schemaVersion":2,"revision":1,"uuid":"12345678-1234-1234-1234-123456789abc",
          "id":"guard","group":"town","name":"Guard","type":"minecraft:player","spawned":false,
          "position":{"world":"world","x":0,"y":64,"z":0,"yaw":0,"pitch":0}}
         """;

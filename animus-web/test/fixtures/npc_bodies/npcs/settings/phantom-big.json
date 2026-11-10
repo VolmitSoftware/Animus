@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "4524c8fd-2944-5e67-a7ab-e42d6877b4cd",
+  "id": "phantom-big",
+  "group": "settings",
+  "name": "Set phantom-big",
+  "type": "minecraft:phantom",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "phantom": {
+    "size": 6
+  }
+}

@@ -396,7 +396,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     private Registration registration(String id, Predicate<NpcDefinition> allowed) {
         runtime.npcs().find(id).orElseThrow(() -> new IllegalArgumentException("Unknown NPC: " + id));
         CombatPolicy policy = new CombatPolicy(id, allowed);
-        if (!policy.allowed()) throw new IllegalStateException("NPC combat is disabled or its migration review has not been accepted");
+        if (!policy.allowed()) throw new IllegalStateException("NPC combat is disabled");
         PersistedNpcService.CombatBinding binding = living.combat(id).orElseThrow(() -> new IllegalStateException("NPC must have an active runtime before combat"));
         UUID uuid = binding.state().snapshot().npcId();
         Registration previous = registrations.get(uuid);

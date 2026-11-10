@@ -1,7 +1,6 @@
 package art.arcane.animus.core.metrics;
 
 import art.arcane.animus.core.combat.HealthSettings;
-import art.arcane.animus.core.migration.DenizenImporter;
 import art.arcane.animus.core.npc.NpcDefinition;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -47,9 +46,7 @@ public record UsageStats(int npcs, Set<String> importSources, int traitGroupsInU
 
     /** Denizen NPCs also came from Citizens, so one NPC can name two sources. */
     private static void sources(JsonObject data, NpcDefinition definition, Set<String> sources) {
-        JsonElement modules = data.get("modules");
-        if (definition.behaviors().stream().anyMatch((String behavior) -> behavior.startsWith("denizen:"))
-                || modules != null && modules.isJsonObject() && modules.getAsJsonObject().has(DenizenImporter.MODULE)) sources.add("Denizen");
+        if (definition.behaviors().stream().anyMatch((String behavior) -> behavior.startsWith("denizen:"))) sources.add("Denizen");
         JsonElement migration = data.get("migration");
         if (migration == null || !migration.isJsonObject()) return;
         JsonObject record = migration.getAsJsonObject();

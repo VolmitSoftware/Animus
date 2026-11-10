@@ -37,22 +37,17 @@ final class CombatFiles {
         Changes { values = Map.copyOf(values); }
     }
 
-    /** Turns combat on with literal true, accepting the review of imported NPCs, or off by removing {@code enabled}. */
+    /** Turns combat on with literal true, or off by removing {@code enabled}. */
     String enable(List<String> ids, boolean on) throws IOException {
-        int[] reviewed = {0};
         List<NpcRepository.Draft> drafts = drafts(ids, (JsonObject document) -> {
             JsonObject module = module(document, COMBAT);
-            boolean was = literalTrue(module, "enabled");
-            boolean review = on && document.has("migration") && !literalTrue(module, "reviewAccepted");
-            if (was == on && !review) return false;
+            if (literalTrue(module, "enabled") == on) return false;
             if (on) module.addProperty("enabled", true); else module.remove("enabled");
-            if (review) { module.addProperty("reviewAccepted", true); reviewed[0]++; }
             store(document, COMBAT, module);
             return true;
         });
         if (drafts.isEmpty()) return "Combat already " + (on ? "on" : "off") + " for " + ToolkitFiles.count(ids.size());
-        String review = reviewed[0] == 0 ? "" : " (review accepted on " + reviewed[0] + " imported)";
-        return "Combat " + (on ? "on" : "off") + " for " + ToolkitFiles.named(drafts) + review + "; tx " + npcs.applyAll(drafts);
+        return "Combat " + (on ? "on" : "off") + " for " + ToolkitFiles.named(drafts) + "; tx " + npcs.applyAll(drafts);
     }
 
     /** Sets fields of the combat or riding module on every listed NPC. */

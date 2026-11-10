@@ -18,6 +18,11 @@ const MOBS = `AnimusKing:
   - message{m="king-greets <trigger.name>"} @trigger ~onInteract
   - message{m="king-damaged-by <trigger.name>"} @trigger ~onDamaged
   - message{m="king-tick"} @PlayersInRadius{r=24} ~onTimer:40
+AnimusClock:
+  Type: ZOMBIE
+  Display: 'Clock'
+  Skills:
+  - message{m="clock-tick <caster.name>"} @PlayersInRadius{r=24} ~onTimer:40
 AnimusModeled:
   Type: ZOMBIE
   Display: 'Modeled'
@@ -146,12 +151,36 @@ export async function mythic(t) {
     king = await owner.body(kingUuid);
     return 'ticked twice, then nothing for 4.5 s while despawned';
   });
+  await check('mythic: editing the NPC to a mob without timers stops its ~onTimer skills, and back starts them', async () => {
+    await owner.chat('king-tick', owner.events.length, 6000);
+    await server.cmd('animus edit king {"modules":{"mythic:mob":{"mob":"AnimusStand"}}}', /Saved[^;]*; tx /);
+    await delay(500);
+    await owner.noChat('king-tick', owner.events.length, 4500);
+    await server.cmd('animus edit king {"modules":{"mythic:mob":{"mob":"AnimusKing"}}}', /Saved[^;]*; tx /);
+    await owner.chat('king-tick', owner.events.length, 6000);
+    return 'nothing for 4.5 s bound to AnimusStand; ticking again once bound back to AnimusKing';
+  });
+  // After the edits above, so a sneak-click behavior and the animusnpc binding are proven to survive a definition edit.
+  // An edit sends the NPC's body again under a new entity id, so the click goes to the body the player sees now.
   await check('mythic: animusnpc holds when the king casts', async () => {
+    king = await owner.body(kingUuid);
     await owner.look(king.x, king.y + 1, king.z);
     const from = owner.events.length;
     await sneak(true);
     try { owner.send('use', { id: king.id, sneak: true }); } finally { await sneak(false); }
     return (await owner.chat('caster-is-king', from, 8000)).text;
+  });
+  await check('mythic: an NPC that gains a Mythic binding after it spawned starts its ~onTimer skills, and stops when it loses it', async () => {
+    await server.cmd('animus create clock type=minecraft:player world=world x=3.5 y=61 z=1.5 folder=live name=Clockwork', /Created clock\b/);
+    await owner.body(JSON.parse(readFileSync(path.join(data, 'npcs/live/clock.json'), 'utf8')).uuid);
+    await owner.noChat('clock-tick', owner.events.length, 2500);
+    await server.cmd('animus edit clock {"modules":{"mythic:mob":{"mob":"AnimusClock"}}}', /Saved[^;]*; tx /);
+    const line = await owner.chat('clock-tick Clockwork', owner.events.length, 6000);
+    await server.cmd('animus edit clock {"modules":{"mythic:mob":null}}', /Saved[^;]*; tx /);
+    await delay(500);
+    await owner.noChat('clock-tick', owner.events.length, 4500);
+    await server.cmd('animus delete clock', /Deleted/);
+    return `${line.text} once bound without a respawn; nothing for 4.5 s once unbound`;
   });
 
   await owner.look(stand.x, stand.y + 1, stand.z);

@@ -55,7 +55,8 @@ class EditorTerrainTest {
         boolean loaded(int chunkX, int chunkZ) { return Math.abs(chunkX) <= 8 && Math.abs(chunkZ) <= 8 && !(chunkX == 2 && chunkZ == 2); }
 
         @Override public Optional<World> world(String reference) {
-            return reference.equals("world") || reference.equals("minecraft:overworld") ? Optional.of(new World("w-1", -64, 320)) : Optional.empty();
+            if (reference.equals("world") || reference.equals("minecraft:overworld") || reference.equals("w-1")) return Optional.of(new World("w-1", -64, 320));
+            return reference.equals("harbor") || reference.equals("w-2") ? Optional.of(new World("w-2", -64, 320)) : Optional.empty();
         }
 
         @Override public CompletionStage<Optional<Surface>> surface(String world, int chunkX, int chunkZ) {
@@ -345,6 +346,193 @@ class EditorTerrainTest {
             assertArrayEquals(values, unpack(packed, bits, values.length), "bits " + bits);
         }
         assertThrows(IllegalArgumentException.class, () -> EditorTerrainReads.pack(new int[]{4}, 2));
+    }
+
+    private static final java.util.UUID GREETER = java.util.UUID.fromString("fe531426-31bc-5660-9207-b3d3078c2305");
+
+    private static JsonObject at(double x, double z) {
+        JsonObject point = new JsonObject();
+        point.addProperty("x", x);
+        point.addProperty("y", 64);
+        point.addProperty("z", z);
+        return point;
+    }
+
+    private static JsonArray points(double... xz) {
+        JsonArray out = new JsonArray();
+        for (int i = 0; i < xz.length; i += 2) out.add(at(xz[i], xz[i + 1]));
+        return out;
+    }
+
+    /** Writes npcs/town/walker.json at x 0.5, z 0.5 with {@code fields} merged in, and reloads. */
+    private void walker(JsonObject fields) throws Exception {
+        JsonObject npc = com.google.gson.JsonParser.parseString("""
+                {"schemaVersion": 2, "revision": 1, "uuid": "4d3c2b1a-0f9e-4d8c-8b7a-6a5b4c3d2e1f", "id": "walker", "group": "town", "name": "Walker",
+                 "type": "minecraft:player", "spawned": true, "position": {"world": "world", "x": 0.5, "y": 64, "z": 0.5, "yaw": 0, "pitch": 0}}""").getAsJsonObject();
+        fields.entrySet().forEach((Map.Entry<String, JsonElement> entry) -> npc.add(entry.getKey(), entry.getValue()));
+        java.nio.file.Path file = harness.root.resolve("npcs/town/walker.json");
+        java.nio.file.Files.createDirectories(file.getParent());
+        java.nio.file.Files.writeString(file, npc.toString());
+        reload();
+    }
+
+    /** Reloads the definitions; only the fixture's deliberately broken file may be refused. */
+    private void reload() throws Exception {
+        assertTrue(harness.npcs.reload().stream().allMatch((String problem) -> problem.startsWith("npcs/examples/broken.json")));
+    }
+
+    private static JsonObject navigation(JsonObject module) {
+        JsonObject modules = new JsonObject(), fields = new JsonObject();
+        modules.add("animus:navigation", module);
+        fields.add("modules", modules);
+        return fields;
+    }
+
+    private static JsonObject route(JsonArray points) {
+        JsonObject module = new JsonObject();
+        module.add("points", points);
+        return module;
+    }
+
+    /** The status of chunk {@code cx}, {@code cz} of {@code world}: forbidden, or unloaded past the fake's loaded square. */
+    private String chunk(String world, int cx, int cz, String token) throws Exception {
+        return valid("terrain-blocks-response", get("/v1/terrain/blocks?world=" + world + "&cx=" + cx + "&cz=" + cz + "&y=60&height=4", token)).get("status").getAsString();
+    }
+
+    @Test
+    void routePoints_farFromHome_openTheLegsBetweenThem_andNothingBeside() throws Exception {
+        walker(navigation(route(points(2, 2, 1000, 0, 1000, 1000))));
+        String token = harness.token();
+        assertEquals("unloaded", chunk("world", 62, 0, token), "the far point");
+        assertEquals("unloaded", chunk("world", 31, 0, token), "halfway along the first leg");
+        assertEquals("unloaded", chunk("world", 62, 31, token), "halfway along the second leg");
+        assertEquals("forbidden", chunk("world", 31, 31, token), "a sequence without loop never walks back across");
+        assertEquals("forbidden", chunk("world", 100, 0, token));
+        assertTrue(terrain.reads.contains("blocks 62 0 60 4"));
+        assertFalse(terrain.reads.stream().anyMatch((String read) -> read.startsWith("blocks 31 31")));
+    }
+
+    @Test
+    void veryLongLeg_isCheckedForEveryChunk_insteadOfFillingTheIndex() throws Exception {
+        walker(navigation(route(points(0, 0, 2_000_000, 1_000_000))));
+        String token = harness.token();
+        assertEquals("unloaded", chunk("world", 62_500, 31_250, token), "halfway along a leg over a thousand index cells long");
+        assertEquals("forbidden", chunk("world", 62_500, 0, token));
+    }
+
+    @Test
+    void namedRoute_isReadFromRoutes_andALoopClosesBackToTheFirstPoint() throws Exception {
+        JsonObject far = new JsonObject();
+        far.addProperty("schemaVersion", 1);
+        far.addProperty("loop", true);
+        far.add("points", points(0, 0, 1000, 0, 1000, 1000));
+        java.nio.file.Files.createDirectories(harness.root.resolve("routes"));
+        java.nio.file.Files.writeString(harness.root.resolve("routes/far.json"), far.toString());
+        JsonObject module = new JsonObject();
+        module.addProperty("route", "far");
+        walker(navigation(module));
+        String token = harness.token();
+        assertEquals("unloaded", chunk("world", 62, 62, token));
+        assertEquals("unloaded", chunk("world", 31, 31, token), "the closing leg");
+        far.add("points", points(0, 0, -2000, 0));
+        java.nio.file.Files.writeString(harness.root.resolve("routes/far.json"), far.toString());
+        reload();
+        assertEquals("forbidden", chunk("world", 62, 62, token), "a changed route moves the reach");
+        assertEquals("unloaded", chunk("world", -125, 0, token));
+    }
+
+    @Test
+    void schedulePlaces_andAnchors_openTheirGround_inTheirOwnWorld() throws Exception {
+        JsonObject fields = new JsonObject(), modules = new JsonObject(), schedule = new JsonObject(), anchors = new JsonObject();
+        JsonArray locations = new JsonArray();
+        for (int[] place : new int[][]{{12000, 2000, 2000}, {0, 0, 2000}}) {
+            JsonObject location = at(place[1], place[2]);
+            location.addProperty("time", place[0]);
+            locations.add(location);
+        }
+        schedule.add("locations", locations);
+        modules.add("animus:schedule", schedule);
+        fields.add("modules", modules);
+        anchors.add("dock", at(-3000, 0));
+        JsonObject harbor = at(5000, 0);
+        harbor.addProperty("world", "harbor");
+        anchors.add("harbor", harbor);
+        fields.add("anchors", anchors);
+        walker(fields);
+        String token = harness.token();
+        assertEquals("unloaded", chunk("world", 0, 125, token), "a schedule place");
+        assertEquals("unloaded", chunk("world", 62, 125, token), "between two schedule places");
+        assertEquals("unloaded", chunk("world", -188, 0, token), "an anchor");
+        assertEquals("unloaded", chunk("harbor", 312, 0, token), "an anchor in another world");
+        assertEquals("forbidden", chunk("world", 312, 0, token), "that anchor opens nothing in the NPC's own world");
+        assertEquals("forbidden", chunk("harbor", 0, 0, token), "home is not in the harbor world");
+    }
+
+    @Test
+    void teleportingPoint_carriesTheRouteIntoItsWorld() throws Exception {
+        JsonArray route = points(10, 0, 4000, 800);
+        JsonObject teleport = at(4000, 0);
+        teleport.addProperty("world", "harbor");
+        route.get(0).getAsJsonObject().add("teleport", teleport);
+        walker(navigation(route(route)));
+        String token = harness.token();
+        assertEquals("unloaded", chunk("harbor", 250, 25, token), "the leg after the teleport");
+        assertEquals("forbidden", chunk("world", 250, 25, token));
+        assertEquals("forbidden", chunk("world", 125, 0, token), "no leg walks across to the teleport");
+    }
+
+    @Test
+    void routeOfAnotherFolder_staysForbidden() throws Exception {
+        walker(navigation(route(points(2, 2, 1000, 0))));
+        String token = harness.token(new EditorTokens.Grant("", Optional.of(EditorHarness.ADMIN), EditorScope.DEFAULT_PAIRING, List.of("examples"), Duration.ofDays(1)));
+        assertEquals("forbidden", chunk("world", 62, 0, token));
+        assertEquals("ok", chunk("world", 0, 0, token), "examples NPCs stand near the origin");
+    }
+
+    @Test
+    void livePosition_opensTheGroundWhereTheNpcIsNow_refreshedAtMostOnceASecond() throws Exception {
+        String token = harness.token();
+        harness.host.live.put(GREETER, new art.arcane.animus.core.virtual.WorldPosition("w-1", new art.arcane.animus.core.virtual.Vec3(6000, 64, 0)));
+        assertEquals("unloaded", chunk("world", 375, 0, token));
+        harness.host.live.put(GREETER, new art.arcane.animus.core.virtual.WorldPosition("w-1", new art.arcane.animus.core.virtual.Vec3(9000, 64, 0)));
+        assertEquals("forbidden", chunk("world", 562, 0, token), "the last read is kept for a second");
+        harness.clock.advance(Duration.ofMillis(1100));
+        assertEquals("unloaded", chunk("world", 562, 0, token));
+        assertEquals("forbidden", chunk("world", 375, 0, token), "where it was is closed again");
+        String town = harness.token(new EditorTokens.Grant("", Optional.of(EditorHarness.ADMIN), EditorScope.DEFAULT_PAIRING, List.of("town"), Duration.ofDays(1)));
+        assertEquals("forbidden", chunk("world", 562, 0, town));
+    }
+
+    @Test
+    void position_answersWhereTheNpcIs_byItsWorldName() throws Exception {
+        String token = harness.token();
+        JsonObject idle = valid("terrain-position-response", get("/v1/terrain/position?npc=examples/greeter", token));
+        assertEquals("examples/greeter", idle.get("npc").getAsString());
+        assertFalse(idle.get("active").getAsBoolean());
+        assertFalse(idle.has("world"));
+        harness.host.live.put(GREETER, new art.arcane.animus.core.virtual.WorldPosition("w-1", new art.arcane.animus.core.virtual.Vec3(40.25, 70, -3.5)));
+        harness.clock.advance(Duration.ofMillis(1100));
+        JsonObject live = valid("terrain-position-response", get("/v1/terrain/position?npc=examples/greeter", token));
+        assertTrue(live.get("active").getAsBoolean());
+        assertEquals("world", live.get("world").getAsString());
+        assertEquals(40.25, live.get("x").getAsDouble());
+        assertEquals(70, live.get("y").getAsDouble());
+        assertEquals(-3.5, live.get("z").getAsDouble());
+        JsonObject anchors = new JsonObject(), harbor = at(5000, 0);
+        harbor.addProperty("world", "harbor");
+        anchors.add("harbor", harbor);
+        JsonObject fields = new JsonObject();
+        fields.add("anchors", anchors);
+        walker(fields);
+        harness.host.live.put(java.util.UUID.fromString("4d3c2b1a-0f9e-4d8c-8b7a-6a5b4c3d2e1f"),
+                new art.arcane.animus.core.virtual.WorldPosition("w-2", new art.arcane.animus.core.virtual.Vec3(5001, 64, 2)));
+        assertEquals("harbor", valid("terrain-position-response", get("/v1/terrain/position?npc=town/walker", token)).get("world").getAsString());
+        String town = harness.token(new EditorTokens.Grant("", Optional.of(EditorHarness.ADMIN), EditorScope.DEFAULT_PAIRING, List.of("town"), Duration.ofDays(1)));
+        refused("group-denied", 403, get("/v1/terrain/position?npc=examples/greeter", town));
+        refused("not-found", 404, get("/v1/terrain/position?npc=examples/nobody", token));
+        refused("invalid-request", 400, get("/v1/terrain/position?npc=..%2Fx", token));
+        refused("invalid-request", 400, get("/v1/terrain/position", token));
+        refused("scope-missing", 403, get("/v1/terrain/position?npc=examples/greeter", harness.token(EditorHarness.grant(List.of(EditorScope.READ)))));
     }
 
     private static int[] toInts(short[] values) {

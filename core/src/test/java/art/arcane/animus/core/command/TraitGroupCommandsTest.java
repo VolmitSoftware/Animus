@@ -18,14 +18,14 @@ class TraitGroupCommandsTest {
     @TempDir Path root;
 
     private static String npc(String id, String uuid, String folder, String extra) {
-        return "{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"" + uuid + "\",\"id\":\"" + id + "\",\"group\":\"" + folder + "\",\"name\":\"N\",\"type\":\"minecraft:player\",\"spawned\":false,"
+        return "{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"" + uuid + "\",\"id\":\"" + id + "\",\"group\":\"" + folder + "\",\"name\":\"N\",\"type\":\"minecraft:player\",\"spawned\":false,"
                 + "\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}" + extra + "}";
     }
 
     @Test void assignAndUnassignEditTheMatchingNpcsInOneTransaction() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             store.commit(List.of(
-                    new DocumentStore.Change("groups/watch.json", "missing", "{\"schemaVersion\":1,\"revision\":1,\"id\":\"watch\",\"description\":\"Town watch\",\"values\":{\"teamColor\":\"gold\",\"tags\":[\"watch\"]}}"),
+                    new DocumentStore.Change("groups/watch.json", "missing", "{\"schemaVersion\":2,\"revision\":1,\"id\":\"watch\",\"description\":\"Town watch\",\"values\":{\"teamColor\":\"gold\",\"tags\":[\"watch\"]}}"),
                     new DocumentStore.Change("npcs/town/guard.json", "missing", npc("guard", "12345678-1234-1234-1234-123456789abc", "town", "")),
                     new DocumentStore.Change("npcs/town/baker.json", "missing", npc("baker", "22345678-1234-1234-1234-123456789abc", "town", ",\"groups\":[\"watch\"]")),
                     new DocumentStore.Change("npcs/harbor/sailor.json", "missing", npc("sailor", "32345678-1234-1234-1234-123456789abc", "harbor", ""))));
@@ -58,7 +58,7 @@ class TraitGroupCommandsTest {
     @Test void anAssignmentWithAnInvalidResultIsRefusedWhole() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             store.commit(List.of(
-                    new DocumentStore.Change("groups/stands.json", "missing", "{\"schemaVersion\":1,\"revision\":1,\"id\":\"stands\",\"values\":{\"armorStand\":{\"small\":true}}}"),
+                    new DocumentStore.Change("groups/stands.json", "missing", "{\"schemaVersion\":2,\"revision\":1,\"id\":\"stands\",\"values\":{\"armorStand\":{\"small\":true}}}"),
                     new DocumentStore.Change("npcs/town/guard.json", "missing", npc("guard", "12345678-1234-1234-1234-123456789abc", "town", "")),
                     new DocumentStore.Change("npcs/town/stand.json", "missing", npc("stand", "22345678-1234-1234-1234-123456789abc", "town", "").replace("minecraft:player", "minecraft:armor_stand"))));
             NpcRepository repository = new NpcRepository(store);

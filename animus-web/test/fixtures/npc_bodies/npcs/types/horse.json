@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "32d0c790-26c0-56b3-86c7-0dd9d7fda2e7",
+  "id": "horse",
+  "group": "types",
+  "name": "Body horse",
+  "type": "minecraft:horse",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

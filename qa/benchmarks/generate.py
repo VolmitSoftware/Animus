@@ -39,7 +39,7 @@ def records(case, seed, world):
         sector, slot = divmod(i, sector_size)
         x = sector * 256 + (slot % columns - (columns - 1) / 2) * 1.5
         z = (slot // columns - 3.5) * 1.5
-        result.append({'schemaVersion': 1, 'revision': 1, 'id': f'bench-{i:05}', 'group': 'benchmark',
+        result.append({'schemaVersion': 2, 'revision': 1, 'id': f'bench-{i:05}', 'group': 'benchmark',
                        'uuid': str(uuid.uuid5(NAMESPACE, f'{seed}/{case}/{i}')), 'name': f'Bench{i:05}',
                        'type': f'minecraft:{kind}', 'spawned': i < active,
                        'position': {'world': world, 'x': x, 'y': 61.0, 'z': z, 'yaw': 180.0, 'pitch': 0.0},

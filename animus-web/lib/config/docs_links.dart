@@ -77,6 +77,7 @@ abstract final class Docs {
 
   static const DocLink storage = DocLink('12-storage-recovery', 'definitions');
   static const DocLink rollback = DocLink('12-storage-recovery', 'rollback');
+  static const DocLink schemaVersions = DocLink('12-storage-recovery', 'schema-versions');
 
   static const DocLink citizens = DocLink('13-migrating-from-citizens', 'converting-in-the-browser');
   static const DocLink citizensOutput = DocLink('13-migrating-from-citizens', 'where-the-files-go');

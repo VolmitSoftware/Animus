@@ -106,6 +106,8 @@ public record QuestDocument(String id, long revision, String title, String descr
         List<String> givers = reader.npcs(object.get("givers"), "$.givers");
         Optional<String> turnIn = object.has("turnIn") ? reader.npc(object.get("turnIn"), "$.turnIn") : Optional.empty();
         Requirements requirements = object.has("requirements") ? reader.requirements(object.get("requirements"), "$.requirements") : Requirements.NONE;
+        for (int index = 0; index < requirements.quests().size(); index++)
+            if (requirements.quests().get(index).equals(expectedId)) reader.problem("$.requirements.quests[" + index + "]", "a quest cannot require itself");
         Repeat repeat = object.has("repeat") ? reader.repeat(object.get("repeat"), "$.repeat") : Repeat.NEVER;
         List<Stage> stages = new ArrayList<>();
         JsonElement stageList = object.get("stages");

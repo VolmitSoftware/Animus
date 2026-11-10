@@ -324,6 +324,9 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                     BehaviorPlatform.Cost cost = ChargeArguments.parse(call.arguments);
                     return onPlayer(call, player, () -> platform.affordable(player, cost));
                 });
+        condition("commands-allowed", Effect.STATE_READ, "True when the running behavior is on the command allow-list, so animus:command would run. Checks it before taking a cost for a command.",
+                schema(""), (arguments, problems) -> {},
+                call -> CompletableFuture.completedFuture(call.invocation.behavior().map(settings::commandAllowed).orElse(false)));
         condition("npc-state", Effect.OWNER_READ, "Compares the NPC's spawned state and current health.",
                 schema(bool("spawned") + "," + number("minimumHealth", 0, 1_000_000) + "," + number("maximumHealth", 0, 1_000_000),
                         "\"anyOf\":[" + "{" + required("spawned") + "},{" + required("minimumHealth") + "},{" + required("maximumHealth") + "}]"),

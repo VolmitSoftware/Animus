@@ -142,7 +142,7 @@ abstract class ValueScreen<P, S> extends ToolScreen<P, S> {
                 yield values == Kind.ITEM ? Kind.ITEM : values == Kind.NUMBER || values == Kind.FIELDS ? Kind.MAP : Kind.UNKNOWN;
             }
             // Untyped switches such as combat's enabled read only a literal true, so a toggle is the honest editor.
-            default -> key.equals("enabled") || key.equals("reviewAccepted") ? Kind.TOGGLE : Kind.UNKNOWN;
+            default -> key.equals("enabled") ? Kind.TOGGLE : Kind.UNKNOWN;
         };
     }
 

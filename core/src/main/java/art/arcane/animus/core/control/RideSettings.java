@@ -15,7 +15,7 @@ public record RideSettings(String permission, double speed, double leash, int li
     public static final double DEFAULT_LEASH = 64, MINIMUM_LEASH = 4, MAXIMUM_LEASH = 256;
     public static final int DEFAULT_LIFETIME_SECONDS = 600, MINIMUM_LIFETIME_SECONDS = 30, MAXIMUM_LIFETIME_SECONDS = 3600;
     private static final String FIELD = "$.modules." + MODULE;
-    private static final Set<String> KEYS = Set.of("enabled", "reviewAccepted", "permission", "speed", "leash", "lifetimeSeconds");
+    private static final Set<String> KEYS = Set.of("enabled", "permission", "speed", "leash", "lifetimeSeconds");
 
     public RideSettings {
         Objects.requireNonNull(permission, "permission");
@@ -34,9 +34,7 @@ public record RideSettings(String permission, double speed, double leash, int li
         JsonObject module = value.getAsJsonObject();
         for (String key : module.keySet()) if (!KEYS.contains(key)) throw new IllegalArgumentException(FIELD + "." + key + ": unknown field");
         boolean enabled = flag(module, "enabled");
-        boolean reviewed = flag(module, "reviewAccepted");
         if (!enabled) return Optional.empty();
-        if (document.has("migration") && !reviewed) throw new IllegalArgumentException(FIELD + ".reviewAccepted: must be true for imported definitions");
         String permission = DEFAULT_PERMISSION;
         if (module.has("permission")) {
             JsonElement node = module.get("permission");

@@ -1,10 +1,12 @@
 package art.arcane.animus.core.migration;
 
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.text.RichText;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -33,7 +35,7 @@ public final class NpcLinks {
             uuids.add(link.uuid());
             if (!link.imported()) continue;
             byCitizensId.put(link.citizensId(), link);
-            names.add(link.name());
+            names.add(plain(link.name()));
         }
     }
 
@@ -57,8 +59,10 @@ public final class NpcLinks {
     /** An NPC has this UUID. */
     public boolean has(UUID uuid) { return uuids.contains(uuid); }
 
-    /** An imported NPC carries exactly this name. */
-    public boolean named(String name) { return names.contains(name); }
+    /** An imported NPC carries this name, compared without colours, case or extra spaces as BetonQuest's {@code byName} lookup does. */
+    public boolean named(String name) { return names.contains(plain(name)); }
+
+    private static String plain(String name) { return RichText.plain(name).strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT); }
 
     /** How many NPCs came from Citizens. */
     public int size() { return byCitizensId.size(); }

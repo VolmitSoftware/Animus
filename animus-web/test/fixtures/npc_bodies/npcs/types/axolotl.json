@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "a2e3836a-0e68-5abf-be76-c35d7fbb9391",
+  "id": "axolotl",
+  "group": "types",
+  "name": "Body axolotl",
+  "type": "minecraft:axolotl",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

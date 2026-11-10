@@ -110,6 +110,7 @@ final class VanillaRuntimeHost implements RuntimeHost<ServerPlayer, ItemStack> {
     @Override public float yaw(ServerPlayer player) { return player.getYRot(); }
     @Override public float pitch(ServerPlayer player) { return player.getXRot(); }
     @Override public boolean permitted(ServerPlayer player, String node) { return permitted(player.permissions(), node); }
+    @Override public boolean granted(ServerPlayer player, String node) { return granted(player.permissions(), node); }
     @Override public void tell(ServerPlayer player, String message) { player.sendSystemMessage(ModText.component(message)); }
     @Override public boolean teleport(ServerPlayer player, WorldPosition destination, float yaw, float pitch) {
         ServerLevel level = terrain.level(destination.world());
@@ -158,6 +159,9 @@ final class VanillaRuntimeHost implements RuntimeHost<ServerPlayer, ItemStack> {
         if (art.arcane.animus.core.command.PermissionNodes.granted((String asked) -> atom(permissions, asked), node)) return true;
         return permissions.hasPermission(Permissions.COMMANDS_GAMEMASTER);
     }
+
+    /** Granted by a permission mod through the node's atom; an operator's level grants no atom. */
+    static boolean granted(PermissionSet permissions, String node) { return atom(permissions, node); }
 
     private static boolean atom(PermissionSet permissions, String node) {
         Optional<String> atom = ModPermissions.atom(node);

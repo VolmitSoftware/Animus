@@ -60,8 +60,6 @@ class OnboardingTest {
             assertEquals("[Animus]: Citizens import staged, not installed yet [Setup] [Dismiss]",
                     SetupGuideTest.plain(List.of(onboarding.joinHint(UUID.randomUUID()).orElseThrow())).getFirst());
             flow.applyStaged();
-            assertTrue(SetupGuideTest.plain(List.of(onboarding.joinHint(UUID.randomUUID()).orElseThrow())).getFirst().startsWith("[Animus]: Citizens import installed; "));
-            flow.acceptCategories(List.of("all"));
             assertTrue(onboarding.joinHint(UUID.randomUUID()).isEmpty(), "NPCs exist and the import is done");
             SetupState state = onboarding.state(true, 0);
             assertEquals(1, state.npcs());

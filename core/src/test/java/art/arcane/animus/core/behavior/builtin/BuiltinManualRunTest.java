@@ -55,7 +55,7 @@ class BuiltinManualRunTest {
     @BeforeEach void start() throws Exception {
         root = temporary.toRealPath();
         npcs = Map.of("guard", NpcDefinition.parse("""
-                {"schemaVersion":1,"revision":1,"uuid":"%s","id":"guard","group":"town","name":"Guard","type":"minecraft:player","spawned":true,
+                {"schemaVersion":2,"revision":1,"uuid":"%s","id":"guard","group":"town","name":"Guard","type":"minecraft:player","spawned":true,
                  "position":{"world":"world","x":0,"y":64,"z":0,"yaw":0,"pitch":0}}
                 """.formatted(NPC)));
         BuiltinActionSettings defaults = BuiltinActionSettings.DEFAULT;

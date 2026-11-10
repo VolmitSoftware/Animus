@@ -357,14 +357,10 @@ final class CitizensTraits {
         return targetable != null && Boolean.TRUE.equals(bool(targetable.get("targetable")));
     }
 
-    /**
-     * The combat module of a targetable NPC without Sentinel: it never attacks or fights back. Like every imported combat
-     * module it stays disabled until its review is accepted.
-     */
+    /** The combat module of a targetable NPC without Sentinel: it never attacks or fights back. */
     static JsonObject targetableCombat() {
         JsonObject module = new JsonObject();
-        module.addProperty("enabled", false);
-        module.addProperty("reviewAccepted", false);
+        module.addProperty("enabled", true);
         JsonObject targeting = new JsonObject();
         targeting.addProperty("fightBack", false);
         module.add("targeting", targeting);
@@ -409,7 +405,7 @@ final class CitizensTraits {
         }
         for (String field : List.of("followingUUID", "margin", "protect")) if (follow.has(field)) converted.add("/traits/followtrait/" + field);
         if (follow.has("followingUUID")) note("/traits/followtrait/followingUUID", CitizensImporter.Status.CONVERTED,
-                "became the guard of animus:combat, which runs after accept combat");
+                "became the guard of animus:combat");
     }
 
     private static UUID uuid(JsonElement value) {
@@ -494,8 +490,7 @@ final class CitizensTraits {
         JsonObject navigator = object(record.get("navigator"));
         JsonElement modifier = navigator == null ? null : navigator.get("speedmodifier");
         JsonObject module = new JsonObject();
-        module.addProperty("enabled", false);
-        module.addProperty("reviewAccepted", false);
+        module.addProperty("enabled", true);
         module.addProperty("mode", "walk");
         module.addProperty("speed", CitizensBehaviors.speed(positive(modifier) ? modifier.getAsDouble() : 1));
         module.addProperty("order", "wander");

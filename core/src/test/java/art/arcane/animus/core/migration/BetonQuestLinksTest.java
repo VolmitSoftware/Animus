@@ -77,4 +77,12 @@ class BetonQuestLinksTest {
         assertSame(text, result.text());
         assertTrue(result.changes().isEmpty());
     }
+
+    @Test void byNameMatchesAColouredImportedNameTheWayTheRuntimeDoes() {
+        NpcLinks links = NpcLinks.of(List.of(new NpcLinks.Link("citizens-5", java.util.UUID.randomUUID(), 5, "&6Old &lBaker")));
+        BetonQuestLinks.Result result = BetonQuestLinks.rewrite("town/package.yml", "npcs:\n  baker: citizens OldBaker byName\n  plain: citizens oldbaker byName\n", NpcLinks.of(List.of(
+                new NpcLinks.Link("citizens-6", java.util.UUID.randomUUID(), 6, "&6Old&lBaker"))), Set.of());
+        assertEquals("npcs:\n  baker: animus OldBaker byName\n  plain: animus oldbaker byName\n", result.text());
+        assertTrue(links.named("Old Baker"));
+    }
 }

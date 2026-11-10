@@ -85,7 +85,7 @@ class PresentationPriorityTest {
 
     private static void write(ViewerWatchRaceTest.Harness harness, String id, double x, boolean lookClose, boolean spawned) throws IOException {
         Files.writeString(harness.npcs.resolve(id + ".json"), """
-                {"schemaVersion": 1, "revision": %d, "uuid": "%s", "id": "%s", "group": "test",
+                {"schemaVersion": 2, "revision": %d, "uuid": "%s", "id": "%s", "group": "test",
                  "name": "%s", "type": "minecraft:villager", "spawned": %s,
                  "position": {"world": "world", "x": %s, "y": 64, "z": 6.5, "yaw": 0, "pitch": 0}%s}
                 """.formatted(spawned ? 1 : 2, uuid(id), id, id, spawned, x,

@@ -108,7 +108,8 @@ final class RegionActor implements RegionOwner.Body {
                        Map<EquipmentSlot, ItemStack> equipment, long equipmentRevision, int ids,
                        String navigation, long arrivals, boolean ride, boolean mount, long revision, NpcRig.Snapshot<ItemStack> rig, int dragonPhase,
                        List<UUID> passengers, Player rider, CombatView combat, BodyLook look, long lookRevision, long swings, long gestures, int gesture, long attackSwings,
-                       NpcAttributes attributes, long attributeRevision, long hurts, long deaths, String bubble) {}
+                       NpcAttributes attributes, long attributeRevision, long hurts, long deaths, String bubble, long bubbleRevision,
+                       art.arcane.animus.core.presentation.MirrorSettings mirror) {}
     /** What other combat engines and status read of this NPC's combat; null when it has none. */
     record CombatView(CombatSettings settings, CombatLoadout loadout, UUID guarded, String status, int helpers) {}
     /** A passenger whose vehicle another region owns steps onto its seat at most this often. */
@@ -156,6 +157,8 @@ final class RegionActor implements RegionOwner.Body {
     /** The animus:home module, the turn the NPC last stopped being busy or at home, and its next check. */
     private HomeSettings homeSettings;
     private long idleSince, nextHome;
+    /** A failed return home was warned about; the next one that works clears it. */
+    private boolean homeWarned;
     private MovementSettings movement = MovementSettings.DEFAULT;
     private DoorPassage doors;
     private boolean falls = true, routeSpeedDeclared = true;
@@ -202,9 +205,11 @@ final class RegionActor implements RegionOwner.Body {
     /** How far an idle fall has carried the body, for fall damage. */
     private final FallTracker fall = new FallTracker();
     private String displayName;
-    /** The speech bubble over the body, or null, and the actor tick it ends on. */
+    /** The speech bubble over the body, or null, the actor tick it ends on, and how often it changed; viewers relabel on a change. */
     private String bubble;
-    private long bubbleUntil, bubbleTicks;
+    private long bubbleUntil, bubbleTicks, bubbleRevision;
+    /** {@code animus:mirror} of the current definition, read once per definition; null when it mirrors nothing. */
+    private art.arcane.animus.core.presentation.MirrorSettings mirror;
     private BodySkin displaySkin;
     private AppearanceRead appearanceRead;
     private final EnumMap<EquipmentSlot, ItemStack> equipment = new EnumMap<>(EquipmentSlot.class);
@@ -247,9 +252,10 @@ final class RegionActor implements RegionOwner.Body {
         ride = RideSettings.parse(spec.definition().json()).orElse(null);
         mount = MountDeclaration.parse(spec.definition().json()).isPresent();
         lookClose = LookClose.parse(spec.definition().json()).orElse(null);
+        mirror = art.arcane.animus.core.presentation.MirrorSettings.parse(spec.definition().json()).orElse(null);
         pause = RoutePause.parse(spec.definition().json()).orElse(null);
         homeSettings = HomeSettings.parse(spec.definition().json()).orElse(null);
-        idleSince = turns;
+        idleSince = turns; homeWarned = false;
         attributes = spec.appearance().traits().attributes(); attributeRevision++;
         movement = MovementSettings.parse(spec.definition().json());
         falls = MovementSettings.falls(spec.type(), spec.definition().json());
@@ -411,7 +417,7 @@ final class RegionActor implements RegionOwner.Body {
         tickRig();
         if (sampled) mark = metrics.sampledLap(Subsystem.RIGS, mark);
         bubbleTicks++;
-        if (bubble != null && bubbleTicks >= bubbleUntil) { bubble = null; appearance++; }
+        if (bubble != null && bubbleTicks >= bubbleUntil) { bubble = null; bubbleRevision++; }
         look();
         home();
         if (spec.type().equals(DragonBody.TYPE)) dragonPhase = dragonMotion.observe(turns, state.snapshot().position().point(), grounded(),
@@ -795,7 +801,7 @@ final class RegionActor implements RegionOwner.Body {
         Vec3 eye = LookClose.eye(at.point(), bodyHeight());
         List<LookClose.Candidate<Player>> candidates = new ArrayList<>();
         for (Player player : host.players().ownedNear(new WorldPosition(at.world(), eye), look.range() + 2, 32)) {
-            if (!look.admits(player::hasPermission)) continue;
+            if (!lookCandidate(player, look)) continue;
             Location location = player.getEyeLocation();
             Vec3 playerEye = new Vec3(location.getX(), location.getY(), location.getZ());
             candidates.add(new LookClose.Candidate<>(player, playerEye, playerEye.distance(at.point()) <= host.settings().viewDistance()));
@@ -823,6 +829,8 @@ final class RegionActor implements RegionOwner.Body {
         }
         return false;
     }
+    /** A living player look-close admits; a dead player waiting to respawn is never looked at. */
+    static boolean lookCandidate(Player player, LookClose look) { return !player.isDead() && look.admits(player::hasPermission); }
     /** NPCs scanned for a look-close NPC target: a few nearby chunks and candidates at most. */
     private static final SpatialNpcIndex.Budget NPC_LOOK_BUDGET = new SpatialNpcIndex.Budget(16, 32);
     /** Turns toward the nearest other active NPC in range; false when there is none. Other NPCs use the standard body height. */
@@ -889,11 +897,11 @@ final class RegionActor implements RegionOwner.Body {
         if (wasSeated != (pose == NpcPose.SITTING)) appearance++;
         publish(true);
     }
-    /** A speech bubble over the NPC's name for {@code ticks} ticks. */
+    /** A speech bubble over the NPC's name for {@code ticks} ticks; viewers change its text in place, never the body. */
     void bubble(String text, int ticks) {
         bubble = text;
         bubbleUntil = bubbleTicks + Math.max(1, ticks);
-        appearance++;
+        bubbleRevision++;
         publish(true);
     }
     void setEquipment(EquipmentSlot slot, ItemStack item) {
@@ -964,12 +972,20 @@ final class RegionActor implements RegionOwner.Body {
         idleSince = turns;
         WorldPosition destination = new WorldPosition(at.world(), home.position());
         if (home.strategy() == HomeSettings.Return.WALK) {
-            try { navigate(destination, MovementProfile.Mode.WALK, movement.routeSpeed(false, 2)); }
-            catch (IllegalArgumentException | IllegalStateException refused) { host.plugin.getLogger().warning("NPC " + id + " could not walk home: " + refused.getMessage()); }
+            try { navigate(destination, MovementProfile.Mode.WALK, movement.routeSpeed(false, 2)); homeWarned = false; }
+            catch (IllegalArgumentException | IllegalStateException refused) { homeFailed("NPC " + id + " could not walk home: " + refused.getMessage()); }
             return;
         }
-        if (!relocate(destination)) { host.plugin.getLogger().warning("NPC " + id + " could not teleport home: the place is not loaded, held by another region or not clear"); return; }
+        // Another region checks a home it holds and hands the NPC over, as a combat teleport does.
+        if (!combatTeleport(destination)) { homeFailed("NPC " + id + " could not teleport home: the place is not loaded or not clear"); return; }
+        homeWarned = false;
         setPose(home.yaw() == null ? yaw : home.yaw(), home.pitch() == null ? pitch : home.pitch(), true);
+    }
+    /** Warns once for a run of failed returns home; a home that stays out of reach retries quietly. */
+    private void homeFailed(String warning) {
+        if (homeWarned) return;
+        homeWarned = true;
+        host.plugin.getLogger().warning(warning);
     }
     /** A right-click on this NPC, on its owner: a route paused by clicks stands still. */
     void clicked() { if (pause != null && pause.onClick()) pauseClock.pause(pause, turns); }
@@ -1749,12 +1765,12 @@ final class RegionActor implements RegionOwner.Body {
                 && Objects.equals(previous.navigation(), navigation()) && previous.rig() == rigSnapshot() && previous.dragonPhase() == dragonPhase
                 && previous.passengers().equals(passengers()) && previous.rider() == rider() && Objects.equals(previous.combat(), combatView())
                 && previous.lookRevision() == lookRevision && previous.swings() == swings && previous.gestures() == gestures && previous.attackSwings() == attackSwings && previous.attributeRevision() == attributeRevision
-                && previous.hurts() == hurts && previous.deaths() == deaths) return;
+                && previous.hurts() == hurts && previous.deaths() == deaths && previous.bubbleRevision() == bubbleRevision) return;
         Map<EquipmentSlot, ItemStack> items = new EnumMap<>(EquipmentSlot.class);
         (rig == null ? equipment : rig.bodyEquipment(equipment)).forEach((slot, item) -> items.put(slot, item.clone()));
         publication = new Publication(presented, snapshot, spec, spec.type(), displayName, displaySkin, appearance, yaw, headYaw, pitch, onGround, pose, lookClose, lookingAtViewers,
                 Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision, rigSnapshot(), dragonPhase, passengers(), rider(), combatView(), look, lookRevision, swings, gestures, gesture, attackSwings,
-                attributes, attributeRevision, hurts, deaths, bubble);
+                attributes, attributeRevision, hurts, deaths, bubble, bubbleRevision, mirror);
     }
     private Player rider() { return riding.rider(); }
     private NpcRig.Snapshot<ItemStack> rigSnapshot() {

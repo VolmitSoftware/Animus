@@ -48,7 +48,8 @@ final class McStageController extends ChangeNotifier {
   McCamera _camera = mcCameraFraming(const McBounds(McVec3(-0.5, 0, -0.5), McVec3(0.5, 1.8, 0.5)).corners);
   McCamera _home = mcCameraFraming(const McBounds(McVec3(-0.5, 0, -0.5), McVec3(0.5, 1.8, 0.5)).corners);
 
-  /// Frames rendered so far; the browser check reads `data-frames`.
+  /// Frames rendered so far; the browser check reads `data-frames`, and
+  /// `data-drawn` for the meshes the last frame drew.
   int frames = 0;
 
   /// Nodes the last frame could not draw yet (a texture still decoding).
@@ -80,14 +81,22 @@ final class McStageController extends ChangeNotifier {
   double _widthPx = 0;
   double _heightPx = 0;
 
+  McBounds? _reach;
+
   /// Shows [scene]; [frame] moves the home framing to the new subject (and
-  /// the camera with it when the camera was home).
-  void show(McScene scene, List<NpcText> texts, {required double yawDeg, bool frame = false}) {
+  /// the camera with it when the camera was home). [reach] is where the
+  /// camera may pan, around the origin by default.
+  void show(McScene scene, List<NpcText> texts, {required double yawDeg, bool frame = false, McBounds? reach}) {
     _scene = scene;
     _texts = texts;
     _frame = scene.frame;
     _yawDeg = yawDeg;
-    _reframe(force: frame);
+    final bool home = _camera == _home;
+    if (reach?.min != _reach?.min || reach?.max != _reach?.max) {
+      _reach = reach;
+      _camera = _camera.within(reach);
+    }
+    _reframe(force: frame || home);
     notifyListeners();
   }
 
@@ -103,7 +112,7 @@ final class McStageController extends ChangeNotifier {
   void _reframe({bool force = false}) {
     if (_frame.isEmpty) return;
     final McCamera home = mcFrameTexts(
-      mcCameraFraming(_frame, yawDeg: _yawDeg + 180, aspect: _heightPx > 0 ? _widthPx / _heightPx : 4 / 3),
+      mcCameraFraming(_frame, yawDeg: _yawDeg + 180, aspect: _heightPx > 0 ? _widthPx / _heightPx : 4 / 3, reach: _reach),
       _texts,
       _frame,
       widthPx: _widthPx,
@@ -122,9 +131,11 @@ final class McStageController extends ChangeNotifier {
 typedef McStageOverlay = List<Widget> Function(McCamera camera, double widthPx, double heightPx);
 
 /// A line for a texture the renderer could not decode.
-String mcTextureNote(String id, {required bool fromPack}) => fromPack
-    ? 'Texture $id failed to load and is drawn white. Reload to retry.'
-    : 'An image failed to load and is drawn white. Load the PNG again.';
+String mcTextureNote(String id, {required bool runtime, required bool inPack}) => runtime
+    ? 'An image failed to load and is drawn white. Load the PNG again.'
+    : inPack
+        ? 'Texture $id failed to load and is drawn white. Reload to retry.'
+        : 'Texture $id is not in the asset pack and is drawn white. Extract the pack again from a 26.3 client jar.';
 
 /// A line for an item the stage has no model for, from the resolver's reason.
 String mcItemNote(String item, String reason) {
@@ -328,9 +339,10 @@ class _McStageState extends State<McStage> {
     _c.frames++;
     _host?.setAttribute('data-frames', '${_c.frames}');
     _host?.setAttribute('data-unbuilt', '${_c.unbuilt}');
+    _host?.setAttribute('data-drawn', '${renderer.drawn}');
     final McAssetPackData? pack = McAssetLoader.loaded;
     final List<String> notes = <String>[
-      for (final String id in renderer.failedTextures) mcTextureNote(id, fromPack: pack?.manifest.entityTextures.containsKey(id) ?? false),
+      for (final String id in renderer.failedTextures) mcTextureNote(id, runtime: pack?.runtime(id) ?? false, inPack: pack?.manifest.entityTextures.containsKey(id) ?? false),
       for (final MapEntry<String, String> item in renderer.undrawable.entries) mcItemNote(item.key, item.value),
     ];
     if (notes.join('\n') == _latestNotes.join('\n')) return;

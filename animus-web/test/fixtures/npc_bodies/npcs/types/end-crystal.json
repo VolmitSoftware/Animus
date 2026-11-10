@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "c6d2c927-401d-531c-a73f-1a01b52edfdb",
+  "id": "end-crystal",
+  "group": "types",
+  "name": "Body end_crystal",
+  "type": "minecraft:end_crystal",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

@@ -57,7 +57,7 @@ class ToolkitScreensTest {
     record NpcRuntimeView(String id, VirtualNpcState.Snapshot state) {}
 
     static String npc(String id, UUID uuid, String extra) {
-        return "{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"" + uuid + "\",\"id\":\"" + id + "\",\"group\":\"town\",\"name\":\"N\",\"type\":\"minecraft:player\",\"spawned\":true,"
+        return "{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"" + uuid + "\",\"id\":\"" + id + "\",\"group\":\"town\",\"name\":\"N\",\"type\":\"minecraft:player\",\"spawned\":true,"
                 + "\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}" + extra + "}";
     }
 
@@ -71,7 +71,7 @@ class ToolkitScreensTest {
         List<DocumentStore.Change> files = new ArrayList<>(List.of(
                 new DocumentStore.Change("npcs/town/guard.json", "missing", npc("guard", GUARD, "")),
                 new DocumentStore.Change("npcs/town/baker.json", "missing", npc("baker", BAKER, ""))));
-        for (int i = 0; i < 50; i++) files.add(new DocumentStore.Change("groups/g" + (100 + i) + ".json", "missing", "{\"schemaVersion\":1,\"revision\":1,\"id\":\"g" + (100 + i) + "\",\"values\":{\"tags\":[\"t\"]}}"));
+        for (int i = 0; i < 50; i++) files.add(new DocumentStore.Change("groups/g" + (100 + i) + ".json", "missing", "{\"schemaVersion\":2,\"revision\":1,\"id\":\"g" + (100 + i) + "\",\"values\":{\"tags\":[\"t\"]}}"));
         store.commit(files);
         npcs = new NpcRepository(store);
         assertTrue(npcs.reload().isEmpty());

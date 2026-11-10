@@ -45,7 +45,7 @@ final class GroupFiles {
         String path = path(id);
         if (store.read(path) != null) throw new IOException(path + " already exists");
         JsonObject document = new JsonObject();
-        document.addProperty("schemaVersion", 1);
+        document.addProperty("schemaVersion", GroupDocument.SCHEMA_VERSION);
         document.addProperty("revision", 1);
         document.addProperty("id", id);
         document.add("values", new JsonObject());

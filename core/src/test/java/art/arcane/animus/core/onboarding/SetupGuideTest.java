@@ -12,8 +12,8 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SetupGuideTest {
-    private static final CitizensDropIn.Progress NOTHING = new CitizensDropIn.Progress(CitizensDropIn.Phase.NONE, Optional.empty(), 0);
-    private static final CitizensDropIn.Progress FOUND = new CitizensDropIn.Progress(CitizensDropIn.Phase.FOUND, Optional.of("plugins/Citizens/saves.yml"), 0);
+    private static final CitizensDropIn.Progress NOTHING = new CitizensDropIn.Progress(CitizensDropIn.Phase.NONE, Optional.empty());
+    private static final CitizensDropIn.Progress FOUND = new CitizensDropIn.Progress(CitizensDropIn.Phase.FOUND, Optional.of("plugins/Citizens/saves.yml"));
 
     @Test void aFreshServerGetsCreateToolkitAndEditorInOrderWithTheDocsLast() {
         List<ChatLine> lines = SetupGuide.player(new SetupState(0, NOTHING, true, 0));
@@ -37,13 +37,10 @@ class SetupGuideTest {
     }
 
     @Test void eachImportPhaseNamesItsOwnStep() {
-        ChatLine staged = SetupGuide.player(new SetupState(0, new CitizensDropIn.Progress(CitizensDropIn.Phase.STAGED, Optional.of("imports/saves.yml"), 0), true, 0)).get(1);
+        ChatLine staged = SetupGuide.player(new SetupState(0, new CitizensDropIn.Progress(CitizensDropIn.Phase.STAGED, Optional.of("imports/saves.yml")), true, 0)).get(1);
         assertEquals("1. Install the staged import [Apply]", plain(List.of(staged)).getFirst());
         assertEquals(List.of("suggest_command /animus import citizens apply"), clicks(List.of(staged)));
-        ChatLine applied = SetupGuide.player(new SetupState(3, new CitizensDropIn.Progress(CitizensDropIn.Phase.APPLIED, Optional.of("imports/saves.yml"), 4), true, 0)).get(1);
-        assertEquals("1. Turn on imported settings, 4 still off [Review]", plain(List.of(applied)).getFirst());
-        assertEquals(List.of("run_command /animus import citizens review"), clicks(List.of(applied)));
-        ChatLine done = SetupGuide.player(new SetupState(3, new CitizensDropIn.Progress(CitizensDropIn.Phase.DONE, Optional.empty(), 0), true, 0)).get(1);
+        ChatLine done = SetupGuide.player(new SetupState(3, new CitizensDropIn.Progress(CitizensDropIn.Phase.DONE, Optional.empty()), true, 0)).get(1);
         assertEquals("1. Citizens import done", plain(List.of(done)).getFirst());
         assertFalse(done.interactive());
     }

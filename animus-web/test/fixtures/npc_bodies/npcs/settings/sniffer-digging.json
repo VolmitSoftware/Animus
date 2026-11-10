@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "7e6d30b6-8486-5c85-8103-cf25d6513646",
+  "id": "sniffer-digging",
+  "group": "settings",
+  "name": "Set sniffer-digging",
+  "type": "minecraft:sniffer",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "sniffer": {
+    "state": "digging"
+  }
+}

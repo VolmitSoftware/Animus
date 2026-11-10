@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 16,
+  "converterVersion": 20,
   "fieldPathFormat": "json-pointer",
-  "importId": "26786e3fe4d9e4df8b32a091dd88f50840260fb1ce3206e911cd2519db811589",
+  "importId": "60a0e695f7f223323837181e95b6057ebe03ac9d271d24acad25a527f1f3e2a5",
   "sourceSha256": "b0f736e8596bac6f209b6870af200dbf3b3c407aa3546d8b8488937f280c5ad8",
   "worldMap": {
     "old_town": "town"
   },
-  "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.",
+  "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs spawn as Citizens had them, and converted patrols, schedules, combat, riding, shops and builds are on.",
   "records": 6,
   "valid": 6,
   "skins": 0,
@@ -75,14 +75,14 @@
   },
   "documents": {
     "behaviors/citizens/waypoints-0.json": "7856c54667350b3805cb75906ac24c683cf59630d3017953e834aa97475cfb2a",
-    "npcs/town/citizens-0.json": "55e790d2d23182decd4e52da967e38a3cdcd7a40cf09e8680ea4b1527a1e1d31",
-    "npcs/town/citizens-1.json": "9057b015814d47d3487b3a0827e413af87789e4bb1a421bdfc847d0cb9182e3f",
+    "npcs/town/citizens-0.json": "62aaedfa593c6a781dcfc72a4f1b1e4f2271f61a814e40dbb2deb9241ae70f98",
+    "npcs/town/citizens-1.json": "00fa965c618e40369899d9db2dd23ae7437284a5c6c2260bdf0ad10d2ae52f63",
     "behaviors/citizens/text-2.json": "e553bc526b446cfb3332c9d0aa12e27327e75f75810417af3d636aed88b0afe0",
-    "npcs/town/citizens-2.json": "85d598f7f75ac967b099eef21cd43951789f57248d6d9be5866f526d7ed1a0b1",
+    "npcs/town/citizens-2.json": "6c98cb2092fff0a1aa08256dbc9561c6bde371326c9b2c9620ba386ecf597619",
     "behaviors/citizens/text-3.json": "2a24f87b93f57b35abc321fc1cbe4c2787e403eda69a3e345b11667660b05b55",
-    "behaviors/citizens/commands-3.json": "65ad0dc344f6ae1e31accf77cc513f92fce0cb46d88b0e6e10ddd2bac27d18b2",
-    "npcs/town/citizens-3.json": "eba582ba09f058c8b27461a580a7ad715f352999d35e7ad4792c0965447cab1a",
-    "npcs/town/citizens-4.json": "536d23412268fed332f15604ecd88204f055951ab8366fc97e1679294ba046eb",
-    "npcs/town/citizens-5.json": "a2464948ee7886b44a605812acf69d6bfae0667c2d6f7f990a40c249a19668f0"
+    "behaviors/citizens/commands-3.json": "afc54ef4cf4e3493f21a6c27e1b0b7a5ddb4a4fabee0efaac837ce234133657d",
+    "npcs/town/citizens-3.json": "6c983b4695ac65d1b8ccaa8ff09a2b9edfe0439b6755ce9073bacfd12fd4e488",
+    "npcs/town/citizens-4.json": "5894bfd1de144c89e6ed06e33b3a1ee61dbbf0eebd45b1f6aad022cdbf38f879",
+    "npcs/town/citizens-5.json": "ab248719156fc50667b5bed6d2f63364a8d85feea907283dc7eae29643dec8f5"
   }
 }

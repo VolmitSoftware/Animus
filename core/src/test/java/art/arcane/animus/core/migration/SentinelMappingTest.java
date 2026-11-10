@@ -63,10 +63,10 @@ class SentinelMappingTest {
         assertEquals(16, counts.get(SentinelMapping.Disposition.STATISTIC));
         assertEquals(SentinelMapping.Disposition.UNKNOWN, SentinelMapping.disposition("somethingNew"));
     }
-    @Test void anEmptyRecordStillGetsTheSourcesDefaultsAndStaysDisabled() {
+    @Test void anEmptyRecordStillGetsTheSourcesDefaultsAndIsOn() {
         SentinelMapping.Result result = convert("{}");
-        assertFalse(result.module().get("enabled").getAsBoolean());
-        assertFalse(result.module().get("reviewAccepted").getAsBoolean());
+        assertTrue(result.module().get("enabled").getAsBoolean());
+        assertFalse(result.module().has("reviewAccepted"));
         CombatSettings settings = settings(result);
         assertEquals(30, settings.melee().cooldownTicks(), "attackRate default");
         assertEquals(20, settings.targeting().scanRange(), "range default");
@@ -366,10 +366,9 @@ class SentinelMappingTest {
         CitizensImporter.Preview preview = new CitizensImporter().preview(source, root.resolve("out"), Map.of("old", "new"));
         JsonObject candidate = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/new/citizens-1.json")));
         JsonObject module = candidate.getAsJsonObject("modules").getAsJsonObject(CombatSettings.MODULE);
-        assertFalse(module.get("enabled").getAsBoolean());
-        assertFalse(module.get("reviewAccepted").getAsBoolean());
+        assertTrue(module.get("enabled").getAsBoolean() && !module.has("reviewAccepted"));
         NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(candidate));
-        assertTrue(CombatSettings.active(definition).isEmpty(), "Neither combat nor health runs before the review");
+        assertTrue(CombatSettings.active(definition).isPresent(), "the guard fights as converted");
         assertTrue(candidate.getAsJsonObject("modules").has(HealthSettings.MODULE));
         CombatSettings settings = CombatSettings.parse(candidate).orElseThrow();
         assertEquals(40, settings.health().defense().maximumHealth());

@@ -75,7 +75,7 @@ class BukkitBehaviorPlatformTest {
     }
 
     private void preview() throws Exception {
-        NpcDefinition candidate = NpcDefinition.parse("{\"schemaVersion\":1,\"revision\":2,\"uuid\":\"" + GUARD + "\",\"id\":\"guard\",\"group\":\"town\",\"name\":\"Preview\","
+        NpcDefinition candidate = NpcDefinition.parse("{\"schemaVersion\":2,\"revision\":2,\"uuid\":\"" + GUARD + "\",\"id\":\"guard\",\"group\":\"town\",\"name\":\"Preview\","
                 + "\"type\":\"minecraft:player\",\"spawned\":true,\"position\":{\"world\":\"" + WORLD + "\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}}");
         previews.present("prev_a", ALEX, List.of(candidate), (String state) -> {});
         assertNotNull(previews.staged(ALEX));

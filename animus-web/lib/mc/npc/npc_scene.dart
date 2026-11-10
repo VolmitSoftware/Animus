@@ -6,6 +6,7 @@ library;
 import '../assets/mc_display_pose.dart';
 import '../mesh/mc_mesh.dart';
 import '../rigs/mc_entity_rigs.dart';
+import '../rigs/mc_mob_bodies.dart';
 import '../rigs/mc_player_rig.dart';
 import '../rigs/mc_rig.dart';
 import '../rigs/mc_rig_mesher.dart';
@@ -15,6 +16,7 @@ import '../scene/mc_math.dart';
 import '../scene/mc_scene.dart';
 import 'mc_text.dart';
 import 'npc_look.dart';
+import 'npc_objects.dart';
 import 'npc_pose.dart';
 
 /// Leather's undyed colour (`DyedItemColor.LEATHER_COLOR`).
@@ -83,6 +85,23 @@ final class NpcText {
   /// Lines already styled (GUI text with hex colours and MiniMessage); when
   /// set, the stage draws these instead of parsing [lines].
   final List<List<McTextRun>>? styled;
+
+  /// The same text with its anchor moved [by].
+  NpcText moved(McVec3 by) => NpcText(
+        anchor: anchor + by,
+        lines: lines,
+        nameplate: nameplate,
+        styled: styled,
+        dim: dim,
+        lineWidth: lineWidth,
+        background: background,
+        shadow: shadow,
+        alignment: alignment,
+        opacity: opacity,
+        scaleX: scaleX,
+        scaleY: scaleY,
+        brightness: brightness,
+      );
 }
 
 final class NpcScene {
@@ -167,12 +186,28 @@ String? mcCarpetColor(NpcItem item) {
 List<double> _rgb(int color) => <double>[((color >> 16) & 0xFF) / 255, ((color >> 8) & 0xFF) / 255, (color & 0xFF) / 255];
 
 NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
+  final NpcScene drawn = _bodyScene(look, skin);
+  final String? disguise = look.disguise;
+  final String? named = disguise == null ? null : NpcLook.disguiseType(disguise);
+  final List<String> notes = <String>[
+    if (disguise != null && named == null) 'disguise: $disguise names no vanilla body; the preview draws the NPC\'s own body and LibsDisguises shows the disguise in game.',
+    if (named != null) 'disguise: the preview draws the $named body it names; LibsDisguises options show in game only.',
+    if (look.baby) 'baby: the preview draws the grown body; the server shows the baby.',
+  ];
+  if (notes.isEmpty) return drawn;
+  return NpcScene(scene: drawn.scene, texts: drawn.texts, notes: <String>[...notes, ...drawn.notes], presentable: drawn.presentable);
+}
+
+NpcScene _bodyScene(NpcLook look, NpcSkinChoice skin) {
   final List<McSceneNode> nodes = <McSceneNode>[];
   final List<String> notes = <String>[];
   final bool small = look.armorStand?.small ?? false;
   final McRig? rig = mcBodyRig(look.type, slim: skin.slim, small: small);
-  if (rig == null && mcPlainBodyTypes.contains(look.type)) {
-    return NpcScene(scene: McScene.empty, texts: const <NpcText>[], notes: <String>['The preview has no model for ${look.type}; the server shows it.'], presentable: true);
+  if (rig == null) {
+    final NpcObject? object = npcObject(look);
+    if (object != null) return _objectScene(look, object);
+    final McMobBody? mob = mcMobBody(look.type, look.settings);
+    if (mob != null) return _mobScene(look, mob);
   }
   if (rig == null) {
     return NpcScene(
@@ -186,8 +221,9 @@ NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
     );
   }
 
+  final bool avatar = look.isPlayer || look.type == mcMannequin;
   final McBodyPose body = switch (look.type) {
-    'minecraft:player' => mcPlayerPose(
+    'minecraft:player' || mcMannequin => mcPlayerPose(
       look.pose,
       yawDeg: look.yawDeg,
       rightHeld: look.equipment.containsKey(NpcSlot.mainHand),
@@ -233,7 +269,7 @@ NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
     notes.add('dragon.phase: ${look.settings['phase']} shows in game while it rests; the preview does not animate it.');
   }
 
-  final bool humanoid = look.isPlayer || look.type == 'minecraft:armor_stand';
+  final bool humanoid = avatar || look.type == 'minecraft:armor_stand';
   for (final MapEntry<NpcSlot, NpcItem> entry in look.equipment.entries) {
     final NpcSlot slot = entry.key;
     final NpcItem item = entry.value;
@@ -261,7 +297,7 @@ NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
         continue;
       }
       if (slot == NpcSlot.body) {
-        notes.add('$where is not drawn: ${look.isPlayer ? 'players' : 'armor stands'} do not show the body slot.');
+        notes.add('$where is not drawn: ${avatar ? 'players' : 'armor stands'} do not show the body slot.');
         continue;
       }
       notes.add('$where is not drawn: the client shows only ${armor == null ? 'armour' : '${armor.slot.key} armour'} in this slot.');
@@ -309,7 +345,11 @@ NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
   }
 
   final double feet = (look.isPlayer && look.pose == NpcPose.sitting ? -mcPlayerVehicleAttachment : 0) * scale;
-  final double top = feet + body.heightBlocks * scale;
+  return _finish(look, nodes, notes, _framePoints(mcMeshRig(rig, pose: body.rig), root), feet: feet, top: feet + body.heightBlocks * scale);
+}
+
+/// The name and hologram over [top], the framing and the glow.
+NpcScene _finish(NpcLook look, List<McSceneNode> nodes, List<String> notes, List<McVec3> frame, {required double feet, required double top}) {
   final List<NpcText> texts = <NpcText>[
     if (look.nativeName)
       NpcText(
@@ -321,8 +361,10 @@ NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
     if (look.textLines.isNotEmpty)
       NpcText(anchor: McVec3(0, top + (look.nativeName ? 0.55 : 0.3), 0), lines: look.textLines, nameplate: false),
   ];
+  return _framed(look, nodes, texts, notes, frame, feet: feet, top: top);
+}
 
-  final List<McVec3> frame = _framePoints(mcMeshRig(rig, pose: body.rig), root);
+NpcScene _framed(NpcLook look, List<McSceneNode> nodes, List<NpcText> texts, List<String> notes, List<McVec3> frame, {required double feet, required double top}) {
   if (frame.isEmpty) frame.addAll(McBounds(McVec3(-0.5, feet, -0.5), McVec3(0.5, top, 0.5)).corners);
   // Text that sits on the body is framed with it. Text the client floats
   // well clear of the body (a dragon's sits at its 8-block hitbox, 4 blocks
@@ -336,6 +378,108 @@ NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
   final int? glowColor = look.glowColor;
   final McGlow? glow = glowColor == null ? null : McGlow(glowColor, <String>{for (final McSceneNode node in nodes) node.key});
   return NpcScene(scene: McScene(nodes, frame: frame, glow: glow), texts: texts, notes: notes, presentable: true);
+}
+
+/// A mob built from the client's layers: each layer over the same pose, the
+/// blocks it carries, then what it wears.
+NpcScene _mobScene(NpcLook look, McMobBody mob) {
+  final double scale = look.scale;
+  McMat4 root = McMat4.rotationY(-look.yawDeg).multiply(McMat4.scale(scale, scale, scale));
+  if (mob.frame != null) root = root.multiply(mob.frame!);
+  McRig rigOf(String layer) => mcMobRig(layer, scale: mob.scale, offsetPx: mob.offsetPx, heightBlocks: mob.heightBlocks);
+  final List<McSceneNode> nodes = <McSceneNode>[];
+  final List<String> notes = <String>[...mob.notes];
+  final McMobLayer first = mob.layers.first;
+  final McRig rig = rigOf(first.layer);
+  final McRigPose pose = mcMobPose(first.layer, first.poses);
+  for (int i = 0; i < mob.layers.length; i++) {
+    final McMobLayer layer = mob.layers[i];
+    nodes.add(McRigNode(
+      key: i == 0 ? 'body' : 'body:$i',
+      rig: i == 0 ? rig : rigOf(layer.layer),
+      pose: i == 0 ? pose : mcMobPose(layer.layer, layer.poses),
+      textureId: layer.texture,
+      transform: root,
+      tint: layer.tint,
+      opacity: layer.opacity,
+    ));
+  }
+  final McMat4 model = root.multiply(mcRigModelToWorld(rig));
+  final Map<String, McMat4> parts = mcRigPartMatrices(rig, pose);
+  for (int i = 0; i < mob.blocks.length; i++) {
+    final McMobBlock block = mob.blocks[i];
+    final McMat4 at = block.part == null ? McMat4.identity() : (parts[block.part] ?? McMat4.identity());
+    nodes.add(McBlockNode(key: 'body:block:$i', blockKey: block.blockKey, transform: model.multiply(at).multiply(block.transform)));
+  }
+
+  for (final MapEntry<NpcSlot, NpcItem> entry in look.equipment.entries) {
+    final NpcSlot slot = entry.key;
+    final NpcItem item = entry.value;
+    final String where = '${slot.key}: ${item.id}';
+    final String? armor = mob.armor;
+    if (armor != null) {
+      if (slot == NpcSlot.mainHand || slot == NpcSlot.offHand) {
+        nodes.add(_heldItem(look, parts, model, slot, item, small: false, slim: false));
+        continue;
+      }
+      final McArmorPiece? piece = mcArmorPiece(item);
+      if (piece != null && piece.slot == slot) {
+        final String layer = '$armor#${const <NpcSlot, String>{NpcSlot.head: 'helmet', NpcSlot.chest: 'chestplate', NpcSlot.legs: 'leggings', NpcSlot.feet: 'boots'}[slot]}';
+        final McRig worn = rigOf(layer);
+        final McRigPose wornPose = mcMobPose(layer, first.poses);
+        final String key = 'equipment:${slot.key}';
+        nodes.add(McRigNode(
+          key: key,
+          rig: worn,
+          pose: wornPose,
+          textureId: piece.texture,
+          transform: root,
+          tint: piece.dyeable ? _rgb(item.dyedColor ?? mcLeatherColor) : const <double>[1, 1, 1],
+          glint: item.glint,
+        ));
+        if (piece.dyeable) nodes.add(McRigNode(key: '$key:overlay', rig: worn, pose: wornPose, textureId: piece.overlayTexture, transform: root, glint: item.glint));
+        continue;
+      }
+      if (slot == NpcSlot.head && mcSkullItem(item)) {
+        notes.add('$where is worn on the head; the preview does not draw heads.');
+        continue;
+      }
+      if (slot == NpcSlot.head) {
+        nodes.add(_headItem(parts, model, item));
+        continue;
+      }
+    }
+    final (String, String)? saddle = mcMobSaddles[look.type];
+    if (slot == NpcSlot.saddle && saddle != null && item.key == 'saddle') {
+      nodes.add(McRigNode(
+        key: 'equipment:saddle',
+        rig: rigOf(saddle.$1),
+        pose: mcMobPose(saddle.$1, first.poses),
+        textureId: saddle.$2,
+        transform: root,
+        glint: item.glint,
+      ));
+      continue;
+    }
+    final (String, String, List<double>)? worn = slot == NpcSlot.body ? mcMobBodyArmor(look.type, item.key, item.dyedColor) : null;
+    if (worn != null) {
+      nodes.add(McRigNode(key: 'equipment:body', rig: rigOf(worn.$1), pose: mcMobPose(worn.$1, first.poses), textureId: worn.$2, transform: root, tint: worn.$3, glint: item.glint));
+      continue;
+    }
+    notes.add('$where is not drawn on ${look.type}.');
+  }
+  return _finish(look, nodes, notes, _framePoints(mcMeshRig(rig, pose: pose), root), feet: 0, top: mob.heightBlocks * scale);
+}
+
+/// An object body: its own nodes and text, and the name over its top.
+NpcScene _objectScene(NpcLook look, NpcObject object) {
+  final List<McVec3> frame = <McVec3>[...object.frame];
+  final double top = frame.isEmpty ? 0.5 : McBounds.of(frame).max.y;
+  final List<NpcText> texts = <NpcText>[
+    ...object.texts,
+    if (look.textLines.isNotEmpty) NpcText(anchor: McVec3(0, top + 0.3, 0), lines: look.textLines, nameplate: false),
+  ];
+  return _framed(look, object.nodes, texts, <String>[...object.notes], frame, feet: 0, top: top);
 }
 
 List<McSceneNode> _armorLayers(NpcLook look, McArmorPiece armor, NpcItem item, McRigPose pose, McMat4 root, {required bool small}) {

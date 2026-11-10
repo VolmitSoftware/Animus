@@ -1,16 +1,15 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "0a1b2c3d-0000-4000-8000-000000000603",
   "id": "citizens-3",
   "group": "harbor",
   "name": "Harbor Clerk",
   "type": "minecraft:player",
-  "spawned": false,
+  "spawned": true,
   "migration": {
-    "importId": "d0645871e188a9d2319eef3abff392d99015b22911be04c0fbb3999eef7ce282",
+    "importId": "b7c080df8b4b36b71d40cec89c79e9594b0aa3133614a48d707039dc4d654ef8",
     "citizensId": 3,
-    "originalSpawned": null,
     "references": []
   },
   "position": {

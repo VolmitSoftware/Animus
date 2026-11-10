@@ -1,16 +1,15 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "0a1b2c3d-0000-4000-8000-000000000600",
   "id": "citizens-0",
   "group": "world",
   "name": "Fire Priest",
   "type": "minecraft:player",
-  "spawned": false,
+  "spawned": true,
   "migration": {
-    "importId": "dadfd414532c854e492a9d81afa39a059d64643c328d0e25abc7d4af1197e838",
+    "importId": "d5b317558e1ce2b9120e651ef4036c97f51ade87658189f1f35835ebdde84a17",
     "citizensId": 0,
-    "originalSpawned": null,
     "references": []
   },
   "position": {

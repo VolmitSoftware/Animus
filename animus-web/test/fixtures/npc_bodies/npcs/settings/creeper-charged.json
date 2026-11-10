@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "fd63ed4e-2657-59b8-8475-8a5f1a6ee9df",
+  "id": "creeper-charged",
+  "group": "settings",
+  "name": "Set creeper-charged",
+  "type": "minecraft:creeper",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "creeper": {
+    "powered": true
+  }
+}

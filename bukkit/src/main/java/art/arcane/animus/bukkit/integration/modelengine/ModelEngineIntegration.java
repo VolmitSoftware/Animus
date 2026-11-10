@@ -39,13 +39,10 @@ public final class ModelEngineIntegration {
     private static final class Bound {
         static BodyTransport<Player, ItemStack> wrap(Plugin plugin, BodyTransport<Player, ItemStack> packets, Supplier<Map<String, NpcDefinition>> definitions) {
             DefinitionModels models = new DefinitionModels(definitions);
-            AtomicReference<ModeledTransport<Player, ItemStack>> bound = new AtomicReference<>();
             AtomicReference<BukkitTask> ticks = new AtomicReference<>();
             ModelEngineModels driver = new ModelEngineModels(plugin, () -> {
                 BukkitTask task = ticks.getAndSet(null);
                 if (task != null) task.cancel();
-                ModeledTransport<Player, ItemStack> transport = bound.get();
-                if (transport != null) NpcModels.unbind(transport);
             });
             ModeledTransport<Player, ItemStack> transport = new ModeledTransport<>(packets, driver, models, new ModeledTransport.Owner<>() {
                 @Override public UUID id(Player viewer) { return viewer.getUniqueId(); }
@@ -55,9 +52,7 @@ public final class ModelEngineIntegration {
                     else plugin.getServer().getScheduler().runTask(plugin, work);
                 }
             });
-            bound.set(transport);
             ticks.set(plugin.getServer().getScheduler().runTaskTimer(plugin, transport::tick, 1, 1));
-            NpcModels.bind(models, transport);
             return transport;
         }
     }

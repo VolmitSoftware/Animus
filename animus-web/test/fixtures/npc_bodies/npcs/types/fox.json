@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "650123cf-6695-5107-84f6-8b643b96ca43",
+  "id": "fox",
+  "group": "types",
+  "name": "Body fox",
+  "type": "minecraft:fox",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

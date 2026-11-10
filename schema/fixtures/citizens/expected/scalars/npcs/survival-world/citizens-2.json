@@ -1,16 +1,15 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "0a1b2c3d-0000-4000-8000-000000000202",
   "id": "citizens-2",
   "group": "survival-world",
   "name": "Quote \" Back \\ Tab \t Line \u2028 End",
   "type": "minecraft:player",
-  "spawned": false,
+  "spawned": true,
   "migration": {
-    "importId": "c309c9f2beb225fd71716a92605e4eec5d0e2a0aaf04aa1752ce9cef533ac291",
+    "importId": "65931b20698c48286a4c879f5dfe821ea22a484c1ef6c707d1c40a739bf7b51c",
     "citizensId": 2,
-    "originalSpawned": null,
     "references": []
   },
   "position": {

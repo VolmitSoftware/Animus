@@ -70,7 +70,7 @@ public final class NpcSchemaGenerator {
         root.addProperty("type", "object");
         root.add("required", strings("schemaVersion", "revision", "uuid", "id", "group", "name", "type", "spawned", "position"));
         JsonObject properties = new JsonObject();
-        properties.add("schemaVersion", constant(1));
+        properties.add("schemaVersion", constant(NpcDefinition.SCHEMA_VERSION));
         properties.add("revision", described(range("integer", 1, Long.MAX_VALUE), "Raise this with every edit."));
         properties.add("uuid", described(pattern(UUID), "A canonical lowercase UUID that never changes."));
         properties.add("id", described(pattern(IDENTIFIER), "Matches the file name."));
@@ -161,17 +161,6 @@ public final class NpcSchemaGenerator {
         definitions.add("nestedRules", CombatSchema.rules(CombatSchema.Level.NESTED));
         root.add("$defs", definitions);
         JsonArray rules = new JsonArray();
-        JsonObject imported = new JsonObject();
-        JsonObject migration = new JsonObject();
-        migration.add("required", strings("migration"));
-        imported.add("if", migration);
-        JsonObject reviewed = new JsonObject();
-        reviewed.add("animus:navigation", reviewRequired());
-        reviewed.add(RideSettings.MODULE, reviewRequired());
-        JsonObject reviewedModules = new JsonObject();
-        reviewedModules.add("properties", reviewed);
-        imported.add("then", property("modules", reviewedModules));
-        rules.add(imported);
         rules.add(onlyForType(BodyRules.PLAYER, property("pose", choices(List.of(NpcPose.STANDING.key())))));
         JsonObject noArmorStand = new JsonObject();
         noArmorStand.add("not", required("armorStand"));
@@ -451,7 +440,6 @@ public final class NpcSchemaGenerator {
         villager.add("properties", villagerFields);
         fields.add("villager", villager);
         fields.add("imported", described(new JsonObject(), "Kept from an import."));
-        fields.add("reviewAccepted", described(type("boolean"), "An imported binding opens nothing until this is true."));
         shop.add("properties", fields);
         return shop;
     }
@@ -499,13 +487,6 @@ public final class NpcSchemaGenerator {
         return hire;
     }
 
-    private static JsonObject reviewRequired() {
-        JsonObject then = new JsonObject();
-        then.add("required", strings("reviewAccepted"));
-        then.add("properties", property("reviewAccepted", constant(true)).getAsJsonObject("properties"));
-        return whenEnabled(then);
-    }
-
     private static JsonObject whenEnabled(JsonObject then) {
         JsonObject rule = new JsonObject();
         JsonObject enabled = new JsonObject();
@@ -520,7 +501,6 @@ public final class NpcSchemaGenerator {
         JsonObject navigation = described(type("object"), "Native waypoints, or a reusable route under routes/.");
         JsonObject properties = new JsonObject();
         properties.add("enabled", type("boolean"));
-        properties.add("reviewAccepted", type("boolean"));
         properties.add("route", pattern(IDENTIFIER));
         JsonObject recording = pattern(IDENTIFIER);
         recording.addProperty("maxLength", 64);
@@ -799,7 +779,6 @@ public final class NpcSchemaGenerator {
         schedule.add("required", strings("locations"));
         JsonObject properties = new JsonObject();
         properties.add("enabled", described(type("boolean"), "True when the object is present."));
-        properties.add("reviewAccepted", described(type("boolean"), "An imported schedule runs only once this is true."));
         properties.add("speed", described(range("number", 1, 10), "Blocks per second. The NPC's movement.speed by default, else 2."));
         JsonObject location = described(closed(), "A place and the world time the NPC goes there.");
         location.add("required", strings("time", "x", "y", "z"));
@@ -919,7 +898,6 @@ public final class NpcSchemaGenerator {
         JsonObject riding = described(closed(), "Lets a real player ride this NPC.");
         JsonObject properties = new JsonObject();
         properties.add("enabled", type("boolean"));
-        properties.add("reviewAccepted", type("boolean"));
         properties.add("permission", type("string"));
         properties.add("speed", type("number"));
         properties.add("leash", type("number"));
@@ -950,7 +928,6 @@ public final class NpcSchemaGenerator {
             JsonObject combat = described(closed(), "Targeting, attacks and guarding. Health and death are in animus:health. An unknown setting is refused so a typo cannot weaken a rule.");
             JsonObject fields = new JsonObject();
             fields.add("enabled", described(new JsonObject(), "Literal true turns combat on; anything else leaves it off."));
-            fields.add("reviewAccepted", described(new JsonObject(), "Imported NPCs fight only once this is literal true."));
             fields.add("targets", described(reference("seekingRules"), "Who the NPC attacks."));
             fields.add("ignores", described(reference("ignoringRules"), "Who the NPC never attacks, even when a target rule matches."));
             fields.add("avoids", described(reference("seekingRules"), "Who the NPC keeps away from."));

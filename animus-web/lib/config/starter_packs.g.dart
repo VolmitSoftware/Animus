@@ -27,7 +27,7 @@ const Map<String, String> starterPackFiles = <String, String>{
 ''',
   'npcs/examples/bodyguard.json': r'''
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 2,
   "uuid": "3fae0bdf-8635-501b-bff2-ea2001d65a89",
   "id": "bodyguard",
@@ -111,7 +111,7 @@ const Map<String, String> starterPackFiles = <String, String>{
 ''',
   'npcs/examples/greeter.json': r'''
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "fe531426-31bc-5660-9207-b3d3078c2305",
   "id": "greeter",
@@ -134,7 +134,7 @@ const Map<String, String> starterPackFiles = <String, String>{
 ''',
   'npcs/examples/harbour-master.json': r'''
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "e50bd9c8-a450-5d3e-b905-671f48cfee3b",
   "id": "harbour-master",
@@ -157,7 +157,7 @@ const Map<String, String> starterPackFiles = <String, String>{
 ''',
   'npcs/examples/innkeeper.json': r'''
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "b5a46d28-96d1-5d48-980b-deaf61945a94",
   "id": "innkeeper",
@@ -180,7 +180,7 @@ const Map<String, String> starterPackFiles = <String, String>{
 ''',
   'npcs/examples/patroller.json': r'''
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "9c0dc6e5-984c-5b88-989e-b41d53cba99e",
   "id": "patroller",
@@ -203,7 +203,7 @@ const Map<String, String> starterPackFiles = <String, String>{
 ''',
   'npcs/examples/quest-giver.json': r'''
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "bd597713-d058-5d6d-8e53-b61643e687bb",
   "id": "quest-giver",
@@ -226,7 +226,7 @@ const Map<String, String> starterPackFiles = <String, String>{
 ''',
   'npcs/examples/shopkeeper.json': r'''
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 2,
   "uuid": "1fde8840-5f7a-5a37-bc24-357183d2e276",
   "id": "shopkeeper",
@@ -255,7 +255,7 @@ const Map<String, String> starterPackFiles = <String, String>{
 ''',
   'npcs/examples/town-guard.json': r'''
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "dadb7eac-eaf9-561a-8c23-2491e6aec8cf",
   "id": "town-guard",

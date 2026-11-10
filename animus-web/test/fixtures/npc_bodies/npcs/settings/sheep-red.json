@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "ef9bf560-2c4d-501c-adce-e3a56087dc52",
+  "id": "sheep-red",
+  "group": "settings",
+  "name": "Set sheep-red",
+  "type": "minecraft:sheep",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "sheep": {
+    "color": "red"
+  }
+}

@@ -21,12 +21,16 @@ import 'info_tip.dart';
 import 'shell_sidebar.dart' show listedKinds;
 
 class WorkspaceOverview extends StatelessWidget {
-  const WorkspaceOverview({required this.workspace, required this.ignored, required this.onNavigate, super.key});
+  const WorkspaceOverview({required this.workspace, required this.ignored, required this.onNavigate, this.upgraded = const <String>[], super.key});
 
   final WorkspaceSnapshot workspace;
 
   /// Paths in the opened folder or zip that are not editor documents.
   final List<String> ignored;
+
+  /// NPC and group files below the current schema that were upgraded as the
+  /// workspace opened.
+  final List<String> upgraded;
   final void Function(EditorRoute route) onNavigate;
 
   @override
@@ -60,6 +64,23 @@ class WorkspaceOverview extends StatelessWidget {
                   dom.span(classes: 'animus-muted', <Widget>[Component.text(_firstError(document))]),
                 ]),
             ]),
+        ]),
+      if (upgraded.isNotEmpty)
+        dom.section(classes: 'animus-panel', attributes: const <String, String>{'data-testid': 'upgraded-files'}, <Widget>[
+          Fold(
+            summary: <Widget>[
+              withTip(
+                Component.text('${upgraded.length} ${upgraded.length == 1 ? 'file was' : 'files were'} upgraded to schemaVersion 2'),
+                'NPCs and trait groups from an older Animus lose the import review flag and move to the current schema as they open, as the server upgrades them. Export and Send write the upgraded files.',
+                docs: Docs.schemaVersions,
+              ),
+            ],
+            children: <Widget>[
+              dom.ul(classes: 'animus-muted', <Widget>[
+                for (final String path in upgraded.take(200)) dom.li(<Widget>[dom.code(<Widget>[Component.text(path)])]),
+              ]),
+            ],
+          ),
         ]),
       if (ignored.isNotEmpty)
         dom.section(classes: 'animus-panel', <Widget>[

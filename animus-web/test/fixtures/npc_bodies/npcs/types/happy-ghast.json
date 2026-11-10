@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "9fbcbdb0-95cf-5ade-b47c-2384acf06baf",
+  "id": "happy-ghast",
+  "group": "types",
+  "name": "Body happy_ghast",
+  "type": "minecraft:happy_ghast",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

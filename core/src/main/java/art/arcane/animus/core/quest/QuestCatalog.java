@@ -69,7 +69,46 @@ public record QuestCatalog(Map<String, QuestDocument> quests, List<String> probl
                 else quests.put(quest.id(), quest);
             });
         }
+        linked(quests, problems);
         return new QuestCatalog(quests, problems);
+    }
+
+    /**
+     * Refuses each quest that requires a quest not loaded, or that requires one which, through its own requirements,
+     * requires it back: neither could ever be taken. A refusal can leave further quests requiring a missing one.
+     */
+    private static void linked(Map<String, QuestDocument> quests, List<String> problems) {
+        Map<String, String> refused = new TreeMap<>();
+        for (Map.Entry<String, QuestDocument> entry : quests.entrySet())
+            for (String before : entry.getValue().requirements().quests())
+                if (!entry.getKey().equals(before) && reaches(quests, before, entry.getKey())) { refused.putIfAbsent(entry.getKey(), "requires " + before + ", which requires it back"); break; }
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (Map.Entry<String, QuestDocument> entry : quests.entrySet()) {
+                if (refused.containsKey(entry.getKey())) continue;
+                for (String before : entry.getValue().requirements().quests())
+                    if (!quests.containsKey(before) || refused.containsKey(before)) { refused.put(entry.getKey(), "requires " + before + ", which is not loaded"); changed = true; break; }
+            }
+        }
+        refused.forEach((String id, String reason) -> {
+            quests.remove(id);
+            problems.add(FOLDER + "/" + id.replace(':', '/') + ".json $.requirements.quests: " + reason);
+        });
+    }
+
+    /** Whether {@code from}'s requirements lead, step by step, to {@code target}. */
+    private static boolean reaches(Map<String, QuestDocument> quests, String from, String target) {
+        java.util.Deque<String> open = new java.util.ArrayDeque<>(List.of(from));
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        while (!open.isEmpty()) {
+            String at = open.pop();
+            if (at.equals(target)) return true;
+            if (!seen.add(at)) continue;
+            QuestDocument quest = quests.get(at);
+            if (quest != null) open.addAll(quest.requirements().quests());
+        }
+        return false;
     }
 
     /**

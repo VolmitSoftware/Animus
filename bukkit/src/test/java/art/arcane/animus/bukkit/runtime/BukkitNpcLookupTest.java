@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class BukkitNpcLookupTest {
     private static NpcDefinition npc(String uuid, String id, String group, String name, boolean spawned) throws IOException {
         return NpcDefinition.parse("""
-                {"schemaVersion":1,"revision":1,"uuid":"%s","id":"%s","group":"%s","name":"%s","type":"minecraft:player","spawned":%s,
+                {"schemaVersion":2,"revision":1,"uuid":"%s","id":"%s","group":"%s","name":"%s","type":"minecraft:player","spawned":%s,
                  "position":{"world":"world","x":0,"y":64,"z":0,"yaw":0,"pitch":0}}
                 """.formatted(uuid, id, group, name, spawned));
     }

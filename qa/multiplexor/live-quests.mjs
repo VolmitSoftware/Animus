@@ -163,8 +163,7 @@ export async function questPlugins(t) {
     mkdirSync(path.join(plugins, 'Citizens'), { recursive: true });
     writeFileSync(path.join(plugins, 'Citizens/saves.yml'), SAVES);
     await server.cmd('animus import citizens preview', /Next: \/animus import citizens apply/, 60_000);
-    await server.cmd('animus import citizens apply', /Next: \/animus import citizens review|Installed|tx /, 60_000);
-    await server.cmd('animus import citizens accept all', /Accepted|accepted|tx /, 60_000);
+    await server.cmd('animus import citizens apply', /Next: \/animus import citizens review/, 60_000);
     await delay(1000);
     await server.cmd('animus npc health citizens-8 killable on', /Saved|killable/);
     await server.cmd('animus npc health citizens-8 maximum 1', /Saved|maximum/);
@@ -240,6 +239,14 @@ export async function questPlugins(t) {
     from = await kill(ids.bandit, finished);
     await expectChat(finished, from, 15_000);
     return transcript.slice(-4).join(' | ');
+  });
+
+  if (!beauty) await check('quests: /questlog opens the Animus journal while Quests owns /quests', async () => {
+    const own = await server.cmd('questlog', /Only a player has a quest journal|Unknown command[^\n]*/);
+    assert.match(own[0], /Only a player has a quest journal/);
+    const namespaced = await server.cmd('animus:quests', /Only a player has a quest journal|Unknown command[^\n]*/);
+    assert.match(namespaced[0], /Only a player has a quest journal/);
+    return 'questlog and animus:quests reach Animus';
   });
 
   await check(`${flavor}: the linked Citizens quest runs on the imported NPCs`, async () => {

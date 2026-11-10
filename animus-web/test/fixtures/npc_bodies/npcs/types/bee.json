@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "6c75c532-cf5b-5081-87df-4f4400d9f0a9",
+  "id": "bee",
+  "group": "types",
+  "name": "Body bee",
+  "type": "minecraft:bee",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

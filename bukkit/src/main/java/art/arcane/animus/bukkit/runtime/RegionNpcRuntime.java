@@ -42,6 +42,7 @@ import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.mount.MountRelations;
 import art.arcane.animus.core.virtual.ChunkPosition;
 import art.arcane.animus.core.virtual.SpatialNpcIndex;
+import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.VirtualNpcState;
 import art.arcane.animus.core.virtual.WorldPosition;
 import java.util.ArrayDeque;
@@ -65,6 +66,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -255,11 +257,29 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         return viewer != null && viewer.player == player && viewer.pressed(key);
     }
     @Override public boolean switchesLive() { return false; }
-    @Override public void bindTriggers(TriggerDispatcher dispatcher) { dispatcher.hide(previews); triggers = dispatcher; }
+    @Override public boolean drawsModels() { return false; }
+    @Override public void bindTriggers(TriggerDispatcher dispatcher) { dispatcher.hide(hidden()); triggers = dispatcher; }
     @Override public void animationEvents(art.arcane.animus.core.rig.NpcRig.Events events) { animationEvents = events; }
     @Override public void refresh() { refresh.set(true); }
     @Override public PlayerAccess<Player> players() { return players; }
     @Override public ViewerPreviews previews() { return previews; }
+    /** Previews, plugin hiding and each NPC's viewers filter; thread-safe, since every actor publishes its spec and position. */
+    @Override public art.arcane.animus.core.behavior.trigger.HiddenNpcs hidden() { return this::hiddenFrom; }
+    boolean hiddenFrom(UUID viewer, String id, UUID npc) { return previews.hides(viewer, id, npc) || filtered(viewer, npc); }
+    private boolean filtered(UUID viewer, UUID npc) {
+        RegionActor actor = byUuid.get(npc);
+        RegionActor.Publication now = actor == null ? null : actor.publication;
+        if (now == null || now.spec().viewers() == art.arcane.animus.core.npc.ViewerFilter.NONE) return false;
+        Player player = plugin.getServer().getPlayer(viewer);
+        if (player == null) return false;
+        double distance = 0;
+        if (now.spec().viewers().range().isPresent()) {
+            Location at = player.getLocation();
+            WorldPosition npcAt = now.snapshot().position();
+            distance = !npcAt.world().equals(at.getWorld().getUID().toString()) ? Double.POSITIVE_INFINITY : npcAt.point().distance(new Vec3(at.getX(), at.getY(), at.getZ()));
+        }
+        return now.spec().viewers().hides(viewer, distance, player::hasPermission, (String node) -> BukkitRuntimeHost.setAndHeld(player, node));
+    }
     /** A preview candidate checked against this server, on the viewer's region. */
     DefinitionSpec<ItemStack> previewSpec(NpcDefinition definition) { return DefinitionSpec.parse(definition, geometries.keySet(), this::worldKey, DefinitionItems::stack); }
 

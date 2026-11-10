@@ -31,15 +31,15 @@ class ToolkitFilesTest {
     ToolkitFiles files;
 
     static String npc(String id, String uuid, String folder, String type, String extra) {
-        return "{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"" + uuid + "\",\"id\":\"" + id + "\",\"group\":\"" + folder + "\",\"name\":\"N\",\"type\":\"" + type + "\",\"spawned\":false,"
+        return "{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"" + uuid + "\",\"id\":\"" + id + "\",\"group\":\"" + folder + "\",\"name\":\"N\",\"type\":\"" + type + "\",\"spawned\":false,"
                 + "\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}" + extra + "}";
     }
 
     @BeforeEach void setUp() throws IOException {
         store = new DocumentStore(root);
         store.commit(List.of(
-                new DocumentStore.Change("groups/watch.json", "missing", "{\"schemaVersion\":1,\"revision\":1,\"id\":\"watch\",\"values\":{\"tags\":[\"watch\"]}}"),
-                new DocumentStore.Change("groups/looks.json", "missing", "{\"schemaVersion\":1,\"revision\":1,\"id\":\"looks\",\"values\":{\"skins\":[\"" + SKIN + "\"]}}"),
+                new DocumentStore.Change("groups/watch.json", "missing", "{\"schemaVersion\":2,\"revision\":1,\"id\":\"watch\",\"values\":{\"tags\":[\"watch\"]}}"),
+                new DocumentStore.Change("groups/looks.json", "missing", "{\"schemaVersion\":2,\"revision\":1,\"id\":\"looks\",\"values\":{\"skins\":[\"" + SKIN + "\"]}}"),
                 new DocumentStore.Change("skins/" + SKIN + ".json", "missing", SKIN_TEXT),
                 new DocumentStore.Change("routes/patrol.json", "missing", "{\"schemaVersion\":1,\"points\":[{\"x\":0,\"y\":64,\"z\":0}]}"),
                 new DocumentStore.Change("npcs/town/guard.json", "missing", npc("guard", "12345678-1234-1234-1234-123456789abc", "town", "minecraft:player", "")),

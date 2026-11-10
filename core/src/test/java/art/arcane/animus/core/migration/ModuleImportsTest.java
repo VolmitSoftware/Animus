@@ -36,7 +36,7 @@ class ModuleImportsTest {
                 (ImportConverters.Source source) -> CompletableFuture.completedFuture(Outcome.ok(convert.apply(source))));
     }
     private static ImportConverters.Conversion twoGuards(ImportConverters.Source source) {
-        String combat = ",\"modules\":{\"animus:combat\":{\"enabled\":true,\"reviewAccepted\":true}}";
+        String combat = ",\"modules\":{\"animus:combat\":{\"enabled\":true}}";
         return new ImportConverters.Conversion(List.of(
                 new ImportConverters.Record(4, NPC.formatted("Gate guard", 1, combat), List.of("hat dropped")),
                 new ImportConverters.Record(9, NPC.formatted("Smith", 5, ""), List.of())), List.of("one global note"));
@@ -60,15 +60,27 @@ class ModuleImportsTest {
             NpcDefinition guard = NpcDefinition.parse(JsonDocuments.read(preview.directory().resolve("npcs/legacy/legacy-npcs-4.json")));
             assertEquals("legacy-npcs-4", guard.id());
             JsonObject data = guard.json();
-            assertFalse(data.get("spawned").getAsBoolean());
-            assertTrue(data.getAsJsonObject("migration").get("originalSpawned").getAsBoolean());
-            assertFalse(data.getAsJsonObject("modules").getAsJsonObject("animus:combat").get("enabled").getAsBoolean());
+            assertTrue(data.get("spawned").getAsBoolean(), "the converter's spawned is kept");
+            assertFalse(data.getAsJsonObject("migration").has("originalSpawned"));
+            assertTrue(data.getAsJsonObject("modules").getAsJsonObject("animus:combat").get("enabled").getAsBoolean(), "combat runs as the converter wrote it");
             assertEquals(summary.getAsJsonObject("idMap").get("4").getAsString(), guard.uuid().toString());
 
             assertEquals(preview.id(), ModuleImports.preview(store, SOURCE, converter("legacy:npcs", true, ModuleImportsTest::twoGuards)).id(), "Same source and converter reuse the preview");
             assertNotEquals("already-applied", new CitizensImporter().apply(store, preview.id()));
             assertTrue(Files.isRegularFile(root.resolve("npcs/legacy/legacy-npcs-9.json")));
             assertEquals("already-applied", new CitizensImporter().apply(store, preview.id()));
+        }
+    }
+
+    @Test void aConverterWritingVersionOneIsUpgradedToTheCurrentFormat(@TempDir Path root) throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            String old = "{\"schemaVersion\":1," + NPC.formatted("Gate guard", 1, ",\"modules\":{\"animus:combat\":{\"enabled\":true,\"reviewAccepted\":false}}").substring(1);
+            CitizensImporter.Preview preview = ModuleImports.preview(store, SOURCE, converter("legacy:npcs", true, (ImportConverters.Source source) ->
+                    new ImportConverters.Conversion(List.of(new ImportConverters.Record(4, old, List.of())), List.of())));
+            assertEquals(1, preview.valid(), preview.summary().toString());
+            JsonObject data = NpcDefinition.parse(JsonDocuments.read(preview.directory().resolve("npcs/legacy/legacy-npcs-4.json"))).json();
+            assertEquals(NpcDefinition.SCHEMA_VERSION, data.get("schemaVersion").getAsInt());
+            assertFalse(data.getAsJsonObject("modules").getAsJsonObject("animus:combat").has("reviewAccepted"));
         }
     }
 

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "042d29d1-3da2-5317-b1c6-1cdc077b66a3",
+  "id": "bear-standing",
+  "group": "settings",
+  "name": "Set bear-standing",
+  "type": "minecraft:polar_bear",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "polarBear": {
+    "standing": true
+  }
+}

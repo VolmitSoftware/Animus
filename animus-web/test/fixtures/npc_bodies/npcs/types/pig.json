@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "aec5db52-d7e4-5c96-b04c-2066b8fad9ce",
+  "id": "pig",
+  "group": "types",
+  "name": "Body pig",
+  "type": "minecraft:pig",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

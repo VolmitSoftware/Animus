@@ -18,7 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
 class ModelSettingTest {
     @TempDir Path root;
 
-    private static final String GUARD = "{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"12345678-1234-1234-1234-123456789abc\",\"id\":\"guard\",\"group\":\"\",\"name\":\"N\","
+    private static final String GUARD = "{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"12345678-1234-1234-1234-123456789abc\",\"id\":\"guard\",\"group\":\"\",\"name\":\"N\","
             + "\"type\":\"minecraft:player\",\"spawned\":false,\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}}";
 
     private static JsonObject module(NpcRepository repository) {
@@ -52,6 +52,11 @@ class ModelSettingTest {
             assertTrue(ModelSetting.set(repository, "guard", "model", "reset").startsWith("guard: model removed; tx "));
             assertEquals(null, module(repository));
         }
+    }
+
+    @Test void aServerThatDrawsNoModelsSaysSoUnderTheReply() {
+        assertEquals(List.of("guard: model = drake"), ModelSetting.reply("guard: model = drake", true));
+        assertEquals(List.of("guard: model = drake", ModelSetting.NOT_DRAWN), ModelSetting.reply("guard: model = drake", false));
     }
 
     @Test void unknownSettingsListTheKnownOnes() {

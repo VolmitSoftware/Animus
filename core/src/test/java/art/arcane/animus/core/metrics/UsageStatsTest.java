@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class UsageStatsTest {
     private static NpcDefinition npc(String id, String extra) throws IOException {
-        return NpcDefinition.parse("{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"" + UUID.randomUUID() + "\",\"id\":\"" + id
+        return NpcDefinition.parse("{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"" + UUID.randomUUID() + "\",\"id\":\"" + id
                 + "\",\"group\":\"test\",\"name\":\"Test\",\"type\":\"minecraft:player\",\"spawned\":false,\"position\":{\"world\":\"world\",\"x\":0,\"y\":61,\"z\":0,\"yaw\":0,\"pitch\":0}" + extra + "}");
     }
 

@@ -17,7 +17,7 @@ export async function toolkit(t) {
 
   // Content the screens list: a trait group, a behavior and a shop.
   mkdirSync(file('groups'), { recursive: true });
-  writeFileSync(file('groups', 'watch.json'), JSON.stringify({ schemaVersion: 1, revision: 1, id: 'watch', description: 'Gate watch', values: { tags: ['watch'] } }, null, 1) + '\n');
+  writeFileSync(file('groups', 'watch.json'), JSON.stringify({ schemaVersion: 2, revision: 1, id: 'watch', description: 'Gate watch', values: { tags: ['watch'] } }, null, 1) + '\n');
   mkdirSync(file('shops', 'live'), { recursive: true });
   writeFileSync(file('shops', 'live', 'stall.json'), JSON.stringify({ schemaVersion: 1, revision: 1, id: 'live:stall', title: '&bStall', modes: ['trade'], pages: [{ name: 'Main', rows: 3, trade: {} }] }, null, 1) + '\n');
   server.behavior('live:greet', { routines: { main: { type: 'action', capability: 'animus:say', arguments: { text: 'hello' } } }, triggers: [{ id: 'talk', event: 'interaction', action: 'interact' }] });

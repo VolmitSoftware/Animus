@@ -1,16 +1,15 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "0a1b2c3d-0000-4000-8000-000000000500",
   "id": "citizens-0",
   "group": "town",
   "name": "Gate Warden",
   "type": "minecraft:player",
-  "spawned": false,
+  "spawned": true,
   "migration": {
-    "importId": "e039eeecda7b1118e5cb80082e4522f10590c5ee04b002f8a7dffed09388659a",
+    "importId": "0163b6b7fa861788337e53aaf039c80f6ccca325719794ebb42869af36ed9d96",
     "citizensId": 0,
-    "originalSpawned": null,
     "references": [],
     "skin": {
       "skinUuid": "0a1b2c3d-0000-4000-8000-0000000005aa",
@@ -92,8 +91,7 @@
   },
   "modules": {
     "animus:navigation": {
-      "enabled": false,
-      "reviewAccepted": false,
+      "enabled": true,
       "mode": "walk",
       "speed": 1.29,
       "order": "random",

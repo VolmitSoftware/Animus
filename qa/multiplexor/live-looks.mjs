@@ -5,13 +5,13 @@
 // .bbmodel holding a hitbox bone and an `attack` animation. Without the plugins (--scenarios hidden) the integration
 // commands stay out of help and completion and answer that they need their plugin. Driven by live-features.mjs.
 import assert from 'node:assert/strict';
-import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { delay } from '../protocol-client/client.mjs';
 
 /** Commands that only exist while their plugin runs, as /animus <words>. */
 const GATED = [['ModelEngine', 'npc model'], ['LibsDisguises', 'npc disguise'], ['MythicMobs', 'mythic'],
-  ['Quests', 'import quests'], ['BeautyQuests', 'import beautyquests'], ['BetonQuest', 'import betonquest'], ['Typewriter', 'import typewriter']];
+  ['Quests', 'import quests'], ['BeautyQuests', 'import beautyquests'], ['BetonQuest', 'import betonquest']];
 const MOB = `AnimusMeg:
   Type: ZOMBIE
   Display: 'Modelled'
@@ -193,4 +193,37 @@ export async function looks(t) {
   });
   for (const id of ['sandy', 'gem', 'cube', 'shown', 'sign']) await server.cmd(`animus delete ${id}`, /Deleted/).catch(() => {});
   await owner.close();
+}
+
+/**
+ * A player-name disguise with LibsDisguises' SaveGameProfiles off: the skin LibsDisguises fetches reaches the NPC after
+ * one reload and stays, instead of each reload fetching it again. Needs --extra-plugins with LibsDisguises and packetevents
+ * jars and a server that can reach Mojang. Driven by live-features.mjs.
+ */
+export async function disguiseSkins(t) {
+  const { server, check, instance, data } = t;
+  const settings = path.join(instance, 'plugins/LibsDisguises/configs/libsdisguises.yml');
+  await check('disguise skins: LibsDisguises runs with SaveGameProfiles off', async () => {
+    await server.stop();
+    writeFileSync(settings, readFileSync(settings, 'utf8').replace(/^SaveGameProfiles: true$/m, 'SaveGameProfiles: false'));
+    await server.start();
+    return readFileSync(settings, 'utf8').match(/^SaveGameProfiles: \w+$/m)[0];
+  });
+  const skins = () => existsSync(path.join(data, 'skins')) ? readdirSync(path.join(data, 'skins')).filter(file => file.endsWith('.json')) : [];
+  const before = new Set(skins());
+  await check('disguise skins: a player-name disguise takes its fetched skin and keeps it', async () => {
+    await server.npc('notchy', 'minecraft:player', 0.5, 61, 9.5, 'notchy');
+    const text = plain(await server.capture('animus npc disguise notchy "player Notch"', /notchy: disguised[^\n]*|Error[^\n]*/));
+    assert.match(text, /notchy: disguised as minecraft:player/, text.slice(-200));
+    let added = [];
+    for (let i = 0; i < 100 && added.length === 0; i++) { await delay(200); added = skins().filter(file => !before.has(file)); }
+    assert.equal(added.length, 1, 'the fetched skin was never saved');
+    const definition = () => readFileSync(path.join(data, 'npcs/live/notchy.json'), 'utf8');
+    const settled = definition();
+    await delay(8000);
+    assert.deepEqual(skins().filter(file => !before.has(file)), added, 'no further skin saves');
+    assert.equal(definition(), settled, 'the definition stays as it settled');
+    return `skin ${added[0]} saved once and unchanged for 8 s`;
+  });
+  await server.cmd('animus delete notchy', /Deleted/).catch(() => {});
 }

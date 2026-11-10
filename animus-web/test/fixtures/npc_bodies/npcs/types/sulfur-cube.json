@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "44a1226b-2ebe-5f4a-8fe5-9c21bf820b28",
+  "id": "sulfur-cube",
+  "group": "types",
+  "name": "Body sulfur_cube",
+  "type": "minecraft:sulfur_cube",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

@@ -57,7 +57,7 @@ class BehaviorScreensTest {
         List<DocumentStore.Change> files = new ArrayList<>(List.of(
                 new DocumentStore.Change("npcs/town/guard.json", "missing", ToolkitScreensTest.npc("guard", ToolkitScreensTest.GUARD, ",\"groups\":[\"talkers\"]")),
                 new DocumentStore.Change("npcs/town/baker.json", "missing", ToolkitScreensTest.npc("baker", ToolkitScreensTest.BAKER, ",\"behaviors\":[\"town:patrol\"]")),
-                new DocumentStore.Change("groups/talkers.json", "missing", "{\"schemaVersion\":1,\"revision\":1,\"id\":\"talkers\",\"values\":{\"behaviors\":[\"harbor:ferryman\"]}}"),
+                new DocumentStore.Change("groups/talkers.json", "missing", "{\"schemaVersion\":2,\"revision\":1,\"id\":\"talkers\",\"values\":{\"behaviors\":[\"harbor:ferryman\"]}}"),
                 new DocumentStore.Change("behaviors/town/talk.json", "missing", fixture("talk")),
                 new DocumentStore.Change("behaviors/harbor/ferryman.json", "missing", fixture("ferryman")),
                 new DocumentStore.Change("behaviors/town/patrol.json", "missing", PATROL)));

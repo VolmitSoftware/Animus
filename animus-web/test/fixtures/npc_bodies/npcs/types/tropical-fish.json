@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "2170ffa2-d8f3-5e43-8897-0edcd37ec884",
+  "id": "tropical-fish",
+  "group": "types",
+  "name": "Body tropical_fish",
+  "type": "minecraft:tropical_fish",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

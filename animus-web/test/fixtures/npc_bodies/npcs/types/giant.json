@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "0c77cd81-506a-5cb6-ad24-c4d1b13c9535",
+  "id": "giant",
+  "group": "types",
+  "name": "Body giant",
+  "type": "minecraft:giant",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

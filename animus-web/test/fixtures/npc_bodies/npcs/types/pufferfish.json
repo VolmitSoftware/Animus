@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "93ba42f9-2e13-5c6c-a488-21e6b892f4c8",
+  "id": "pufferfish",
+  "group": "types",
+  "name": "Body pufferfish",
+  "type": "minecraft:pufferfish",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

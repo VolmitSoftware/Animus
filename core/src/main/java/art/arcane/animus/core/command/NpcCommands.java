@@ -221,10 +221,11 @@ final class NpcCommands extends CommandGroup {
         CommandActor actor = actor();
         NpcRepository repository = runtime().npcs();
         npc(actor, npc).ifPresent((String id) -> files(actor, () -> {
-            if (part.isEmpty() || to.isEmpty()) return List.of(ModelSetting.show(repository, id));
+            boolean drawn = living().drawsModels();
+            if (part.isEmpty() || to.isEmpty()) return ModelSetting.reply(ModelSetting.show(repository, id), drawn);
             String line = ModelSetting.set(repository, id, part, to);
             living().refresh();
-            return List.of(Palette.success(line));
+            return ModelSetting.reply(Palette.success(line), drawn);
         }));
     }
 

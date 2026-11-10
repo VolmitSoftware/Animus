@@ -15,7 +15,7 @@ class MountDeclarationTest {
 
     private static JsonObject json(String extra) throws IOException {
         return JsonDocuments.object("""
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"rider",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"rider",
                  "group":"test","name":"Rider","type":"minecraft:player","spawned":false,
                  "position":{"world":"world","x":0,"y":64,"z":0,"yaw":0,"pitch":0}%s}
                 """.formatted(extra));

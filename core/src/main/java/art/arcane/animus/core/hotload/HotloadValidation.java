@@ -10,6 +10,7 @@ import art.arcane.animus.core.gui.HoloCatalog;
 import art.arcane.animus.core.shop.ShopDocument;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.storage.SchemaMigrations;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -31,15 +32,20 @@ public final class HotloadValidation {
      * @param removedBehavior a behavior whose source file was deleted on purpose
      * @param npc the parsed NPC, which still needs its activation check on the server
      * @param warnings what was accepted but ignored, such as an unknown config.toml key
+     * @param upgrade an NPC or group file below the current schema, which is checked as its migration writes it and
+     *                must be rewritten before the reload
      */
     public record Verdict(Optional<String> error, Optional<DocumentKind> kind, Optional<String> removedBehavior,
-                          Optional<PluginSettings> settings, Optional<NpcDefinition> npc, List<String> warnings) {
+                          Optional<PluginSettings> settings, Optional<NpcDefinition> npc, List<String> warnings, Optional<Upgrade> upgrade) {
         public Verdict { warnings = List.copyOf(warnings); }
-        static Verdict refused(String error) { return new Verdict(Optional.of(error), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), List.of()); }
-        static Verdict reload(DocumentKind kind) { return new Verdict(Optional.empty(), Optional.of(kind), Optional.empty(), Optional.empty(), Optional.empty(), List.of()); }
-        static final Verdict ACCEPTED = new Verdict(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), List.of());
+        static Verdict refused(String error) { return new Verdict(Optional.of(error), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), List.of(), Optional.empty()); }
+        static Verdict reload(DocumentKind kind, Optional<Upgrade> upgrade) { return new Verdict(Optional.empty(), Optional.of(kind), Optional.empty(), Optional.empty(), Optional.empty(), List.of(), upgrade); }
+        static final Verdict ACCEPTED = new Verdict(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), List.of(), Optional.empty());
         public boolean valid() { return error.isEmpty(); }
     }
+
+    /** The migration a stale file gets: its kind, the version it was written at, and the text the migration writes. */
+    public record Upgrade(SchemaMigrations.Kind kind, int from, String text) {}
 
     /**
      * What validation reads from the running server: the data folder, for animation references, the command allow-list
@@ -63,7 +69,7 @@ public final class HotloadValidation {
         try {
             List<String> warnings = new ArrayList<>();
             PluginSettings settings = PluginSettings.parse(snapshot.content(), Path.of(HotloadTargets.CONFIG), warnings::add);
-            return new Verdict(Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(settings), Optional.empty(), warnings);
+            return new Verdict(Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(settings), Optional.empty(), warnings, Optional.empty());
         } catch (IOException | RuntimeException invalid) {
             String message = String.valueOf(invalid.getMessage());
             return Verdict.refused(message.startsWith(HotloadTargets.CONFIG + " ") ? message.substring(HotloadTargets.CONFIG.length() + 1) : strip(message, HotloadTargets.CONFIG + ": "));
@@ -89,11 +95,21 @@ public final class HotloadValidation {
                 try { removed = Optional.of(BehaviorPath.idFor(path)); }
                 catch (IllegalArgumentException notBehavior) { /* Not a behavior source, so nothing was published from it. */ }
             }
-            return new Verdict(Optional.empty(), Optional.of(kind), removed, Optional.empty(), Optional.empty(), List.of());
+            return new Verdict(Optional.empty(), Optional.of(kind), removed, Optional.empty(), Optional.empty(), List.of(), Optional.empty());
         }
         JsonObject source;
         try { source = JsonDocuments.object(snapshot.content()); }
         catch (IOException invalid) { return Verdict.refused(String.valueOf(invalid.getMessage())); }
+        String text = snapshot.content();
+        Optional<Upgrade> upgrade = Optional.empty();
+        SchemaMigrations.Kind migrated = kind == DocumentKind.NPC ? SchemaMigrations.NPC : kind == DocumentKind.GROUP ? SchemaMigrations.GROUP : null;
+        if (migrated != null && SchemaMigrations.standard().stale(migrated, source)) {
+            int from = source.get("schemaVersion").getAsInt();
+            try { source = SchemaMigrations.standard().migrate(migrated, source); }
+            catch (IOException refused) { return Verdict.refused(String.valueOf(refused.getMessage())); }
+            text = JsonDocuments.write(source);
+            upgrade = Optional.of(new Upgrade(migrated, from, text));
+        }
         Optional<String> id = EditorDocuments.idFor(kind, path);
         if (id.isEmpty()) return Verdict.refused("$: " + path + " is not where a " + kind.wireName() + " document belongs");
         GuiValidator gui = HoloCatalog.validator(context.data(), context.commandsAllowed());
@@ -108,9 +124,9 @@ public final class HotloadValidation {
             default -> errors(EditorDocuments.validate(kind, id.get(), source, context.recordingBytes()));
         };
         if (!errors.isEmpty()) return Verdict.refused(errors.getFirst() + (errors.size() > 1 ? " (and " + (errors.size() - 1) + " more)" : ""));
-        if (kind != DocumentKind.NPC) return Verdict.reload(kind);
+        if (kind != DocumentKind.NPC) return Verdict.reload(kind, upgrade);
         try {
-            return new Verdict(Optional.empty(), Optional.of(kind), Optional.empty(), Optional.empty(), Optional.of(NpcDefinition.read(path, snapshot.content())), List.of());
+            return new Verdict(Optional.empty(), Optional.of(kind), Optional.empty(), Optional.empty(), Optional.of(NpcDefinition.read(path, text)), List.of(), upgrade);
         } catch (IOException invalid) { return Verdict.refused(String.valueOf(invalid.getMessage())); }
     }
 

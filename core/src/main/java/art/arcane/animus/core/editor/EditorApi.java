@@ -220,7 +220,8 @@ public final class EditorApi implements EditorRequestHandler {
                 case "changes" -> n == 2 ? new Route(EditorScope.READ, false, this::changeStatus) : null;
                 case "imports" -> n == 1 ? new Route(EditorScope.IMPORT, false, imports::status) : null;
                 case "terrain" -> n == 2 && s[1].equals("surface") ? new Route(EditorScope.TERRAIN, false, (EditorRequest request, EditorTokens.Token token, String[] path) -> terrain.surface(request, token))
-                        : n == 2 && s[1].equals("blocks") ? new Route(EditorScope.TERRAIN, false, (EditorRequest request, EditorTokens.Token token, String[] path) -> terrain.blocks(request, token)) : null;
+                        : n == 2 && s[1].equals("blocks") ? new Route(EditorScope.TERRAIN, false, (EditorRequest request, EditorTokens.Token token, String[] path) -> terrain.blocks(request, token))
+                        : n == 2 && s[1].equals("position") ? new Route(EditorScope.TERRAIN, false, (EditorRequest request, EditorTokens.Token token, String[] path) -> terrain.position(request, token)) : null;
                 default -> null;
             };
             case "POST" -> switch (first) {
@@ -229,7 +230,7 @@ public final class EditorApi implements EditorRequestHandler {
                 case "changes" -> n == 1 ? new Route(null, true, this::apply) : n == 3 && s[2].equals("undo") ? new Route(null, true, this::undo) : null;
                 case "imports" -> n == 1 ? new Route(EditorScope.IMPORT, false, imports::upload)
                         : n == 2 && s[1].equals("stage") ? new Route(EditorScope.IMPORT, false, imports::stage)
-                        : n == 3 && Set.of("apply", "accept", "rollback").contains(s[2]) ? new Route(EditorScope.IMPORT, false, imports::step) : null;
+                        : n == 3 && Set.of("apply", "rollback").contains(s[2]) ? new Route(EditorScope.IMPORT, false, imports::step) : null;
                 case "npcs" -> n == 3 && (s[2].equals("spawn") || s[2].equals("despawn")) ? new Route(EditorScope.SPAWN, false, this::spawn) : null;
                 default -> null;
             };

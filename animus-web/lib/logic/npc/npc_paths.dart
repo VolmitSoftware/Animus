@@ -8,6 +8,12 @@
 /// `town/market/baker` or `baker`.
 library;
 
+/// The NPC definition format the server reads (`NpcDefinition.SCHEMA_VERSION`).
+const int npcSchemaVersion = 2;
+
+/// The trait group format the server reads (`GroupDocument.SCHEMA_VERSION`).
+const int groupSchemaVersion = 2;
+
 /// One folder or file name.
 final RegExp npcSegmentPattern = RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$');
 

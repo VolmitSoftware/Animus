@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "6fe0ec69-a482-5ea3-af91-c5b08c27cd4c",
+  "id": "parched",
+  "group": "types",
+  "name": "Body parched",
+  "type": "minecraft:parched",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

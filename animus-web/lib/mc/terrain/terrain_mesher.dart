@@ -43,9 +43,10 @@ final class _Builders {
       ];
 }
 
-/// Meshes [volume] with [models]; [water] and [lava] are the atlas rects of
-/// the still fluid textures.
-List<TerrainMesh> terrainMesh(TerrainVolume volume, TerrainModels models, {required McVec3 origin, required McUvRect water, required McUvRect lava}) {
+/// Meshes [volume] with [models], only chunk [chunk] when given; [water]
+/// and [lava] are the atlas rects of the still fluid textures. Faces
+/// against a neighbouring chunk's blocks are hidden as within one.
+List<TerrainMesh> terrainMesh(TerrainVolume volume, TerrainModels models, {required McVec3 origin, required McUvRect water, required McUvRect lava, (int, int)? chunk}) {
   final List<TerrainBlockModel> byIndex = <TerrainBlockModel>[for (final String state in volume.palette) models.of(state)];
   final List<String> ids = <String>[for (final String state in volume.palette) TerrainBlockState.parse(state).id];
   TerrainBlockModel? at(int x, int y, int z) {
@@ -59,52 +60,56 @@ List<TerrainMesh> terrainMesh(TerrainVolume volume, TerrainModels models, {requi
   }
 
   final _Builders opaque = _Builders(false), blended = _Builders(true);
-  for (int y = volume.y0; y < volume.y0 + volume.sy; y++) {
-    for (int z = volume.z0; z < volume.z0 + volume.sz; z++) {
-      for (int x = volume.x0; x < volume.x0 + volume.sx; x++) {
-        final TerrainBlockModel? block = at(x, y, z);
-        if (block == null || (block.quads.isEmpty && block.fluid == null)) continue;
-        final double ox = x - origin.x, oy = y - origin.y, oz = z - origin.z;
-        final String id = idAt(x, y, z)!;
-        bool hidden(int side) {
-          final (int dx, int dy, int dz) = terrainSides[side];
-          final TerrainBlockModel? next = at(x + dx, y + dy, z + dz);
-          if (next == null) return false;
-          return next.occludes || (block.sameCulls && next.sameCulls && idAt(x + dx, y + dy, z + dz) == id);
-        }
-
-        final _Builders target = block.translucent ? blended : opaque;
-        for (final TerrainQuad quad in block.quads) {
-          if (quad.cull != TerrainQuad.noCull && hidden(quad.cull)) continue;
-          final List<double> c = quad.corners;
-          target.room().quad(
-            <List<double>>[
-              <double>[c[0] + ox, c[1] + oy, c[2] + oz],
-              <double>[c[3] + ox, c[4] + oy, c[5] + oz],
-              <double>[c[6] + ox, c[7] + oy, c[8] + oz],
-              <double>[c[9] + ox, c[10] + oy, c[11] + oz],
-            ],
-            <List<double>>[
-              <double>[quad.uvs[0], quad.uvs[1]],
-              <double>[quad.uvs[2], quad.uvs[3]],
-              <double>[quad.uvs[4], quad.uvs[5]],
-              <double>[quad.uvs[6], quad.uvs[7]],
-            ],
-            quad.shade,
-            quad.tint,
-          );
-        }
-        final String? fluid = block.fluid;
-        if (fluid != null) {
-          bool sameFluid(int dx, int dy, int dz) => at(x + dx, y + dy, z + dz)?.fluid == fluid;
-          final double top = sameFluid(0, 1, 0) ? 1 : terrainFluidTop;
-          _fluid(fluid == 'water' ? blended : opaque, fluid == 'water' ? water : lava, fluid == 'water' ? mcTintWater : mcTintNone, ox, oy, oz, top,
-              (int side) {
+  for (final (int cx, int cz) in chunk == null ? volume.chunks.toList() : <(int, int)>[chunk]) {
+    final TerrainColumnRange? column = volume.column(cx, cz);
+    if (column == null) continue;
+    for (int y = column.y; y < column.y + column.height; y++) {
+      for (int z = cz * 16; z < cz * 16 + 16; z++) {
+        for (int x = cx * 16; x < cx * 16 + 16; x++) {
+          final TerrainBlockModel? block = at(x, y, z);
+          if (block == null || (block.quads.isEmpty && block.fluid == null)) continue;
+          final double ox = x - origin.x, oy = y - origin.y, oz = z - origin.z;
+          final String id = idAt(x, y, z)!;
+          bool hidden(int side) {
             final (int dx, int dy, int dz) = terrainSides[side];
-            if (sameFluid(dx, dy, dz)) return true;
             final TerrainBlockModel? next = at(x + dx, y + dy, z + dz);
-            return next != null && next.occludes;
-          });
+            if (next == null) return false;
+            return next.occludes || (block.sameCulls && next.sameCulls && idAt(x + dx, y + dy, z + dz) == id);
+          }
+
+          final _Builders target = block.translucent ? blended : opaque;
+          for (final TerrainQuad quad in block.quads) {
+            if (quad.cull != TerrainQuad.noCull && hidden(quad.cull)) continue;
+            final List<double> c = quad.corners;
+            target.room().quad(
+              <List<double>>[
+                <double>[c[0] + ox, c[1] + oy, c[2] + oz],
+                <double>[c[3] + ox, c[4] + oy, c[5] + oz],
+                <double>[c[6] + ox, c[7] + oy, c[8] + oz],
+                <double>[c[9] + ox, c[10] + oy, c[11] + oz],
+              ],
+              <List<double>>[
+                <double>[quad.uvs[0], quad.uvs[1]],
+                <double>[quad.uvs[2], quad.uvs[3]],
+                <double>[quad.uvs[4], quad.uvs[5]],
+                <double>[quad.uvs[6], quad.uvs[7]],
+              ],
+              quad.shade,
+              quad.tint,
+            );
+          }
+          final String? fluid = block.fluid;
+          if (fluid != null) {
+            bool sameFluid(int dx, int dy, int dz) => at(x + dx, y + dy, z + dz)?.fluid == fluid;
+            final double top = sameFluid(0, 1, 0) ? 1 : terrainFluidTop;
+            _fluid(fluid == 'water' ? blended : opaque, fluid == 'water' ? water : lava, fluid == 'water' ? mcTintWater : mcTintNone, ox, oy, oz, top,
+                (int side) {
+              final (int dx, int dy, int dz) = terrainSides[side];
+              if (sameFluid(dx, dy, dz)) return true;
+              final TerrainBlockModel? next = at(x + dx, y + dy, z + dz);
+              return next != null && next.occludes;
+            });
+          }
         }
       }
     }

@@ -1,13 +1,13 @@
-/// Terrain under the route grid: the surface tiles that cover the grid,
-/// drawn as images under the lines, and what the editor knows there for
-/// snapping placed points onto a standable block and flagging points and
-/// legs. Tiles load lazily, at most [routeTerrainMaxTiles] at a time, and
-/// only for the area the grid shows.
+/// Terrain under the route grid: the surface tiles under the grid, drawn
+/// as images under the lines, and what the editor knows there for snapping
+/// placed points onto a standable block and flagging points and legs.
+/// Tiles load lazily: the whole grid while it needs at most
+/// [routeTerrainMaxTiles], else the tiles along the route (the NPC, every
+/// point and the legs between them), at most [routeTerrainMaxTiles].
 library;
 
 import 'dart:async';
 import 'dart:js_interop';
-import 'dart:math' as math;
 
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
@@ -16,6 +16,7 @@ import 'package:web/web.dart' as web;
 import '../../logic/gui/gui_json.dart';
 import '../../logic/npc/route_model.dart';
 import '../../logic/terrain/terrain_data.dart';
+import '../../logic/terrain/terrain_path.dart';
 import '../../logic/terrain/terrain_snap.dart';
 import '../../logic/terrain/terrain_volume.dart';
 import '../../mc/terrain/terrain_tile_image.dart';
@@ -23,8 +24,11 @@ import '../../services/terrain/terrain_client.dart';
 import '../../services/terrain/terrain_link.dart';
 import '../terrain/terrain_assets.dart';
 
-/// The most tiles the grid draws; a wider grid shows no terrain.
-const int routeTerrainMaxTiles = 49;
+/// The most tiles the grid loads.
+const int routeTerrainMaxTiles = 64;
+
+/// How far beside the route a wide grid loads terrain, blocks.
+const int routeTerrainCorridor = 24;
 
 final Map<String, String> _imageUrls = <String, String>{};
 
@@ -50,6 +54,7 @@ final class RouteTerrain implements TerrainLookup {
   final void Function() _changed;
   final Map<(int, int), TerrainSurfaceTile> _tiles = <(int, int), TerrainSurfaceTile>{};
   final Set<(int, int)> _asked = <(int, int)>{};
+  String? _covered;
   TerrainAssets? _assets;
   String? _world;
   TerrainClient? _client = TerrainLink.client;
@@ -57,8 +62,12 @@ final class RouteTerrain implements TerrainLookup {
   /// Block states from the 3D view, which win over the surface.
   TerrainVolume? volume;
 
-  /// True when the grid shows more than [routeTerrainMaxTiles] tiles.
-  bool tooWide = false;
+  /// True when the grid is too wide to fill and terrain loads along the
+  /// route only.
+  bool alongPath = false;
+
+  /// True when even the route needs more than [routeTerrainMaxTiles].
+  bool truncated = false;
 
   void dispose() => TerrainLink.removeListener(_linkChanged);
 
@@ -67,38 +76,42 @@ final class RouteTerrain implements TerrainLookup {
     if (!identical(client, _client)) {
       _client = client;
       _asked.clear();
+      _covered = null;
     }
     _changed();
   }
 
   bool get available => TerrainLink.client != null && _world != null;
 
-  /// Starts loading the tiles that cover [bounds] in [world].
-  void cover(String? world, RouteBounds bounds) {
+  /// Starts loading the tiles under [bounds] in [world], or along [path]
+  /// when the grid is wider than the cap.
+  void cover(String? world, RouteBounds bounds, TerrainPath path) {
     if (world != _world) {
       _world = world;
       _tiles.clear();
       _asked.clear();
+      _covered = null;
       volume = null;
     }
     final TerrainClient? client = TerrainLink.client;
     if (client == null || world == null) return;
-    final int tx0 = (bounds.minX / terrainTileSize).floor(), tx1 = (bounds.maxX / terrainTileSize).floor();
-    final int tz0 = (bounds.minZ / terrainTileSize).floor(), tz1 = (bounds.maxZ / terrainTileSize).floor();
-    tooWide = (tx1 - tx0 + 1) * (tz1 - tz0 + 1) > routeTerrainMaxTiles;
-    if (tooWide) return;
-    for (int tz = tz0; tz <= tz1; tz++) {
-      for (int tx = tx0; tx <= tx1; tx++) {
-        if (!_asked.add((tx, tz))) continue;
-        unawaited(() async {
-          final TerrainAssets assets = _assets ??= await TerrainAssets.load();
-          final TerrainSurfaceTile? tile = await client.surface(world, tx, tz);
-          if (tile == null || world != _world) return;
-          _imageOf(tile, assets);
-          _tiles[(tx, tz)] = tile;
-          _changed();
-        }().catchError((Object _) {}));
-      }
+    final String key = '${bounds.minX},${bounds.minZ},${bounds.maxX},${bounds.maxZ}|${path.signature}';
+    if (key == _covered) return;
+    _covered = key;
+    final ({List<(int, int)> tiles, bool alongPath, bool truncated}) grid =
+        terrainGridTiles(path, bounds.minX, bounds.minZ, bounds.maxX, bounds.maxZ, radius: routeTerrainCorridor, maxTiles: routeTerrainMaxTiles);
+    alongPath = grid.alongPath;
+    truncated = grid.truncated;
+    for (final (int tx, int tz) in grid.tiles) {
+      if (!_asked.add((tx, tz))) continue;
+      unawaited(() async {
+        final TerrainAssets assets = _assets ??= await TerrainAssets.load();
+        final TerrainSurfaceTile? tile = await client.surface(world, tx, tz);
+        if (tile == null || world != _world) return;
+        _imageOf(tile, assets);
+        _tiles[(tx, tz)] = tile;
+        _changed();
+      }().catchError((Object _) {}));
     }
   }
 
@@ -126,7 +139,7 @@ final class RouteTerrain implements TerrainLookup {
   /// SVG images of the loaded tiles inside [bounds], one block per pixel.
   List<Component> images(RouteBounds bounds) {
     final TerrainAssets? assets = _assets;
-    if (assets == null || !available || tooWide) return const <Component>[];
+    if (assets == null || !available) return const <Component>[];
     return <Component>[
       for (final TerrainSurfaceTile tile in _tiles.values)
         if (tile.minX < bounds.maxX && tile.minX + terrainTileSize > bounds.minX && tile.minZ < bounds.maxZ && tile.minZ + terrainTileSize > bounds.minZ)
@@ -177,7 +190,8 @@ final class RouteTerrain implements TerrainLookup {
     if (_world == null) return null;
     final String absence = TerrainLink.absence;
     if (absence.isNotEmpty) return absence;
-    if (tooWide) return 'Zoom in to see terrain: the route spans more than ${math.sqrt(routeTerrainMaxTiles).toInt() * terrainTileSize} blocks.';
+    if (truncated) return 'Terrain shows along the start of the route and at every point: the whole route needs more than $routeTerrainMaxTiles tiles.';
+    if (alongPath) return 'Terrain shows along the route: the grid is too wide to fill.';
     return null;
   }
 }

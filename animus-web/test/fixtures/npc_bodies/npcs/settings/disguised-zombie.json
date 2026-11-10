@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "317b5768-4bdb-50c3-97b4-be408746f71d",
+  "id": "disguised-zombie",
+  "group": "settings",
+  "name": "Set disguised-zombie",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "disguise": "zombie setBaby true"
+}

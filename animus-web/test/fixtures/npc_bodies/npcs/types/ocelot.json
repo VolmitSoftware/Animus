@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "1e9d93ca-1b0d-57ef-b9eb-092a21c4497e",
+  "id": "ocelot",
+  "group": "types",
+  "name": "Body ocelot",
+  "type": "minecraft:ocelot",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

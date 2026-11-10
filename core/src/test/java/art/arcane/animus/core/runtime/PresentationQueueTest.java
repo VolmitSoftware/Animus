@@ -155,7 +155,7 @@ class PresentationQueueTest {
 
     private static void write(ViewerWatchRaceTest.Harness harness, String id, double x) throws IOException {
         Files.writeString(harness.npcs.resolve(id + ".json"), """
-                {"schemaVersion": 1, "revision": 1, "uuid": "%s", "id": "%s", "group": "test",
+                {"schemaVersion": 2, "revision": 1, "uuid": "%s", "id": "%s", "group": "test",
                  "name": "%s", "type": "minecraft:villager", "spawned": true,
                  "position": {"world": "world", "x": %s, "y": 64, "z": 6.5, "yaw": 0, "pitch": 0}}
                 """.formatted(uuid(id), id, id, x));

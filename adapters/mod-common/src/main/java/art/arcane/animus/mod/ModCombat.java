@@ -137,7 +137,7 @@ final class ModCombat implements AutoCloseable {
     private String attack(String id, UUID targetId, double amount) {
         if (!Double.isFinite(amount) || amount <= 0 || amount > 100) throw new IllegalArgumentException("Damage must be within 0..100");
         NpcDefinition definition = runtime.npcs().find(id).orElseThrow(() -> new IllegalArgumentException("Unknown NPC: " + id));
-        if (!CombatModule.manualAllowed(definition)) throw new IllegalStateException("NPC combat is disabled or its migration review has not been accepted");
+        if (!CombatModule.manualAllowed(definition)) throw new IllegalStateException("NPC combat is disabled");
         NpcRuntime.ActiveNpc npc = living.combatant(definition.uuid()).filter((NpcRuntime.ActiveNpc active) -> active.state().active())
                 .orElseThrow(() -> new IllegalStateException("NPC must have an active runtime before combat"));
         Entity entity = world.entity(targetId);

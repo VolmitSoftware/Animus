@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "2b31df34-1a35-5034-ac48-4f33626e97f3",
+  "id": "cat-lying",
+  "group": "settings",
+  "name": "Set cat-lying",
+  "type": "minecraft:cat",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "cat": {
+    "variant": "siamese",
+    "lying": true
+  }
+}

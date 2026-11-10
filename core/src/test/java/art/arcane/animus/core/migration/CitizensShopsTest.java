@@ -161,7 +161,7 @@ class CitizensShopsTest {
             assertNotNull(smithy, "the converted shop is installed with the NPCs");
             JsonObject smith = json(store.read("npcs/world/citizens-1.json"));
             JsonObject modules = smith.getAsJsonObject("modules");
-            assertEquals(json("{\"shop\":\"citizens:smith-shop\",\"openOn\":\"right\",\"reviewAccepted\":false}"), modules.get("animus:shop"));
+            assertEquals(json("{\"shop\":\"citizens:smith-shop\",\"openOn\":\"right\"}"), modules.get("animus:shop"));
             assertEquals(json("{\"killable\":true,\"death\":{\"drops\":[{\"item\":{\"id\":\"minecraft:emerald\",\"count\":3},\"chance\":0.5},{\"item\":{\"id\":\"minecraft:bone\",\"count\":1}}]}}"), modules.get("animus:health"));
             JsonObject keeper = json(store.read("npcs/world/citizens-2.json")).getAsJsonObject("modules");
             assertFalse(keeper.has("animus:shop"), "a right-click shop name that names no shop opens nothing");
@@ -170,9 +170,7 @@ class CitizensShopsTest {
             assertTrue(commands.contains("heal {player_name}") && commands.contains("citizenscmd-2-cooldown"), commands);
             assertTrue(store.read("behaviors/citizens/commands-1.json").contains("animus:charge"));
 
-            String accepted = String.join("\n", flow.acceptCategories(List.of("shops", "commands")));
-            assertTrue(accepted.contains("citizens"), accepted);
-            assertTrue(json(store.read("npcs/world/citizens-1.json")).getAsJsonObject("modules").getAsJsonObject("animus:shop").get("reviewAccepted").getAsBoolean());
+            assertTrue(CommandAllowList.allowed(CommandAllowList.read(store)).contains("citizens"), "apply lets the charged commands run");
             flow.rollbackApplied();
             assertNull(store.read("shops/citizens/smith-shop.json"), "rollback removes the converted shops");
         }

@@ -31,6 +31,8 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
     public static final int USING_ITEM = 0x100;
     public static final byte BILLBOARD_CENTER = 3;
     public static final int LINE_WIDTH = 4096;
+    /** Vanilla's text display background; a blank row, such as a silent speech bubble, draws none at all. */
+    public static final int TEXT_BACKGROUND = 0x40000000;
     /** Vanilla's text display view range is a multiple of this many blocks. */
     public static final float VIEW_RANGE_BLOCKS = 64f;
 
@@ -84,6 +86,15 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
         for (TextRow row : rows) lines.add(row.text());
         return Optional.of(String.join("\n", lines));
     }
+    /**
+     * The vanilla pose a look change in place sends: a seated player rides its seat standing, and a sitting camel, whose
+     * sitting comes from its body settings rather than the look, stays seated.
+     */
+    public String lookPose(String typeKey) {
+        if (pose == NpcPose.SITTING) return "STANDING";
+        String shown = nativePose();
+        return shown.equals("STANDING") && typeKey.equals("minecraft:camel") && traits.variant().flag("sitting") ? "SITTING" : shown;
+    }
     public int extraIds() { return rows.size() + (seated() ? 1 : 0); }
     public boolean seated() { return pose == NpcPose.SITTING; }
     /** Whether the body needs its own scoreboard team: to hide its profile name, or to colour its name and glow. */
@@ -104,6 +115,15 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
         if (lines.isEmpty()) { /* nothing to show */ }
         else if (!hologram.separateRows()) rows.add(new TextRow(String.join("\n", lines), 0));
         else rows.addAll(stacked(lines, hologram, nameRow));
+        // A speech bubble is the first line of the top row, or a row of its own kept blank while silent, so the body keeps its rows.
+        if (appearance.bubble().isPresent()) {
+            String said = appearance.bubble().get().isEmpty() ? "" : RichText.colorize(appearance.bubble().get());
+            if (rows.isEmpty()) rows.add(new TextRow(said, 0));
+            else if (!said.isEmpty()) {
+                TextRow top = rows.getFirst();
+                rows.set(0, new TextRow(said + "\n" + (said.indexOf(RichText.SECTION) >= 0 ? "§r" : "") + top.text(), top.offset()));
+            }
+        }
         String profile = player && fitsProfile(name) ? name : uuid.toString().replace("-", "").substring(0, 16);
         return new BodyLook(profile, rows, TextStyle.of(hologram), player && !nativeName, nativeName && !rows.isEmpty(), appearance.pose(),
                 appearance.armorStand(), appearance.traits(), 0);
@@ -144,6 +164,9 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
         for (String before : earlier) if (before.indexOf(RichText.SECTION) >= 0) return "§r" + coloured;
         return coloured;
     }
+
+    /** The background colour of a text row showing {@code text}. */
+    public static int background(String text) { return text.isEmpty() ? 0 : TEXT_BACKGROUND; }
 
     public static byte sharedFlags(NpcPose pose, boolean invisible) { return sharedFlags(pose, invisible, false); }
 

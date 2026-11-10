@@ -20,6 +20,9 @@ final class TerrainAssets {
 
   static Future<TerrainAssets>? _loading;
 
+  /// The assets once [load] has finished.
+  static TerrainAssets? loaded;
+
   /// Loads the pack and the blockstates once.
   static Future<TerrainAssets> load() => _loading ??= () async {
         final McAssetPackData pack = await McAssetLoader.load();
@@ -31,7 +34,7 @@ final class TerrainAssets {
           states = null;
         }
         final TerrainModels models = TerrainModels(pack.resolver, uv: pack.manifest.blocks.uv, blockstates: states);
-        return TerrainAssets._(pack, models, _rgba(pack.blocksImage), fullStates: states != null);
+        return loaded = TerrainAssets._(pack, models, _rgba(pack.blocksImage), fullStates: states != null);
       }();
 
   final McAssetPackData pack;

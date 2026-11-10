@@ -24,7 +24,7 @@ import java.util.*;
 
 /** Local, loss-preserving conversion. Conversion status describes data, never gameplay parity. */
 public final class CitizensImporter {
-    public static final int CONVERTER_VERSION = 16;
+    public static final int CONVERTER_VERSION = 20;
     /**
      * A staged or installed imported definition path: {@code <source prefix>-<source number>}. Citizens uses the
      * {@code citizens} prefix; module converters use theirs. The folder is the NPC group, empty for {@code npcs/} itself.
@@ -111,7 +111,7 @@ public final class CitizensImporter {
                 summary.addProperty("importId", id);
                 summary.addProperty("sourceSha256", JsonDocuments.hash(original));
                 summary.add("worldMap", options);
-                summary.addProperty("notice", "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.");
+                summary.addProperty("notice", "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs spawn as Citizens had them, and converted patrols, schedules, combat, riding, shops and builds are on.");
                 JsonObject mapping = identityMap(root.getAsJsonObject("npc"));
                 CitizensShops.Converted citizensShops = CitizensShops.convert(companions.shops(), mapping);
                 JsonObject citizensDefaults = CitizensBehaviors.defaults(root.getAsJsonObject("npc"));
@@ -160,7 +160,7 @@ public final class CitizensImporter {
                     String type = scalar(traits, "type", "PLAYER").toLowerCase(Locale.ROOT);
                     increment(types, type);
                     JsonObject definition = new JsonObject();
-                    definition.addProperty("schemaVersion", 1);
+                    definition.addProperty("schemaVersion", NpcDefinition.SCHEMA_VERSION);
                     definition.addProperty("revision", 1);
                     String uuid = mapping.get(key).getAsString();
                     definition.addProperty("uuid", uuid);
@@ -168,11 +168,10 @@ public final class CitizensImporter {
                     definition.addProperty("group", "citizens"); // Set to the NPC's world folder once its location is known.
                     definition.addProperty("name", scalar(record, "name", "Citizen " + key));
                     definition.addProperty("type", type.contains(":") ? type : "minecraft:" + type);
-                    definition.addProperty("spawned", false);
+                    definition.addProperty("spawned", !new JsonPrimitive(false).equals(traits.get("spawned")));
                     JsonObject migration = new JsonObject();
                     migration.addProperty("importId", id);
                     migration.addProperty("citizensId", numeric);
-                    migration.add("originalSpawned", traits.has("spawned") ? traits.get("spawned").deepCopy() : JsonNull.INSTANCE);
                     definition.add("migration", migration);
                     JsonArray worldRemaps = new JsonArray();
                     JsonObject reviewed = traits.deepCopy();
@@ -430,6 +429,33 @@ public final class CitizensImporter {
         } catch (IOException | RuntimeException unreadable) { return false; }
     }
 
+    /**
+     * A preview an older converter wrote. Its staged documents are not what this Animus writes, so it is never applied
+     * or staged; the message ends with the step that makes a new preview, which each import flow words for itself.
+     */
+    public static final class OutdatedPreview extends IOException {
+        private final String refusal;
+        OutdatedPreview(String refusal, String next) { super(refusal + next); this.refusal = refusal; }
+        /** The same refusal, ending with {@code next} instead. */
+        public OutdatedPreview next(String next) { OutdatedPreview worded = new OutdatedPreview(refusal, next); worded.initCause(this); return worded; }
+    }
+
+    /**
+     * Refuses a staged NPC or group document below the current schema, which only an older converter writes, naming the
+     * command that previews the save again. Other staged documents, and malformed ones, are left for their parsers.
+     */
+    static void requireCurrent(String importId, String path, String content) throws OutdatedPreview {
+        SchemaMigrations.Kind kind = path.startsWith("npcs/") ? SchemaMigrations.NPC : path.startsWith("groups/") ? SchemaMigrations.GROUP : null;
+        if (kind == null) return;
+        JsonObject document;
+        try { document = JsonDocuments.object(content); }
+        catch (IOException malformed) { return; }
+        if (!SchemaMigrations.standard().stale(kind, document)) return;
+        throw new OutdatedPreview("Import " + importId.substring(0, 12) + " was previewed by an older Animus and is not applied: " + path + " is schemaVersion "
+                + document.get("schemaVersion") + ", this one writes " + SchemaMigrations.standard().current(kind) + "; ",
+                "run /animus import preview <file> again and apply the import id it reports");
+    }
+
     public Preview readPreview(Path directory, String id) throws IOException {
         try {
             JsonObject summary = JsonDocuments.object(JsonDocuments.read(directory.resolve("report.json")));
@@ -450,7 +476,7 @@ public final class CitizensImporter {
         } catch (RuntimeException e) { throw new IOException("Invalid import report: " + directory.resolve("report.json"), e); }
     }
 
-    /** Explicit application installs dormant definitions; it never enables imported combat. */
+    /** Explicit application installs the staged definitions as converted. */
     public String apply(DocumentStore store, String id) throws IOException {
         if (!id.matches("[a-f0-9]{64}")) throw new IOException("Invalid import ID");
         Path staged = store.resolve("imports/" + id);
@@ -481,12 +507,12 @@ public final class CitizensImporter {
             if (!relative.matches(BUNDLE_PATH)) throw new IOException("Invalid bundle path: " + relative);
             String content = JsonDocuments.read(store.resolve("imports/" + id + "/" + relative));
             if (!JsonDocuments.hash(content).equals(document.getValue().getAsString())) throw new IOException("Preview changed: " + relative + "; generate a new preview");
+            requireCurrent(id, relative, content);
             String before = store.read(relative);
             if (relative.startsWith("npcs/")) {
                 NpcDefinition definition = NpcDefinition.parse(content);
                 if (!definition.path().equals(relative)) throw new IOException("NPC path mismatch");
                 if (!identities.add(definition.uuid()) || !ids.add(definition.id()) || before != null) throw new IOException("NPC collision: " + relative);
-                verifyDormant(definition);
                 if (!definition.json().getAsJsonObject("migration").get("importId").getAsString().equals(id)) throw new IOException("NPC import identity mismatch");
                 JsonObject json = definition.json();
                 if (json.has("skin")) requiredSkins.add("skins/" + json.get("skin").getAsString() + ".json");
@@ -517,7 +543,7 @@ public final class CitizensImporter {
         JsonObject receipt = new JsonObject();
         receipt.addProperty("importId", id);
         receipt.addProperty("records", npcCount);
-        receipt.addProperty("state", "installed-dormant");
+        receipt.addProperty("state", "installed");
         changes.add(new DocumentStore.Change(receiptPath, "missing", JsonDocuments.write(receipt)));
         return store.commit(changes);
     }
@@ -534,14 +560,13 @@ public final class CitizensImporter {
         return lowered.isEmpty() ? "citizens" : lowered;
     }
 
-    /** A Citizens {@code controllable} trait that is on becomes a disabled {@code animus:riding} section waiting for review. */
+    /** A Citizens {@code controllable} trait that is on becomes an {@code animus:riding} section that is on. */
     static Optional<JsonObject> riding(JsonElement trait) {
         if (trait == null || !trait.isJsonObject()) return Optional.empty();
         JsonElement enabled = trait.getAsJsonObject().get("enabled");
         if (enabled != null && enabled.isJsonPrimitive() && enabled.getAsJsonPrimitive().isBoolean() && !enabled.getAsBoolean()) return Optional.empty();
         JsonObject riding = new JsonObject();
-        riding.addProperty("enabled", false);
-        riding.addProperty("reviewAccepted", false);
+        riding.addProperty("enabled", true);
         return Optional.of(riding);
     }
 
@@ -780,36 +805,11 @@ public final class CitizensImporter {
         return result;
     }
 
-    private static void verifyDormant(NpcDefinition definition) throws IOException {
-        JsonObject json = definition.json();
-        if (json.get("spawned").getAsBoolean()) throw new IOException("Imported NPC must remain dormant");
-        JsonObject modules = json.getAsJsonObject("modules");
-        if (modules != null && modules.has("animus:combat")) {
-            JsonElement combatValue = modules.get("animus:combat");
-            if (!combatValue.isJsonObject()) throw new IOException("Invalid imported combat configuration");
-            JsonObject combat = combatValue.getAsJsonObject();
-            if (!new JsonPrimitive(false).equals(combat.get("enabled")) || !new JsonPrimitive(false).equals(combat.get("reviewAccepted")))
-                throw new IOException("Imported combat must remain disabled and unreviewed");
-        }
-        if (modules != null && modules.has("animus:navigation")) {
-            JsonElement navigation = modules.get("animus:navigation");
-            if (!navigation.isJsonObject() || !new JsonPrimitive(false).equals(navigation.getAsJsonObject().get("enabled"))
-                    || !new JsonPrimitive(false).equals(navigation.getAsJsonObject().get("reviewAccepted")))
-                throw new IOException("Imported patrols must remain disabled and unreviewed");
-        }
-        if (modules != null && modules.has(ScheduleSettings.MODULE)) {
-            JsonElement schedule = modules.get(ScheduleSettings.MODULE);
-            if (!schedule.isJsonObject() || !new JsonPrimitive(false).equals(schedule.getAsJsonObject().get("enabled"))
-                    || !new JsonPrimitive(false).equals(schedule.getAsJsonObject().get("reviewAccepted")))
-                throw new IOException("Imported schedules must remain disabled and unreviewed");
-        }
-    }
-
     private static void verifyReceipt(DocumentStore store, Preview preview, String text) throws IOException {
         try {
             JsonObject receipt = JsonDocuments.object(text);
             if (!receipt.get("importId").getAsString().equals(preview.id()) || receipt.get("records").getAsInt() != preview.records()
-                    || !receipt.get("state").getAsString().equals("installed-dormant")) throw new IOException("Invalid import receipt");
+                    || !receipt.get("state").getAsString().equals("installed")) throw new IOException("Invalid import receipt");
             Map<String, String> paths = new HashMap<>();
             for (String relative : preview.summary().getAsJsonObject("documents").keySet())
                 if (relative.startsWith("npcs/")) paths.put(relative.substring(relative.lastIndexOf('-') + 1, relative.length() - 5), relative);

@@ -19,6 +19,8 @@ public final class GroupDocument {
     public static final String ID = "[a-z0-9][a-z0-9_-]{0,63}";
     public static final int MAX_BYTES = 256 * 1024;
     public static final int MAX_SKINS = 64;
+    /** The group format this build writes and reads; older files are upgraded by the storage migrations at startup. */
+    public static final int SCHEMA_VERSION = 2;
     /** Identity and state fields a group may not set. */
     public static final Set<String> REFUSED = Set.of("schemaVersion", "revision", "uuid", "id", "group", "name", "type", "spawned", "position", "owner", "migration", "groups");
 
@@ -44,7 +46,7 @@ public final class GroupDocument {
         catch (IOException invalid) { return new Result(Optional.empty(), List.of("$: " + invalid.getMessage())); }
         List<String> problems = new ArrayList<>();
         JsonElement version = object.get("schemaVersion");
-        if (version == null || !version.isJsonPrimitive() || !version.getAsJsonPrimitive().isNumber() || version.getAsDouble() != 1) problems.add("$.schemaVersion: expected 1");
+        if (version == null || !version.isJsonPrimitive() || !version.getAsJsonPrimitive().isNumber() || version.getAsDouble() != SCHEMA_VERSION) problems.add("$.schemaVersion: expected " + SCHEMA_VERSION);
         long revision = 0;
         JsonElement revisionValue = object.get("revision");
         try {
@@ -80,7 +82,7 @@ public final class GroupDocument {
     static List<String> validateValues(JsonObject values) {
         List<String> problems = new ArrayList<>();
         JsonObject probe = new JsonObject();
-        probe.addProperty("schemaVersion", 1);
+        probe.addProperty("schemaVersion", NpcDefinition.SCHEMA_VERSION);
         probe.addProperty("revision", 1);
         probe.addProperty("uuid", "00000000-0000-4000-8000-000000000000");
         probe.addProperty("id", "group-probe");

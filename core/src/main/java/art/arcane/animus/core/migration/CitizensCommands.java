@@ -13,7 +13,8 @@ import java.util.regex.Pattern;
  * Citizens commands, and the commands the CitizensCMD and CommandNPC add-ons saved for the same NPC, as the routines
  * and triggers of one {@code citizens:commands-<id>} behavior. Costs become {@code animus:can-afford} and
  * {@code animus:charge}, cooldowns become expiring flags and use limits become quest stages, all in the citizens
- * namespace and keyed by NPC and command.
+ * namespace and keyed by NPC and command. Costs are taken before the commands run, and only once
+ * {@code animus:commands-allowed} holds, so a command the allow-list refuses never costs, cools down or counts.
  */
 final class CitizensCommands {
     static final String BASE = "/traits/commandtrait";
@@ -122,7 +123,7 @@ final class CitizensCommands {
             if (hand.getValue().isEmpty()) continue;
             String routine = hand.getKey().equals("attack") && right.equals(hand.getValue()) ? "right" : routines.get(hand.getKey());
             JsonObject body = mode(hand.getValue(), mode, "commands-" + key + "-" + routine);
-            if (clickCost.isPresent()) body = clickCost.get().gate(body);
+            if (clickCost.isPresent()) body = runsCommand(body) ? allowed(clickCost.get().gate(body)) : clickCost.get().gate(body);
             clicks.get(hand.getKey()).add(body);
         }
         if ((!hands.get("sneak_interact").isEmpty() || !hands.get("sneak_attack").isEmpty()) && commands.stream().anyMatch((Command command) -> !command.hand().startsWith("SHIFT_")))
@@ -180,6 +181,7 @@ final class CitizensCommands {
         if (globalCooldown > 0) effects.add(setFlag(flag + "-global-cooldown", "npc", globalCooldown));
         if (uses > 0) effects.add(action("animus:advance-quest-state", quest(flag + "-uses", "relationship")));
         if (globalUses > 0) effects.add(action("animus:advance-quest-state", quest(flag + "-global-uses", "npc")));
+        boolean taxed = !effects.isEmpty();
         effects.add(run);
         JsonObject node = sequence(effects);
         if (cost.isPresent()) node = cost.get().afford(node);
@@ -187,6 +189,7 @@ final class CitizensCommands {
         if (uses > 0) node = refuse(stage(flag + "-uses", "relationship", uses), "MAXIMUM_TIMES_USED", Long.toString(uses), "", node);
         if (globalCooldown > 0) node = refuse(flagSet(flag + "-global-cooldown", "npc"), "ON_GLOBAL_COOLDOWN", "", "", node);
         if (cooldown > 0) node = refuse(flagSet(flag + "-cooldown", "relationship"), "ON_COOLDOWN", "", "", node);
+        if (taxed && "animus:command".equals(capability(run))) node = allowed(node);
         List<Map.Entry<String, JsonElement>> permissions = entries(data.get("permissions"));
         for (int index = permissions.size() - 1; index >= 0; index--) {
             JsonElement permission = permissions.get(index).getValue();
@@ -321,6 +324,7 @@ final class CitizensCommands {
                 node = otherwise(condition("animus:can-afford", cost, node), plain("You don't have enough money to use this."));
             }
             if (cooldown != 0) node = otherwise(condition("animus:flag-state", flagArguments(flag, "relationship"), plain(cooldown > 0 ? "Please wait before clicking again." : "You can only use this once.")), node);
+            if (body.size() > steps.size() && steps.stream().anyMatch(CitizensCommands::runsCommand)) node = allowed(node);
             if (!permission.isEmpty()) node = condition("animus:has-permission", arguments("permission", permission), node);
             clicks.get(click.equals("right") ? "interact" : "attack").add(node);
         }
@@ -414,16 +418,17 @@ final class CitizensCommands {
                 money.addProperty("money", CitizensStacks.money(cost));
                 body.add(action("animus:charge", money.deepCopy()));
             }
-            if (delay > 0) {
-                JsonObject wait = new JsonObject();
-                wait.addProperty("type", "wait");
-                wait.addProperty("ticks", clamp(delay, 1, MAX_COOLDOWN));
-                body.add(wait);
-            }
             body.add(action("animus:command", arguments));
             if (cooldown > 0) body.add(setFlag(flag, "relationship", Math.max(1, (cooldown + 19) / 20)));
             JsonObject node = sequence(body);
             if (cost > 0) node = quietMoney ? condition("animus:can-afford", money, node) : otherwise(condition("animus:can-afford", money, node), plain("You do not have enough money."));
+            if (body.size() > 1) node = allowed(node);
+            if (delay > 0) {
+                JsonObject wait = new JsonObject();
+                wait.addProperty("type", "wait");
+                wait.addProperty("ticks", clamp(delay, 1, MAX_COOLDOWN));
+                node = sequence(List.of(wait, node));
+            }
             if (cooldown > 0) node = cooldownMessage.isEmpty() ? otherwise(condition("animus:flag-state", flagArguments(flag, "relationship"), sequence(List.of())), node)
                     : otherwise(condition("animus:flag-state", flagArguments(flag, "relationship"), plain(cooldownMessage)), node);
             if (!permission.isEmpty() && !permission.equalsIgnoreCase("noPerm")) {
@@ -449,6 +454,21 @@ final class CitizensCommands {
     }
 
     private static JsonObject plain(String text) { return action("animus:message", arguments("text", text.length() > MAX_TEXT ? text.substring(0, MAX_TEXT) : text)); }
+
+    private static String capability(JsonObject node) { return node.has("capability") ? node.get("capability").getAsString() : ""; }
+
+    /** Whether {@code node} or a step inside it runs {@code animus:command}. */
+    private static boolean runsCommand(JsonElement node) {
+        if (node.isJsonArray()) { for (JsonElement step : node.getAsJsonArray()) if (runsCommand(step)) return true; return false; }
+        if (!node.isJsonObject()) return false;
+        JsonObject object = node.getAsJsonObject();
+        if ("animus:command".equals(capability(object))) return true;
+        for (String field : List.of("steps", "then", "else")) if (object.has(field) && runsCommand(object.get(field))) return true;
+        return false;
+    }
+
+    /** {@code node} only when the behavior may run commands, checked before it takes anything for one. */
+    private static JsonObject allowed(JsonObject node) { return condition("animus:commands-allowed", new JsonObject(), node); }
 
     /** {@code then} when the check holds; otherwise {@code otherwise}, when there is one. */
     private static JsonObject otherwise(JsonObject condition, JsonObject otherwise) {

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "4a500243-2ee6-5ae3-a653-e22e3fb060d1",
+  "id": "vindicator",
+  "group": "types",
+  "name": "Body vindicator",
+  "type": "minecraft:vindicator",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

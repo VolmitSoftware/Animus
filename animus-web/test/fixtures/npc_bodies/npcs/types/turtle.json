@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "cc5a1aea-5977-57eb-becd-56b7638e520c",
+  "id": "turtle",
+  "group": "types",
+  "name": "Body turtle",
+  "type": "minecraft:turtle",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

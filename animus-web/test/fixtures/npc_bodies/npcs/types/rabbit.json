@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "2dd4483b-6963-574b-8f04-612e7fcb4bb1",
+  "id": "rabbit",
+  "group": "types",
+  "name": "Body rabbit",
+  "type": "minecraft:rabbit",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

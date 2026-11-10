@@ -26,6 +26,23 @@ class AdministrationTest {
             assertTrue(line.contains("127.0.0.1:9811"), line);
         }
     }
+    @Test void reloadUpgradesVersionOneFilesCopiedInWhileRunning() throws Exception {
+        Path before = art.arcane.animus.core.editor.SharedFixtures.fixture("upgrades/before"), after = art.arcane.animus.core.editor.SharedFixtures.fixture("upgrades/after");
+        List<String> paths = List.of("groups/guards.json", "npcs/town/citizens-9.json");
+        try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            for (String path : paths) {
+                Files.createDirectories(root.resolve(path).getParent());
+                Files.writeString(root.resolve(path), Files.readString(before.resolve(path)));
+            }
+            List<String> lines = admin.reload();
+            assertEquals(2, lines.size(), lines.toString());
+            assertTrue(lines.getFirst().matches("Upgraded 2 files to schemaVersion 2; rollback [a-f0-9-]{36}"), lines.getFirst());
+            assertEquals("Reloaded; 1 saved, 1 spawned", lines.get(1));
+            for (String path : paths) assertEquals(Files.readString(after.resolve(path)), Files.readString(root.resolve(path)), path);
+            assertEquals(List.of("Reloaded; 1 saved, 1 spawned"), admin.reload(), "nothing is left to upgrade");
+        }
+    }
     @Test void commandEditsPersistAcrossRestartAndCanBeUndone() throws Exception {
         RuntimeEnvironment environment = new RuntimeEnvironment(Platform.BUKKIT, "26.3", root);
         try (AnimusRuntime runtime = new AnimusRuntime(environment)) {
@@ -255,11 +272,11 @@ class AdministrationTest {
             assertEquals("Application " + application + ": reject, 1 records, 0 replacements", admin.stage(original, "reject", Optional.empty()).getFirst());
             assertTrue(staged.get(1).startsWith("Review imports/") && staged.get(1).endsWith(", then /animus import plan " + original + " " + application), staged.get(1));
             List<String> installed = admin.applyPlan(original, application);
-            assertTrue(RichText.plain(installed.getFirst()).startsWith("[Animus]: Installed dormant NPCs; tx "), installed.getFirst());
+            assertTrue(RichText.plain(installed.getFirst()).startsWith("[Animus]: Installed NPCs; tx "), installed.getFirst());
             initialTransaction = transaction(installed.getFirst());
             assertEquals(List.of("Already installed; nothing changed, /animus list shows the NPCs"), admin.applyPlan(original, application));
             assertEquals(1, runtime.npcs().all().size());
-            assertFalse(runtime.npcs().find("citizens-1").orElseThrow().json().get("spawned").getAsBoolean());
+            assertTrue(runtime.npcs().find("citizens-1").orElseThrow().json().get("spawned").getAsBoolean(), "the NPC spawns as Citizens had it");
             String copy = id("Application ", admin.stage(original, "duplicate", Optional.of("backup")).getFirst());
             copyTransaction = transaction(admin.applyPlan(original, copy).getFirst());
             assertEquals(2, runtime.npcs().all().size());
@@ -313,7 +330,7 @@ class AdministrationTest {
             Files.writeString(input, "{\"npc\":{\"1\":{\"uuid\":\"00000000-0000-0000-0000-000000000001\",\"name\":\"Guard\",\"traits\":{\"type\":\"PLAYER\",\"location\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0}}}}}");
             String preview = id("Preview ", admin.preview("sample.yml", Optional.empty(), Map.of()).getFirst());
             String application = id("Application ", admin.stage(preview.substring(0, 12), "reject", Optional.empty()).getFirst());
-            assertTrue(RichText.plain(admin.applyPlan(preview.substring(0, 12), application.substring(0, 12)).getFirst()).startsWith("[Animus]: Installed dormant NPCs; tx "));
+            assertTrue(RichText.plain(admin.applyPlan(preview.substring(0, 12), application.substring(0, 12)).getFirst()).startsWith("[Animus]: Installed NPCs; tx "));
             Files.writeString(input, Files.readString(input).replace("000000000001", "000000000002").replace("\"1\"", "\"2\""));
             String second = id("Preview ", admin.preview("sample.yml", Optional.empty(), Map.of()).getFirst());
             assertTrue(RichText.plain(admin.apply(second.substring(0, 12)).getFirst()).startsWith("[Animus]: Installed"), "apply takes the short id too");

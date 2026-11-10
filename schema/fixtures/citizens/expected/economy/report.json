@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 16,
+  "converterVersion": 20,
   "fieldPathFormat": "json-pointer",
-  "importId": "f88238b8840aa1cb4d387bc24712f42db074713ab8721cb834a89bda5432b782",
+  "importId": "a25fdcee48385639b36c20d31de0c9b0e5ea12b1457540660b689b14ce1c73c5",
   "sourceSha256": "67a70353849d959cf73de2a56e2dcc384c115a6787a3f944ef309e8d0219739f",
   "worldMap": {},
-  "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.",
+  "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs spawn as Citizens had them, and converted patrols, schedules, combat, riding, shops and builds are on.",
   "records": 2,
   "valid": 2,
   "skins": 0,
@@ -59,9 +59,9 @@
     "1": "0a1b2c3d-0000-4000-8000-000000000401"
   },
   "documents": {
-    "behaviors/citizens/commands-0.json": "216308f2270819d99ab1321b00761624ba9f7ba0fff827ad05a0a357ea68eca9",
-    "npcs/harbor/citizens-0.json": "c32667dc6f530d069fc85154bb3a723c72a8e82ecbf159958dab12ea78c476f9",
-    "behaviors/citizens/commands-1.json": "f16e14f576169249fce3cd574d73ca295afe2f7935cc875598311679b2fdde01",
-    "npcs/harbor/citizens-1.json": "cc28e38fa796b6abcc55f3c6553bbd7e45f16b020a53b214bba08f7f06605eba"
+    "behaviors/citizens/commands-0.json": "80dc31df576793751eba06e8566d21cb9dfe470745276860e71b9a7682f9eddb",
+    "npcs/harbor/citizens-0.json": "235a4c8afd196f9ff5eb01a80a2e90c1c749575230b61b5b23a4d8ce035819fd",
+    "behaviors/citizens/commands-1.json": "f0191ca26d18ed868f8614ccac18881b512f08fe0729d62f41b4d8f56c23a00d",
+    "npcs/harbor/citizens-1.json": "9275fbcc955090f850e7ee05d3b76913fc5acc1ad249a8fcac3a3343b0b2ba75"
   }
 }

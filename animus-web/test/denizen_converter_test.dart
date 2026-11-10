@@ -108,15 +108,15 @@ void main() {
     test('accepting a review appends its server behaviors to server-behaviors.json once', () {
       final DenizenPreview preview = convertDenizen(_folder('town/Denizen', citizens: 'town/saves.yml'));
       expect(preview.files.keys, isNot(contains('server-behaviors.json')), reason: 'the staged tree matches the server byte for byte');
-      final String created = preview.serverBehaviorsAfterAccept(null)!;
+      final String created = preview.serverBehaviorsAfterApply(null)!;
       final Map<String, Object?> list = jsonDecode(created) as Map<String, Object?>;
       expect(list['behaviors'], <String>['denizen:book/notice_board', 'denizen:book/town_guide', 'denizen:command/reset_command', 'denizen:world/lantern_world']);
       expect(SharedSchemas.embedded.validate(DocumentKind.serverBehaviors, list), isEmpty);
-      final String merged = preview.serverBehaviorsAfterAccept('{"schemaVersion":1,"behaviors":["town:welcome","denizen:world/lantern_world"]}')!;
+      final String merged = preview.serverBehaviorsAfterApply('{"schemaVersion":1,"behaviors":["town:welcome","denizen:world/lantern_world"]}')!;
       expect((jsonDecode(merged) as Map<String, Object?>)['behaviors'], <String>['town:welcome', 'denizen:world/lantern_world', 'denizen:book/notice_board', 'denizen:book/town_guide', 'denizen:command/reset_command']);
-      expect(preview.serverBehaviorsAfterAccept(created), created, reason: 'nothing new, nothing written');
+      expect(preview.serverBehaviorsAfterApply(created), created, reason: 'nothing new, nothing written');
       final DenizenPreview minimal = convertDenizen(_folder('minimal/Denizen'));
-      expect(minimal.serverBehaviorsAfterAccept(null), isNull);
+      expect(minimal.serverBehaviorsAfterApply(null), isNull);
     });
   });
 

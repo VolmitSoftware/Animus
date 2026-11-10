@@ -1,16 +1,15 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "aa09bf98-d566-3729-9cca-045e444fd551",
   "id": "citizens-0",
   "group": "survival-world",
   "name": "1.0E7",
   "type": "minecraft:player",
-  "spawned": false,
+  "spawned": true,
   "migration": {
-    "importId": "c309c9f2beb225fd71716a92605e4eec5d0e2a0aaf04aa1752ce9cef533ac291",
+    "importId": "65931b20698c48286a4c879f5dfe821ea22a484c1ef6c707d1c40a739bf7b51c",
     "citizensId": 0,
-    "originalSpawned": null,
     "references": []
   },
   "position": {

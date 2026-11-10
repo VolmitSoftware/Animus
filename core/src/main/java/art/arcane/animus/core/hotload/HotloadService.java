@@ -11,16 +11,20 @@ import art.arcane.animus.core.editor.DocumentKind;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.storage.SchemaMigrations;
 import art.arcane.animus.core.storage.WriteNotices;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -160,12 +164,17 @@ public final class HotloadService implements AutoCloseable {
         }
         List<Item> valid = checked.stream().filter((Item item) -> item.verdict().valid() && engine.current(item.snapshot())).toList();
         List<String> reported = new ArrayList<>();
+        Map<String, String> upgraded = Map.of(), replaced = new HashMap<>();
+        for (Item item : valid) if (item.verdict().upgrade().isPresent()) replaced.put(item.target().path(), engine.known(item.target().path()));
         if (!valid.isEmpty()) {
-            Optional<List<String>> problems = applyOnFileLane(valid);
-            if (problems.isEmpty()) {
+            Optional<Applied> outcome = applyOnFileLane(valid);
+            if (outcome.isEmpty()) {
                 for (Item item : valid) engine.settle(item.snapshot(), HotloadEngine.Outcome.RETRY);
                 checked.removeAll(valid);
-            } else reported = problems.get();
+            } else {
+                reported = outcome.get().problems();
+                upgraded = outcome.get().upgrades();
+            }
         }
         boolean screens = false;
         List<String> applied = new ArrayList<>();
@@ -183,8 +192,17 @@ public final class HotloadService implements AutoCloseable {
                 parts.operators().notifyOperators(List.of(HotloadMessages.refused(file, error, kept)), settings().sound());
                 continue;
             }
-            Optional<HotloadEngine.Delta> delta = engine.settle(item.snapshot(), HotloadEngine.Outcome.APPLIED);
+            String transaction = upgraded.get(file);
+            // The upgrade was Animus's own write, so the engine already holds the upgraded text; the delta is reported from here.
+            Optional<HotloadEngine.Delta> delta = transaction == null ? engine.settle(item.snapshot(), HotloadEngine.Outcome.APPLIED)
+                    : Optional.of(new HotloadEngine.Delta(file, replaced.get(file), item.verdict().upgrade().orElseThrow().text()));
             if (delta.isEmpty()) continue;
+            if (transaction != null) {
+                HotloadValidation.Upgrade upgrade = item.verdict().upgrade().orElseThrow();
+                int to = SchemaMigrations.standard().current(upgrade.kind());
+                parts.log().accept("Upgraded " + file + " to schemaVersion " + to + "; rollback " + transaction);
+                parts.operators().notifyOperators(List.of(HotloadMessages.upgraded(file, upgrade.from(), to, transaction)), settings().sound());
+            }
             screens |= item.target().area() == HotloadTargets.Area.CONFIG || item.verdict().kind().map(SCREENS::contains).orElse(false);
             boolean liveSwitch = parts.living().switchesLive();
             Predicate<String> restart = item.target().area() == HotloadTargets.Area.CONFIG ? (String key) -> SettingsLiveness.restartRequired(key, liveSwitch) : (String key) -> false;
@@ -199,14 +217,22 @@ public final class HotloadService implements AutoCloseable {
         if (screens) parts.refreshScreens().run();
     }
 
+    /** What a file-lane apply reported: the reload problems, and the rollback transaction of each file it upgraded. */
+    private record Applied(List<String> problems, Map<String, String> upgrades) {}
+
     /**
-     * The settings and catalog reloads on the file lane, as an editor apply runs them, finished once every reloaded catalog is
-     * live so a run right after the notice sees the new version. Empty when the lane is busy or slow, to retry.
+     * Stale NPC and group files are migrated first, in one journaled transaction with a rollback receipt, committed only
+     * while each file still holds the text that was checked. Then the settings and catalog reloads, as an editor apply
+     * runs them, finished once every reloaded catalog is live so a run right after the notice sees the new version.
+     * Empty when the lane is busy or slow, to retry.
      */
-    private Optional<List<String>> applyOnFileLane(List<Item> valid) {
+    private Optional<Applied> applyOnFileLane(List<Item> valid) {
         Set<DocumentKind> kinds = EnumSet.noneOf(DocumentKind.class);
         Set<String> removed = new TreeSet<>();
         Optional<art.arcane.animus.core.config.PluginSettings> settings = Optional.empty();
+        List<SchemaMigrations.Document> stale = new ArrayList<>();
+        for (Item item : valid)
+            item.verdict().upgrade().ifPresent((HotloadValidation.Upgrade upgrade) -> stale.add(new SchemaMigrations.Document(upgrade.kind(), item.target().path(), item.snapshot().content())));
         for (Item item : valid) {
             item.verdict().kind().ifPresent(kinds::add);
             item.verdict().removedBehavior().ifPresent(removed::add);
@@ -215,18 +241,29 @@ public final class HotloadService implements AutoCloseable {
         // Settings can change the command allow-list that shops, chest GUIs, menus, holograms and quests are checked against.
         if (settings.isPresent()) { kinds.add(DocumentKind.SHOP); kinds.add(DocumentKind.MENU); kinds.add(DocumentKind.QUEST); }
         Optional<art.arcane.animus.core.config.PluginSettings> next = settings;
-        CompletableFuture<List<String>> done = new CompletableFuture<>();
+        CompletableFuture<Applied> done = new CompletableFuture<>();
         try {
             parts.files().execute(() -> {
                 try {
                     List<String> problems = new ArrayList<>();
+                    Map<String, String> upgrades = new TreeMap<>();
+                    if (!stale.isEmpty()) {
+                        try {
+                            SchemaMigrations.Report report = SchemaMigrations.standard().upgrade(parts.runtime().documents(), stale);
+                            for (String path : report.migrated()) upgrades.put(path, String.join(", ", report.transactions()));
+                            problems.addAll(report.problems());
+                        } catch (IOException changed) {
+                            for (SchemaMigrations.Document document : stale)
+                                problems.add(document.path() + ": not upgraded to the current schema (" + changed.getMessage() + "); the file is unchanged");
+                        }
+                    }
                     next.ifPresent(parts.runtime()::applySettings);
                     CatalogChange change = new CatalogChange(kinds, removed, false);
                     // Behavior, shop and hologram reloads queue behind this task; the notice waits for them to go live.
                     CompletableFuture<Void> live = change.empty() ? CompletableFuture.completedFuture(null) : parts.runtime().catalogs().reloaded(change, problems::add);
                     live.whenComplete((Void ignored, Throwable failure) -> {
                         if (failure != null) done.completeExceptionally(failure);
-                        else done.complete(List.copyOf(problems));
+                        else done.complete(new Applied(List.copyOf(problems), Map.copyOf(upgrades)));
                     });
                 } catch (RuntimeException | LinkageError failure) { done.completeExceptionally(failure); }
             });
@@ -236,7 +273,7 @@ public final class HotloadService implements AutoCloseable {
         catch (TimeoutException slow) { return Optional.empty(); }
         catch (ExecutionException failure) {
             parts.warn().accept("Hotload apply failed: " + failure.getCause());
-            return Optional.of(List.of(String.valueOf(failure.getCause().getMessage())));
+            return Optional.of(new Applied(List.of(String.valueOf(failure.getCause().getMessage())), Map.of()));
         }
     }
 

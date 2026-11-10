@@ -6,7 +6,6 @@ import art.arcane.animus.bukkit.integration.quests.QuestNpcHost;
 import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Optional;
-import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
 import org.betonquest.betonquest.api.identifier.NpcIdentifier;
@@ -71,7 +70,6 @@ class AnimusBqIdentifierTest {
         }
         @Override public Optional<Location> location(UUID npc) { return Optional.empty(); }
         @Override public Optional<Double> height(UUID npc) { return Optional.empty(); }
-        @Override public OptionalInt citizensId(UUID npc) { return OptionalInt.empty(); }
         @Override public void teleport(String key, Location to) { calls.add("teleport " + key); }
         @Override public void spawned(String key, boolean value) { calls.add("spawned " + key + " " + value); }
         @Override public void hide(UUID viewer, UUID npc, boolean hidden) { calls.add("hide " + hidden); }

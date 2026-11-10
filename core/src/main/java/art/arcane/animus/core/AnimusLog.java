@@ -28,12 +28,6 @@ public final class AnimusLog {
     public static final Duration WINDOW = Duration.ofMinutes(5);
     private static final int MAXIMUM_TRACED = 256;
     private static final AnimusLog SHARED = new AnimusLog(System::nanoTime, WINDOW);
-    private static final ScheduledExecutorService WINDOW_END = Executors.newSingleThreadScheduledExecutor((Runnable task) -> {
-        Thread thread = new Thread(task, "Animus-Log");
-        thread.setDaemon(true);
-        return thread;
-    });
-    static { WINDOW_END.scheduleWithFixedDelay(SHARED::poll, 15, 15, TimeUnit.SECONDS); }
     private final LongSupplier nanos;
     private final Duration span;
     private final long window;
@@ -42,6 +36,7 @@ public final class AnimusLog {
     private Consumer<String> summarySink;
     private final Set<String> traced = new LinkedHashSet<>();
     private volatile boolean debug;
+    private ScheduledExecutorService windowEnd;
     private long windowStart;
 
     public AnimusLog(LongSupplier nanos, Duration window) {
@@ -81,6 +76,24 @@ public final class AnimusLog {
             summary = due(false);
         }
         if (summary != null) sink.accept(summary);
+    }
+
+    /** Starts the timer that prints a summary when its window ends; the runtime calls it as it starts. A second start does nothing. */
+    public synchronized void start() {
+        if (windowEnd != null) return;
+        windowEnd = Executors.newSingleThreadScheduledExecutor((Runnable task) -> {
+            Thread thread = new Thread(task, "Animus-Log");
+            thread.setDaemon(true);
+            return thread;
+        });
+        windowEnd.scheduleWithFixedDelay(this::poll, 15, 15, TimeUnit.SECONDS);
+    }
+
+    /** Stops the window timer, so no thread outlives the plugin; the runtime calls it as it stops, after {@link #flush()}. */
+    public synchronized void stop() {
+        if (windowEnd == null) return;
+        windowEnd.shutdownNow();
+        windowEnd = null;
     }
 
     /** Prints the summary once its window has ended, even when no routine line comes after it. */

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "0f64bdd7-c246-5025-89b0-8e88bd754bf7",
+  "id": "camel-sitting",
+  "group": "settings",
+  "name": "Set camel-sitting",
+  "type": "minecraft:camel",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "camel": {
+    "sitting": true
+  }
+}

@@ -7,6 +7,7 @@ library;
 import '../../logic/minecraft_ids.dart';
 import '../../logic/npc/npc_appearance.dart';
 import '../../logic/npc/npc_attributes.dart';
+import '../rigs/mc_rigs.dart';
 import 'mc_text.dart';
 
 /// `NpcPose`.
@@ -236,6 +237,8 @@ final class NpcLook {
     this.scale = 1,
     this.settings = const <String, Object?>{},
     this.glowColor,
+    this.disguise,
+    this.baby = false,
   });
 
   static const String player = 'minecraft:player';
@@ -246,7 +249,9 @@ final class NpcLook {
   static final RegExp _skin = RegExp(r'^[a-f0-9]{64}$');
 
   factory NpcLook.fromDefinition(Map<String, Object?> json) {
-    final String type = json['type'] is String ? json['type']! as String : '';
+    final String? disguise = json['disguise'] is String && (json['disguise']! as String).trim().isNotEmpty ? json['disguise']! as String : null;
+    final String own = json['type'] is String ? json['type']! as String : '';
+    final String type = (disguise == null ? null : disguiseType(disguise)) ?? own;
     final Map<NpcSlot, NpcItem> equipment = <NpcSlot, NpcItem>{};
     final Object? declared = json['equipment'];
     if (declared is Map<String, Object?>) {
@@ -285,7 +290,29 @@ final class NpcLook {
         final Map<String, Object?> own => own,
         _ => const <String, Object?>{},
       },
+      disguise: disguise,
+      baby: json['baby'] == true,
     );
+  }
+
+  /// LibsDisguises' older names for vanilla types.
+  static const Map<String, String> _disguiseNames = <String, String>{
+    'mushroom_cow': 'mooshroom',
+    'snowman': 'snow_golem',
+    'pig_zombie': 'zombified_piglin',
+    'dropped_item': 'item',
+    'ender_crystal': 'end_crystal',
+    'zombie_pigman': 'zombified_piglin',
+  };
+
+  /// The vanilla body type the first word of LibsDisguises [disguise] text
+  /// names (`zombie setBaby true`), or null for a custom disguise or another
+  /// entity. Only the server reads the rest of the options.
+  static String? disguiseType(String disguise) {
+    final String first = disguise.trim().split(RegExp(r'\s+')).first.toLowerCase().replaceAll('-', '_');
+    final String bare = first.startsWith('minecraft:') ? first.substring(10) : first;
+    final String type = 'minecraft:${_disguiseNames[bare] ?? bare}';
+    return mcPresentedBodyTypes.contains(type) ? type : null;
   }
 
   final String type;
@@ -311,6 +338,12 @@ final class NpcLook {
   /// The outline colour (`0xRRGGBB`) of a glowing body: its `teamColor`,
   /// white without one, as the client draws it. Null when it does not glow.
   final int? glowColor;
+
+  /// The definition's LibsDisguises text, or null.
+  final String? disguise;
+
+  /// The `baby` trait.
+  final bool baby;
 
   /// `teamColor` names in `ChatFormatting` order, codes 0 to f.
   static const List<String> teamColors = <String>[

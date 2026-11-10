@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "075f04b3-c960-5dae-b411-bb9e7e2adc87",
+  "id": "camel-husk",
+  "group": "types",
+  "name": "Body camel_husk",
+  "type": "minecraft:camel_husk",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

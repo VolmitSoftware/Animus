@@ -804,7 +804,6 @@ class _NpcInspectorState extends State<NpcInspector> {
     recordings: routeRecordings(component.workspaceDocuments),
     origin: _origin,
     world: asString(asMap(_doc['position'])['world']),
-    imported: _doc.containsKey('migration'),
     diagnostics: _diagnostics,
     ownStyle: asString(asMap(_doc['movement'])['style']),
     onOpen: component.onOpen,
@@ -866,7 +865,6 @@ class _NpcInspectorState extends State<NpcInspector> {
             if (entry.key != component.document.id) entry.localId,
         ],
         squads: squads.toList()..sort(),
-        imported: doc.containsKey('migration'),
         origin: _origin,
         schema: component.schemas.npc,
         onChanged: (Object? value) => _putModule(combatModule, value),
@@ -884,7 +882,6 @@ class _NpcInspectorState extends State<NpcInspector> {
   Widget _shop() => ShopBindingEditor(
     value: _modules[shopModule],
     shops: shopPickerOptions(component.workspaceDocuments),
-    imported: _doc.containsKey('migration'),
     diagnostics: _diagnostics,
     onOpen: component.onOpen,
     onChanged: (Object? value) => _putModule(shopModule, value),

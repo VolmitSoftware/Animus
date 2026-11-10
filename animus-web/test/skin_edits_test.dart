@@ -246,7 +246,7 @@ void main() {
   test('a model change commits as one undo step in the store', () async {
     final EditorStore store = EditorStore(repository: MemoryWorkspaceRepository(), schemas: SharedSchemas.embedded, newId: () => 'ws-skin');
     final String npc = prettyJson(<String, Object?>{
-      'schemaVersion': 1,
+      'schemaVersion': 2,
       'revision': 1,
       'uuid': '00000000-0000-4000-8000-000000000001',
       'id': 'a',

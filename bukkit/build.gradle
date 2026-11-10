@@ -19,10 +19,6 @@ repositories {
         url = uri('https://repo.betonquest.org/betonquest/')
         content { includeGroupAndSubgroups('org.betonquest') }
     }
-    exclusiveContent {
-        forRepository { maven { url = uri('https://api.modrinth.com/maven') } }
-        filter { includeGroup('maven.modrinth') }
-    }
     maven {
         url = uri('https://repo.papermc.io/repository/maven-public/')
         content { includeGroup('io.papermc.paper'); includeGroup('com.mojang'); includeVersionByRegex('net\\.md-5', 'bungeecord-chat', '.*-deprecated.*') }
@@ -38,7 +34,7 @@ repositories {
     maven { url = uri('https://mvn.lib.co.nz/public'); content { includeGroup('me.libraryaddict.disguises') } }
     maven { url = uri('https://repo.codemc.io/repository/maven-releases/'); content { includeGroup('com.github.retrooper') } }
 }
-configurations { packetApi; protectionApi; economyApi; permissionApi; commandApi; questApi; modelApi; disguiseApi; mythicApi; typewriterExtension { transitive = false } }
+configurations { packetApi; protectionApi; economyApi; permissionApi; commandApi; questApi; modelApi; disguiseApi; mythicApi }
 configurations.compileOnly.extendsFrom(configurations.packetApi, configurations.protectionApi, configurations.economyApi, configurations.permissionApi, configurations.commandApi, configurations.questApi, configurations.modelApi, configurations.disguiseApi, configurations.mythicApi)
 // The quest integrations are tested against the quest plugins' own jars.
 configurations.testImplementation.extendsFrom(configurations.questApi)
@@ -62,15 +58,12 @@ dependencies {
     questApi('fr.skytasul:beautyquests-api:1.0.4') { transitive = false }
     questApi('org.betonquest.betonquest:api:3.3.0') { transitive = false }
     questApi('org.betonquest.betonquest:core:3.3.0') { transitive = false }
-    // NotQuests 7.0.0 for Paper 26.3, from Modrinth; NotQuests publishes no Maven API.
-    questApi('maven.modrinth:notquests:RokayyvV') { transitive = false }
     // Model Engine 4's published API jar; the plugin itself is never shaded.
     modelApi('com.ticxo.modelengine:ModelEngine:R4.1.1') { transitive = false }
     disguiseApi('me.libraryaddict.disguises:libsdisguises:26.10.24') { transitive = false }
     disguiseApi('com.github.retrooper:packetevents-api:2.14.0') { transitive = false }
     mythicApi('io.lumine:Mythic-Dist:5.14.0') { transitive = false }
     bundle(project(':animus-bukkit-api'))
-    typewriterExtension(project(':typewriter-extension'))
     bundle('org.bstats:bstats-bukkit:3.2.1')
     testImplementation('org.junit.jupiter:junit-jupiter:5.10.2')
     testRuntimeOnly('org.junit.platform:junit-platform-launcher:1.10.2')
@@ -80,8 +73,6 @@ dependencies {
     testRuntimeOnly('com.sk89q.worldguard.worldguard-libs:core:7.0.14') { transitive = false }
 }
 tasks.named('processResources').configure {
-    // Carried as a resource, never as classes: Typewriter loads it from its own extensions folder.
-    from(configurations.typewriterExtension) { into('integrations/typewriter') }
     inputs.properties(animus + [apiVersion: '26.1.2'])
     filesMatching('plugin.yml') { expand(animus + [apiVersion: '26.1.2']) }
 }

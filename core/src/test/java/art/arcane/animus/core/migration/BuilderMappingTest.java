@@ -76,7 +76,6 @@ class BuilderMappingTest {
             assertEquals("{\"operation\":\"start\"}", start.get(0).getAsJsonObject().getAsJsonObject("arguments").toString());
             assertEquals("animus:set-flag", start.get(1).getAsJsonObject().get("capability").getAsString());
             BuilderModule module = BuilderModule.of(definition).orElseThrow();
-            assertFalse(module.reviewAccepted());
             assertEquals("tower.schem", module.schematic());
             assertEquals(Optional.of(new BlockPos(10, 64, -6)), module.origin());
             BuildOptions options = module.options();
@@ -97,14 +96,13 @@ class BuilderMappingTest {
         }
     }
 
-    @Test void acceptedReviewOrHandWrittenSectionsAreReady() throws Exception {
+    @Test void handWrittenSectionsAreReady() throws Exception {
         NpcDefinition written = NpcDefinition.parse("""
-                {"schemaVersion": 1, "revision": 1, "uuid": "00000000-0000-0000-0000-000000000011", "id": "mason", "group": "town",
+                {"schemaVersion": 2, "revision": 1, "uuid": "00000000-0000-0000-0000-000000000011", "id": "mason", "group": "town",
                  "name": "Mason", "type": "minecraft:player", "spawned": false, "position": {"world": "world", "x": 0, "y": 64, "z": 0, "yaw": 0, "pitch": 0},
                  "modules": {"animus:builder": {"schematic": "hut.nbt", "options": {"rotation": 90}}}}
                 """);
         BuilderModule module = BuilderModule.of(written).orElseThrow();
-        assertTrue(module.reviewAccepted());
         assertEquals(90, module.options().transform().rotation().degrees());
         assertEquals(Optional.empty(), module.origin());
     }

@@ -4,6 +4,8 @@ import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.npc.NpcPose;
+import art.arcane.animus.core.platform.MinecraftIds;
+import art.arcane.animus.core.presentation.BodyRules;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -30,7 +32,7 @@ public record ScheduleSettings(OptionalDouble speed, List<Location> locations) {
     public static final int DAY_TICKS = 24_000;
     public static final String NAME = "[a-z0-9][a-z0-9_-]{0,31}";
     private static final String PATH = "$.modules[\"" + MODULE + "\"]";
-    private static final Set<String> FIELDS = Set.of("enabled", "reviewAccepted", "speed", "locations");
+    private static final Set<String> FIELDS = Set.of("enabled", "speed", "locations");
     private static final Set<String> LOCATION_FIELDS = Set.of("name", "time", "x", "y", "z", "yaw", "pitch", "chance", "weather", "staySeconds", "wander",
             "pose", "equipment", "clearEquipment", "skin", "skinOnDeparture", "commands");
     private static final Set<String> WANDER_FIELDS = Set.of("radius", "area", "waitSeconds");
@@ -71,8 +73,7 @@ public record ScheduleSettings(OptionalDouble speed, List<Location> locations) {
     public static Optional<ScheduleSettings> of(NpcDefinition definition) { return parse(definition.json()); }
 
     /**
-     * Empty when the module is absent or disabled; throws with the exact field when it is malformed. An imported
-     * definition runs its schedule only once {@code reviewAccepted} is literal true.
+     * Empty when the module is absent or disabled; throws with the exact field when it is malformed.
      */
     public static Optional<ScheduleSettings> parse(JsonObject definition) {
         if (!definition.has("modules") || !definition.get("modules").isJsonObject()) return Optional.empty();
@@ -81,7 +82,6 @@ public record ScheduleSettings(OptionalDouble speed, List<Location> locations) {
         if (!value.isJsonObject()) throw new IllegalArgumentException(PATH + ": expected object");
         JsonObject module = value.getAsJsonObject();
         for (String key : module.keySet()) if (!FIELDS.contains(key)) throw new IllegalArgumentException(PATH + "." + key + ": unknown field");
-        boolean reviewed = module.has("reviewAccepted") && bool(module.get("reviewAccepted"), PATH + ".reviewAccepted");
         boolean enabled = !module.has("enabled") || bool(module.get("enabled"), PATH + ".enabled");
         OptionalDouble speed = OptionalDouble.empty();
         if (module.has("speed")) speed = OptionalDouble.of(number(module.get("speed"), PATH + ".speed", 1, 10));
@@ -93,9 +93,28 @@ public record ScheduleSettings(OptionalDouble speed, List<Location> locations) {
         JsonArray array = declared.getAsJsonArray();
         for (int index = 0; index < array.size(); index++) locations.add(location(array.get(index), PATH + ".locations[" + index + "]", type));
         if (!enabled) return Optional.empty();
-        if (definition.has("migration") && !reviewed) throw new IllegalArgumentException(PATH + ".reviewAccepted: must be true for imported definitions");
         if (navigates(definition)) throw new IllegalArgumentException(PATH + ": an NPC follows a schedule or an animus:navigation route, not both; turn one off");
         return Optional.of(new ScheduleSettings(speed, locations));
+    }
+
+    /**
+     * Whether the document sets arrival commands anywhere: in an NPC's own module or in one a trait group gives its members.
+     * It reads the JSON as written, enabled or not, so a schedule that is off still counts.
+     */
+    public static boolean runsCommands(JsonElement document) {
+        java.util.ArrayDeque<JsonElement> pending = new java.util.ArrayDeque<>(List.of(document));
+        while (!pending.isEmpty()) {
+            JsonElement element = pending.removeFirst();
+            if (element.isJsonArray()) element.getAsJsonArray().forEach(pending::add);
+            else if (element.isJsonObject()) {
+                JsonElement module = element.getAsJsonObject().get(MODULE);
+                if (module != null && module.isJsonObject() && module.getAsJsonObject().get("locations") instanceof JsonArray locations)
+                    for (JsonElement location : locations)
+                        if (location.isJsonObject() && location.getAsJsonObject().get("commands") instanceof JsonArray commands && !commands.isEmpty()) return true;
+                element.getAsJsonObject().entrySet().forEach((Map.Entry<String, JsonElement> entry) -> pending.add(entry.getValue()));
+            }
+        }
+        return false;
     }
 
     /** The definition turns on its own route as well, which would fight the schedule for the NPC's legs. */
@@ -140,6 +159,9 @@ public record ScheduleSettings(OptionalDouble speed, List<Location> locations) {
             for (Map.Entry<String, JsonElement> entry : slots.getAsJsonObject().entrySet()) {
                 EquipmentSlot slot = EquipmentSlot.fromKey(entry.getKey())
                         .orElseThrow(() -> new IllegalArgumentException(path + ".equipment." + entry.getKey() + ": unknown slot"));
+                String body = MinecraftIds.normalize(type);
+                if (!BodyRules.equipmentSlots(body).contains(slot))
+                    throw new IllegalArgumentException(path + ".equipment." + entry.getKey() + ": " + BodyRules.slotRefusal(body, slot));
                 List<String> errors = new ArrayList<>();
                 Optional<NpcItem> item = NpcItem.parse(entry.getValue(), path + ".equipment." + entry.getKey(), errors);
                 if (item.isEmpty()) throw new IllegalArgumentException(errors.getFirst());

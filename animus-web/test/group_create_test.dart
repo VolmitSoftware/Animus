@@ -30,7 +30,7 @@ void main() {
       expect(group.kind, DocumentKind.group);
       expect(group.id, 'guards');
       expect(group.path, 'groups/guards.json');
-      expect(asMap(jsonDecode(group.source!)), <String, Object?>{'schemaVersion': 1, 'revision': 1, 'id': 'guards', 'values': <String, Object?>{}});
+      expect(asMap(jsonDecode(group.source!)), <String, Object?>{'schemaVersion': 2, 'revision': 1, 'id': 'guards', 'values': <String, Object?>{}});
       final DocumentChange npc = changes.last;
       expect(npc.kind, DocumentKind.npc);
       expect(npc.id, 'town/anna');

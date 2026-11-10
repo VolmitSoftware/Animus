@@ -22,7 +22,6 @@ const String combatRoot = r'$.modules.animus:combat';
 /// Keys the module object accepts.
 const List<String> combatRootKeys = <String>[
   'enabled',
-  'reviewAccepted',
   'targets',
   'ignores',
   'avoids',

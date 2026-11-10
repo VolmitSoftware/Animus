@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "13f68370-477c-5b07-8637-6dc8043a4662",
+  "id": "parrot-sitting",
+  "group": "settings",
+  "name": "Set parrot-sitting",
+  "type": "minecraft:parrot",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "parrot": {
+    "variant": "blue",
+    "sitting": true
+  }
+}

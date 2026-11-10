@@ -200,8 +200,6 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
             if (!document.has("modules") || !document.getAsJsonObject("modules").has("animus:navigation")) return Optional.empty();
             JsonObject data = document.getAsJsonObject("modules").getAsJsonObject("animus:navigation");
             if (!bool(data, "enabled", false)) return Optional.empty();
-            if (document.has("migration") && !bool(data, "reviewAccepted", false))
-                throw new IllegalArgumentException("reviewAccepted must be true for imported definitions");
             if (data.has("recording")) return Optional.empty();
             if (data.has("route")) {
                 JsonElement reference = data.get("route");

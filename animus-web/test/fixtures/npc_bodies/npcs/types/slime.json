@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "9b250e0d-6d80-50ba-971c-2cf98bbb7ef9",
+  "id": "slime",
+  "group": "types",
+  "name": "Body slime",
+  "type": "minecraft:slime",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

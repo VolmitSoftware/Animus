@@ -149,12 +149,60 @@ class EditorCommandScopeTest {
         JsonObject plainQuest = paying.deepCopy();
         plainQuest.getAsJsonObject("rewards").remove("items");
         plainQuest.getAsJsonObject("rewards").remove("money");
+        plainQuest.getAsJsonObject("rewards").remove("experience");
         EditorResponse applied = harness.send("POST", "/v1/changes", plain, set("key-0000000000000211", change("quest", "town:herbs", null, plainQuest)));
         assertEquals(200, applied.status(), () -> applied.body().toString());
         JsonObject broken = plainQuest.deepCopy();
         broken.addProperty("id", "town:other");
         EditorResponse refused = harness.send("POST", "/v1/changes", commands, set("key-0000000000000212", change("quest", "town:herbs", stored("quest", "town:herbs"), broken)));
         assertEquals(422, refused.status(), "the quest parser checks editor applies: " + refused.body());
+    }
+
+    @Test
+    void apply_questThatPaysExperience_needsApplyCommands() throws Exception {
+        JsonObject experience = herbs();
+        experience.getAsJsonObject("rewards").remove("items");
+        experience.getAsJsonObject("rewards").remove("money");
+        experience.getAsJsonObject("rewards").remove("flags");
+        refused(harness.send("POST", "/v1/changes", plain, set("key-0000000000000213", change("quest", "town:herbs", null, experience))));
+    }
+
+    @Test
+    void apply_questInARawTextNamespace_needsApplyCommands() throws Exception {
+        harness.host.rawTextBehaviors = List.of("town:gate");
+        JsonObject flags = herbs();
+        flags.getAsJsonObject("rewards").remove("items");
+        flags.getAsJsonObject("rewards").remove("money");
+        flags.getAsJsonObject("rewards").remove("experience");
+        refused(harness.send("POST", "/v1/changes", plain, set("key-0000000000000214", change("quest", "town:herbs", null, flags))));
+    }
+
+    private static JsonObject herbs() throws Exception {
+        Path here = Path.of("").toAbsolutePath();
+        return JsonDocuments.object(java.nio.file.Files.readString((java.nio.file.Files.isDirectory(here.resolve("examples")) ? here : here.getParent()).resolve("examples/quests/town/herbs.json")));
+    }
+
+    private static JsonObject arrival(String command) throws Exception {
+        return JsonDocuments.object("""
+                {"animus:schedule": {"locations": [{"time": 1000, "x": 0, "y": 64, "z": 0, "commands": ["%s"]}]}}
+                """.formatted(command));
+    }
+
+    @Test
+    void apply_npcWithScheduleArrivalCommands_needsApplyCommands() throws Exception {
+        JsonObject current = stored("npc", "examples/greeter");
+        JsonObject scheduled = current.getAsJsonObject("source").deepCopy();
+        scheduled.add("modules", arrival("op Mallory"));
+        refused(harness.send("POST", "/v1/changes", plain, set("key-0000000000000215", change("npc", "examples/greeter", current, scheduled))));
+        EditorResponse granted = harness.send("POST", "/v1/changes", commands, set("key-0000000000000216", change("npc", "examples/greeter", current, scheduled)));
+        assertEquals(200, granted.status(), () -> granted.body().toString());
+    }
+
+    @Test
+    void apply_groupWithScheduleArrivalCommands_needsApplyCommands() throws Exception {
+        JsonObject group = JsonDocuments.object("{\"schemaVersion\": 2, \"revision\": 1, \"id\": \"guards\", \"values\": {}}");
+        group.getAsJsonObject("values").add("modules", arrival("op Mallory"));
+        refused(harness.send("POST", "/v1/changes", plain, set("key-0000000000000217", change("group", "guards", null, group))));
     }
 
     @Test
@@ -188,11 +236,6 @@ class EditorCommandScopeTest {
         scopes.add(EditorScope.IMPORT);
         String importer = harness.token(EditorHarness.grant(scopes));
         String id = "a".repeat(64);
-        JsonObject accept = new JsonObject();
-        JsonArray categories = new JsonArray();
-        categories.add("Commands");
-        accept.add("categories", categories);
-        refused(harness.send("POST", "/v1/imports/" + id + "/accept", importer, accept));
         assertEquals(409, harness.send("POST", "/v1/imports/" + id + "/apply", importer, null).status(), "with an empty allow-list an import cannot run commands");
         harness.host.commandGrants = true;
         refused(harness.send("POST", "/v1/imports/" + id + "/apply", importer, null));

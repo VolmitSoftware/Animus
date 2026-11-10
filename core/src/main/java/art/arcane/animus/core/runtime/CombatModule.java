@@ -205,7 +205,7 @@ public final class CombatModule implements AutoCloseable {
     }
     /**
      * Whether the manual administrator adapter may act for this NPC. A definition without the combat module may; one
-     * with it needs literal {@code "enabled": true} and {@code "reviewAccepted": true}.
+     * with it needs literal {@code "enabled": true}.
      */
     /** Whether the NPC's running combat lets hostile mobs target it. */
     public static boolean targetableByMobs(NpcDefinition definition) {
@@ -217,7 +217,7 @@ public final class CombatModule implements AutoCloseable {
         JsonObject document = definition.json();
         if (!document.has("modules") || !document.getAsJsonObject("modules").has(CombatSettings.MODULE)) return true;
         JsonElement value = document.getAsJsonObject("modules").get(CombatSettings.MODULE);
-        return value.isJsonObject() && literal(value.getAsJsonObject(), "enabled") && literal(value.getAsJsonObject(), "reviewAccepted");
+        return value.isJsonObject() && literal(value.getAsJsonObject(), "enabled");
     }
     private static boolean literal(JsonObject object, String key) {
         JsonElement value = object.get(key);

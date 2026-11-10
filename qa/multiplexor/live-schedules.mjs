@@ -1,6 +1,6 @@
 // NPC schedules as a viewer sees them: an NPC walks to the place of the current world time and moves on when
 // /time set changes it, lies down and puts on its night clothes where it sleeps, takes a place added with
-// /animus schedule add, and an NPC Destinations save imports, waits for its review, walks once accepted and rolls
+// /animus schedule add, and an NPC Destinations save imports, walks once applied and rolls
 // back. Driven by live-features.mjs (--scenarios schedules).
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -100,16 +100,13 @@ export async function schedules(t) {
     return `added at 6000, listed with shop and bed, walked to x=${well.x.toFixed(1)} z=${well.z.toFixed(1)}, turned off`;
   });
 
-  await check('schedule: an NPC Destinations save imports, waits for review, walks once accepted and rolls back', async () => {
+  await check('schedule: an NPC Destinations save imports, walks once applied and rolls back', async () => {
     await server.cmd('time set 1000', /time|tick|clock/i);
     mkdirSync(path.join(data, 'imports'), { recursive: true });
     writeFileSync(path.join(data, 'imports', 'saves.yml'), SAVES);
     const preview = await server.capture('animus import citizens preview', /Next: \/animus import citizens apply/, 500);
-    assert(/schedules 1/.test(preview), preview.slice(0, 600));
     await server.cmd('animus import citizens apply', /Installed import/);
-    const review = await server.capture('animus import citizens review', /schedules 1/, 300);
-    await server.cmd('animus import citizens accept spawn', /Accepted/);
-    await server.cmd('animus import citizens accept schedules', /Accepted/);
+    const review = await server.capture('animus import citizens review', /rollback undoes the import/, 300);
     const mill = await at('citizens-9', 12.5, -8.5, 'the imported miller walks to the mill at 1000');
     await server.cmd('time set 13000', /time|tick|clock/i);
     const home = await at('citizens-9', -11.5, -8.5, 'the imported miller walks home at 13000');
@@ -118,7 +115,7 @@ export async function schedules(t) {
       const text = await server.capture('animus list', /NPC|npcs|No NPCs/i, 300);
       return { ok: !text.includes('citizens-9') };
     }, 20_000, 'the rollback removes the imported NPC');
-    return `preview counted schedules 1; review: ${review.match(/Waiting[^\n]*/)?.[0] ?? 'listed'}; mill x=${mill.x.toFixed(1)}, home x=${home.x.toFixed(1)}; ${undone.match(/Citizens import undone[^\n]*/)?.[0] ?? 'rolled back'}`;
+    return `review: ${review.match(/Converted[^\n]*/)?.[0] ?? 'listed'}; mill x=${mill.x.toFixed(1)}, home x=${home.x.toFixed(1)}; ${undone.match(/Citizens import undone[^\n]*/)?.[0] ?? 'rolled back'}`;
   });
   await owner.close();
 }

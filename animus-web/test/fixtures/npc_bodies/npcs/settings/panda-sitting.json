@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "4dfd1af5-f033-503f-97ee-4bc666178ca1",
+  "id": "panda-sitting",
+  "group": "settings",
+  "name": "Set panda-sitting",
+  "type": "minecraft:panda",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "panda": {
+    "mainGene": "playful",
+    "sitting": true
+  }
+}

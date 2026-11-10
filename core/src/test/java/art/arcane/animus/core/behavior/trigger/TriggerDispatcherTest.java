@@ -31,7 +31,7 @@ class TriggerDispatcherTest {
         catalog.set(new BehaviorCatalog.Snapshot(revision,Map.of(),Map.of(BEHAVIOR,new BehaviorCatalog.Resolution(BEHAVIOR,true,Optional.of(accepted),List.of())),List.of()));
     }
     private static NpcDefinition definition(String id,UUID uuid,boolean spawned,String behaviors)throws Exception{
-        return NpcDefinition.parse("{\"schemaVersion\":1,\"revision\":1,\"uuid\":\""+uuid+"\",\"id\":\""+id+"\",\"group\":\"test\",\"name\":\"Test\",\"type\":\"minecraft:player\",\"spawned\":"+spawned+",\"behaviors\":"+behaviors+",\"position\":{\"world\":\"world\",\"x\":0,\"y\":61,\"z\":0,\"yaw\":0,\"pitch\":0}}");
+        return NpcDefinition.parse("{\"schemaVersion\":2,\"revision\":1,\"uuid\":\""+uuid+"\",\"id\":\""+id+"\",\"group\":\"test\",\"name\":\"Test\",\"type\":\"minecraft:player\",\"spawned\":"+spawned+",\"behaviors\":"+behaviors+",\"position\":{\"world\":\"world\",\"x\":0,\"y\":61,\"z\":0,\"yaw\":0,\"pitch\":0}}");
     }
     private void npc(boolean spawned)throws Exception{definitions.set(Map.of("test",definition("test",npc,spawned,"[\""+BEHAVIOR+"\"]")));}
     private static TriggerSettings settings(int queuePerNpc,int queuePerTrigger,int concurrentPerNpc,int concurrentPerTrigger,int cooldown,int inbox){

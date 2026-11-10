@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "2614ea31-aae0-52f2-a232-dacfca358fd0",
+  "id": "dolphin",
+  "group": "types",
+  "name": "Body dolphin",
+  "type": "minecraft:dolphin",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

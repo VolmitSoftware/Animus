@@ -323,7 +323,7 @@ public final class ShopScreen<P, S> implements Screen {
             for (ShopDocument.Goods need : key.needs()) host.stack(single(need.item()), Optional.empty(), List.of(), errors).ifPresent((S stack) -> needs.add(new ShopTransactions.Need<>(stack, need.amount())));
             for (ShopDocument.Goods give : key.gives()) host.stack(single(give.item()), Optional.empty(), List.of(), errors).ifPresent((S stack) -> gives.add(new ShopTransactions.Need<>(stack, give.amount())));
             if (goods.isEmpty() || !errors.isEmpty()) return Optional.empty();
-            return Optional.of(new ShopTransactions.Prepared<>(key, goods.get(), needs, gives));
+            return Optional.of(new ShopTransactions.Prepared<>(key, shop.rule(key), goods.get(), needs, gives));
         });
     }
 

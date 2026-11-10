@@ -1,16 +1,15 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "0a1b2c3d-0000-4000-8000-000000000401",
   "id": "citizens-1",
   "group": "harbor",
   "name": "Quiet Clerk",
   "type": "minecraft:player",
-  "spawned": false,
+  "spawned": true,
   "migration": {
-    "importId": "f88238b8840aa1cb4d387bc24712f42db074713ab8721cb834a89bda5432b782",
+    "importId": "a25fdcee48385639b36c20d31de0c9b0e5ea12b1457540660b689b14ce1c73c5",
     "citizensId": 1,
-    "originalSpawned": null,
     "references": []
   },
   "position": {

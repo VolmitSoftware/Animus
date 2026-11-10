@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "4d5025c7-8f4e-522b-ab52-dbe41247ad18",
+  "id": "villager-farmer",
+  "group": "settings",
+  "name": "Set villager-farmer",
+  "type": "minecraft:villager",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "villager": {
+    "type": "desert",
+    "profession": "farmer",
+    "level": "master"
+  }
+}

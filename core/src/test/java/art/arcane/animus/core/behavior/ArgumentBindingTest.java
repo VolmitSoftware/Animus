@@ -111,7 +111,7 @@ class ArgumentBindingTest {
     @Test void behaviorReferencesMatchNpcGrammarIncludingSlashPathsWithExplicitLengthNarrowing()throws Exception{
         for(String id:List.of("example:quests/town/greet","_pack-:/a//b/","a:"+"b".repeat(254))){
             assertEquals(id,compile(document(EMPTY).replace("example:test",id)).id());
-            JsonObject npc=object("{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"00000000-0000-0000-0000-000000000001\",\"id\":\"test\",\"group\":\"default\",\"name\":\"Test\",\"type\":\"minecraft:player\",\"spawned\":false,\"position\":{\"world\":\"world\",\"x\":0,\"y\":0,\"z\":0,\"yaw\":0,\"pitch\":0}}");
+            JsonObject npc=object("{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"00000000-0000-0000-0000-000000000001\",\"id\":\"test\",\"group\":\"default\",\"name\":\"Test\",\"type\":\"minecraft:player\",\"spawned\":false,\"position\":{\"world\":\"world\",\"x\":0,\"y\":0,\"z\":0,\"yaw\":0,\"pitch\":0}}");
             JsonArray refs=new JsonArray();refs.add(id);npc.add("behaviors",refs);assertTrue(NpcDefinition.validate(npc).isEmpty());
         }
         for(String id:List.of("pack:name.with.dots","Pack:name","pack:","pack:path\\name","a:"+"b".repeat(255))){var result=BehaviorCompiler.compile(document(EMPTY).replace("example:test",id.replace("\\","\\\\")));assertTrue(result.program().isEmpty());assertEquals("$.id",result.diagnostics().getFirst().field());}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "bdd159ac-1fa1-5d88-9693-77dbbab779e2",
+  "id": "donkey-chest",
+  "group": "settings",
+  "name": "Set donkey-chest",
+  "type": "minecraft:donkey",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "donkey": {
+    "chest": true
+  }
+}

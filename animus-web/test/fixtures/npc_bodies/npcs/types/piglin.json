@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "32af7d78-d279-51c5-8c98-3a4baac9324a",
+  "id": "piglin",
+  "group": "types",
+  "name": "Body piglin",
+  "type": "minecraft:piglin",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

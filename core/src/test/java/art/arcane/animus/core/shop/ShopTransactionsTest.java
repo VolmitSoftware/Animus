@@ -37,7 +37,7 @@ class ShopTransactionsTest {
         ShopDocument.Entry entry = shop.pages().getFirst().grids().values().iterator().next().get(10);
         List<ShopTransactions.Need<Stack>> needs = entry.needs().stream().map((ShopDocument.Goods goods) -> new ShopTransactions.Need<>(stack(goods.item()), goods.amount())).toList();
         List<ShopTransactions.Need<Stack>> gives = entry.gives().stream().map((ShopDocument.Goods goods) -> new ShopTransactions.Need<>(stack(goods.item()), goods.amount())).toList();
-        return new ShopTransactions.Prepared<>(entry, stack(entry.item()), needs, gives);
+        return new ShopTransactions.Prepared<>(entry, shop.rule(entry), stack(entry.item()), needs, gives);
     }
 
     /** The buyer's experience levels. */
@@ -249,6 +249,15 @@ class ShopTransactionsTest {
         String strict = "{\"id\":\"gem\",\"type\":\"sell\",\"item\":{\"id\":\"minecraft:emerald\",\"count\":1,\"components\":\"[custom_name='Gem']\"},\"price\":5}";
         MockInventory plain = new MockInventory().with(0, Stack.of("minecraft:emerald", 4));
         assertEquals(Status.NOTHING_TO_SELL, transactions(economy).perform("town:baker", prepare(shop("sell", strict)), buyer(plain, Set.of()), false).status());
+    }
+
+    @Test void theShopsLegacyRuleSellsItemsWithExtraData() {
+        String gem = "{\"id\":\"gem\",\"type\":\"sell\",\"item\":{\"id\":\"minecraft:emerald\",\"count\":1},\"price\":5}";
+        String json = "{\"schemaVersion\":1,\"revision\":1,\"id\":\"town:baker\",\"title\":\"Baker\",\"match\":\"legacy\",\"pages\":[{\"name\":\"One\",\"rows\":3,\"sell\":{\"10\":" + gem + "}}]}";
+        ShopDocument legacy = ShopDocument.parse("town:baker", json).shop().orElseThrow();
+        MockInventory held = new MockInventory().with(0, new Stack("minecraft:emerald", 1, "", "custom_data"));
+        assertEquals(Status.DONE, transactions(economy).perform("town:baker", prepare(legacy), buyer(held, Set.of()), false).status());
+        assertEquals(0, held.total("minecraft:emerald"));
     }
 
     private static final String TRADE = "{\"id\":\"swap\",\"type\":\"trade\",\"item\":{\"id\":\"minecraft:diamond\"},"

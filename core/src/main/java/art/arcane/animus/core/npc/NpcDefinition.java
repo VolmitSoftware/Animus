@@ -14,6 +14,8 @@ import java.util.*;
 
 /** Immutable persisted definition. Unknown extension data is deliberately retained. */
 public final class NpcDefinition {
+    /** The definition format this build writes and reads; older files are upgraded by the storage migrations at startup. */
+    public static final int SCHEMA_VERSION = 2;
     /** The most labels one NPC may carry. */
     public static final int MAX_TAGS = 32;
     /** The most trait groups one NPC may list. */
@@ -75,7 +77,7 @@ public final class NpcDefinition {
     public static List<String> validate(JsonObject source) {
         JsonObject object = normalized(source);
         List<String> errors = new ArrayList<>();
-        integer(object, "schemaVersion", 1, 1, errors);
+        integer(object, "schemaVersion", SCHEMA_VERSION, SCHEMA_VERSION, errors);
         integer(object, "revision", 1, Long.MAX_VALUE, errors);
         String uuid = string(object, "uuid", errors);
         try { if (!UUID.fromString(uuid).toString().equals(uuid)) throw new IllegalArgumentException(); }

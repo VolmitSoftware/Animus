@@ -78,10 +78,10 @@ class CombatModuleLiveSettingsTest {
         harness.terrain = (int x, int y, int z) -> y < 64 ? Cell.SOLID : Cell.AIR;
         harness.service = new PersistedNpcService<>(harness.host, runtime, Runnable::run, PersistedNpcService.Settings.DEFAULT);
         Files.writeString(npcs.resolve("guard.json"), """
-                {"schemaVersion": 1, "revision": 1, "uuid": "8f0c2c52-6f0e-4f43-a3a3-9d1f8f8a0c11", "id": "guard", "group": "test",
+                {"schemaVersion": 2, "revision": 1, "uuid": "8f0c2c52-6f0e-4f43-a3a3-9d1f8f8a0c11", "id": "guard", "group": "test",
                  "name": "Guard", "type": "minecraft:villager", "spawned": true,
                  "position": {"world": "world", "x": 2.5, "y": 64, "z": 2.5, "yaw": 0, "pitch": 0},
-                 "modules": {"animus:combat": {"enabled": true, "reviewAccepted": true}}}
+                 "modules": {"animus:combat": {"enabled": true}}}
                 """);
         runtime.npcs().reload();
         harness.service.refresh();

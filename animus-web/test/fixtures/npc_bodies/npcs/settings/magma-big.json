@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "7214b6aa-d153-5c0a-af1e-c820e7de69d5",
+  "id": "magma-big",
+  "group": "settings",
+  "name": "Set magma-big",
+  "type": "minecraft:magma_cube",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "magmaCube": {
+    "size": 2
+  }
+}

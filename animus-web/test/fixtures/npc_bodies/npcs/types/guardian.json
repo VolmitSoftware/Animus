@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "b99abff2-5b67-5006-b2d7-62fe33eedd37",
+  "id": "guardian",
+  "group": "types",
+  "name": "Body guardian",
+  "type": "minecraft:guardian",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

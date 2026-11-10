@@ -44,7 +44,9 @@ public final class ScheduleService {
 
     /** One NPC's progress. Steps run one at a time on the NPC's owner; {@link #signal} is set from route completions. */
     static final class Walker {
-        final NpcDefinition definition; final ScheduleSettings schedule; final double speed; final NpcPose declared;
+        /** Replaced by an edit that leaves the schedule, speed and pose alone, so the walk goes on. */
+        volatile NpcDefinition definition;
+        final ScheduleSettings schedule; final double speed; final NpcPose declared;
         final AtomicBoolean queued = new AtomicBoolean();
         final AtomicInteger signal = new AtomicInteger(NONE);
         volatile Phase phase = Phase.IDLE;
@@ -55,8 +57,15 @@ public final class ScheduleService {
         boolean posed;
         Walker(NpcDefinition definition, ScheduleSettings schedule) {
             this.definition = definition; this.schedule = schedule;
-            speed = schedule.speed().orElse(MovementSettings.parse(definition.json()).speed().orElse(DEFAULT_SPEED));
+            speed = speed(definition, schedule);
             declared = NpcAppearance.of(definition).pose();
+        }
+        static double speed(NpcDefinition definition, ScheduleSettings schedule) {
+            return schedule.speed().orElse(MovementSettings.parse(definition.json()).speed().orElse(DEFAULT_SPEED));
+        }
+        /** Whether an edit to {@code next} leaves this walk as it is. */
+        boolean keeps(Bound next) {
+            return schedule.equals(next.schedule()) && speed == speed(next.definition(), next.schedule()) && declared == NpcAppearance.of(next.definition()).pose();
         }
         void reset() { phase = Phase.IDLE; location = -1; slot = -1; leg++; posed = false; signal.set(NONE); }
     }
@@ -85,8 +94,11 @@ public final class ScheduleService {
         walkers.keySet().removeIf((UUID npc) -> !current.containsKey(npc));
         for (Map.Entry<UUID, Bound> entry : current.entrySet()) {
             Bound wanted = entry.getValue();
-            Walker walker = walkers.compute(entry.getKey(), (UUID npc, Walker known) ->
-                    known != null && known.definition == wanted.definition() ? known : new Walker(wanted.definition(), wanted.schedule()));
+            Walker walker = walkers.compute(entry.getKey(), (UUID npc, Walker known) -> {
+                if (known == null || (known.definition != wanted.definition() && !known.keeps(wanted))) return new Walker(wanted.definition(), wanted.schedule());
+                known.definition = wanted.definition();
+                return known;
+            });
             if (!walker.queued.compareAndSet(false, true)) continue;
             boolean placed = world.onOwner(entry.getKey(), () -> {
                 try { step(walker, now); }
@@ -94,18 +106,6 @@ public final class ScheduleService {
             }, () -> walker.queued.set(false));
             if (!placed) { walker.queued.set(false); walker.reset(); }
         }
-    }
-
-    /** One line for {@code /animus status}: scheduled NPCs and what they do now. */
-    public String status() {
-        int traveling = 0, at = 0, waiting = 0;
-        for (Walker walker : walkers.values()) switch (walker.phase) {
-            case TRAVELING, WANDERING -> traveling++;
-            case AT -> at++;
-            case RETRY -> waiting++;
-            case IDLE -> { }
-        }
-        return "Schedules | npcs=" + walkers.size() + " | walking=" + traveling + " | arrived=" + at + " | retrying=" + waiting;
     }
 
     private Map<UUID, Bound> bindings() {

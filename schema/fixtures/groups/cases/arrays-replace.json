@@ -1,7 +1,7 @@
 {
   "description": "Arrays other than behaviors and tags replace whole; reversing the list order changes which group wins.",
   "npc": {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "revision": 3,
     "uuid": "4f3c2a10-8d5e-4b6a-9c11-2e7f0a9b3c44",
     "id": "guard",
@@ -29,7 +29,7 @@
   },
   "groups": [
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "revision": 1,
       "id": "harbor",
       "values": {
@@ -61,7 +61,7 @@
       }
     },
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "revision": 1,
       "id": "town-guards",
       "description": "Watch uniform and look-close",
@@ -107,7 +107,7 @@
     }
   ],
   "effective": {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "revision": 3,
     "uuid": "4f3c2a10-8d5e-4b6a-9c11-2e7f0a9b3c44",
     "id": "guard",

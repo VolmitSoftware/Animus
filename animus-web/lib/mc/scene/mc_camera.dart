@@ -38,12 +38,17 @@ final class McCamera {
     required this.yawDeg,
     required this.pitchDeg,
     required this.distance,
+    this.reach,
   });
 
   final McVec3 pivot;
   final double yawDeg;
   final double pitchDeg;
   final double distance;
+
+  /// Where the pivot may go; [mcCameraPivotRange] around the origin when
+  /// null. A stage with terrain along a long route widens it to the terrain.
+  final McBounds? reach;
 
   /// Unit look direction, Minecraft yaw/pitch.
   McVec3 get forward {
@@ -66,7 +71,11 @@ final class McCamera {
     yawDeg: yawDeg ?? this.yawDeg,
     pitchDeg: pitchDeg ?? this.pitchDeg,
     distance: distance ?? this.distance,
+    reach: reach,
   );
+
+  /// This camera with the pivot allowed within [reach], clamped into it.
+  McCamera within(McBounds? reach) => McCamera(pivot: pivot, yawDeg: yawDeg, pitchDeg: pitchDeg, distance: distance, reach: reach).clamped();
 
   /// Drag right turns the eye right so the scene slides left under the
   /// pointer; drag down looks further down.
@@ -89,25 +98,32 @@ final class McCamera {
 
   /// Pitch within the poles, distance in a readable band, pivot near the
   /// subject: the subject can never be lost off screen.
-  McCamera clamped() => McCamera(
-    pivot: McVec3(
-      pivot.x.clamp(-mcCameraPivotRange, mcCameraPivotRange).toDouble(),
-      pivot.y.clamp(-mcCameraPivotRange, mcCameraPivotRange).toDouble(),
-      pivot.z.clamp(-mcCameraPivotRange, mcCameraPivotRange).toDouble(),
-    ),
-    yawDeg: yawDeg,
-    pitchDeg: pitchDeg.clamp(-89, 89).toDouble(),
-    distance: distance.clamp(mcCameraMinDistance, mcCameraMaxDistance).toDouble(),
-  );
+  McCamera clamped() {
+    final McVec3 low = reach?.min ?? const McVec3(-mcCameraPivotRange, -mcCameraPivotRange, -mcCameraPivotRange);
+    final McVec3 high = reach?.max ?? const McVec3(mcCameraPivotRange, mcCameraPivotRange, mcCameraPivotRange);
+    return McCamera(
+      pivot: McVec3(pivot.x.clamp(low.x, high.x).toDouble(), pivot.y.clamp(low.y, high.y).toDouble(), pivot.z.clamp(low.z, high.z).toDouble()),
+      yawDeg: yawDeg,
+      pitchDeg: pitchDeg.clamp(-89, 89).toDouble(),
+      distance: distance.clamp(mcCameraMinDistance, mcCameraMaxDistance).toDouble(),
+      reach: reach,
+    );
+  }
 
   McMat4 view() => McMat4.lookAt(eye, pivot, McVec3.up);
 
   @override
   bool operator ==(Object other) =>
-      other is McCamera && other.pivot == pivot && other.yawDeg == yawDeg && other.pitchDeg == pitchDeg && other.distance == distance;
+      other is McCamera &&
+      other.pivot == pivot &&
+      other.yawDeg == yawDeg &&
+      other.pitchDeg == pitchDeg &&
+      other.distance == distance &&
+      other.reach?.min == reach?.min &&
+      other.reach?.max == reach?.max;
 
   @override
-  int get hashCode => Object.hash(pivot, yawDeg, pitchDeg, distance);
+  int get hashCode => Object.hash(pivot, yawDeg, pitchDeg, distance, reach?.min, reach?.max);
 
   static double _wrap(double degrees) {
     double d = degrees % 360;
@@ -172,9 +188,9 @@ const double mcFramingFill = 0.86;
 /// a dragon's tail far behind it does not push the camera back the way its
 /// bounding box's empty near corners would. A player and a dragon therefore
 /// fill the view alike.
-McCamera mcCameraFraming(List<McVec3> points, {double yawDeg = 180, double pitchDeg = 12, double aspect = 4 / 3}) {
+McCamera mcCameraFraming(List<McVec3> points, {double yawDeg = 180, double pitchDeg = 12, double aspect = 4 / 3, McBounds? reach}) {
   final McBounds box = McBounds.of(points);
-  final McCamera aim = McCamera(pivot: box.centre, yawDeg: yawDeg, pitchDeg: pitchDeg, distance: 1);
+  final McCamera aim = McCamera(pivot: box.centre, yawDeg: yawDeg, pitchDeg: pitchDeg, distance: 1, reach: reach);
   final McVec3 f = aim.forward, r = aim.right, u = aim.up;
   final double tanY = math.tan(mcStageFovYDeg * _degToRad / 2) * mcFramingFill;
   final double tanX = tanY * (aspect > 0 ? aspect : 1);

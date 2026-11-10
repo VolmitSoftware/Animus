@@ -37,10 +37,10 @@ class RouteFootingTest {
         harness.playersAway = playersAway;
         harness.service = new PersistedNpcService<>(harness.host, runtime, Runnable::run, PersistedNpcService.Settings.DEFAULT);
         Files.writeString(npcs.resolve("floating-patrol.json"), """
-                {"schemaVersion": 1, "revision": 1, "uuid": "5b1f0c52-6f0e-4f43-a3a3-9d1f8f8a0c12", "id": "floating-patrol", "group": "test",
+                {"schemaVersion": 2, "revision": 1, "uuid": "5b1f0c52-6f0e-4f43-a3a3-9d1f8f8a0c12", "id": "floating-patrol", "group": "test",
                  "name": "Patrol", "type": "minecraft:villager", "spawned": true,
                  "position": {"world": "world", "x": 2.5, "y": %s, "z": 2.5, "yaw": 0, "pitch": 0},%s
-                 "modules": {"animus:navigation": {"enabled": true, "reviewAccepted": true, "mode": "walk", "speed": 1.72, "order": "sequence",
+                 "modules": {"animus:navigation": {"enabled": true, "mode": "walk", "speed": 1.72, "order": "sequence",
                    "loop": true, "waitTicks": 0, "points": [{"x": 6.5, "y": %d, "z": 2.5}, {"x": 2.5, "y": %d, "z": 2.5}]}}}
                 """.formatted(y, movement, pointY, pointY));
         runtime.npcs().reload();

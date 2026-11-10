@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "e89b2912-a5ca-55f9-be8b-27ca0dba40a0",
+  "id": "sniffer",
+  "group": "types",
+  "name": "Body sniffer",
+  "type": "minecraft:sniffer",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

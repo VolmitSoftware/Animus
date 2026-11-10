@@ -17,6 +17,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import me.libraryaddict.disguise.DisguiseConfig;
 import me.libraryaddict.disguise.disguisetypes.Disguise;
@@ -74,7 +75,7 @@ final class LibsDisguisesBodies implements NpcDisguise.Resolver {
 
     /** How long a reload off the server thread waits for LibsDisguises to read one disguise there. */
     private static final long ANSWER_SECONDS = 5;
-    private final Runnable skinArrived;
+    private final PlayerSkins skins;
     private final Supplier<Executor> serverThread;
     private final Map<String, NpcDisguise.Body> read = new ConcurrentHashMap<>();
 
@@ -82,7 +83,13 @@ final class LibsDisguisesBodies implements NpcDisguise.Resolver {
      * @param skinArrived  runs once LibsDisguises has fetched a player skin a disguise named without textures
      * @param serverThread runs work on the server thread, where LibsDisguises reads disguises
      */
-    LibsDisguisesBodies(Runnable skinArrived, Supplier<Executor> serverThread) { this.skinArrived = skinArrived; this.serverThread = serverThread; }
+    LibsDisguisesBodies(Runnable skinArrived, Supplier<Executor> serverThread) {
+        this.skins = new PlayerSkins((String name, Consumer<Optional<BodySkin>> arrived) -> {
+            UserProfile profile = DisguiseUtilities.getProfileFromMojang(name, (UserProfile found) -> arrived.accept(textures(found)));
+            return new PlayerSkins.Answer(textures(profile), profile == null);
+        }, skinArrived);
+        this.serverThread = serverThread;
+    }
 
     @Override public NpcDisguise.Body resolve(String text) {
         String key = text + "\n" + custom(text);
@@ -162,10 +169,9 @@ final class LibsDisguisesBodies implements NpcDisguise.Resolver {
         if (player.isDeadmau5Ears()) fields.unsupported("setDeadmau5Ears");
         Optional<BodySkin> skin = textures(player.getWatcher().getSkin());
         if (skin.isPresent()) { fields.skin(skin.get()); return false; }
-        String name = Optional.ofNullable(player.getWatcher().getSkinName()).orElse(player.getName());
-        skin = textures(DisguiseUtilities.getProfileFromMojang(name, skinArrived));
-        skin.ifPresent(fields::skin);
-        return skin.isEmpty();
+        PlayerSkins.Answer fetched = skins.skin(Optional.ofNullable(player.getWatcher().getSkinName()).orElse(player.getName()));
+        fetched.skin().ifPresent(fields::skin);
+        return fetched.pending();
     }
 
     private static Optional<BodySkin> textures(UserProfile profile) {

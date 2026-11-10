@@ -37,6 +37,9 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
     /** A block whose inventory holds an owned shop's stock. */
     public record Container(String world, int x, int y, int z) {}
     public static final String ID = "[a-z0-9_-]{1,64}:[a-z0-9_/-]{1,191}";
+
+    /** How {@code entry} compares held items: its own {@code match}, else the shop's. */
+    public MatchRule rule(Entry entry) { return entry.match().orElse(match); }
     private static final String PERMISSION = "[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*";
     private static final BigDecimal MAXIMUM_PRICE = new BigDecimal("1000000000000");
     /** The most experience levels one entry costs. */

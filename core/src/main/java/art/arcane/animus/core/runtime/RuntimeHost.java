@@ -60,6 +60,8 @@ public interface RuntimeHost<P, I> extends TerrainReader {
     float yaw(P player);
     float pitch(P player);
     boolean permitted(P player, String node);
+    /** The node is set for the player and true; unlike {@link #permitted}, an operator's default grant does not count. */
+    boolean granted(P player, String node);
     void tell(P player, String message);
     /** An ordinary plugin teleport; false when it was refused. */
     boolean teleport(P player, WorldPosition destination, float yaw, float pitch);

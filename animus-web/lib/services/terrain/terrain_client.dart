@@ -30,6 +30,9 @@ final class MemoryTerrainCache implements TerrainCache {
   Future<void> write(String key, String text) async => entries[key] = text;
 }
 
+/// Where a spawned NPC stands now.
+typedef TerrainLivePosition = ({String world, double x, double y, double z});
+
 /// Sends one authorized request; throws when the connection cannot.
 typedef TerrainSend = Future<ApiResponse> Function(ApiRequest request);
 
@@ -73,6 +76,19 @@ final class TerrainClient {
     final Map<String, Object?>? json = await _get('blocks|$world|$cx|$cz|$y|$height',
         '/v1/terrain/blocks?world=${Uri.encodeQueryComponent(world)}&cx=$cx&cz=$cz&y=$y&height=$height');
     return json == null ? null : TerrainSlice.fromJson(json);
+  }
+
+  /// Where the spawned NPC [npc] (its id, such as town/guard) stands now:
+  /// its world name and position, or null when it is not active or the
+  /// server cannot say. Never cached; the server reads live positions at
+  /// most once a second.
+  Future<TerrainLivePosition?> position(String npc) async {
+    final ApiResponse response = await send(ApiRequest('GET', '/v1/terrain/position?npc=${Uri.encodeQueryComponent(npc)}'));
+    final Object? body = response.body;
+    if (!response.ok || body is! Map<String, Object?> || body['active'] != true) return null;
+    final Object? world = body['world'], x = body['x'], y = body['y'], z = body['z'];
+    if (world is! String || x is! num || y is! num || z is! num) return null;
+    return (world: world, x: x.toDouble(), y: y.toDouble(), z: z.toDouble());
   }
 
   Future<Map<String, Object?>?> _get(String place, String path) => _asked.putIfAbsent(place, () => _slot(() => _fetch('$server|$place', path, place.split('|')[1])));

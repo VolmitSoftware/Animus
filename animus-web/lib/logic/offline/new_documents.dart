@@ -185,7 +185,7 @@ String npcFolderSlug(String folder) => <String>[
 JsonMap newNpc(NpcSeed seed, {required String uuid}) {
   final String id = npcLocalIdOf(seed.documentId);
   return <String, Object?>{
-    'schemaVersion': 1,
+    'schemaVersion': npcSchemaVersion,
     'revision': 1,
     'uuid': uuid,
     'id': id,
@@ -420,7 +420,7 @@ JsonMap newPack(String id, {String? name, String? description}) => <String, Obje
     };
 
 /// An empty trait group; its values are filled in afterwards.
-JsonMap newGroup(String id) => <String, Object?>{'schemaVersion': 1, 'revision': 1, 'id': id, 'values': <String, Object?>{}};
+JsonMap newGroup(String id) => <String, Object?>{'schemaVersion': groupSchemaVersion, 'revision': 1, 'id': id, 'values': <String, Object?>{}};
 
 /// A square route of four points around [origin].
 JsonMap newRoute({(double, double, double) origin = (0, 64, 0), String mode = 'walk'}) {

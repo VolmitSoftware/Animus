@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "98b92adb-a8ef-598f-bfa2-46f49df4976f",
+  "id": "skeleton-bow",
+  "group": "settings",
+  "name": "Set skeleton-bow",
+  "type": "minecraft:skeleton",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "equipment": {
+    "main_hand": {
+      "id": "minecraft:bow"
+    },
+    "feet": {
+      "id": "minecraft:leather_boots",
+      "components": "[dyed_color=16711680]"
+    }
+  }
+}

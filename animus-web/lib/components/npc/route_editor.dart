@@ -25,6 +25,7 @@ import 'package:web/web.dart' as web;
 import '../../logic/gui/gui_json.dart';
 import '../../logic/select/select_model.dart' show withDefault;
 import '../../logic/npc/route_model.dart';
+import '../../logic/terrain/terrain_path.dart';
 import '../../logic/terrain/terrain_snap.dart';
 import '../../logic/terrain/terrain_volume.dart';
 import '../../model/animus_document.dart';
@@ -422,7 +423,7 @@ class _RouteEditorState extends State<RouteEditor> {
         ]),
       _grid(spec, picked),
       if (_show3d && component.world != null && _terrain.available)
-        RouteView3d(spec: spec, world: component.world, focus: routeFocus(spec, picked, component.origin), onVolume: (TerrainVolume? volume) => setState(() => _terrain.volume = volume)),
+        RouteView3d(spec: spec, world: component.world, focus: routeFocus(spec, picked, component.origin), origin: component.origin, onVolume: (TerrainVolume? volume) => setState(() => _terrain.volume = volume)),
       if (!component.readOnly) _addForm(spec),
       if (problems.isNotEmpty || _problems.isNotEmpty)
         dom.ul(classes: 'animus-route-problems', <Widget>[
@@ -581,7 +582,7 @@ class _RouteEditorState extends State<RouteEditor> {
         ]);
     final double step = bounds.step;
     final double radius = math.max(0.3, bounds.width / 70);
-    _terrain.cover(component.world, bounds);
+    _terrain.cover(component.world, bounds, terrainRoutePath(spec, home: origin));
     final Map<(int, int), (int, int, int)> steep = _terrain.steepLinks(spec);
     final Map<(String, int), TerrainIssue> issues = _terrain.issues(spec);
     final List<Component> grid = <Component>[

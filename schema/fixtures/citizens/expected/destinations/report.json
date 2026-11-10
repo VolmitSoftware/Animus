@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 16,
+  "converterVersion": 20,
   "fieldPathFormat": "json-pointer",
-  "importId": "b04e2351c3b9ad08ab75b2eb81ee3ac457e362418a97b3d2bf728aea7c98ea2e",
+  "importId": "4ec59b9b50578e089fda111c39d5e4d4b6dca9a2faa1683aa5ccdb1be2c7aea8",
   "sourceSha256": "7de769520c087e1d1d2c3afb83635390ae59b8f998c228ba04b021bee21eaed9",
   "worldMap": {
     "old_town": "town"
   },
-  "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.",
+  "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs spawn as Citizens had them, and converted patrols, schedules, combat, riding, shops and builds are on.",
   "records": 3,
   "valid": 3,
   "skins": 1,
@@ -45,12 +45,12 @@
   "sentinelMapping": {},
   "issues": [],
   "migrationWarnings": [
-    "citizens-3: /traits/npcdestinations/Destinations/0/Commands: arrival commands run from the console once citizens is in [behaviors.actions] commandNamespaces (accept commands); read them first",
+    "citizens-3: /traits/npcdestinations/Destinations/0/Commands: arrival commands run from the console, as they did under Citizens",
     "citizens-3: /traits/npcdestinations/Destinations/1/WanderSettings/Wandering_Region: the NPC wandered in WorldGuard region market; set wander.area to its corners",
     "citizens-3: /traits/npcdestinations/Destinations/2: a destination in elsewhere was left out; schedule locations lie in the NPC's own world",
     "citizens-4: /traits/npcdestinations/Destinations/0/TimeOfDay: 30000 is past the end of the day; it became 23999",
     "citizens-4: /traits/npcdestinations/Destinations/0/WanderSettings/Wandering_Distance: wandering farther than 32 blocks became 32",
-    "citizens-4: /traits/npcdestinations/Destinations/0/Commands: arrival commands run from the console once citizens is in [behaviors.actions] commandNamespaces (accept commands); read them first",
+    "citizens-4: /traits/npcdestinations/Destinations/0/Commands: arrival commands run from the console, as they did under Citizens",
     "citizens-4: /traits/npcdestinations/Destinations/1: a destination without a block location was left out",
     "citizens-5: /traits/npcdestinations: the trait is not a mapping; kept for review"
   ],
@@ -65,8 +65,8 @@
   },
   "documents": {
     "skins/4a1b0632b36e16fe1428e667be6a90d0450a994aa86e24090d45e0ec81fd90fd.json": "4a1b0632b36e16fe1428e667be6a90d0450a994aa86e24090d45e0ec81fd90fd",
-    "npcs/town/citizens-3.json": "d0d86880abf231c7c25a75797a9961f9c640a3818b926af9ad555862542d486b",
-    "npcs/town/citizens-4.json": "8af217efce3382ddf9fd3d6e78d38cee2a546a1f994c2f6fe9a62f8a8c0f211f",
-    "npcs/town/citizens-5.json": "163288e3a720e2aef493086a33ace9652d4266c7498829de921cb5252440697e"
+    "npcs/town/citizens-3.json": "5b65876a3998b4a8c6673a6c07a6a6c1b0fae877f5aee1c69ba6ac67a674fee9",
+    "npcs/town/citizens-4.json": "656d7926620400522d8224110cf34049128548d9b57fa4c34c9cfac0e96457b5",
+    "npcs/town/citizens-5.json": "facbcd31502cda1c4cee934bce36d23e7cf9397b06a825a27eb829fb479c8644"
   }
 }

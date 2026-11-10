@@ -17,7 +17,7 @@
     "/type: the old player type is a selling shop",
     "/owner uuid: no valid owner; the shop's offers show but do not trade",
     "/offers/1: converted as a display entry; the shop cannot trade yet",
-    "a new minecraft:cow NPC stands at the shopkeeper's place, despawned until the spawn review is accepted"
+    "a new minecraft:cow NPC stands at the shopkeeper's place"
   ],
   "counts": {
     "CONVERTED": 8,

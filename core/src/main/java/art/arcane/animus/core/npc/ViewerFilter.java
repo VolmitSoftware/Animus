@@ -15,8 +15,9 @@ import java.util.function.Predicate;
  * Who sees an NPC, from the definition's {@code viewers}. A {@code deny} filter hides the NPC from any player it names,
  * from members of any group it lists and from holders of any permission it lists. An {@code allow} filter shows the
  * NPC only to players who pass every list it has. Group membership is the {@code group.<name>} permission, which
- * permission plugins such as LuckPerms grant to a group's members. With a {@code range}, players farther away than it
- * are not filtered.
+ * permission plugins such as LuckPerms grant to a group's members. A deny filter counts only nodes set for the player,
+ * so an operator's default grant of every unset node never hides an NPC from operators. With a {@code range}, players
+ * farther away than it are not filtered.
  */
 public record ViewerFilter(boolean allow, Set<UUID> players, Set<String> groups, Set<String> permissions, OptionalDouble range) {
     public static final String FIELD = "viewers";
@@ -28,14 +29,17 @@ public record ViewerFilter(boolean allow, Set<UUID> players, Set<String> groups,
 
     public ViewerFilter { players = Set.copyOf(players); groups = Set.copyOf(groups); permissions = Set.copyOf(permissions); java.util.Objects.requireNonNull(range); }
 
-    /** True when the filter hides the NPC from this player. {@code permitted} answers the player's permission checks. */
-    public boolean hides(UUID player, double distance, Predicate<String> permitted) {
+    /**
+     * True when the filter hides the NPC from this player. {@code permitted} answers the player's permission checks, an
+     * operator's defaults included; {@code granted} answers only for nodes set for the player and decides a deny filter.
+     */
+    public boolean hides(UUID player, double distance, Predicate<String> permitted, Predicate<String> granted) {
         if (this == NONE || range.isPresent() && distance > range.getAsDouble()) return false;
         boolean named = players.contains(player);
+        if (!allow) return named || groups.stream().anyMatch((String group) -> granted.test("group." + group)) || permissions.stream().anyMatch(granted);
         boolean grouped = groups.stream().anyMatch((String group) -> permitted.test("group." + group));
-        boolean granted = permissions.stream().anyMatch(permitted);
-        if (!allow) return named || grouped || granted;
-        return !players.isEmpty() && !named || !groups.isEmpty() && !grouped || !permissions.isEmpty() && !granted;
+        boolean held = permissions.stream().anyMatch(permitted);
+        return !players.isEmpty() && !named || !groups.isEmpty() && !grouped || !permissions.isEmpty() && !held;
     }
 
     /** The filter of a definition, NONE when it declares none. */

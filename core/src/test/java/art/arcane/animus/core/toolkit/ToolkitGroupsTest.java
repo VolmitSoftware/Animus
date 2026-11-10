@@ -63,7 +63,7 @@ class ToolkitGroupsTest {
                 new DocumentStore.Change("npcs/town/guard.json", "missing", npc("guard", GUARD, "town", ",\"groups\":[\"guards\"]")),
                 new DocumentStore.Change("npcs/town/baker.json", "missing", npc("baker", BAKER, "town", "")),
                 new DocumentStore.Change("npcs/town/kitchen/cook.json", "missing", npc("cook", COOK, "town/kitchen", "")),
-                new DocumentStore.Change("groups/guards.json", "missing", "{\"schemaVersion\":1,\"revision\":1,\"id\":\"guards\",\"description\":\"Gate watch\",\"values\":{\"tags\":[\"armed\"]}}")));
+                new DocumentStore.Change("groups/guards.json", "missing", "{\"schemaVersion\":2,\"revision\":1,\"id\":\"guards\",\"description\":\"Gate watch\",\"values\":{\"tags\":[\"armed\"]}}")));
         for (int i = 0; i < CROWD; i++) files.add(new DocumentStore.Change("npcs/crowd/c" + i + ".json", "missing", npc("c" + i, crowd(i), "crowd", "")));
         store.commit(files);
         npcs = new NpcRepository(store);

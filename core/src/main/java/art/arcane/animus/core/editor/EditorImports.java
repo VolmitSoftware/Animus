@@ -100,13 +100,8 @@ public final class EditorImports {
 
     public JsonObject apply(String importId) throws EditorError, IOException { expect(importId, false); return run(CitizensDropIn::applyStaged, EditorError.Code.CONFLICT); }
 
-    public JsonObject accept(String importId, List<String> categories) throws EditorError, IOException {
-        expect(importId, true);
-        for (String category : categories)
-            if (!category.equals("all") && !CitizensDropIn.CATEGORIES.contains(category))
-                throw EditorMessages.invalid("Unknown review category " + category + "; expected " + String.join(", ", CitizensDropIn.CATEGORIES) + " or all.");
-        return run((CitizensDropIn dropIn) -> dropIn.acceptCategories(categories), EditorError.Code.CONFLICT);
-    }
+    /** The command namespaces applying this staged import adds to the allow-list; see {@link CitizensDropIn#commandGrants()}. */
+    public List<String> commandGrants(String importId) throws EditorError, IOException { expect(importId, false); return dropIn().commandGrants(); }
 
     public JsonObject rollback(String importId) throws EditorError, IOException { expect(importId, true); return run(CitizensDropIn::rollbackApplied, EditorError.Code.CONFLICT); }
 
@@ -134,6 +129,9 @@ public final class EditorImports {
     private JsonObject run(Step step, EditorError.Code refusal) throws EditorError, IOException {
         List<String> lines;
         try { lines = step.run(dropIn()); }
+        catch (art.arcane.animus.core.migration.CitizensImporter.OutdatedPreview outdated) {
+            throw new EditorError(refusal, clip(outdated.next("upload and stage the save again, then apply").getMessage(), 2048));
+        }
         catch (IOException refused) { throw new EditorError(refusal, refused.getMessage() == null ? "The import step was refused." : clip(refused.getMessage(), 2048)); }
         return review(lines);
     }

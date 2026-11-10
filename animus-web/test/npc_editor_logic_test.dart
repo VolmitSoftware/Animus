@@ -16,7 +16,7 @@ AnimusDocument _document(DocumentKind kind, String id, String path, Object? json
     validateSource(DocumentLocation(kind, id), path, jsonEncode(json), SharedSchemas.embedded);
 
 Map<String, Object?> _npc(String id, {String? skin}) => <String, Object?>{
-  'schemaVersion': 1,
+  'schemaVersion': 2,
   'revision': 1,
   'uuid': 'fe531426-31bc-5660-9207-b3d3078c2305',
   'id': id,

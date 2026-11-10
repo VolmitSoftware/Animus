@@ -1,16 +1,15 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "0a1b2c3d-0000-4000-8000-000000000102",
   "id": "citizens-2",
   "group": "world",
   "name": "Absent 2",
   "type": "minecraft:llama",
-  "spawned": false,
+  "spawned": true,
   "migration": {
-    "importId": "6731e4bacb26c5cedbf2cfc6c3967a2c7fcd9e2558007774889d5b65143fdf38",
+    "importId": "c1d85d5db7661ef91e7b9a0bc2719db3b90ce9afa031414b0b0f090219a59fb1",
     "citizensId": 2,
-    "originalSpawned": null,
     "references": []
   },
   "position": {

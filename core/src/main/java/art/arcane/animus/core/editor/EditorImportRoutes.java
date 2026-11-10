@@ -20,7 +20,7 @@ import java.util.Set;
 import java.util.concurrent.CompletionStage;
 
 /**
- * The editor's import endpoints under {@code /v1/imports}: upload, stage, and the apply, accept and rollback steps of
+ * The editor's import endpoints under {@code /v1/imports}: upload, stage, and the apply and rollback steps of
  * a staged import. Every read and write runs on the editor's file lane, as the other document endpoints do.
  */
 final class EditorImportRoutes {
@@ -103,44 +103,29 @@ final class EditorImportRoutes {
         });
     }
 
-    /** {@code POST /v1/imports/{importId}/apply|accept|rollback}: the drop-in steps, with a catalog event for what changed. */
+    /** {@code POST /v1/imports/{importId}/apply|rollback}: the drop-in steps, with a catalog event for what changed. */
     CompletionStage<EditorResponse> step(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
         String id = segments[1], step = segments[2];
         if (!id.matches("[a-f0-9]{64}")) throw new EditorError(EditorError.Code.NOT_FOUND, "No staged import " + id + ".");
         ungrouped(token);
         api.scopes(token, IMPORTED, List.of());
-        List<String> categories = new ArrayList<>();
-        if (step.equals("accept")) {
-            JsonObject body = EditorMessages.body(request);
-            EditorMessages.fields(body, "$", Set.of("categories"));
-            if (!body.has("categories") || !body.get("categories").isJsonArray() || body.getAsJsonArray("categories").isEmpty())
-                throw EditorMessages.invalid("$.categories: expected a non-empty array of review categories.");
-            JsonArray list = body.getAsJsonArray("categories");
-            for (int index = 0; index < list.size(); index++) {
-                JsonElement category = list.get(index);
-                if (!category.isJsonPrimitive() || !category.getAsJsonPrimitive().isString()) throw EditorMessages.invalid("$.categories[" + index + "]: expected a string.");
-                categories.add(category.getAsString());
-            }
-        }
-        EditorCommandGuard.requireForImport(token, step, categories, api.parts().host().commandGrants());
+        boolean commandGrants = api.parts().host().commandGrants();
+        EditorCommandGuard.requireForImport(token, step, List.of(), commandGrants);
         return api.files(token, () -> {
             Map<String, String> before = hashes();
             JsonObject review;
             try {
-                review = switch (step) {
-                    case "apply" -> imports().apply(id);
-                    case "accept" -> imports().accept(id, categories);
-                    default -> imports().rollback(id);
-                };
+                EditorCommandGuard.requireForImport(token, step, step.equals("apply") ? imports().commandGrants(id) : List.of(), commandGrants);
+                review = step.equals("apply") ? imports().apply(id) : imports().rollback(id);
             } catch (EditorError refused) {
                 api.audit("import-" + step, Optional.of(token.id()), token.admin(), request, List.of("import:" + id), refused.code().wireName());
                 throw refused;
             }
             List<String> documents = new ArrayList<>(List.of("import:" + id));
             EditorNotifySettings.Kind kind = step.equals("rollback") ? EditorNotifySettings.Kind.ROLLBACK : EditorNotifySettings.Kind.IMPORT;
-            String verb = step.equals("rollback") ? "rolled back an import of" : step.equals("apply") ? "applied an import of" : "accepted an import of";
+            String verb = step.equals("rollback") ? "rolled back an import of" : "applied an import of";
             importPublished(before, hashes(), step.equals("rollback"), token, kind, verb).stream().limit(64).forEach(documents::add);
-            api.audit("import-" + step, Optional.of(token.id()), token.admin(), request, documents, step.equals("rollback") ? "rolled-back" : step.equals("apply") ? "applied" : "accepted");
+            api.audit("import-" + step, Optional.of(token.id()), token.admin(), request, documents, step.equals("rollback") ? "rolled-back" : "applied");
             return EditorResponse.json(200, review);
         });
     }

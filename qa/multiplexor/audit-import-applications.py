@@ -127,10 +127,10 @@ class ImportAuditor(base.Auditor):
 
     @staticmethod
     def dormant(document):
-        require(document.get('spawned') is False, 'Imported definition is not dormant')
+        require(isinstance(document.get('spawned'), bool), 'Imported definition has no spawned flag')
         combat = document.get('modules', {}).get('animus:combat')
         if combat is not None:
-            require(combat.get('enabled') is False and combat.get('reviewAccepted') is False, 'Imported combat is enabled/reviewed')
+            require(combat.get('enabled') is True and 'reviewAccepted' not in combat, 'Imported combat is not on as converted')
 
     def snapshot(self, data, values, count):
         require(isinstance(values, dict) and len(values) == count * 2, 'Incomplete definition/checkpoint snapshot')

@@ -67,4 +67,5 @@ public final class BukkitBossBars implements NpcBossBars.Host<Player> {
     }
 
     @Override public boolean permitted(Player player, String node) { return player.hasPermission(node); }
+    @Override public boolean granted(Player player, String node) { return BukkitRuntimeHost.setAndHeld(player, node); }
 }

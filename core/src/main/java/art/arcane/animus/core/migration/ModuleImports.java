@@ -3,14 +3,14 @@ package art.arcane.animus.core.migration;
 import art.arcane.animus.api.ImportConverters;
 import art.arcane.animus.api.Outcome;
 import art.arcane.animus.core.extension.ModuleHooks;
+import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.storage.NpcPaths;
+import art.arcane.animus.core.storage.SchemaMigrations;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
-import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonPrimitive;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -104,20 +104,20 @@ public final class ModuleImports {
                 JsonObject definition;
                 try { definition = JsonDocuments.object(record.definitionJson()); }
                 catch (IOException invalid) { definition = new JsonObject(); errors.add("$: converter returned invalid JSON: " + invalid.getMessage()); }
-                JsonElement originalSpawned = definition.has("spawned") ? definition.get("spawned").deepCopy() : JsonNull.INSTANCE;
-                if (!definition.has("schemaVersion")) definition.addProperty("schemaVersion", 1);
+                // A converter written against an older definition format is upgraded like a stored file.
+                if (!definition.has("schemaVersion")) definition.addProperty("schemaVersion", NpcDefinition.SCHEMA_VERSION);
+                try { definition = SchemaMigrations.standard().migrate(SchemaMigrations.NPC, definition); }
+                catch (IOException newer) { errors.add("$.schemaVersion: " + newer.getMessage()); }
                 definition.addProperty("revision", 1);
                 definition.addProperty("id", npcId);
                 if (!definition.has("group")) definition.addProperty("group", prefix.length() > 64 ? prefix.substring(0, 64) : prefix);
                 definition.addProperty("uuid", uuid(definition, key, record.sourceId()).toString());
-                definition.addProperty("spawned", false);
+                if (!definition.has("spawned")) definition.addProperty("spawned", true);
                 if (definition.has("skin")) errors.add("$.skin: module imports cannot bundle skins");
-                dormant(definition);
                 JsonObject migration = new JsonObject();
                 migration.addProperty("importId", id);
                 migration.addProperty("converter", key);
                 migration.addProperty("sourceId", record.sourceId());
-                migration.add("originalSpawned", originalSpawned);
                 definition.add("migration", migration);
                 String uuid = definition.get("uuid").getAsString();
                 mapping.addProperty(Integer.toString(record.sourceId()), uuid);
@@ -156,7 +156,7 @@ public final class ModuleImports {
             summary.addProperty("importId", id);
             summary.addProperty("sourceFile", source.fileName());
             summary.addProperty("sourceSha256", JsonDocuments.hash(source.text()));
-            summary.addProperty("notice", "Module conversion by " + key + ". Imported NPCs are staged with spawned=false; imported combat and patrols stay disabled until reviewed.");
+            summary.addProperty("notice", "Module conversion by " + key + ". Imported NPCs install as the converter wrote them.");
             summary.addProperty("records", conversion.records().size());
             summary.addProperty("valid", valid);
             summary.addProperty("skins", 0);
@@ -181,17 +181,6 @@ public final class ModuleImports {
             catch (IllegalArgumentException invalid) { /* derive a stable one below */ }
         }
         return UUID.nameUUIDFromBytes(("animus:module-import:v1:" + key + ":" + sourceId).getBytes(StandardCharsets.UTF_8));
-    }
-    /** Imported combat and patrols stay off until an administrator reviews them, as for Citizens imports. */
-    private static void dormant(JsonObject definition) {
-        if (!definition.has("modules") || !definition.get("modules").isJsonObject()) return;
-        JsonObject modules = definition.getAsJsonObject("modules");
-        for (String module : List.of("animus:combat", "animus:navigation")) {
-            if (!modules.has(module) || !modules.get(module).isJsonObject()) continue;
-            JsonObject value = modules.getAsJsonObject(module);
-            value.add("enabled", new JsonPrimitive(false));
-            value.add("reviewAccepted", new JsonPrimitive(false));
-        }
     }
     private static <T> Outcome<T> await(CompletionStage<Outcome<T>> stage) throws IOException {
         try { return stage.toCompletableFuture().get(70, TimeUnit.SECONDS); }

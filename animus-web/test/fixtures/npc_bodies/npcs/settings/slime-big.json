@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "f546eb2d-0015-5220-87d8-4a5cac6bed78",
+  "id": "slime-big",
+  "group": "settings",
+  "name": "Set slime-big",
+  "type": "minecraft:slime",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "slime": {
+    "size": 3
+  }
+}

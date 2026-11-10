@@ -52,6 +52,38 @@ class MobSkillsTest {
         assertEquals(List.of("SPAWN Clock by clock for none", "SPAWN SkeletonKing by king for none", "timer Clock by clock at tick 1", "timer Clock by clock at tick 2"), mythic.calls);
     }
 
+    @Test void timersFollowTheMobTheNpcIsBoundToNowWithoutARespawn() {
+        MythicHost.Npc clock = mythic.add("clock", Optional.of(new MythicBinding("Clock", true)), true);
+        MythicHost.Npc king = mythic.add("king", Optional.of(new MythicBinding("SkeletonKing", true)), true);
+        skills.spawned(new VirtualNpcSpawnEvent(clock.uuid(), "clock", new NpcPosition("missing-world", 1, 64, 2), false));
+        skills.spawned(new VirtualNpcSpawnEvent(king.uuid(), "king", new NpcPosition("missing-world", 1, 64, 2), false));
+        mythic.calls.clear();
+        skills.tick();
+        mythic.add("clock", Optional.of(new MythicBinding("SkeletonKing", true)), true);
+        mythic.add("king", Optional.of(new MythicBinding("Clock", true)), true);
+        skills.tick();
+        mythic.add("king", Optional.of(new MythicBinding("Clock", false)), true);
+        skills.tick();
+        mythic.add("clock", Optional.of(new MythicBinding("Clock", true)), true);
+        skills.tick();
+        assertEquals(List.of("timer Clock by clock at tick 1", "timer Clock by king at tick 2", "timer Clock by clock at tick 4"), mythic.calls);
+    }
+
+    @Test void timersStartWhenABindingIsAddedAfterSpawnAndStopWhenItIsRemoved() {
+        MythicHost.Npc plain = mythic.add("plain", Optional.empty(), true);
+        skills.spawned(new VirtualNpcSpawnEvent(plain.uuid(), "plain", new NpcPosition("missing-world", 1, 64, 2), false));
+        skills.tick();
+        mythic.add("plain", Optional.of(new MythicBinding("Clock", true)), true);
+        skills.tick();
+        mythic.add("plain", Optional.empty(), true);
+        skills.tick();
+        mythic.add("plain", Optional.of(new MythicBinding("Clock", true)), true);
+        skills.tick();
+        skills.despawned(new VirtualNpcDespawnEvent(plain.uuid(), "plain", false));
+        skills.tick();
+        assertEquals(List.of("timer Clock by plain at tick 2", "timer Clock by plain at tick 4"), mythic.calls);
+    }
+
     @Test void aFailingSkillIsLoggedNotThrown() {
         MythicHost.Npc king = mythic.add("king", Optional.of(new MythicBinding("SkeletonKing", true)), true);
         MobSkills failing = new MobSkills(new FakeMythic(Set.of(), Set.of()) {

@@ -16,6 +16,7 @@ import '../npc/combat_settings.dart';
 import '../npc/group_model.dart';
 import '../npc/route_model.dart' show movementStyles;
 import '../npc/npc_attributes.dart';
+import '../npc/npc_paths.dart' show npcSchemaVersion;
 import 'citizens_traits.dart' show teamColors;
 import 'java_json.dart';
 import 'java_lang.dart';
@@ -35,7 +36,7 @@ bool displayText(String? text) => text != null && text.length <= maxText && !tex
 
 List<String> validateDefinition(JObject object) {
   final List<String> errors = <String>[];
-  _integer(object, 'schemaVersion', BigInt.one, BigInt.one, errors);
+  _integer(object, 'schemaVersion', BigInt.from(npcSchemaVersion), BigInt.from(npcSchemaVersion), errors);
   _integer(object, 'revision', BigInt.one, javaLongMax, errors);
   final String uuid = _string(object, 'uuid', errors);
   if (!canonicalUuid(uuid)) errors.add(r'$.uuid: expected canonical UUID');

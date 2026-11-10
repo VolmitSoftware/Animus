@@ -103,17 +103,16 @@ class CombatScreensTest {
 
     void pickNpc(UUID npc) { assertTrue(toolkit.interacted(alex, npc, false, false)); }
 
-    @Test void enableWritesLiteralTrueAndAcceptsTheReviewOfImports() {
+    @Test void enableWritesLiteralTrueForNativeAndImportedNpcs() {
         select("guard", "old");
         open(CombatScreen::new);
         assertEquals("Combat", title());
         click("Enable combat", Click.LEFT);
         assertTrue(json("guard").getAsJsonObject("modules").getAsJsonObject(CombatSettings.MODULE).get("enabled").getAsJsonPrimitive().isBoolean());
         assertTrue(combat("guard").enabled());
-        assertFalse(combat("guard").reviewAccepted(), "a native NPC needs no review");
-        assertTrue(combat("old").enabled() && combat("old").reviewAccepted(), "an import fights only once its review is accepted");
+        assertTrue(combat("old").enabled(), "an imported NPC needs nothing more than enabled");
         assertTrue(CombatSettings.active(npcs.find("old").orElseThrow()).isPresent());
-        assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("review accepted on 1 imported") && line.contains("; tx ")), alex.messages.toString());
+        assertTrue(alex.messages.stream().anyMatch((String line) -> line.contains("Combat on for") && line.contains("; tx ")), alex.messages.toString());
         assertTrue(lore("selected").contains("Combat on 2 of 2"), lore("selected"));
 
         click("Disable combat", Click.LEFT);

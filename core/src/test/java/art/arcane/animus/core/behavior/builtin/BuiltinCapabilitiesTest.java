@@ -47,7 +47,7 @@ class BuiltinCapabilitiesTest {
             "set-equipment", "set-attribute", "play-sound", "spawn-particle", "combat-control", "build", "set-flag", "set-quest-state", "advance-quest-state", "open-shop", "open-gui",
             "play-animation", "stop-animation", "message", "title", "actionbar", "teleport", "give-item", "take-item", "give-book", "charge",
             "start-quest", "advance-quest", "complete-quest", "quest-objective");
-    private static final Set<String> CONDITIONS = Set.of("has-permission", "npc-state", "player-in-range", "flag-state", "quest-state", "quest-status", "can-afford");
+    private static final Set<String> CONDITIONS = Set.of("has-permission", "npc-state", "player-in-range", "flag-state", "quest-state", "quest-status", "can-afford", "commands-allowed");
 
     private final RecordingPlatform platform = new RecordingPlatform();
     private final List<String> log = new ArrayList<>();
@@ -370,6 +370,15 @@ class BuiltinCapabilitiesTest {
         assertEquals(Outcome.Status.UNAVAILABLE, anonymous.status());
         assertTrue(platform.calls.isEmpty());
         synchronized (log) { assertTrue(log.isEmpty()); }
+    }
+
+    @Test void commandsAllowedAnswersTheSameAllowListAsCommand() throws Exception {
+        start(Platform.PAPER, 5000, grants(List.of("town:greeter"), List.of("shop")));
+        for (Optional<String> behavior : List.of(Optional.of("town:greeter"), Optional.of("shop:baker")))
+            assertEquals(Optional.of(true), settle(host.conditionHandle(key("commands-allowed"), NPC, Optional.of(PLAYER), "{}", false, () -> true, behavior).result()).value(), behavior.toString());
+        for (Optional<String> behavior : List.of(Optional.of("town:other"), Optional.<String>empty()))
+            assertEquals(Optional.of(false), settle(host.conditionHandle(key("commands-allowed"), NPC, Optional.empty(), "{}", false, () -> true, behavior).result()).value(), behavior.toString());
+        assertTrue(platform.calls.isEmpty());
     }
 
     @Test void namespaceGrantCoversOnlyThatNamespace() {

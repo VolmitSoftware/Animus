@@ -3,14 +3,12 @@ package art.arcane.animus.core.migration;
 import art.arcane.animus.core.npc.GroupDocument;
 import art.arcane.animus.core.npc.GroupMerge;
 import art.arcane.animus.core.npc.NpcDefinition;
-import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,7 +57,7 @@ public final class GroupFactoring {
             String id = "citizens-" + JsonDocuments.hash(set.getKey()).substring(0, 8);
             if (groups.stream().anyMatch((Group group) -> group.id().equals(id))) continue;
             JsonObject document = new JsonObject();
-            document.addProperty("schemaVersion", 1);
+            document.addProperty("schemaVersion", GroupDocument.SCHEMA_VERSION);
             document.addProperty("revision", 1);
             document.addProperty("id", id);
             document.addProperty("description", "Shared by " + set.getValue().size() + " imported Citizens NPCs");
@@ -111,35 +109,6 @@ public final class GroupFactoring {
             groups.add("groups/" + group.get("id").getAsString() + ".json (" + group.get("members").getAsInt() + " NPCs)");
         }
         return Optional.of("Factored groups: " + (groups.isEmpty() ? "none; no two NPCs share their settings" : String.join(", ", groups)));
-    }
-
-    /**
-     * Accepts review categories inside the import's factored groups, as the accepted NPCs that list them need. Spawning and
-     * Denizen behaviors are never factored, so they stay on the NPCs.
-     */
-    static List<DocumentStore.Change> accept(DocumentStore store, JsonObject state, Collection<String> categories) throws IOException {
-        if (!state.has("importId")) return List.of();
-        String report = store.read("imports/" + state.get("importId").getAsString() + "/report.json");
-        if (report == null) return List.of();
-        JsonObject documents = JsonDocuments.object(report).getAsJsonObject("documents");
-        List<DocumentStore.Change> changes = new ArrayList<>();
-        for (String path : documents.keySet()) {
-            if (!path.matches(GROUP_PATH)) continue;
-            String before = store.read(path);
-            if (before == null) continue;
-            JsonObject document = JsonDocuments.object(before);
-            JsonObject values = document.getAsJsonObject("values");
-            boolean edited = false;
-            for (String category : categories) {
-                if (category.equals("spawn") || category.equals("denizen") || !CitizensDropIn.waiting(values, category)) continue;
-                CitizensDropIn.acceptCategory(values, category);
-                edited = true;
-            }
-            if (!edited) continue;
-            document.addProperty("revision", document.get("revision").getAsLong() + 1);
-            changes.add(new DocumentStore.Change(path, store.hash(path), JsonDocuments.write(document)));
-        }
-        return changes;
     }
 
     /** The groupable fields of one definition; {@code citizens:review} is left out of {@code modules}. */

@@ -6,8 +6,8 @@ import art.arcane.animus.bukkit.event.VirtualNpcDespawnEvent;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
 import art.arcane.animus.bukkit.event.VirtualNpcSpawnEvent;
 import art.arcane.animus.core.integration.MythicBinding;
-import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -26,8 +26,11 @@ final class MobSkills implements Listener {
     private final MythicBridge mythic;
     private final MythicHost host;
     private final Consumer<String> log;
-    /** Active NPCs whose mob has timer skills, by NPC UUID. Ticked from one owner; read anywhere. */
-    private final Map<UUID, String> timed = new ConcurrentHashMap<>();
+    /**
+     * Every active NPC, bound or not. Each tick walks the NPCs bound now and runs the timers of those active, so an
+     * edit that adds, changes or removes a binding starts, changes or stops timer skills without a respawn.
+     */
+    private final Set<UUID> active = ConcurrentHashMap.newKeySet();
     private long tick;
 
     MobSkills(MythicBridge mythic, MythicHost host, Consumer<String> log) { this.mythic = mythic; this.host = host; this.log = log; }
@@ -41,23 +44,22 @@ final class MobSkills implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void spawned(VirtualNpcSpawnEvent event) {
+        active.add(event.getNpcId());
         Optional<MythicHost.Npc> npc = bound(event.getNpcId());
-        if (npc.isEmpty()) { timed.remove(event.getNpcId()); return; }
-        String mob = npc.get().binding().orElseThrow().mob();
-        if (mythic.hasTimers(mob)) timed.put(event.getNpcId(), mob); else timed.remove(event.getNpcId());
+        if (npc.isEmpty()) return;
         Optional<Location> where = host.location(event.getPosition());
         where.ifPresent((Location at) -> host.at(at, () -> fire(npc.get(), MythicBridge.Trigger.SPAWN, at, Optional.empty())));
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
-    public void despawned(VirtualNpcDespawnEvent event) { timed.remove(event.getNpcId()); }
+    public void despawned(VirtualNpcDespawnEvent event) { active.remove(event.getNpcId()); }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void attacked(VirtualNpcDamageEvent event) { run(event.getNpcId(), MythicBridge.Trigger.ATTACK, Optional.of(event.getTarget())); }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void died(VirtualNpcDeathEvent event) {
-        timed.remove(event.getNpcId());
+        active.remove(event.getNpcId());
         Optional<Location> where = host.location(event.getPosition());
         Optional<MythicHost.Npc> npc = bound(event.getNpcId());
         if (npc.isEmpty() || where.isEmpty()) return;
@@ -70,12 +72,15 @@ final class MobSkills implements Listener {
     /** One server tick: runs the timer skills that are due. Call from one owner every tick. */
     void tick() {
         long now = ++tick;
-        for (Map.Entry<UUID, String> entry : timed.entrySet()) {
-            Optional<MythicHost.Npc> npc = host.npc(entry.getKey()).filter((MythicHost.Npc found) -> found.location().isPresent());
+        for (UUID id : host.bound()) {
+            if (!active.contains(id)) continue;
+            Optional<MythicHost.Npc> npc = bound(id).filter((MythicHost.Npc found) -> found.location().isPresent());
             if (npc.isEmpty()) continue;
+            String mob = npc.get().binding().orElseThrow().mob();
+            if (!mythic.hasTimers(mob)) continue;
             MythicBridge.Caster caster = MythicBridge.Caster.of(npc.get());
             Location where = npc.get().location().get();
-            host.at(where, () -> guarded(() -> mythic.runTimers(entry.getValue(), caster, where, now)));
+            host.at(where, () -> guarded(() -> mythic.runTimers(mob, caster, where, now)));
         }
     }
 

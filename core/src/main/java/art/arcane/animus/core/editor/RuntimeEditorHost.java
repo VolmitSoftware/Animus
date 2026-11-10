@@ -122,4 +122,9 @@ public final class RuntimeEditorHost<P> implements EditorHost {
     @Override public String previewsUnavailable() { return parts.living().status(); }
 
     @Override public Optional<EditorTerrain> terrain() { return Optional.ofNullable(parts.terrain()); }
+
+    @Override public Optional<art.arcane.animus.core.virtual.WorldPosition> located(UUID npc) {
+        try { return parts.living().state(npc).filter(art.arcane.animus.core.virtual.VirtualNpcState.Snapshot::active).map(art.arcane.animus.core.virtual.VirtualNpcState.Snapshot::position); }
+        catch (IllegalStateException stopped) { return Optional.empty(); }
+    }
 }

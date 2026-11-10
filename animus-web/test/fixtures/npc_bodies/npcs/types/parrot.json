@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "18b6707e-658d-596a-be97-06b4c0d285d6",
+  "id": "parrot",
+  "group": "types",
+  "name": "Body parrot",
+  "type": "minecraft:parrot",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

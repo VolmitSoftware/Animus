@@ -228,6 +228,23 @@ void main() {
     expectMessage('capabilities-response', capabilities.body);
   });
 
+  test('should report the integration plugins the plugins control names as running', () async {
+    final String token = await pairToken();
+    Future<Map<String, Object?>> features() async {
+      final Reply reply = await call('GET', '/animus/v1/capabilities', token: token);
+      expectMessage('capabilities-response', reply.body);
+      return reply.json['features']! as Map<String, Object?>;
+    }
+
+    expect(await features(), isNot(contains('modelengine')));
+    await control('POST', '/plugins?running=modelengine');
+    expect(await features(), containsPair('modelengine', <String, Object?>{'available': true}));
+    expect(await features(), isNot(contains('mythicmobs')));
+    expect((await control('GET', '/state'))['controls'], containsPair('runningPlugins', <String>['modelengine']));
+    await control('POST', '/reset');
+    expect((await control('GET', '/state'))['controls'], containsPair('runningPlugins', <String>[]));
+  });
+
   test('should list registries, commands and PlaceholderAPI identifiers for completion', () async {
     final Reply reply = await call('GET', '/animus/v1/lookups', token: await pairToken());
     expectMessage('lookups-response', reply.body);
@@ -235,6 +252,23 @@ void main() {
     expect(lookups.registries[RegistryKind.item], contains('diamond_sword'));
     expect(lookups.commands, contains('spawn'));
     expect(lookups.papi, contains('player'));
+  });
+
+  test('a spawned NPC answers where it is now, and the ground there opens while it stands there', () async {
+    final String token = await pairToken();
+    final Reply idle = await call('GET', '/animus/v1/terrain/position?npc=examples/greeter', token: token);
+    expectMessage('terrain-position-response', idle.body);
+    expect(idle.json['active'], isFalse);
+    Future<String> chunk() async => (await call('GET', '/animus/v1/terrain/blocks?world=world&cx=-38&cz=0&y=60&height=4', token: token)).json['status']! as String;
+    expect(await chunk(), 'forbidden');
+    await control('POST', '/live', <String, Object?>{'npc': 'examples/greeter', 'world': 'world', 'x': -600.5, 'y': 64, 'z': 0.5});
+    final Reply live = await call('GET', '/animus/v1/terrain/position?npc=examples/greeter', token: token);
+    expectMessage('terrain-position-response', live.body);
+    expect(live.json, <String, Object?>{'npc': 'examples/greeter', 'active': true, 'world': 'world', 'x': -600.5, 'y': 64.0, 'z': 0.5});
+    expect(await chunk(), 'ok');
+    await control('POST', '/live', <String, Object?>{'npc': 'examples/greeter'});
+    expect(await chunk(), 'forbidden');
+    expect((await call('GET', '/animus/v1/terrain/position?npc=examples/nobody', token: token)).errorCode, 'not-found');
   });
 
   test('schemas are keyed by kind', () async {
@@ -781,7 +815,7 @@ void main() {
       return reply.json;
     }
 
-    test('upload, stage, apply, accept and roll back a Citizens save with catalog events', () async {
+    test('upload, stage, apply and roll back a Citizens save with catalog events', () async {
       final String token = await importToken();
       final Frames events = await directEvents(token);
       expect(review(await call('GET', '/animus/v1/imports', token: token))['state'], 'none');
@@ -797,13 +831,11 @@ void main() {
       expect(applied['npcs'], 6);
       final Map<String, Object?> catalog = await events.nextOf('catalog');
       expect(catalog['documents'], isNotEmpty);
-      final int waiting = (applied['pending']! as Map<String, Object?>).values.fold(0, (int sum, Object? n) => sum + (n! as int));
-      expect(waiting, greaterThan(0));
-      final Map<String, Object?> accepted = review(await call('POST', '/animus/v1/imports/$importId/accept', token: token, body: <String, Object?>{'categories': <String>['all']}));
-      expect((accepted['pending']! as Map<String, Object?>).values.every((Object? n) => n == 0), isTrue);
+      expect((applied['lines']! as List<Object?>).first, contains('NPCs spawn with their patrols'));
+      expect(applied.containsKey('pending'), isFalse, reason: 'nothing waits once applied');
+      expect((await call('POST', '/animus/v1/imports/$importId/accept', token: token, body: <String, Object?>{'categories': <String>['all']})).errorCode, 'not-found');
       final Map<String, Object?> rolled = review(await call('POST', '/animus/v1/imports/$importId/rollback', token: token));
       expect(rolled['state'], 'rolled-back');
-      await events.nextOf('catalog');
       final Map<String, Object?> deleted = await events.nextOf('catalog');
       expect(deleted['deleted'], isNotEmpty);
       await events.socket.close();

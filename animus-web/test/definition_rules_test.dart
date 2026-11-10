@@ -9,7 +9,7 @@ import 'package:test/test.dart';
 const String _skin = 'dc33741fb113d5f1f3876ba48fb235adefc63628862c1e659f4061d8c7c18717';
 
 JsonMap _npc([JsonMap extra = const <String, Object?>{}]) => <String, Object?>{
-      'schemaVersion': 1,
+      'schemaVersion': 2,
       'revision': 1,
       'uuid': '00000000-0000-4000-8000-000000000001',
       'id': 'a',
@@ -210,7 +210,7 @@ void main() {
       final AnimusDocument document = validateSource(
         const DocumentLocation(DocumentKind.group, 'guards'),
         'groups/guards.json',
-        prettyJson(<String, Object?>{'schemaVersion': 1, 'revision': 1, 'id': 'other', 'values': <String, Object?>{}}),
+        prettyJson(<String, Object?>{'schemaVersion': 2, 'revision': 1, 'id': 'other', 'values': <String, Object?>{}}),
         SharedSchemas.embedded,
       );
       expect(_messages(document.diagnostics), contains(r'$.id: the group id is other but the file is guards'));

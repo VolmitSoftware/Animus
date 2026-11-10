@@ -6,6 +6,7 @@ import art.arcane.animus.core.behavior.builtin.DialogueFormat;
 import art.arcane.animus.api.NpcHandle;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
+import art.arcane.animus.core.behavior.builtin.Charges;
 import art.arcane.animus.core.behavior.builtin.PlatformRefusals;
 import art.arcane.animus.core.behavior.ServerNpc;
 import art.arcane.animus.core.building.BuildService;
@@ -14,7 +15,7 @@ import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.recording.Playback;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.runtime.PersistedNpcService;
-import art.arcane.animus.core.runtime.ViewerPreviews;
+import art.arcane.animus.core.behavior.trigger.HiddenNpcs;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
 import art.arcane.animus.api.Outcome;
@@ -65,10 +66,13 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
     private final ModTicks ticks;
     private final BuildService<ServerPlayer, ItemStack> builds;
     private final java.util.function.Supplier<art.arcane.animus.core.gui.HoloService<ServerPlayer, ItemStack>> guis;
+    private final java.util.function.Supplier<art.arcane.animus.core.inventory.Economy> economy;
 
     VanillaBehaviorPlatform(MinecraftServer server, PersistedNpcService<ServerPlayer, ItemStack> living, ModCombat combat, BuildService<ServerPlayer, ItemStack> builds, ModTicks ticks,
-                            java.util.function.Supplier<art.arcane.animus.core.gui.HoloService<ServerPlayer, ItemStack>> guis) {
+                            java.util.function.Supplier<art.arcane.animus.core.gui.HoloService<ServerPlayer, ItemStack>> guis,
+                            java.util.function.Supplier<art.arcane.animus.core.inventory.Economy> economy) {
         this.guis = guis;
+        this.economy = Objects.requireNonNull(economy);
         this.server = Objects.requireNonNull(server); this.living = Objects.requireNonNull(living);
         this.combat = Objects.requireNonNull(combat); this.ticks = Objects.requireNonNull(ticks);
         this.builds = Objects.requireNonNull(builds);
@@ -104,7 +108,7 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
     }
     @Override public int presentChoices(NpcHandle npc, UUID player, String prompt, String token, List<ChoiceOption> options) {
         NpcRuntime.ActiveNpc active = require(npc);
-        if (living.previews().hides(player, active)) return 0;
+        if (living.hidden().hides(player, active.id(), active.state().npcId())) return 0;
         Component message = ModText.component(DialogueFormat.speech(active.name(), prompt));
         Component buttons = ModText.parts(DialogueFormat.buttons(BuildIdentity.ID, token, List.copyOf(options)));
         return living.players().deliver(player, (ServerPlayer online) -> { online.sendSystemMessage(message); online.sendSystemMessage(buttons); }) ? 1 : 0;
@@ -384,6 +388,25 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         if (taken > 0) inventory.setChanged();
         return taken;
     }
+    /** Items, levels, and money through the economy shops use: a Java module's, or none, which never affords money. */
+    @Override public boolean affordable(UUID player, Cost cost) {
+        Optional<ServerPlayer> online = living.players().owned(player);
+        return online.isPresent() && Charges.affordable(payer(online.get()), cost);
+    }
+    @Override public boolean charge(UUID player, Cost cost) {
+        Optional<ServerPlayer> online = living.players().owned(player);
+        return online.isPresent() && Charges.charge(payer(online.get()), cost);
+    }
+    private Charges.Payer<ItemStack> payer(ServerPlayer player) {
+        return new Charges.Payer<>(player.getUUID(), ModScreens.storage(player), ModScreens.VanillaItems.INSTANCE, this::stack, () -> player.experienceLevel,
+                (int levels) -> player.giveExperienceLevels(-levels), economy.get());
+    }
+    private ItemStack stack(CostItem wanted) {
+        List<String> errors = new ArrayList<>();
+        ItemStack stack = VanillaRuntimeHost.stack(server, new art.arcane.animus.core.npc.NpcItem(wanted.item(), 1, wanted.components(), Optional.empty()), "$.items", errors);
+        if (stack == null) throw new CapabilityRefusal(Outcome.Status.INVALID, "unknown-item", "Not an item on this server: " + wanted.item() + " " + String.join("; ", errors));
+        return stack;
+    }
     @Override public int giveBook(UUID player, Book book) {
         Optional<ServerPlayer> online = living.players().owned(player);
         if (online.isEmpty()) return 0;
@@ -446,11 +469,11 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         double y = (active.state().bounds().min().y() + active.state().bounds().max().y()) / 2;
         return new WorldPosition(position.world(), new Vec3(position.point().x(), y, position.point().z()));
     }
-    /** The trigger player, or nearby players, leaving out any viewer whose editor preview hides the speaker. Returns how many were reached. */
+    /** The trigger player, or nearby players, leaving out any viewer the speaker is hidden from. Returns how many were reached. */
     private int deliver(NpcRuntime.ActiveNpc speaker, Audience audience, WorldPosition at, boolean sameWorldOnly, Consumer<ServerPlayer> action) {
-        ViewerPreviews previews = living.previews();
+        HiddenNpcs hidden = living.hidden();
         if (audience.player().isPresent()) {
-            if (previews.hides(audience.player().get(), speaker)) return 0;
+            if (hidden.hides(audience.player().get(), speaker.id(), speaker.state().npcId())) return 0;
             Optional<ServerPlayer> viewer = living.players().owned(audience.player().get());
             if (viewer.isEmpty()) return 0;
             if (sameWorldOnly && !ModWorldKeys.key(viewer.get().level()).equals(at.world())) return 0;
@@ -460,7 +483,7 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         List<ServerPlayer> nearby = living.players().ownedNear(at, audience.radius(), MAXIMUM_AUDIENCE);
         int reached = 0;
         for (ServerPlayer viewer : nearby) {
-            if (previews.hides(viewer.getUUID(), speaker)) continue;
+            if (hidden.hides(viewer.getUUID(), speaker.id(), speaker.state().npcId())) continue;
             action.accept(viewer);
             reached++;
         }

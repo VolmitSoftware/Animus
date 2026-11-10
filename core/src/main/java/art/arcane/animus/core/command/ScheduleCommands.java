@@ -108,7 +108,7 @@ final class ScheduleCommands extends CommandGroup {
         })));
     }
 
-    @Director(description = "Turn an NPC's schedule on; an imported one counts as reviewed")
+    @Director(description = "Turn an NPC's schedule on")
     void on(@Param(name = "npc", description = "The NPC id, or @selected") String npc) { turn(npc, true); }
 
     @Director(description = "Turn an NPC's schedule off; its locations stay")
@@ -120,7 +120,6 @@ final class ScheduleCommands extends CommandGroup {
             if (locations(document).isEmpty()) throw new IllegalArgumentException(id + " has no schedule; /animus schedule add " + id + " <time> starts one");
             JsonObject module = module(document);
             module.addProperty("enabled", on);
-            if (on && document.has("migration")) module.addProperty("reviewAccepted", true);
             return id + "'s schedule is " + (on ? "on" : "off");
         })));
     }

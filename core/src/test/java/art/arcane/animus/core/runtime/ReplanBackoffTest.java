@@ -29,7 +29,7 @@ class ReplanBackoffTest {
         harness.terrain = (int x, int y, int z) -> y < 64 ? Cell.SOLID : Cell.AIR;
         harness.service = new PersistedNpcService<>(harness.host, runtime, Runnable::run, PersistedNpcService.Settings.DEFAULT);
         Files.writeString(npcs.resolve(NPC + ".json"), """
-                {"schemaVersion": 1, "revision": 1, "uuid": "%s", "id": "%s", "group": "test",
+                {"schemaVersion": 2, "revision": 1, "uuid": "%s", "id": "%s", "group": "test",
                  "name": "Walker", "type": "minecraft:villager", "spawned": true,
                  "position": {"world": "world", "x": 2.5, "y": 64, "z": 2.5, "yaw": 0, "pitch": 0},
                  "modules": {"animus:navigation": {"enabled": true, "speed": 2, "waitTicks": 0, "points": [{"x": 30, "y": 64, "z": 2}]}}}

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "76b3bb09-3c20-57f1-8a9d-2cef59f27177",
+  "id": "item-display",
+  "group": "types",
+  "name": "Body item_display",
+  "type": "minecraft:item_display",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "itemDisplay": {
+    "item": {
+      "id": "minecraft:diamond_sword"
+    },
+    "transform": "fixed"
+  }
+}

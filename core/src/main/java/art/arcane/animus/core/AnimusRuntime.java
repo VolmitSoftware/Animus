@@ -103,6 +103,7 @@ public final class AnimusRuntime implements AutoCloseable {
             behaviorState = state;
             rigs = rigLibrary;
             maintenance = scheduleMaintenance(lane);
+            AnimusLog.shared().start();
             cleanupFailure = null;
             closing = false;
             settings = loaded;
@@ -139,6 +140,7 @@ public final class AnimusRuntime implements AutoCloseable {
         if (settings == null || closing) return;
         closing = true;
         AnimusLog.shared().flush();
+        AnimusLog.shared().stop();
         maintenance.shutdownNow();
         definitions.close();
         fileWork.close();

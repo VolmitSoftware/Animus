@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "17ad2c7f-2623-52b7-8fd9-56066684ba9b",
+  "id": "pillager",
+  "group": "types",
+  "name": "Body pillager",
+  "type": "minecraft:pillager",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

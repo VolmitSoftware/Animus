@@ -68,19 +68,4 @@ final class LinkCommands {
         @Director(description = "Put the original Citizens references back")
         void rollback() { run(this, LinkRemap.Plugin.BETONQUEST, LinkRemap::rollback); }
     }
-
-    @Director(name = "typewriter", description = "Point Typewriter pages at the NPCs a Citizens import created")
-    @NeedsPlugin("Typewriter")
-    static final class Typewriter extends CommandGroup {
-        Typewriter(CommandServices services) { super(services); }
-
-        @Director(description = "List the Citizens NPC references that would point at imported NPCs")
-        void preview() { run(this, LinkRemap.Plugin.TYPEWRITER, LinkRemap::preview); }
-
-        @Director(description = "Point the references at imported NPCs, keeping the originals")
-        void apply() { run(this, LinkRemap.Plugin.TYPEWRITER, LinkRemap::apply); }
-
-        @Director(description = "Put the original Citizens references back")
-        void rollback() { run(this, LinkRemap.Plugin.TYPEWRITER, LinkRemap::rollback); }
-    }
 }

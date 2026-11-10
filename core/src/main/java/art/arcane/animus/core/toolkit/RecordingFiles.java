@@ -67,7 +67,6 @@ final class RecordingFiles {
             navigation.addProperty("enabled", true);
             navigation.addProperty("recording", id);
             navigation.addProperty("playback", previous != null && previous.has("playback") ? previous.get("playback").getAsString() : Playback.DEFAULT.key());
-            if (previous != null && previous.has("reviewAccepted")) navigation.add("reviewAccepted", previous.get("reviewAccepted"));
             if (navigation.equals(previous)) continue;
             JsonObject modules = document.has("modules") && document.get("modules").isJsonObject() ? document.getAsJsonObject("modules") : new JsonObject();
             modules.add(ToolkitFiles.NAVIGATION, navigation);

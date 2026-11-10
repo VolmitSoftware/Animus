@@ -64,7 +64,7 @@ class RecordingPlaybackRuntimeTest {
         harness.terrain = FLAT;
         harness.service = new PersistedNpcService<>(harness.host, runtime, Runnable::run, PersistedNpcService.Settings.DEFAULT);
         Files.writeString(npcs.resolve(NPC + ".json"), """
-                {"schemaVersion": 1, "revision": 1, "uuid": "6c1f0c52-6f0e-4f43-a3a3-9d1f8f8a0c13", "id": "%s", "group": "test",
+                {"schemaVersion": 2, "revision": 1, "uuid": "6c1f0c52-6f0e-4f43-a3a3-9d1f8f8a0c13", "id": "%s", "group": "test",
                  "name": "Performer", "type": "minecraft:player", "spawned": true,
                  "position": {"world": "world", "x": 2.5, "y": 64, "z": 2.5, "yaw": 0, "pitch": 0},%s
                  "modules": {"animus:navigation": %s}}

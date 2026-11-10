@@ -17,13 +17,13 @@ import org.junit.jupiter.api.io.TempDir;
 class NpcCommandsTest {
     @TempDir Path root;
 
-    private static final String GUARD = "{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"12345678-1234-1234-1234-123456789abc\",\"id\":\"guard\",\"group\":\"town\",\"name\":\"N\","
+    private static final String GUARD = "{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"12345678-1234-1234-1234-123456789abc\",\"id\":\"guard\",\"group\":\"town\",\"name\":\"N\","
             + "\"type\":\"minecraft:player\",\"spawned\":false,\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0},\"attributes\":{\"minecraft:gravity\":0.04},\"groups\":[\"giants\"]}";
 
     @Test void attributeSetsShowsAndResetsOneAttributeInTheFile() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             store.commit(List.of(
-                    new DocumentStore.Change("groups/giants.json", "missing", "{\"schemaVersion\":1,\"revision\":1,\"id\":\"giants\",\"values\":{\"attributes\":{\"scale\":3}}}"),
+                    new DocumentStore.Change("groups/giants.json", "missing", "{\"schemaVersion\":2,\"revision\":1,\"id\":\"giants\",\"values\":{\"attributes\":{\"scale\":3}}}"),
                     new DocumentStore.Change("npcs/town/guard.json", "missing", GUARD)));
             NpcRepository repository = new NpcRepository(store);
             assertTrue(repository.reload().isEmpty());

@@ -75,7 +75,7 @@ class DefinitionQueueTest {
     static NpcDefinition definition(String id, String name, long revision) throws Exception {
         String uuid = UUID.nameUUIDFromBytes(id.getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
         return NpcDefinition.parse("""
-                {"schemaVersion":1,"revision":%d,"uuid":"%s","id":"%s","group":"test","name":"%s",
+                {"schemaVersion":2,"revision":%d,"uuid":"%s","id":"%s","group":"test","name":"%s",
                  "type":"minecraft:player","spawned":true,
                  "position":{"world":"world","x":1,"y":64,"z":2,"yaw":0,"pitch":0}}
                 """.formatted(revision, uuid, id, name));

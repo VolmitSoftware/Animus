@@ -1,12 +1,12 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "6c1b7a43-9a0e-4d7f-8a39-1f9f0f2a0003",
   "id": "shopkeeper-3",
   "group": "shopkeepers",
   "name": "Farmer Joe",
   "type": "minecraft:villager",
-  "spawned": false,
+  "spawned": true,
   "position": {
     "world": "world_nether",
     "x": -7.5,
@@ -16,10 +16,9 @@
     "pitch": 0
   },
   "migration": {
-    "importId": "4a2af9315d2ea41e4c6d9dc01cf130b3de288d7d4e72451fd16dbbfbfe080950",
+    "importId": "8c7cc99c3491a2877c3935c7d85ed28595dfee10ccd506f29836d9ae44585f46",
     "source": "Shopkeepers",
-    "shopkeeper": 3,
-    "originalSpawned": true
+    "shopkeeper": 3
   },
   "modules": {
     "animus:shop": {
@@ -29,7 +28,6 @@
         "profession": "minecraft:farmer",
         "level": 2
       },
-      "reviewAccepted": false,
       "imported": {
         "source": "Shopkeepers",
         "shopkeeper": 3

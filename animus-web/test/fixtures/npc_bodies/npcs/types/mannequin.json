@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "7567e730-6bc1-505d-8f0a-0a4a498e9af0",
+  "id": "mannequin",
+  "group": "types",
+  "name": "Body mannequin",
+  "type": "minecraft:mannequin",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

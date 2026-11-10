@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "a02de987-a52d-533d-bd5b-3c44075f624b",
+  "id": "nautilus",
+  "group": "types",
+  "name": "Body nautilus",
+  "type": "minecraft:nautilus",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

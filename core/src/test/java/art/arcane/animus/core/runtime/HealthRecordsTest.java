@@ -17,7 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 class HealthRecordsTest {
     private static final UUID GHOST = UUID.fromString("12345678-1234-1234-1234-123456789abd");
     private static final String JSON = """
-            {"schemaVersion":1,"revision":2,"uuid":"12345678-1234-1234-1234-123456789abd","id":"ghost","group":"town","name":"Ghost","type":"minecraft:player","spawned":true,
+            {"schemaVersion":2,"revision":2,"uuid":"12345678-1234-1234-1234-123456789abd","id":"ghost","group":"town","name":"Ghost","type":"minecraft:player","spawned":true,
              "position":{"world":"world","x":0,"y":64,"z":0,"yaw":0,"pitch":0},"modules":{"animus:health":{"killable":true,"respawn":{"afterDeath":"permadeath"}}}}
             """;
     @TempDir Path root;

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "8fb1b3fa-72e7-5592-8a4e-49b853f36313",
+  "id": "creaking",
+  "group": "types",
+  "name": "Body creaking",
+  "type": "minecraft:creaking",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

@@ -60,7 +60,7 @@ public final class ImportApplications {
         plan.addProperty("sourceReportSha256",bundle.reportHash());plan.addProperty("mode",mode.name());
         if(label!=null)plan.addProperty("copyLabel",label);
         plan.addProperty("records",projection.definitions().size());plan.addProperty("replacements",projection.replacedPaths().size());
-        plan.addProperty("notice","Explicit application installs dormant NPCs and disables imported combat. Replacement overwrites reviewed target definitions; rollback refuses subsequent edits. Unknown preserved references still require integration review.");
+        plan.addProperty("notice","Explicit application installs the NPCs as converted. Replacement overwrites reviewed target definitions; rollback refuses subsequent edits. Unknown preserved references still require integration review.");
         plan.add("documents",documents);
         JsonObject mapping=new JsonObject();projection.identities().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e->mapping.addProperty(e.getKey().toString(),e.getValue().toString()));plan.add("uuidMap",mapping);
         String content=JsonDocuments.write(plan), id=JsonDocuments.hash(content), path=planPath(importId,id);
@@ -99,7 +99,7 @@ public final class ImportApplications {
         if(receipt!=null) {
             JsonObject data=JsonDocuments.object(receipt);
             if(!string(data,"importId").equals(importId) || !string(data,"applicationId").equals(applicationId)
-                    || !string(data,"state").equals("installed-dormant"))throw new IOException("Invalid application receipt");
+                    || !string(data,"state").equals("installed"))throw new IOException("Invalid application receipt");
             for(var candidate:candidates.entrySet())if(!Objects.equals(store.read(candidate.getKey()),candidate.getValue()))
                 throw new IOException("Already-applied application has changed or missing output: "+candidate.getKey());
             JsonElement recorded=data.get("transaction");
@@ -131,7 +131,7 @@ public final class ImportApplications {
                 changes.add(new DocumentStore.Change(candidate.getKey(),beforeHash,candidate.getValue()));
         }
         JsonObject installed=new JsonObject();installed.addProperty("schemaVersion",1);installed.addProperty("importId",importId);
-        installed.addProperty("applicationId",applicationId);installed.addProperty("state","installed-dormant");
+        installed.addProperty("applicationId",applicationId);installed.addProperty("state","installed");
         installed.addProperty("records",projected.definitions().size());installed.addProperty("mode",mode.name());
         installed.addProperty("transaction",transaction);
         changes.add(new DocumentStore.Change(receiptPath,"missing",JsonDocuments.write(installed)));
@@ -192,6 +192,7 @@ public final class ImportApplications {
             if(!path.matches(CitizensImporter.BUNDLE_PATH))throw new IOException("Invalid bundle path: "+path);
             String value=store.read(prefix+path);budget.charge(value);
             if(value==null || !JsonDocuments.hash(value).equals(string(documents,path)))throw new IOException("Preview changed: "+path);
+            CitizensImporter.requireCurrent(importId,path,value);
             if(path.startsWith("npcs/")) {
                 NpcDefinition npc=NpcDefinition.parse(value);JsonObject data=npc.json();
                 if(!npc.path().equals(path))throw new IOException("Bundle NPC path mismatch");

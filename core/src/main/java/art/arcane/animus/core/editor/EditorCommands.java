@@ -112,14 +112,23 @@ public final class EditorCommands {
     }
 
     /**
-     * Why an in-game {@code import citizens accept} may not accept the {@code commands} category, or empty when it may. Accepting
-     * it lets imported behaviors run console commands, so it needs {@link #COMMANDS_PERMISSION} as the editor's
-     * {@code apply:commands} does; the console may always.
+     * Why an in-game {@code import citizens apply} may not run, or empty when it may. An import whose behaviors or shops run
+     * commands adds their namespaces ({@code grants}) to the command allow-list, so it needs {@link #COMMANDS_PERMISSION}
+     * as the editor's {@code apply:commands} does; the console may always.
      */
-    public static Optional<String> acceptRefusal(CommandActor actor, List<String> categories) {
-        boolean commands = categories.stream().anyMatch((String category) -> category.strip().equalsIgnoreCase(art.arcane.animus.core.migration.CitizensDropIn.COMMANDS));
-        if (!commands || actor.player().isEmpty() || actor.permitted(COMMANDS_PERMISSION)) return Optional.empty();
-        return Optional.of("Accepting commands lets imported behaviors run console commands; it needs " + COMMANDS_PERMISSION + " or the console");
+    public static Optional<String> applyRefusal(CommandActor actor, List<String> grants) {
+        if (grants.isEmpty() || actor.player().isEmpty() || actor.permitted(COMMANDS_PERMISSION)) return Optional.empty();
+        return Optional.of("This import runs console commands as it did before, so apply adds " + String.join(", ", grants)
+                + " to [behaviors.actions] commandNamespaces; that needs " + COMMANDS_PERMISSION + " or the console");
+    }
+
+    /**
+     * Why {@code /animus edit} may not save {@code document}, or empty when it may. Schedule arrival commands run from the
+     * console, so an NPC that has any needs {@link #COMMANDS_PERMISSION} in game, as the editor's {@code apply:commands} does.
+     */
+    public static Optional<String> scheduleRefusal(CommandActor actor, com.google.gson.JsonObject document) {
+        if (actor.player().isEmpty() || actor.permitted(COMMANDS_PERMISSION) || !art.arcane.animus.core.schedule.ScheduleSettings.runsCommands(document)) return Optional.empty();
+        return Optional.of("Its schedule runs console commands on arrival; changing it needs " + COMMANDS_PERMISSION + " or the console");
     }
 
     /** Releasing a held imported behavior that runs console commands needs {@link #COMMANDS_PERMISSION} in game; the console may always. */

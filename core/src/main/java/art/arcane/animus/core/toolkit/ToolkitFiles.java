@@ -103,7 +103,6 @@ final class ToolkitFiles {
             JsonObject navigation = new JsonObject();
             navigation.addProperty("enabled", true);
             navigation.addProperty("route", route);
-            if (previous.has("reviewAccepted")) navigation.add("reviewAccepted", previous.get("reviewAccepted"));
             if (navigation.equals(previous)) return false;
             modules.add(NAVIGATION, navigation);
             document.add("modules", modules);
@@ -181,7 +180,7 @@ final class ToolkitFiles {
         if (!id.matches(NpcPaths.SEGMENT)) throw new IOException("An id is 1 to 64 lowercase letters, digits, _ or -");
         if (npcs.stored().stream().anyMatch((NpcDefinition existing) -> existing.id().equals(id))) throw new IOException("An NPC named " + id + " already exists");
         JsonObject document = new JsonObject();
-        document.addProperty("schemaVersion", 1); document.addProperty("revision", 1);
+        document.addProperty("schemaVersion", NpcDefinition.SCHEMA_VERSION); document.addProperty("revision", 1);
         document.addProperty("uuid", UUID.randomUUID().toString()); document.addProperty("id", id);
         document.addProperty("type", type); document.addProperty("group", "");
         document.addProperty("name", id);

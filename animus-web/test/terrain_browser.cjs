@@ -5,8 +5,12 @@
 // radius; the route grid draws surface tiles under the points; a point
 // placed on a hill lands on its standable block; the point inside the hill
 // and the one over the pond are flagged; 3D shows the route over the
-// blocks. A second load revalidates cached tiles. No console errors and no
-// sideways scrolling.
+// blocks. A second load revalidates cached tiles. Then town/rambler, whose
+// route runs 700 blocks from home: the stage, the grid and 3D load terrain
+// along the whole route and the server answers none of it forbidden, and
+// while the NPC is spawned the stage follows where it stands now, loading
+// the ground around each new spot. No console errors and no sideways
+// scrolling.
 //
 //   python3 tool/serve_site.py --port <web port>
 //   dart run tool/fake_server.dart --port=<fake port> --origin=http://127.0.0.1:<web port> --data=test/fixtures/terrain_view
@@ -46,6 +50,12 @@ async function shot(page, name) {
   await page.screenshot({path: path.join(shots, `${name}.png`), fullPage: true});
 }
 
+/** The stage alone, beside the full page shot, when screenshots are kept. */
+async function stageShot(stage, name) {
+  if (!shots) return;
+  await stage.screenshot({path: path.join(shots, `${name}.png`)});
+}
+
 async function part(page, id) {
   const details = page.locator(`details[data-section="${id}"]`);
   if (!(await details.evaluate(element => element.open))) await details.locator('summary').click();
@@ -73,17 +83,24 @@ async function run(browser, viewport, label) {
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   page.on('pageerror', error => errors.push(String(error)));
   const terrainRequests = [];
-  page.on('request', request => { if (request.url().includes('/v1/terrain/')) terrainRequests.push(request); });
+  page.on('request', request => { if (/\/v1\/terrain\/(surface|blocks)/.test(request.url())) terrainRequests.push(request); });
+  // Every terrain answer with a body: blocks by chunk, surface tiles by tile.
+  const answers = [];
+  page.on('response', async response => {
+    if (!/\/v1\/terrain\/(surface|blocks)/.test(response.url()) || response.status() !== 200) return;
+    try { answers.push(await response.json()); } catch (_) { /* The page moved on. */ }
+  });
 
   await page.goto(`${site}/#/pair/${code}`);
   await page.locator('[data-testid="pair-fingerprint"]', {hasText: 'sha256:'}).waitFor();
   await page.getByRole('button', {name: 'Pair', exact: true}).click();
   await page.waitForFunction(() => location.hash.startsWith('#/server/'));
   await page.locator('.animus-live .animus-pill[data-phase="online"]').waitFor({timeout: 20000});
-  await page.getByText(/^1 document on the server$/).waitFor();
+  await page.getByText(/^2 documents on the server$/).waitFor();
   await page.getByRole('checkbox', {name: 'town/walker', exact: true}).check();
-  await page.getByRole('button', {name: 'Open 1'}).click();
-  await page.locator('.animus-live-log li', {hasText: 'Opened 1 document'}).first().waitFor({state: 'attached'});
+  await page.getByRole('checkbox', {name: 'town/rambler', exact: true}).check();
+  await page.getByRole('button', {name: 'Open 2'}).click();
+  await page.locator('.animus-live-log li', {hasText: 'Opened 2 documents'}).first().waitFor({state: 'attached'});
 
   // 1. The stage: terrain meshes replace the grass patch.
   await openFromSidebar(page, 'Walker');
@@ -149,6 +166,56 @@ async function run(browser, viewport, label) {
   await page.waitForFunction(() => Number(document.querySelector('.animus-npc-preview')?.dataset.terrainMeshes) > 0);
   const revalidated = terrainRequests.slice(before);
   assert.ok(revalidated.length > 0 && revalidated.every(request => 'if-none-match' in request.headers()), 'cached answers go out with their hash');
+
+  // 7. A route far beyond the terrain radius of home: terrain loads along all of it.
+  const blocksAt = (cx, cz) => answers.find(answer => answer.cx === cx && answer.cz === cz && 'status' in answer);
+  const farFrom = answers.length;
+  await openFromSidebar(page, 'Rambler');
+  const far = page.locator('.animus-npc-preview');
+  await page.waitForFunction(() => Number(document.querySelector('.animus-npc-preview')?.dataset.terrainChunks) > 100);
+  await page.waitForFunction(() => Number(document.querySelector('.animus-npc-preview').dataset.terrainMeshes) > 100);
+  await page.waitForFunction(() => !document.querySelector('.animus-npc-preview [data-terrain-note]')?.textContent.includes('outside the terrain radius'));
+  for (const [cx, cz, what] of [[-32, 1, 'the first point, 480 blocks from home'], [-17, 1, 'halfway along the first leg'], [-32, -14, 'halfway along the second leg'], [-17, -29, 'the last point']]) {
+    assert.equal(blocksAt(cx, cz)?.status, 'ok', `stage: ${what} (chunk ${cx}, ${cz})`);
+  }
+  await far.locator('.animus-mc-stage').scrollIntoViewIfNeeded();
+  await shot(page, `${label}-far-stage`);
+  await stageShot(far.locator('.animus-mc-stage'), `${label}-far-stage-only`);
+
+  const farBehaviour = await part(page, 'behaviour');
+  await farBehaviour.locator('.animus-route-grid').waitFor();
+  await page.waitForFunction(() => document.querySelector('.animus-route-grid image.animus-route-terrain[data-tile="-8,-8"]'));
+  const farTiles = await page.locator('.animus-route-grid image.animus-route-terrain').evaluateAll(images => images.map(image => image.dataset.tile));
+  assert.ok(farTiles.includes('-1,0') && farTiles.includes('-8,0') && farTiles.includes('-5,-8'), `grid tiles along the route: ${farTiles}`);
+  assert.ok(!farTiles.includes('-4,-4'), 'no tiles in the middle, away from the route');
+  assert.match((await page.locator('[data-terrain-note]').allTextContents()).join(' '), /along the route/);
+  await shot(page, `${label}-far-route`);
+
+  await page.locator('[data-route-3d-toggle]').click();
+  await page.waitForFunction(() => Number(document.querySelector('[data-route-3d]')?.dataset.terrainMeshes) > 100);
+  await page.getByRole('list', {name: 'Route points'}).locator('.animus-route-list-item').nth(2).click();
+  await page.locator('[data-route-3d] .animus-mc-gl-host').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(400);
+  await shot(page, `${label}-far-route-3d`);
+  await stageShot(page.locator('[data-route-3d] .animus-mc-stage'), `${label}-far-route-3d-only`);
+  const farAnswers = answers.slice(farFrom);
+  const forbidden = farAnswers.filter(answer => answer.status === 'forbidden' || (answer.chunks || []).includes('forbidden'));
+  assert.deepEqual(forbidden.map(answer => 'cx' in answer ? `chunk ${answer.cx},${answer.cz}` : `tile ${answer.tx},${answer.tz}`), [], 'nothing along the route is forbidden');
+
+  // 8. Live: the spawned NPC walks off its route; the stage loads the ground where it is now.
+  await page.locator('[data-route-3d-toggle]').click();
+  await far.locator('.animus-mc-stage').scrollIntoViewIfNeeded();
+  for (const [x, z, cx, cz] of [[-700.5, -200.5, -44, -13], [-700.5, -380.5, -44, -24]]) {
+    await control('live', {npc: 'town/rambler', world: 'world', x, y: 66, z});
+    await page.waitForFunction(at => (document.querySelector('.animus-npc-preview').dataset.livePosition || '').startsWith(at), `world ${x} 66 ${z}`);
+    const deadline = Date.now() + 15000;
+    while (blocksAt(cx, cz)?.status !== 'ok' && Date.now() < deadline) await page.waitForTimeout(200);
+    assert.equal(blocksAt(cx, cz)?.status, 'ok', `live at ${x}, ${z}: chunk ${cx}, ${cz}`);
+  }
+  await page.waitForTimeout(400);
+  await shot(page, `${label}-far-live`);
+  await stageShot(far.locator('.animus-mc-stage'), `${label}-far-live-only`);
+  await control('live', {npc: 'town/rambler'});
 
   assert.deepEqual(errors.filter(error => !error.includes('favicon')), [], `${label}: console errors`);
   await context.close();

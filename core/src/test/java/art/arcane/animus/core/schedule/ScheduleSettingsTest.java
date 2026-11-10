@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class ScheduleSettingsTest {
     static JsonObject definition(String type, String module, String extra) {
         return JsonParser.parseString("""
-                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"baker","group":"test",
+                {"schemaVersion":2,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"baker","group":"test",
                  "name":"Baker","type":"%s","spawned":true,
                  "position":{"world":"world","x":0,"y":64,"z":0,"yaw":0,"pitch":0},
                  "modules":{"animus:schedule":%s}%s}
@@ -55,14 +55,12 @@ class ScheduleSettingsTest {
         assertTrue(ScheduleSettings.parse(definition("minecraft:player", "{\"enabled\":false,\"locations\":[{\"time\":0,\"x\":0,\"y\":64,\"z\":0}]}", "")).isEmpty());
     }
 
-    @Test void importedSchedulesWaitForReview() {
+    @Test void importedSchedulesRunLikeNativeOnes() {
         String module = "{\"enabled\":true,\"locations\":[{\"time\":0,\"x\":0,\"y\":64,\"z\":0}]}";
-        assertTrue(assertThrows(IllegalArgumentException.class, () -> ScheduleSettings.parse(definition("minecraft:player", module, ",\"migration\":{}")))
-                .getMessage().contains("reviewAccepted"));
-        assertTrue(ScheduleSettings.parse(definition("minecraft:player", "{\"enabled\":false,\"reviewAccepted\":false,\"locations\":[{\"time\":0,\"x\":0,\"y\":64,\"z\":0}]}",
-                ",\"migration\":{}")).isEmpty());
-        assertTrue(ScheduleSettings.parse(definition("minecraft:player", "{\"reviewAccepted\":true,\"locations\":[{\"time\":0,\"x\":0,\"y\":64,\"z\":0}]}",
-                ",\"migration\":{}")).isPresent());
+        assertTrue(ScheduleSettings.parse(definition("minecraft:player", module, ",\"migration\":{}")).isPresent());
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> ScheduleSettings.parse(definition("minecraft:player",
+                "{\"reviewAccepted\":true,\"locations\":[{\"time\":0,\"x\":0,\"y\":64,\"z\":0}]}", ",\"migration\":{}"))).getMessage().contains("unknown field"),
+                "the old review flag is no longer a schedule field");
     }
 
     @Test void aRouteAndAScheduleCannotBothRun() {
@@ -93,6 +91,14 @@ class ScheduleSettingsTest {
                 "{\"locations\":[{\"time\":0,\"x\":0,\"y\":64,\"z\":0,\"pose\":\"sleeping\"}]}", "")));
         assertThrows(IllegalArgumentException.class, () -> ScheduleSettings.parse(definition("minecraft:villager",
                 "{\"locations\":[{\"time\":0,\"x\":0,\"y\":64,\"z\":0,\"skin\":\"" + "b".repeat(64) + "\"}]}", "")));
+    }
+
+    @Test void equipmentNeedsASlotTheBodyShows() {
+        String chest = "{\"locations\":[{\"time\":0,\"x\":0,\"y\":64,\"z\":0,\"equipment\":{\"chest\":{\"id\":\"minecraft:iron_chestplate\"}}}]}";
+        String refused = assertThrows(IllegalArgumentException.class, () -> ScheduleSettings.parse(definition("minecraft:villager", chest, ""))).getMessage();
+        assertTrue(refused.contains("locations[0].equipment.chest") && refused.contains("cannot show chest"), refused);
+        assertTrue(ScheduleSettings.parse(definition("minecraft:villager", chest.replace("chest", "head").replace("iron_headplate", "leather_helmet"), "")).isPresent());
+        assertTrue(ScheduleSettings.parse(definition("minecraft:player", chest, "")).isPresent());
     }
 
     @Test void definitionValidationReportsScheduleProblems() {

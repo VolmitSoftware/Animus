@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "9a4d3e25-00d8-5579-ac2b-3c6fea76944e",
+  "id": "sheep-sheared",
+  "group": "settings",
+  "name": "Set sheep-sheared",
+  "type": "minecraft:sheep",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "sheep": {
+    "sheared": true,
+    "color": "blue"
+  }
+}

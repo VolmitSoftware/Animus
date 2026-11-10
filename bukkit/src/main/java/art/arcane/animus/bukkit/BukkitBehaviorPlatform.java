@@ -12,7 +12,7 @@ import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.inventory.meta.BookMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 import art.arcane.animus.core.runtime.NpcRuntime;
-import art.arcane.animus.core.runtime.ViewerPreviews;
+import art.arcane.animus.core.behavior.trigger.HiddenNpcs;
 import art.arcane.animus.api.NpcHandle;
 import art.arcane.animus.api.Outcome;
 import art.arcane.animus.core.BuildIdentity;
@@ -119,13 +119,13 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         NpcRuntime.ActiveNpc active = requireVoice(npc);
         String line = DialogueFormat.speech(active.name(), text);
         boolean personal = personal(active.name()) || personal(text);
-        return deliver(living.players(), living.previews(), active, audience, active.state().position(), false,
+        return deliver(living.players(), living.hidden(), active, audience, active.state().position(), false,
                 (Player viewer) -> viewer.sendMessage(personal ? DialogueFormat.speech(fill(viewer, active.name()), fill(viewer, text)) : line));
     }
 
     @Override public int presentChoices(NpcHandle npc, UUID player, String prompt, String token, List<ChoiceOption> options) {
         NpcRuntime.ActiveNpc active = require(npc);
-        if (living.previews().hides(player, active)) return 0;
+        if (living.hidden().hides(player, active.id(), active.state().npcId())) return 0;
         return living.players().deliver(player, online -> {
             List<ChoiceOption> shown = options.stream().map((ChoiceOption option) -> new ChoiceOption(option.id(), fill(online, option.text()), option.colour(),
                     option.hover().map((String hover) -> fill(online, hover)), option.style())).toList();
@@ -267,14 +267,14 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     @Override public int playSound(NpcHandle npc, Audience audience, SoundEffect sound) {
         NpcRuntime.ActiveNpc active = requireVoice(npc);
         Location at = bodyCenter(active);
-        return deliver(living.players(), living.previews(), active, audience, position(at), true, (Player viewer) -> viewer.playSound(at, sound.sound(), sound.volume(), sound.pitch()));
+        return deliver(living.players(), living.hidden(), active, audience, position(at), true, (Player viewer) -> viewer.playSound(at, sound.sound(), sound.volume(), sound.pitch()));
     }
 
     @Override public int spawnParticle(NpcHandle npc, Audience audience, ParticleEffect effect) {
         NpcRuntime.ActiveNpc active = requireVoice(npc);
         Location at = bodyCenter(active);
         Particle particle = particle(effect.particle());
-        return deliver(living.players(), living.previews(), active, audience, position(at), true,
+        return deliver(living.players(), living.hidden(), active, audience, position(at), true,
                 (Player viewer) -> viewer.spawnParticle(particle, at, effect.count(), effect.spread(), effect.spread(), effect.spread()));
     }
 
@@ -326,14 +326,14 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     }
 
     /**
-     * The trigger player wherever its owner is, or nearby players this owner may read, leaving out any viewer whose editor
-     * preview hides the speaking NPC. Returns how many were reached.
+     * The trigger player wherever its owner is, or nearby players this owner may read, leaving out any viewer the speaking
+     * NPC is hidden from: by an editor preview, another plugin or its viewers filter. Returns how many were reached.
      */
-    static int deliver(NpcRuntime.PlayerAccess<Player> players, ViewerPreviews previews, NpcRuntime.ActiveNpc speaker, Audience audience,
+    static int deliver(NpcRuntime.PlayerAccess<Player> players, HiddenNpcs hidden, NpcRuntime.ActiveNpc speaker, Audience audience,
                        WorldPosition at, boolean sameWorldOnly, Consumer<Player> action) {
         if (audience.player().isPresent()) {
             UUID target = audience.player().get();
-            if (previews.hides(target, speaker)) return 0;
+            if (hidden.hides(target, speaker.id(), speaker.state().npcId())) return 0;
             // Known at once on the player's owner; a player another region owns counts once the work is handed over.
             AtomicBoolean skipped = new AtomicBoolean();
             boolean handed = players.deliver(target, (Player viewer) -> {
@@ -345,7 +345,7 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         List<Player> nearby = players.ownedNear(at, audience.radius(), MAXIMUM_AUDIENCE);
         int reached = 0;
         for (Player viewer : nearby) {
-            if (previews.hides(viewer.getUniqueId(), speaker)) continue;
+            if (hidden.hides(viewer.getUniqueId(), speaker.id(), speaker.state().npcId())) continue;
             action.accept(viewer);
             reached++;
         }
@@ -403,7 +403,7 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         NpcRuntime.ActiveNpc active = requireVoice(npc);
         String line = RichText.colorize(text);
         boolean personal = personal(text);
-        return deliver(living.players(), living.previews(), active, new Audience(Optional.empty(), radius), active.state().position(), false,
+        return deliver(living.players(), living.hidden(), active, new Audience(Optional.empty(), radius), active.state().position(), false,
                 (Player viewer) -> viewer.sendMessage(personal ? RichText.colorize(fill(viewer, text)) : line));
     }
 

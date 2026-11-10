@@ -175,6 +175,21 @@ void main() {
     expect(_quads(_mesh(_row(<String>['minecraft:stone_slab[type=double]', 'minecraft:stone']))), 10);
   });
 
+  test('a state that leaves properties out takes their default values', () {
+    double top(String state) {
+      double most = 0;
+      for (final TerrainMesh mesh in _mesh(_row(<String>[state]))) {
+        for (int i = 1; i < mesh.mesh.positions.length; i += 3) {
+          if (mesh.mesh.positions[i] > most) most = mesh.mesh.positions[i];
+        }
+      }
+      return most;
+    }
+
+    expect(top('minecraft:stone_slab'), 0.5);
+    expect(top('minecraft:stone_slab[type=top]'), 1);
+  });
+
   test('a turned variant culls against its turned side', () {
     final TerrainModels models = _models0();
     expect(models.of('minecraft:step[facing=north]').quads.single.cull, 2);

@@ -1,16 +1,15 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "revision": 1,
   "uuid": "00000000-0000-0000-0000-000000000003",
   "id": "citizens-3",
   "group": "town",
   "name": "Baker",
   "type": "minecraft:player",
-  "spawned": false,
+  "spawned": true,
   "migration": {
-    "importId": "b04e2351c3b9ad08ab75b2eb81ee3ac457e362418a97b3d2bf728aea7c98ea2e",
+    "importId": "4ec59b9b50578e089fda111c39d5e4d4b6dca9a2faa1683aa5ccdb1be2c7aea8",
     "citizensId": 3,
-    "originalSpawned": true,
     "references": []
   },
   "position": {
@@ -29,8 +28,7 @@
   },
   "modules": {
     "animus:schedule": {
-      "enabled": false,
-      "reviewAccepted": false,
+      "enabled": true,
       "locations": [
         {
           "name": "bakery-counter",

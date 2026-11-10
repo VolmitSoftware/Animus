@@ -24,7 +24,7 @@ part 'denizen_commands.dart';
 part 'denizen_events.dart';
 part 'denizen_expressions.dart';
 
-const int denizenConverterVersion = 7;
+const int denizenConverterVersion = 8;
 
 /// The author a converted book gets when its Denizen author is blank.
 const String _blankBookAuthor = 'Server';
@@ -97,13 +97,13 @@ class DenizenPreview {
           if (id is JString) id.value,
       ];
 
-  /// `server-behaviors.json` after the review is accepted: the [existing]
+  /// `server-behaviors.json` after apply: the [existing]
   /// list (null when the data folder has none) with this import's server
   /// behaviors appended once each, as the server's `DenizenDropIn` writes
   /// it. Null when the import made no server behavior and there is no list.
   /// The staged tree itself never holds the file, so it stays the same as
   /// the server's.
-  String? serverBehaviorsAfterAccept(String? existing) {
+  String? serverBehaviorsAfterApply(String? existing) {
     final List<String> added = serverBehaviorIds;
     if (added.isEmpty) return existing;
     final List<String> ids = <String>[];
@@ -638,7 +638,7 @@ class _Converter {
       ..addInt('converterVersion', denizenConverterVersion)
       ..addString('importId', id)
       ..addString('notice',
-          'Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.')
+          'Data conversion only. Apply lists the generated behaviors on their NPCs and turns the server behaviors on, except held behaviors, whose guard did not convert.')
       ..add('sources', sources)
       ..addInt('behaviors', documents.length)
       ..add('containers', containerCounts())

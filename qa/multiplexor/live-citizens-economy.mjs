@@ -67,16 +67,15 @@ export async function citizensEconomy(t) {
   writeFileSync(path.join(imports, 'shops.yml'), SHOPS);
   writeFileSync(path.join(imports, 'citizenscmd', 'saves.yml'), CITIZENSCMD);
 
-  await check('import: preview, apply and accept the save with its shops and add-on file', async () => {
+  await check('import: preview and apply the save with its shops and add-on file', async () => {
     const preview = plain(await server.capture('animus import citizens preview', /Next: \/animus import citizens apply|refused|failed/i, 1500));
     assert(/2 NPCs, 2 valid/.test(preview), preview);
-    const applied = plain(await server.capture('animus import citizens apply', /Installed import[^\n]*/, 2500));
-    const accepted = plain(await server.capture('animus import citizens accept all', /accept|Accepted[^\n]*/i, 2000));
-    const commands = plain(await server.capture('animus import citizens accept commands', /Commands:[^\n]*/, 2000));
-    assert(/citizens/.test(commands), commands);
+    const applied = plain(await server.capture('animus import citizens apply', /Next: \/animus import citizens review[^\n]*/, 2500));
+    const commands = applied.match(/Commands:[^\n]*/)?.[0] ?? '';
+    assert(/citizens/.test(commands), applied);
     const listed = plain(await server.capture('animus shop list', /Shops \(\d+\)/, 600));
     assert(/citizens:harbor/.test(listed), listed);
-    return [applied.match(/Installed import[^\n]*/)?.[0], accepted.split('\n').find(line => /ccept/.test(line)), commands.match(/Commands:[^\n]*/)?.[0], listed.match(/citizens:harbor[^\n]*/)?.[0]].join(' / ');
+    return [applied.match(/Installed import[^\n]*/)?.[0], commands, listed.match(/citizens:harbor[^\n]*/)?.[0]].join(' / ');
   });
 
   const owner = await join(OWNER.name, 'survival');

@@ -16,7 +16,6 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -62,10 +61,6 @@ public final class RuntimeQuestNpcHost implements QuestNpcHost, Listener {
 
     @Override public Optional<Double> height(UUID npc) {
         return living.state(npc).map((VirtualNpcState.Snapshot state) -> state.bounds().max().y() - state.bounds().min().y());
-    }
-
-    @Override public OptionalInt citizensId(UUID npc) {
-        return definition(npc).flatMap(NpcDefinition::citizensId).map((String id) -> OptionalInt.of(Integer.parseInt(id))).orElse(OptionalInt.empty());
     }
 
     @Override public void teleport(String key, Location to) {

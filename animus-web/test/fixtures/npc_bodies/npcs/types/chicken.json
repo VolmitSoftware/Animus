@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "3cc4f27d-5548-516e-ade5-43ec2755d693",
+  "id": "chicken",
+  "group": "types",
+  "name": "Body chicken",
+  "type": "minecraft:chicken",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

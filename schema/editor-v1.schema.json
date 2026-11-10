@@ -168,7 +168,7 @@
         "minY": {"type": "integer", "description": "The world's lowest block y."},
         "maxY": {"type": "integer", "description": "One above the world's highest block y."},
         "hash": {"$ref": "#/$defs/hash"},
-        "chunks": {"type": "array", "minItems": 16, "maxItems": 16, "items": {"enum": ["ok", "unloaded", "forbidden"]}, "description": "Per chunk, index (cz - tz * 4) * 4 + (cx - tx * 4). unloaded: the server does not hold it and never loads it for the editor. forbidden: farther than [editor] terrainRadius from every NPC the token may see."},
+        "chunks": {"type": "array", "minItems": 16, "maxItems": 16, "items": {"enum": ["ok", "unloaded", "forbidden"]}, "description": "Per chunk, index (cz - tz * 4) * 4 + (cx - tx * 4). unloaded: the server does not hold it and never loads it for the editor. forbidden: farther than [editor] terrainRadius from everywhere an NPC the token may see stands, walks or goes: its position, its route points and the legs between them, its schedule places, its anchors and, while spawned, where it is now."},
         "palette": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"}, "description": "Block ids without state properties; index 0 is minecraft:air."},
         "heights": {"type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$", "description": "Int16 little-endian per cell: y of the highest non-air block, -32768 when unknown."},
         "blocks": {"type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$", "description": "Uint16 little-endian per cell: palette index of that block, 0 when unknown."},
@@ -192,6 +192,24 @@
         "bits": {"type": "integer", "minimum": 0, "maximum": 12, "description": "Bits per index; 0 when the palette has one entry."},
         "data": {"type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$", "description": "Palette indices as an LSB-first bitstream, bits per index, entries running across bytes."}
       }
+    },
+    "terrain-position-response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["npc", "active"],
+      "description": "GET /v1/terrain/position: where a spawned NPC stands now, so the editor can load terrain around it while it walks. The server reads live positions at most once a second; an NPC that is not active answers active false without a position.",
+      "properties": {
+        "npc": {"$ref": "#/$defs/documentId"},
+        "active": {"type": "boolean"},
+        "world": {"type": "string", "minLength": 1, "maxLength": 256, "description": "The world by the name the definition or the server's world list uses, else the platform's world key."},
+        "x": {"type": "number"},
+        "y": {"type": "number"},
+        "z": {"type": "number"}
+      },
+      "oneOf": [
+        {"properties": {"active": {"const": true}}, "required": ["world", "x", "y", "z"]},
+        {"properties": {"active": {"const": false}}, "not": {"anyOf": [{"required": ["world"]}, {"required": ["x"]}, {"required": ["y"]}, {"required": ["z"]}]}}
+      ]
     },
     "lookups-response": {
       "type": "object",
@@ -424,18 +442,10 @@
         "worlds": {"type": "object", "propertyNames": {"pattern": "^[A-Za-z0-9_.-]{1,64}$"}, "additionalProperties": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,64}$"}}
       }
     },
-    "import-accept-request": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["categories"],
-      "properties": {
-        "categories": {"type": "array", "minItems": 1, "maxItems": 9, "items": {"enum": ["spawn", "patrols", "schedules", "combat", "riding", "shops", "builder", "denizen", "all"]}}
-      }
-    },
     "import-review": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["state", "transactions", "lines", "uploads", "reports"],
+      "required": ["state", "commandNamespaces", "transactions", "lines", "uploads", "reports"],
       "description": "Where the drop-in import (Citizens, its dtlTraders shops and a Shopkeepers save) stands, the same steps and lines as /animus import citizens.",
       "properties": {
         "state": {"enum": ["none", "staged", "applied", "rolled-back"]},
@@ -455,8 +465,8 @@
           "type": "object", "additionalProperties": false, "required": ["importId", "source", "state", "report"],
           "properties": {"importId": {"$ref": "#/$defs/importId"}, "source": {"type": "string"}, "state": {"enum": ["staged", "applied", "rolled-back"]}, "report": {"type": "string"}}
         },
-        "pending": {"type": "object", "description": "Applied: NPCs waiting in each review category.", "additionalProperties": {"type": "integer", "minimum": 0}},
-        "preserved": {"type": "object", "description": "Applied: Citizens data kept but not run, by kind.", "additionalProperties": {"type": "integer", "minimum": 0}},
+        "commandNamespaces": {"type": "array", "description": "Staged or applied: the namespaces whose imported behaviors and shops run commands; apply adds them to [behaviors.actions] commandNamespaces and needs apply:commands for that.", "items": {"type": "string"}},
+        "preserved": {"type": "object", "description": "Applied: Citizens data kept but not converted, by kind.", "additionalProperties": {"type": "integer", "minimum": 0}},
         "npcs": {"type": "integer", "minimum": 0},
         "transactions": {"type": "array", "items": {"type": "string"}},
         "lines": {"type": "array", "maxItems": 200, "items": {"type": "string", "maxLength": 2048}},

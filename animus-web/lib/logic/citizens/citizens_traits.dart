@@ -117,8 +117,7 @@ bool citizensTargetable(JObject traits) {
 /// `CitizensTraits.targetableCombat`: a combat module that never attacks or fights back.
 JObject targetableCombat() {
   final JObject module = JObject();
-  module.addBool('enabled', false);
-  module.addBool('reviewAccepted', false);
+  module.addBool('enabled', true);
   final JObject targeting = JObject();
   targeting.addBool('fightBack', false);
   module.add('targeting', targeting);
@@ -148,8 +147,7 @@ JObject vanillaWander(JObject record) {
   final JObject? navigator = _object(record.get('navigator'));
   final JElement? modifier = navigator?.get('speedmodifier');
   final JObject module = JObject();
-  module.addBool('enabled', false);
-  module.addBool('reviewAccepted', false);
+  module.addBool('enabled', true);
   module.addString('mode', 'walk');
   module.addDouble('speed', citizensSpeed(_positive(modifier) ? modifier!.asPrimitive.asDouble : 1));
   module.addString('order', 'wander');
@@ -582,7 +580,7 @@ class _Traits {
       if (follow.has(field)) converted.add('/traits/followtrait/$field');
     }
     if (follow.has('followingUUID')) {
-      note('/traits/followtrait/followingUUID', statusConverted, 'became the guard of animus:combat, which runs after accept combat');
+      note('/traits/followtrait/followingUUID', statusConverted, 'became the guard of animus:combat');
     }
   }
 

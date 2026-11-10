@@ -121,7 +121,7 @@ public final class Administration {
         if (body.isPresent()) throw new IOException(body.get().substring("$.type: ".length()));
         taken(id);
         JsonObject object = new JsonObject();
-        object.addProperty("schemaVersion", 1); object.addProperty("revision", 1);
+        object.addProperty("schemaVersion", NpcDefinition.SCHEMA_VERSION); object.addProperty("revision", 1);
         object.addProperty("uuid", UUID.randomUUID().toString()); object.addProperty("id", id);
         object.addProperty("type", art.arcane.animus.core.platform.MinecraftIds.normalize(type)); object.addProperty("group", group);
         object.addProperty("name", name);
@@ -331,7 +331,20 @@ public final class Administration {
 
     public List<String> validate() throws IOException { return checked("All definitions valid", runtime.npcs().validate()); }
 
-    public List<String> reload() throws IOException { return checked("Reloaded", runtime.npcs().reload()); }
+    /**
+     * Upgrades NPC and group files below the current schema first, as startup does: one journaled transaction whose
+     * rollback receipt holds the originals. A file the upgrade refuses stays as it is for the reload to report.
+     */
+    public List<String> reload() throws IOException {
+        SchemaMigrations.Report upgraded = SchemaMigrations.standard()
+                .apply(runtime.documents(), List.of(SchemaMigrations.NPC, SchemaMigrations.GROUP));
+        List<String> lines = new ArrayList<>();
+        if (!upgraded.migrated().isEmpty())
+            lines.add("Upgraded " + upgraded.migrated().size() + (upgraded.migrated().size() == 1 ? " file" : " files") + " to schemaVersion "
+                    + NpcDefinition.SCHEMA_VERSION + "; rollback " + String.join(", ", upgraded.transactions()));
+        lines.addAll(checked("Reloaded", runtime.npcs().reload()));
+        return lines;
+    }
 
     /** {@code All definitions valid; 3 saved, 2 spawned}, or the problems with the command that shows the rest. */
     private List<String> checked(String operation, List<String> errors) {
@@ -348,7 +361,7 @@ public final class Administration {
         catch (IOException | RuntimeException failure) { catalogs(dropIn.committed(), dropIn.rolledBack()); throw failure; }
         lines.addAll(catalogs(dropIn.committed(), dropIn.rolledBack()));
         if (dropIn.settingsChanged()) {
-            // accept commands and rollback edit config.toml; apply it now instead of waiting for a hotload.
+            // apply and rollback edit config.toml; apply it now instead of waiting for a hotload.
             try {
                 runtime.applySettings(art.arcane.animus.core.config.PluginSettings.load(runtime.documents()));
                 // Behaviors and shops check the command allow-list when they load, so the changed list applies once they load again.
@@ -426,7 +439,7 @@ public final class Administration {
         List<String> notes = catalogs(List.of(tx), false);
         if (!errors.isEmpty()) throw new IOException("Import stored, but these files were refused and keep their last valid version: " + String.join("; ", errors));
         if (tx.equals("already-applied")) return List.of("Already installed; nothing changed, /animus list shows the NPCs");
-        List<String> lines = new ArrayList<>(List.of(Palette.success("Installed dormant NPCs; tx " + tx + "; /animus list shows them, /animus spawn <id> shows one")));
+        List<String> lines = new ArrayList<>(List.of(Palette.success("Installed NPCs; tx " + tx + "; /animus list shows them, /animus spawn <id> shows one")));
         lines.addAll(notes);
         return lines;
     }

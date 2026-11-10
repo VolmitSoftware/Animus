@@ -38,7 +38,6 @@ void main() {
     expect(
       _errors(<String, Object?>{
         'enabled': 'yes',
-        'reviewAccepted': 1,
         'migrationReport': <String, Object?>{'any': 1},
       }),
       isEmpty,
@@ -314,7 +313,7 @@ void main() {
 
   group('data folder hook', () {
     String npc(Object? combat) => jsonEncode(<String, Object?>{
-      'schemaVersion': 1,
+      'schemaVersion': 2,
       'revision': 1,
       'uuid': 'fe531426-31bc-5660-9207-b3d3078c2305',
       'id': 'guard',

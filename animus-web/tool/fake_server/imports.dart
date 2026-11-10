@@ -12,7 +12,7 @@ import 'protocol.dart';
 /// answers as core's EditorImports, kept in memory. Citizens and Shopkeepers
 /// saves go through the editor's own converters (which match the server's
 /// byte for byte); dtlTraders files are only counted. Apply installs the
-/// staged NPCs, skins, behaviors and shops; accept turns reviewed settings on;
+/// staged NPCs, skins, behaviors and shops with everything that converted on;
 /// rollback restores every document the import touched.
 class FakeImports {
   FakeImports(this.documents, this.publish);
@@ -22,7 +22,6 @@ class FakeImports {
   /// Sends a catalog event for changed and deleted documents.
   final void Function(List<StoredDocument> changed, List<StoredDocument> deleted) publish;
 
-  static const List<String> categories = <String>['spawn', 'patrols', 'combat', 'riding', 'shops', 'builder'];
   static const Map<String, String> uploadPaths = <String, String>{
     'citizens': 'imports/saves.yml',
     'shopkeepers': 'imports/shopkeepers/save.yml',
@@ -127,7 +126,7 @@ class FakeImports {
 
   Map<String, Object?> apply(String importId) {
     _expect(importId, applied: false);
-    if (_state == 'applied') throw ApiError('conflict', 'Already applied. Use /animus import citizens review, accept or rollback.');
+    if (_state == 'applied') throw ApiError('conflict', 'Already applied. Use /animus import citizens review or rollback.');
     final Map<String, String> staged = <String, String>{
       for (final MapEntry<String, String> file in (_citizens?.files ?? const <String, String>{}).entries) file.key: file.value,
       for (final MapEntry<String, String> file in (_shopkeepers?.files ?? const <String, String>{}).entries) file.key: file.value,
@@ -143,49 +142,10 @@ class FakeImports {
     _state = 'applied';
     publish(changed, const <StoredDocument>[]);
     return review(<String>[
-      'Installed ${importId.substring(0, 12)} dormant; transaction ${_transactions.last}',
-      'Every NPC is installed at its Citizens position and stays despawned; patrols, combat, riding, shops and builds stay off.',
-      'Next: /animus import citizens review, then /animus import citizens accept all (or one category at a time)',
+      'Installed import ${importId.substring(0, 12)}; NPCs spawn with their patrols, schedules, combat, riding, shops and builds on; transaction ${_transactions.last}',
+      if (_commandNamespaces().isNotEmpty) 'Commands: added ${_commandNamespaces().join(', ')} to config.toml [behaviors.actions] commandNamespaces',
+      'Next: /animus import citizens review lists what converted; /animus import citizens rollback undoes the import',
     ]);
-  }
-
-  Map<String, Object?> accept(String importId, List<String> requested) {
-    _expect(importId, applied: true);
-    final Set<String> chosen = <String>{};
-    for (final String category in requested) {
-      if (category == 'all') {
-        chosen.addAll(categories);
-      } else if (categories.contains(category)) {
-        chosen.add(category);
-      } else {
-        throw invalid('Unknown review category $category; expected ${categories.join(', ')} or all.');
-      }
-    }
-    final List<StoredDocument> changed = <StoredDocument>[];
-    final Map<String, int> accepted = <String, int>{for (final String category in chosen) category: 0};
-    for (final StoredDocument document in _imported()) {
-      final Map<String, Object?> json = jsonDecode(document.content) as Map<String, Object?>;
-      bool edited = false;
-      for (final String category in chosen) {
-        if (!_waiting(json, category)) continue;
-        _acceptCategory(json, category);
-        accepted[category] = accepted[category]! + 1;
-        edited = true;
-      }
-      if (!edited) continue;
-      json['revision'] = ((json['revision'] as num?) ?? 0).toInt() + 1;
-      changed.add(documents.write(Located(document.kind, document.id, document.path), prettyJson(json)));
-    }
-    final List<String> lines = <String>[];
-    if (changed.isEmpty) {
-      lines.add('Nothing waiting in ${chosen.join(', ')}');
-    } else {
-      _transactions.add(randomUuid());
-      lines.add('Accepted ${accepted.entries.map((MapEntry<String, int> e) => '${e.key} ${e.value}').join(', ')} on ${changed.length} NPCs; transaction ${_transactions.last}');
-      publish(changed, const <StoredDocument>[]);
-    }
-    lines.add('/animus import citizens rollback undoes the import and every acceptance.');
-    return review(lines);
   }
 
   Map<String, Object?> rollback(String importId) {
@@ -220,47 +180,17 @@ class FakeImports {
           if (path.startsWith('npcs/') && documents.at(path) != null) documents.at(path)!,
       ];
 
-  static Map<String, Object?> _modules(Map<String, Object?> json) => json['modules'] is Map<String, Object?> ? json['modules']! as Map<String, Object?> : const <String, Object?>{};
-
-  static bool _unreviewed(Map<String, Object?> modules, String module) {
-    final Object? value = modules[module];
-    return value is Map<String, Object?> && value['reviewAccepted'] != true;
-  }
-
-  static const Map<String, String> _moduleOf = <String, String>{
-    'patrols': 'animus:navigation',
-    'combat': 'animus:combat',
-    'riding': 'animus:riding',
-    'shops': 'animus:shop',
-    'builder': 'animus:builder',
-  };
-
-  /// core's CitizensDropIn.waiting.
-  static bool _waiting(Map<String, Object?> json, String category) {
-    if (category == 'spawn') {
-      final Object? migration = json['migration'];
-      final Object? original = migration is Map<String, Object?> ? migration['originalSpawned'] : null;
-      return original != false && json['spawned'] != true;
-    }
-    return _unreviewed(_modules(json), _moduleOf[category]!);
-  }
-
-  static void _acceptCategory(Map<String, Object?> json, String category) {
-    if (category == 'spawn') {
-      json['spawned'] = true;
-      return;
-    }
-    final Map<String, Object?> section = _modules(json)[_moduleOf[category]!]! as Map<String, Object?>;
-    section['reviewAccepted'] = true;
-    if (section.containsKey('enabled')) section['enabled'] = true;
-  }
+  /// The namespaces whose staged behaviors run commands, which apply adds to
+  /// the command allow-list on the real server.
+  List<String> _commandNamespaces() => <String>[
+        if ((_citizens?.files ?? const <String, String>{}).entries.any((MapEntry<String, String> file) => file.key.startsWith('behaviors/citizens/') && file.value.contains('"animus:command"')))
+          'citizens',
+      ];
 
   Map<String, Object?> review(List<String> lines) {
     final CitizensPreview? citizens = _citizens;
     final ShopkeepersPreview? shopkeepers = _shopkeepers;
-    final List<Map<String, Object?>> imported = <Map<String, Object?>>[
-      for (final StoredDocument document in _imported()) jsonDecode(document.content) as Map<String, Object?>,
-    ];
+    final int imported = _imported().length;
     Map<String, Object?> summary(String? text, Set<String> keys) {
       final Map<String, Object?> full = text == null ? const <String, Object?>{} : jsonDecode(text) as Map<String, Object?>;
       return <String, Object?>{
@@ -283,12 +213,10 @@ class FakeImports {
           'report': 'imports/shopkeepers/${shopkeepers.id}/report.json',
           'waiting': 0,
         },
+      'commandNamespaces': _state == 'none' ? const <String>[] : _commandNamespaces(),
       if (_state == 'applied') ...<String, Object?>{
-        'pending': <String, Object?>{
-          for (final String category in categories) category: imported.where((Map<String, Object?> json) => _waiting(json, category)).length,
-        },
         'preserved': const <String, Object?>{},
-        'npcs': imported.length,
+        'npcs': imported,
       },
       'transactions': List<String>.of(_transactions),
       'lines': lines.take(200).toList(),

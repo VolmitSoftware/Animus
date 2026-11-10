@@ -58,7 +58,7 @@ class RuntimeMaintenanceTest {
 
     @Test void aTooDeepFolderOrALinkUnderNpcsIsSkippedAndTheRestStarts() throws Exception {
         Path guard = Files.createDirectories(root.resolve("npcs/town")).resolve("guard.json");
-        Files.writeString(guard, "{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"12345678-1234-1234-1234-123456789abc\",\"id\":\"guard\",\"group\":\"town\",\"name\":\"Guard\","
+        Files.writeString(guard, "{\"schemaVersion\":2,\"revision\":1,\"uuid\":\"12345678-1234-1234-1234-123456789abc\",\"id\":\"guard\",\"group\":\"town\",\"name\":\"Guard\","
                 + "\"type\":\"minecraft:player\",\"spawned\":false,\"position\":{\"world\":\"world\",\"x\":0,\"y\":64,\"z\":0,\"yaw\":0,\"pitch\":0}}");
         Path deep = Files.createDirectories(root.resolve("npcs/a/b/c/d/e/f/g/h/i/j"));
         Files.writeString(deep.resolve("lost.json"), "{}");

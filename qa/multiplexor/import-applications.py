@@ -73,7 +73,7 @@ def main():
         assert plan['mode']==mode.upper()
         return identity,plan,candidates
     def apply(import_id,identity):
-        transaction=tx(command(f'animus import plan {import_id} {identity}',r'.*(Installed dormant NPCs; tx|Already installed; nothing changed).*'))
+        transaction=tx(command(f'animus import plan {import_id} {identity}',r'.*(Installed NPCs; tx|Already installed; nothing changed).*'))
         installed(data,import_id,identity);return transaction
     def rollback(transaction):
         return tx(command('animus rollback '+transaction,r'.*Rolled back [^;]*; tx .*'))
@@ -190,9 +190,9 @@ def main():
         rollback(state['editTransaction']);assert_snapshot(data,state['baselineSnapshot'])
         rollback(state['baseTransaction']);assert_snapshot(data,empty)
         passed('initial-application-rollback-removes-sources-and-checkpoints')
-        legacy=tx(command('animus import apply '+baseline,r'.*(Installed dormant NPCs; tx|Already installed; nothing changed).*'))
+        legacy=tx(command('animus import apply '+baseline,r'.*(Installed NPCs; tx|Already installed; nothing changed).*'))
         assert legacy!='already-applied' and len(definitions(data))==3
-        assert tx(command('animus import apply '+baseline,r'.*(Installed dormant NPCs; tx|Already installed; nothing changed).*'))=='already-applied'
+        assert tx(command('animus import apply '+baseline,r'.*(Installed NPCs; tx|Already installed; nothing changed).*'))=='already-applied'
         rollback(legacy);assert_snapshot(data,empty);passed('legacy-default-apply-repeat-and-rollback-unchanged')
         command('animus validate',r'.*All definitions valid; 0 saved.*')
         stop('rollback-after-restart');start('empty-restart')

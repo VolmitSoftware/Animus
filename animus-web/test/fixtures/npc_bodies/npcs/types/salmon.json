@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "45661641-48b4-5465-bd54-8e0957bb4fc6",
+  "id": "salmon",
+  "group": "types",
+  "name": "Body salmon",
+  "type": "minecraft:salmon",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

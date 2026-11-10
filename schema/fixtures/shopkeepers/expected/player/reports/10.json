@@ -19,7 +19,7 @@
   },
   "notes": [
     "/offers/3: price 700 needs more than one stack of each currency item, which Shopkeepers also skips",
-    "a new minecraft:villager NPC stands at the shopkeeper's place, despawned until the spawn review is accepted"
+    "a new minecraft:villager NPC stands at the shopkeeper's place"
   ],
   "counts": {
     "CONVERTED": 14,

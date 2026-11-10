@@ -120,7 +120,7 @@ class HoloServiceTest {
         write("gui/holograms", "town:sign", SIGN.replace("[0, 64, 5]", "[0, 64, 500]"));
         write("gui/text-animations", "town:blink", "{\"schemaVersion\": 1, \"revision\": 1, \"mode\": \"ascend\", \"frameIntervalMs\": 60000, \"frames\": [\"two\"]}");
         write("npcs", "town:guard", """
-                {"schemaVersion": 1, "revision": 1, "uuid": "8f0c2c52-6f0e-4f43-a3a3-9d1f8f8a0c11", "id": "guard", "group": "town",
+                {"schemaVersion": 2, "revision": 1, "uuid": "8f0c2c52-6f0e-4f43-a3a3-9d1f8f8a0c11", "id": "guard", "group": "town",
                  "name": "Guard", "type": "minecraft:villager", "spawned": true,
                  "position": {"world": "world", "x": 0, "y": 64, "z": 5, "yaw": 0, "pitch": 0},
                  "modules": {"animus:gui": {"hologram": {"id": "town:sign", "offset": [0, 0, 0]}}}}
@@ -149,7 +149,7 @@ class HoloServiceTest {
         write("gui/holograms", "town:sign", SIGN);
         write("gui/text-animations", "town:blink", "{\"schemaVersion\": 1, \"revision\": 1, \"mode\": \"ascend\", \"frameIntervalMs\": 60000, \"frames\": [\"two\"]}");
         write("npcs", "town:mayor", """
-                {"schemaVersion": 1, "revision": 1, "uuid": "8f0c2c52-6f0e-4f43-a3a3-9d1f8f8a0c12", "id": "mayor", "group": "town",
+                {"schemaVersion": 2, "revision": 1, "uuid": "8f0c2c52-6f0e-4f43-a3a3-9d1f8f8a0c12", "id": "mayor", "group": "town",
                  "name": "Mayor", "type": "minecraft:villager", "spawned": false,
                  "position": {"world": "world", "x": 0, "y": 64, "z": 5, "yaw": 0, "pitch": 0},
                  "modules": {"animus:gui": {"hologram": {"id": "town:sign"}}}}
@@ -158,6 +158,31 @@ class HoloServiceTest {
         reload();
         tick(1);
         assertTrue(displays.texts(alex).isEmpty(), "a bound hologram is not also drawn at its own anchor: " + displays.texts(alex));
+    }
+
+    @Test void anNpcHologramIsNotDrawnForAViewerTheNpcIsHiddenFrom() throws IOException {
+        write("gui/holograms", "town:sign", SIGN);
+        write("gui/text-animations", "town:blink", "{\"schemaVersion\": 1, \"revision\": 1, \"mode\": \"ascend\", \"frameIntervalMs\": 60000, \"frames\": [\"two\"]}");
+        java.util.UUID mayor = java.util.UUID.fromString("8f0c2c52-6f0e-4f43-a3a3-9d1f8f8a0c12");
+        write("npcs", "town:mayor", """
+                {"schemaVersion": 2, "revision": 1, "uuid": "8f0c2c52-6f0e-4f43-a3a3-9d1f8f8a0c12", "id": "mayor", "group": "town",
+                 "name": "Mayor", "type": "minecraft:villager", "spawned": true,
+                 "position": {"world": "world", "x": 0, "y": 64, "z": 5, "yaw": 0, "pitch": 0},
+                 "modules": {"animus:gui": {"hologram": {"id": "town:sign"}}}}
+                """);
+        runtime.npcs().reload();
+        reload();
+        living.active.put(mayor, new art.arcane.animus.core.runtime.NpcRuntime.ActiveNpc("mayor", "Mayor",
+                new art.arcane.animus.core.virtual.VirtualNpcState(mayor, new art.arcane.animus.core.virtual.WorldPosition("world", new art.arcane.animus.core.virtual.Vec3(0, 64, 5)), 0.6, 1.8, 20).snapshot()));
+        living.hiddenFrom.add(alex.id + "/" + mayor);
+        tick(HoloService.SCAN_TICKS * 2);
+        assertTrue(displays.texts(alex).isEmpty(), "the viewers filter hides the NPC, so its hologram stays hidden too: " + displays.texts(alex));
+        living.hiddenFrom.clear();
+        tick(HoloService.SCAN_TICKS * 2);
+        assertFalse(displays.texts(alex).isEmpty(), "shown again once the NPC is no longer hidden");
+        living.hiddenFrom.add(alex.id + "/" + mayor);
+        tick(HoloService.SCAN_TICKS * 2);
+        assertTrue(displays.texts(alex).isEmpty(), "hidden again: " + displays.texts(alex));
     }
 
     @Test void timedTextRefreshWaitsWhileNpcPacketsAreShortOfBudget() throws IOException {

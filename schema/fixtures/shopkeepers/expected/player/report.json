@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "importerVersion": 2,
-  "importId": "5c551adee359197db4d63e0aca9afd01112b7944363b3ab85a48eb6d72c56ef7",
+  "importerVersion": 3,
+  "importId": "2cce5249a59598a99a0b4a7cac49b5d67f70c7433b457cb20d784207edb78857",
   "sourceSha256": "1ad1369513283726a44d198ab0a0f94388afcbc1e761bbc4f780a5b1c3563c08",
   "configSha256": "fa0989ce99526a144db8f9b672d0d7f0dbdcf2c9cd4f7f2a5be53d21257fd03e",
-  "notice": "Data conversion only. Shops install under shops/shopkeepers/ and stay closed on their NPCs until the shops review is accepted. Try each shop in game before relying on it.",
+  "notice": "Data conversion only. Shops install under shops/shopkeepers/ and open on their NPCs. Try each shop in game before relying on it.",
   "dataVersion": "4|4189",
   "shops": 6,
   "npcs": 3,
@@ -101,13 +101,13 @@
   "issues": [],
   "documents": {
     "shops/shopkeepers/shop-10.json": "dacadb75709fcba11230ad8024cf200daedb7e5a2ac925298488ceafb582a27b",
-    "npcs/shopkeepers/shopkeeper-10.json": "d08d8485add05d0fcd450587211006ea59defc05bb140c9eb70ad4d113a97f47",
+    "npcs/shopkeepers/shopkeeper-10.json": "bb72316fbf23e9d5fc20b8b8be7082818b0403ce5b546a837612017df5bba5dd",
     "shops/shopkeepers/shop-11.json": "2a6d77c915d95328798f2b8550c87bc2d497da4d2dd13f589dacbfb35daaa380",
     "shops/shopkeepers/shop-12.json": "ad8f89730b85cf856b7ceaa7d1bd227595fe73e626e67f4eef32a35c400873c0",
     "shops/shopkeepers/shop-13.json": "1c4ae5e0052616eab8da50f814bfa5c15c6c030dd9796500151927dddbae04a6",
     "shops/shopkeepers/shop-14.json": "f3872a1b2780e046ba1ae20b1646d7688afe946f1115cdebf261a77ce2f26a4c",
-    "npcs/shopkeepers/shopkeeper-14.json": "71fb7e205aab6839a07b7435b0300a39a99756b50c5acf5a5ab348d1d33548d5",
+    "npcs/shopkeepers/shopkeeper-14.json": "b16c02a160586285b90635efdb7f5c6808dc9e5d460abbd64be389c7a5c4c31e",
     "shops/shopkeepers/shop-15.json": "fba5ed1818bb4afaa723ca0d69697620c343c5ab7f8068eab45eac1c3eec3d01",
-    "npcs/shopkeepers/shopkeeper-15.json": "582c12022bee0291282499e0798d022111a7ea784e0eefa1b346341468bd2f62"
+    "npcs/shopkeepers/shopkeeper-15.json": "a30395b87f2d49b79aed14faa02fd7a83c6df40520f9cd49398a4f26acc2c09d"
   }
 }

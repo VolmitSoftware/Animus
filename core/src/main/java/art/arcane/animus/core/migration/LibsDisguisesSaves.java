@@ -73,7 +73,7 @@ public final class LibsDisguisesSaves {
                 try { uuid = UUID.fromString(name.toLowerCase(Locale.ROOT)); }
                 catch (IllegalArgumentException notUuid) { continue; }
                 if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || Files.size(file) > LARGEST) continue;
-                String text = Files.readString(file, StandardCharsets.UTF_8).strip();
+                String text = lenient(file).strip();
                 if (text.isEmpty()) continue;
                 if (!Character.isAlphabetic(text.charAt(0))) {
                     problems.add(label + "/" + name + ": saved in LibsDisguises' old format; disguise the NPC again on a current LibsDisguises, or set its disguise in Animus");
@@ -95,13 +95,16 @@ public final class LibsDisguisesSaves {
         for (Path file : files) {
             if (Files.size(file) > LARGEST) continue;
             String name = label + "/" + folder.relativize(file).toString().replace('\\', '/');
-            List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+            List<String> lines = lenient(file).lines().toList();
             for (int i = 0; i < lines.size(); i++) {
                 Matcher command = COMMAND.matcher(lines.get(i));
                 while (command.find()) accept(UUID.fromString(command.group(1).toLowerCase(Locale.ROOT)), command.group(2).strip(), name + " line " + (i + 1), found, problems);
             }
         }
     }
+
+    /** The file as UTF-8, with any byte that is not UTF-8 read as U+FFFD, so a script saved in another charset is still read. */
+    private static String lenient(Path file) throws IOException { return new String(Files.readAllBytes(file), StandardCharsets.UTF_8); }
 
     private static void accept(UUID uuid, String disguise, String source, Map<UUID, Found> found, List<String> problems) {
         if (found.containsKey(uuid)) return;

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "2c3b0d24-46ac-5fd4-8ab8-911994f92ce7",
+  "id": "wither-skeleton",
+  "group": "types",
+  "name": "Body wither_skeleton",
+  "type": "minecraft:wither_skeleton",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DisguiseFieldsTest {
     static final String NPC = """
-            {"schemaVersion":1,"revision":1,"uuid":"12345678-1234-1234-1234-123456789abc","id":"guard","group":"","name":"Guard","type":"minecraft:player","spawned":false,
+            {"schemaVersion":2,"revision":1,"uuid":"12345678-1234-1234-1234-123456789abc","id":"guard","group":"","name":"Guard","type":"minecraft:player","spawned":false,
              "position":{"world":"world","x":0,"y":64,"z":0,"yaw":0,"pitch":0},"disguise":"x"}
             """;
 

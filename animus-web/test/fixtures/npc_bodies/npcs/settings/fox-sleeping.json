@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "7588fae1-f5f7-5446-b6a2-7980ebda9acf",
+  "id": "fox-sleeping",
+  "group": "settings",
+  "name": "Set fox-sleeping",
+  "type": "minecraft:fox",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "fox": {
+    "type": "snow",
+    "sleeping": true
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "cb0772ba-7adc-521a-8686-9ece63d876c9",
+  "id": "witch",
+  "group": "types",
+  "name": "Body witch",
+  "type": "minecraft:witch",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

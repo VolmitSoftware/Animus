@@ -19,7 +19,7 @@ function fields(client, id, from = 0) {
 }
 
 export async function presentation(t) {
-  const { server, join, check, OWNER, PEER } = t;
+  const { server, join, check, inspect, combatNpc, OWNER, PEER } = t;
   server.behavior('live:herald', {
     routines: { main: { type: 'action', capability: 'animus:say', arguments: { text: 'herald-answers' } } },
     triggers: [{ id: 'click', event: 'interaction', cooldownTicks: 0 }],
@@ -114,7 +114,71 @@ export async function presentation(t) {
     const shown = await owner.wait(e => e.event === 'metadata' && e.fields.some(f => typeof f.text === 'string' && f.text.includes('bubble-line')), from, 10_000);
     const gone = await owner.wait(e => e.event === 'metadata' && e.sequence > shown.sequence && e.fields.some(f => typeof f.text === 'string' && f.text.includes('Talker') && !f.text.includes('bubble-line')), from, 15_000);
     await owner.noChat('bubble-line', from, 200);
-    return `bubble shown, then ${JSON.stringify(gone.fields.find(f => typeof f.text === 'string').text)}`;
+    // The bubble is text on a row the body already has: the body and its rows are never removed or spawned again for it.
+    const churn = owner.events.slice(from).filter(e => (e.event === 'remove' && e.ids.includes(body.id)) || (e.event === 'spawn' && e.uuid === uuid));
+    assert.deepEqual(churn, [], `the body was respawned for its bubble: ${JSON.stringify(churn)}`);
+    assert.equal(owner.current(uuid)?.id, body.id, 'the same body is still shown');
+    return `bubble shown on row ${shown.id}, then ${JSON.stringify(gone.fields.find(f => typeof f.text === 'string').text)}; body ${body.id} never despawned or respawned`;
+  });
+
+  await check('presentation: an attack through a redirect hurts only the NPC that was hit', async () => {
+    server.behavior('live:struck', {
+      routines: { main: { type: 'action', capability: 'animus:say', arguments: { text: 'struck-heard', audience: 'nearby', radius: 64 } } },
+      triggers: [{ id: 'hit', event: 'interaction', action: 'attack', cooldownTicks: 0 }],
+    });
+    await server.reload();
+    const far = await server.npc('lookstarget', 'minecraft:player', 30.5, 61, 30.5, 'Target', combatNpc({ targeting: { fightBack: false } }, ['live:struck'], { maximumHealth: 20, invulnerableTicks: 0 }));
+    const shield = await server.npc('looksshield', 'minecraft:villager', 1.5, 61, -3.5, 'Shield', { clickRedirect: far });
+    await owner.tp(0, 61, 0);
+    await owner.walk(1.5, -1.5);
+    const body = await settled(owner, shield);
+    const before = await inspect('lookstarget');
+    await owner.look(body.x, body.y + 1, body.z);
+    const from = owner.events.length;
+    for (let i = 0; i < 3; i++) { owner.send('attack', { id: body.id }); await delay(600); }
+    await owner.chat('struck-heard', from);
+    const after = await inspect('lookstarget');
+    assert.equal(after.health, before.health, `the far target was hurt: ${before.health} -> ${after.health}`);
+    return `target 28 blocks away heard the attack and kept health ${after.health}`;
+  });
+
+  await check('presentation: an operator sees an NPC a deny-groups filter hides from group members', async () => {
+    const outcast = await server.npc('looksoutcast', 'minecraft:villager', -1.5, 61, -3.5, 'Gatekeeper', { viewers: { groups: ['outcasts'], permissions: ['court.banned'] } });
+    const seen = await settled(owner, outcast);
+    const alsoPeer = await peer.body(outcast);
+    return `operator ${OWNER.name} sees body ${seen.id}; ${PEER.name}, also outside the group, sees ${alsoPeer.id}`;
+  });
+
+  await check('presentation: an NPC hidden by its viewers filter neither greets nor takes redirected clicks', async () => {
+    server.behavior('live:hush', {
+      routines: {
+        main: { type: 'action', capability: 'animus:say', arguments: { text: 'hush-answers' } },
+        greet: { type: 'action', capability: 'animus:say', arguments: { text: 'hush-greets' } },
+      },
+      triggers: [{ id: 'click', event: 'interaction', cooldownTicks: 0 }, { id: 'near', event: 'proximity', phase: 'enter', radius: 5, routine: 'greet', cooldownTicks: 0 }],
+    });
+    server.behavior('live:door', {
+      routines: { main: { type: 'action', capability: 'animus:say', arguments: { text: 'door-answers' } } },
+      triggers: [{ id: 'click', event: 'interaction', cooldownTicks: 0 }],
+    });
+    await server.reload();
+    await owner.tp(0, 61, 30);
+    await peer.tp(0, 61, 30);
+    const hush = await server.npc('lookshush', 'minecraft:villager', -2.5, 61, -10.5, 'Hush', { behaviors: ['live:hush'], viewers: { players: [PEER.uuid] } });
+    const door = await server.npc('looksdoor', 'minecraft:armor_stand', 2.5, 61, -10.5, 'Door', { behaviors: ['live:door'], clickRedirect: hush });
+    const peerFrom = peer.events.length, ownerFrom = owner.events.length;
+    await peer.tp(0, 61, -8);
+    await owner.tp(-1, 61, -8);
+    await owner.chat('hush-greets', ownerFrom, 10_000);
+    await peer.noChat('hush-greets', peerFrom, 2000);
+    const body = await settled(peer, door);
+    assert.equal(peer.current(hush), null, 'the filtered player was sent the hidden NPC');
+    await peer.look(body.x, body.y + 1, body.z);
+    const clickFrom = peer.events.length;
+    peer.send('use', { id: body.id });
+    await peer.chat('door-answers', clickFrom);
+    await peer.noChat('hush-answers', clickFrom, 1500);
+    return `${OWNER.name} was greeted; ${PEER.name} was not, and a click on the door stayed with the door`;
   });
 
   await check('presentation: block, item and text bodies spawn with their content', async () => {
@@ -131,7 +195,7 @@ export async function presentation(t) {
     return `falling block data=${block.data}, frame facing=${frame.data} holds a diamond, text display says Welcome, painting kebab`;
   });
 
-  for (const id of ['lookssheep', 'looksvillager', 'looksking', 'lookshidden', 'lookscontrol', 'looksherald', 'lookspage', 'looksbubble', 'looksblock', 'looksframe', 'lookssign', 'lookspainting']) await server.cmd(`animus delete ${id}`, /Deleted/);
+  for (const id of ['lookssheep', 'looksvillager', 'looksking', 'lookshidden', 'lookscontrol', 'looksherald', 'lookspage', 'looksbubble', 'lookstarget', 'looksshield', 'looksoutcast', 'lookshush', 'looksdoor', 'looksblock', 'looksframe', 'lookssign', 'lookspainting']) await server.cmd(`animus delete ${id}`, /Deleted/);
   await peer.close();
   await owner.close();
 }

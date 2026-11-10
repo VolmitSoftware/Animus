@@ -1,7 +1,7 @@
 {
   "description": "A skins pool resolves to one skin by the NPC UUID.",
   "npc": {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "revision": 3,
     "uuid": "7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
     "id": "vendor",
@@ -23,7 +23,7 @@
   },
   "groups": [
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "revision": 1,
       "id": "market-skins",
       "values": {
@@ -37,7 +37,7 @@
     }
   ],
   "effective": {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "revision": 3,
     "uuid": "7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
     "id": "vendor",

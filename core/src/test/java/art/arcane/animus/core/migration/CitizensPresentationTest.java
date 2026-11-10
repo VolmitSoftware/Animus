@@ -163,7 +163,7 @@ class CitizensPresentationTest {
         assertEquals("CONVERTED", fields.get("/traits/hologramtrait/lines/0").getAsString());
         assertEquals("CONVERTED", fields.get("/traits/sneak/sneaking").getAsString());
         assertEquals(CitizensImporter.CONVERTER_VERSION, preview.converterVersion());
-        assertEquals(16, CitizensImporter.CONVERTER_VERSION);
+        assertEquals(20, CitizensImporter.CONVERTER_VERSION);
     }
 
     @Test void hologramRendererSettingsMarginsAndListInventoriesMap() {

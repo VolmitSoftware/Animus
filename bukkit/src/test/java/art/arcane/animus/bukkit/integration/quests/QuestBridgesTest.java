@@ -34,7 +34,7 @@ class QuestBridgesTest {
 
     private static NpcDefinition npc(UUID uuid, String id, String name, boolean spawned, double x) throws Exception {
         return NpcDefinition.parse("""
-                {"schemaVersion":1,"revision":1,"uuid":"%s","id":"%s","group":"","name":"%s","type":"minecraft:player","spawned":%s,
+                {"schemaVersion":2,"revision":1,"uuid":"%s","id":"%s","group":"","name":"%s","type":"minecraft:player","spawned":%s,
                  "position":{"world":"world","x":%s,"y":64,"z":0,"yaw":0,"pitch":0}}
                 """.formatted(uuid, id, name, spawned, x));
     }
@@ -43,7 +43,6 @@ class QuestBridgesTest {
     private record Host(art.arcane.animus.bukkit.api.AnimusNpcs npcs, Map<UUID, Location> spots) implements QuestNpcHost {
         @Override public Optional<Location> location(UUID npc) { return Optional.ofNullable(spots.get(npc)); }
         @Override public Optional<Double> height(UUID npc) { return Optional.empty(); }
-        @Override public java.util.OptionalInt citizensId(UUID npc) { return java.util.OptionalInt.empty(); }
         @Override public void teleport(String key, Location to) {}
         @Override public void spawned(String key, boolean spawned) {}
         @Override public void hide(UUID viewer, UUID npc, boolean hidden) {}
@@ -68,8 +67,6 @@ class QuestBridgesTest {
         assertNull(QuestIntegrations.bridge("Quests", "com.leonardobishop.quests.bukkit.BukkitQuestsPlugin"));
         assertEquals("BeautyQuests", QuestIntegrations.bridge("BeautyQuests", "fr.skytasul.quests.BeautyQuestsPaper"));
         assertEquals("BetonQuest", QuestIntegrations.bridge("BetonQuest", "org.betonquest.betonquest.BetonQuest"));
-        assertEquals("NotQuests", QuestIntegrations.bridge("NotQuests", "rocks.gravili.notquests.paper.NotQuests"));
-        assertNull(QuestIntegrations.bridge("Typewriter", "com.typewritermc.engine.paper.TypewriterPaperPlugin"), "Typewriter loads its extension before plugins enable");
         assertNull(QuestIntegrations.bridge("Citizens", "net.citizensnpcs.Citizens"));
     }
 
@@ -128,5 +125,44 @@ class QuestBridgesTest {
         assertSame(killer, death.getKiller());
         assertNull(death.getBukkitEntity());
         assertEquals(1, death.getAmount());
+    }
+
+    @Test void questsKeepsOneAnimusProviderAcrossAnimusReloads() throws Exception {
+        java.util.Set<me.pikamug.quests.dependencies.npc.BukkitNpcDependency> providers = new java.util.HashSet<>();
+        QuestsBridge.Npcs earlier = new QuestsBridge.Npcs(npcs()), next = new QuestsBridge.Npcs(npcs());
+        QuestsBridge.join(providers, earlier, providers::add);
+        QuestsBridge.join(providers, next, providers::add);
+        assertEquals(java.util.Set.of(next), providers);
+    }
+
+    @Test void beautyQuestsKeepsOneSharedFactoryThatTheNextAnimusTakesOver() throws Exception {
+        BeautyQuestsBridge.Shared shared = new BeautyQuestsBridge.Shared(new BeautyQuestsBridge.Npcs(npcs()));
+        var baker = shared.fetchNPC("citizens-4");
+        assertEquals("Baker", baker.getName());
+        assertNull(shared.fetchNPC("nobody"));
+        BeautyQuestsBridge.Shared.handOver(shared, null);
+        assertEquals(List.of(), List.copyOf(shared.getIDs()), "while Animus is stopped the factory has no NPCs");
+        assertEquals("citizens-4", baker.getName(), "an NPC BeautyQuests kept answers with its id");
+        assertNull(baker.getLocation());
+        BeautyQuestsBridge.Npcs reloaded = new BeautyQuestsBridge.Npcs(npcs());
+        Object other = new Object();
+        assertEquals(Optional.of(shared), BeautyQuestsBridge.Shared.adopt(List.of(other, shared), reloaded));
+        assertEquals("Baker", baker.getName(), "the NPC BeautyQuests kept answers through the new Animus");
+        assertEquals(10.0, baker.getLocation().getX());
+        assertEquals(Optional.empty(), BeautyQuestsBridge.Shared.adopt(List.of(other), reloaded));
+    }
+
+    @Test void aKillTargetChoiceRunsOutAndEndsWithTheSession() throws Exception {
+        BeautyQuestsBridge.Kills kills = new BeautyQuestsBridge.Kills(npcs());
+        UUID player = UUID.randomUUID();
+        java.util.function.Consumer<String> chosen = (String npc) -> {};
+        kills.choose(player, chosen, 0);
+        assertEquals(Optional.empty(), kills.chosen(player, BeautyQuestsBridge.Kills.CHOOSE_MILLIS + 1), "a choice left too long runs out");
+        kills.choose(player, chosen, 0);
+        kills.forget(player);
+        assertEquals(Optional.empty(), kills.chosen(player, 1), "leaving drops the choice");
+        kills.choose(player, chosen, 0);
+        assertEquals(Optional.of(chosen), kills.chosen(player, 1));
+        assertEquals(Optional.empty(), kills.chosen(player, 2), "a choice is used once");
     }
 }

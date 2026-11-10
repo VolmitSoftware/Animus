@@ -372,7 +372,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
       dom.section(classes: 'animus-panel animus-home-intro', <Widget>[
         const dom.h1(<Widget>[
           InfoTip(
-            tip: 'Files convert in this browser and are never uploaded unless you use Upload and stage. Imported NPCs stay dormant until reviewed on the server.',
+            tip: 'Files convert in this browser and are never uploaded unless you use Upload and stage. Apply on the server installs the NPCs with everything that converted turned on.',
             docs: Docs.citizens,
             child: Component.text(converterTitle),
           ),
@@ -491,7 +491,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
     return dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Denizen folder'}, <Widget>[
       const dom.h2(<Widget>[
         InfoTip(
-          tip: 'Pick plugins/Denizen. Assignments bind to NPCs in the Citizens save above, and behaviors stay off until reviewed on the server.',
+          tip: 'Pick plugins/Denizen. Assignments bind to NPCs in the Citizens save above, and apply on the server turns the behaviors on.',
           docs: Docs.denizen,
           child: Component.text('Denizen folder'),
         ),
@@ -556,7 +556,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
     return dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Shopkeepers shops'}, <Widget>[
       const dom.h2(<Widget>[
         InfoTip(
-          tip: 'Add config.yml for its currency items. Citizens shopkeepers are checked against the saves.yml above, and shops stay closed until reviewed.',
+          tip: 'Add config.yml for its currency items. Citizens shopkeepers are checked against the saves.yml above, and shops open once applied.',
           docs: Docs.shopkeepers,
           child: Component.text('Shopkeepers shops'),
         ),
@@ -611,7 +611,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
         dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Conversion summary'}, <Widget>[
           const dom.h2(<Widget>[
             InfoTip(
-              tip: 'What the conversion found in saves.yml. Every NPC lands dormant and is checked on the server before it spawns.',
+              tip: 'What the conversion found in saves.yml. The server checks every NPC again when it applies the import.',
               docs: Docs.citizens,
               child: Component.text('Review'),
             ),

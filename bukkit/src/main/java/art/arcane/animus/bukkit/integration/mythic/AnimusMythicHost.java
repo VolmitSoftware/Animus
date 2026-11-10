@@ -7,8 +7,10 @@ import art.arcane.animus.core.integration.MythicBinding;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.virtual.VirtualNpcState;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -20,19 +22,21 @@ import org.bukkit.entity.Player;
 /** {@link MythicHost} over the running Animus: loaded definitions, live NPC positions and the server's owners. */
 final class AnimusMythicHost implements MythicHost {
     private record Entry(NpcDefinition definition, Optional<MythicBinding> binding) {}
-    private record Index(Map<String, NpcDefinition> source, Map<UUID, Entry> byUuid) {}
+    private record Index(Map<String, NpcDefinition> source, Map<UUID, Entry> byUuid, Set<UUID> bound) {}
 
     private final Server server;
     private final AnimusRuntime runtime;
     private final Function<UUID, Optional<VirtualNpcState.Snapshot>> states;
     private final MythicSupport.Owners owners;
-    private volatile Index index = new Index(Map.of(), Map.of());
+    private volatile Index index = new Index(Map.of(), Map.of(), Set.of());
 
     AnimusMythicHost(Server server, AnimusRuntime runtime, Function<UUID, Optional<VirtualNpcState.Snapshot>> states, MythicSupport.Owners owners) {
         this.server = server; this.runtime = runtime; this.states = states; this.owners = owners;
     }
 
     @Override public Optional<Npc> npc(UUID npc) { return Optional.ofNullable(index().byUuid().get(npc)).map(this::view); }
+
+    @Override public Set<UUID> bound() { return index().bound(); }
 
     @Override public Optional<Npc> npc(String id) {
         if (!runtime.isRunning()) return Optional.empty();
@@ -67,15 +71,20 @@ final class AnimusMythicHost implements MythicHost {
         return new Npc(definition.uuid(), definition.id(), definition.name(), entry.binding(), location);
     }
 
-    /** Definitions by UUID, rebuilt only when the loaded set changes. */
+    /** Definitions by UUID and the bound ones, rebuilt only when the loaded set changes. */
     private Index index() {
-        if (!runtime.isRunning()) return new Index(Map.of(), Map.of());
+        if (!runtime.isRunning()) return new Index(Map.of(), Map.of(), Set.of());
         Map<String, NpcDefinition> loaded = runtime.npcs().snapshot();
         Index current = index;
         if (current.source() == loaded) return current;
         Map<UUID, Entry> byUuid = new HashMap<>();
-        for (NpcDefinition definition : loaded.values()) byUuid.put(definition.uuid(), entry(definition));
-        Index next = new Index(loaded, Map.copyOf(byUuid));
+        Set<UUID> bound = new HashSet<>();
+        for (NpcDefinition definition : loaded.values()) {
+            Entry entry = entry(definition);
+            byUuid.put(definition.uuid(), entry);
+            if (entry.binding().map(MythicBinding::enabled).orElse(false)) bound.add(definition.uuid());
+        }
+        Index next = new Index(loaded, Map.copyOf(byUuid), Set.copyOf(bound));
         index = next;
         return next;
     }

@@ -38,6 +38,8 @@ final class QuestPlay<P, S> {
     /** Seconds an offer's buttons stay valid. */
     static final long OFFER_SECONDS = 120;
     private static final String ACCEPT = "accept", DECLINE = "decline";
+    /** Taking quests and their offer markers need this node; quests already taken keep counting without it. */
+    static final String USE = art.arcane.animus.core.command.PermissionNodes.QUESTS_USE;
     private static final String PROGRESS_SOUND = "minecraft:entity.experience_orb.pickup", STAGE_SOUND = "minecraft:block.note_block.chime",
             COMPLETE_SOUND = "minecraft:ui.toast.challenge_complete";
     private record Offer(String token, String quest, String npc, long expires) {}
@@ -72,11 +74,11 @@ final class QuestPlay<P, S> {
         QuestRecord record = store.record(id);
         Optional<QuestRecord.Active> active = record.active(quest.id());
         java.util.OptionalLong seen = state.stage(id, quest);
-        if (seen.isEmpty()) return active;
+        if (seen.isEmpty()) return beyond(player, quest, active);
         long stage = seen.getAsLong();
         int stages = quest.stages().size();
         if (active.isPresent()) {
-            if (stage == active.get().mirror()) return active;
+            if (stage == active.get().mirror()) return beyond(player, quest, active);
             if (stage <= 0) { record.drop(quest.id()); store.changed(id); return Optional.empty(); }
             if (stage > stages) { completed(player, quest, true, false); return Optional.empty(); }
             QuestRecord.Active moved = active.get().at((int) stage - 1, quest.stages().get((int) stage - 1).objectives().size(), stage);
@@ -96,8 +98,22 @@ final class QuestPlay<P, S> {
         return Optional.empty();
     }
 
+    /**
+     * A stage the quest file no longer has, after stages were removed, counts as every stage done: the quest waits at
+     * its turn-in NPC, or completes with its rewards when it has none.
+     */
+    private Optional<QuestRecord.Active> beyond(P player, QuestDocument quest, Optional<QuestRecord.Active> active) {
+        if (active.isEmpty() || active.get().ready() || active.get().stage() < quest.stages().size()) return active;
+        if (quest.turnIn().isEmpty()) { completed(player, quest, true, true); return Optional.empty(); }
+        int last = quest.stages().size() - 1;
+        QuestRecord.Active waiting = new QuestRecord.Active(last, new int[quest.stages().get(last).objectives().size()], active.get().started(), true, active.get().mirror());
+        store.record(host.id(player)).put(quest.id(), waiting);
+        store.changed(host.id(player));
+        return Optional.of(waiting);
+    }
+
     String status(UUID player, QuestDocument quest) {
-        QuestRecord record = store.record(player);
+        QuestRecord record = store.peek(player).orElseGet(QuestRecord::new);
         Optional<QuestRecord.Active> active = record.active(quest.id());
         if (active.isPresent()) return active.get().ready() ? "ready" : "active";
         return record.finished(quest.id()).isPresent() || state.stage(player, quest).orElse(0) > quest.stages().size() ? "finished" : "none";
@@ -136,6 +152,7 @@ final class QuestPlay<P, S> {
             }
         }
         if (used) return true;
+        if (!host.permitted(player, USE)) return false;
         for (QuestDocument quest : service.catalog().offeredBy(npcId)) {
             if (store.record(host.id(player)).active(quest.id()).isPresent() || refusal(player, quest).isPresent()) continue;
             offer(player, quest, npcId);
@@ -296,7 +313,8 @@ final class QuestPlay<P, S> {
             if (stage.objectives().get(at).id().equals(objectiveId) && stage.objectives().get(at).type() == QuestDocument.Type.CUSTOM) index = at;
         if (index < 0) throw new QuestControl.Refused("objective-unknown", "The current stage of " + quest.id() + " has no custom objective " + objectiveId);
         int target = index;
-        count(player, quest, (QuestDocument.Objective objective) -> objective == stage.objectives().get(target) ? amount : 0);
+        int added = Math.clamp(amount, 0, QuestDocument.MAXIMUM_AMOUNT);
+        count(player, quest, (QuestDocument.Objective objective) -> objective == stage.objectives().get(target) ? added : 0);
         return store.record(host.id(player)).active(quest.id()).map((QuestRecord.Active after) -> after.stage() == before.stage() ? after.count(target) : stage.objectives().get(target).amount())
                 .orElse(stage.objectives().get(target).amount());
     }
@@ -318,7 +336,7 @@ final class QuestPlay<P, S> {
             QuestDocument.Objective objective = stage.get().objectives().get(index);
             int added = amount.applyAsInt(objective);
             if (added <= 0) continue;
-            int count = Math.min(objective.amount(), current.count(index) + added);
+            int count = (int) Math.min(objective.amount(), (long) current.count(index) + added);
             current = current.counted(index, count);
             changed = true;
             progressed(player, quest, objective, count);
@@ -475,10 +493,14 @@ final class QuestPlay<P, S> {
         return quest.finishedStage();
     }
 
-    /** Forgets the quest, or every quest when empty, for a player online or not; any thread. */
+    /** Forgets the quest, or every quest the player has a record of when empty, and writes their stage 0; on the player's owner, or for an offline player. */
     void reset(UUID player, Optional<QuestDocument> quest) {
         QuestRecord record = store.record(player);
-        List<QuestDocument> cleared = quest.map(List::of).orElseGet(() -> List.copyOf(service.catalog().quests().values()));
+        List<QuestDocument> cleared = quest.map(List::of).orElseGet(() -> {
+            java.util.Set<String> had = new java.util.TreeSet<>(record.active().keySet());
+            had.addAll(record.finished().keySet());
+            return had.stream().flatMap((String id) -> service.catalog().quest(id).stream()).toList();
+        });
         for (QuestDocument each : cleared) { record.forget(each.id()); write(player, each, 0); }
         if (quest.isEmpty()) record.forgetAll();
         store.changed(player);

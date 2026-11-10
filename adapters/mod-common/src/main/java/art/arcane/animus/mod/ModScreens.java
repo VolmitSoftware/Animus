@@ -314,7 +314,10 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
         }
     }
 
-    @Override public TradeInventory<ItemStack> inventory(ServerPlayer player) {
+    @Override public TradeInventory<ItemStack> inventory(ServerPlayer player) { return storage(player); }
+
+    /** The hotbar and three storage rows; worn armour and the off hand are never touched. */
+    static TradeInventory<ItemStack> storage(ServerPlayer player) {
         Inventory inventory = player.getInventory();
         return new TradeInventory<>() {
             @Override public int size() { return 36; }

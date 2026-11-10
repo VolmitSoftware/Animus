@@ -106,10 +106,11 @@ class FakeApi {
   Map<String, Object?>? _schemas;
 
   /// `/__fake/fail`: the next [_failTimes] requests (on paths starting with
-  /// [_failRoute], when set) answer [_failCode].
+  /// [_failRoute], when set) answer [_failCode], with [_failMessage] when set.
   String? _failCode;
   int _failTimes = 0;
   String? _failRoute;
+  String? _failMessage;
 
   /// `/__fake/drop-answer`: the next change set is written, but its answer
   /// and its change event are lost, so the browser must ask for its status.
@@ -118,18 +119,23 @@ class FakeApi {
   /// `/__fake/player`: whether the viewer is on the server for previews.
   bool playerOnline = true;
 
-  /// Makes the next [times] requests answer [code].
-  void failNext(String code, int times, {String? route}) {
+  /// `/__fake/plugins`: integration plugins the capabilities answer reports running.
+  Set<String> runningPlugins = <String>{};
+
+  /// Makes the next [times] requests answer [code], saying [message] when given.
+  void failNext(String code, int times, {String? route, String? message}) {
     errorStatus(code);
     _failCode = code;
     _failTimes = times;
     _failRoute = route;
+    _failMessage = message;
   }
 
   Map<String, Object?> get testControls => <String, Object?>{
         if (_failTimes > 0) 'fail': <String, Object?>{'code': _failCode, 'times': _failTimes, 'route': ?_failRoute},
         'dropNextApply': dropNextApply,
         'playerOnline': playerOnline,
+        'runningPlugins': runningPlugins.toList()..sort(),
       };
 
   /// Back to the data folder as loaded, with no tokens, previews or records.
@@ -143,6 +149,8 @@ class FakeApi {
     _failTimes = 0;
     dropNextApply = false;
     playerOnline = true;
+    runningPlugins = <String>{};
+    live.clear();
   }
 
   /// Once a second: expired tokens close their streams; expired previews end.
@@ -189,7 +197,7 @@ class FakeApi {
     if (_failTimes <= 0 || request.method == 'OPTIONS' || request.route == '/v1/hello') return;
     if (_failRoute != null && !request.route.startsWith(_failRoute!)) return;
     _failTimes--;
-    throw ApiError(_failCode!, 'Failed on purpose by /__fake/fail.');
+    throw ApiError(_failCode!, _failMessage ?? 'Failed on purpose by /__fake/fail.');
   }
 
   void _origin(FakeRequest request) {
@@ -237,6 +245,7 @@ class FakeApi {
           'imports' when n == 1 => _Route('import', false, _importStatus),
           'terrain' when n == 2 && s[1] == 'surface' => _Route('terrain', false, (FakeRequest request, FakeToken token, List<String> _) => fakeTerrainSurface(request, _anchors())),
           'terrain' when n == 2 && s[1] == 'blocks' => _Route('terrain', false, (FakeRequest request, FakeToken token, List<String> _) => fakeTerrainBlocks(request, _anchors())),
+          'terrain' when n == 2 && s[1] == 'position' => _Route('terrain', false, _position),
           _ => null,
         };
       case 'POST':
@@ -247,7 +256,7 @@ class FakeApi {
           'changes' when n == 3 && s[2] == 'undo' => _Route(null, true, _undo),
           'imports' when n == 1 => _Route('import', false, _upload),
           'imports' when n == 2 && s[1] == 'stage' => _Route('import', false, _importStage),
-          'imports' when n == 3 && const <String>{'apply', 'accept', 'rollback'}.contains(s[2]) => _Route('import', false, _importStep),
+          'imports' when n == 3 && const <String>{'apply', 'rollback'}.contains(s[2]) => _Route('import', false, _importStep),
           'npcs' when n == 3 && (s[2] == 'spawn' || s[2] == 'despawn') => _Route('spawn', false, _spawn),
           _ => null,
         };
@@ -258,22 +267,49 @@ class FakeApi {
     }
   }
 
-  /// Where the NPCs stand: terrain is readable within the radius of these.
-  List<FakeAnchor> _anchors() => <FakeAnchor>[
-        for (final StoredDocument document in documents.list(DocumentKind.npc))
-          if (_position(document) case final Map<String, Object?> position
-              when position['world'] is String && position['x'] is num && position['z'] is num)
-            (world: position['world']! as String, x: (position['x']! as num).toDouble(), z: (position['z']! as num).toDouble()),
-      ];
+  /// Where each spawned NPC stands now, by id, set through `/__fake/live`.
+  final Map<String, ({String world, double x, double y, double z})> live = <String, ({String world, double x, double y, double z})>{};
 
-  static Map<String, Object?>? _position(StoredDocument document) {
+  /// Where the NPCs stand, walk and go, and where the spawned ones are now:
+  /// terrain is readable within the radius of these.
+  List<FakeReach> _anchors() {
+    Map<String, Object?>? route(String id) {
+      final StoredDocument? stored = documents.find(DocumentKind.route, id);
+      final Object? json = stored == null ? null : _json(stored);
+      return json is Map<String, Object?> ? json : null;
+    }
+
+    return <FakeReach>[
+      for (final StoredDocument document in documents.list(DocumentKind.npc))
+        if (_json(document) case final Map<String, Object?> json) ...<FakeReach>[
+          ...fakeReaches(json, route),
+          if (json['spawned'] == true && live[document.id] != null)
+            (world: live[document.id]!.world, ax: live[document.id]!.x, az: live[document.id]!.z, bx: live[document.id]!.x, bz: live[document.id]!.z),
+        ],
+    ];
+  }
+
+  static Object? _json(StoredDocument document) {
     try {
-      final Object? json = jsonDecode(document.content);
-      final Object? position = json is Map<String, Object?> ? json['position'] : null;
-      return position is Map<String, Object?> ? position : null;
+      return jsonDecode(document.content);
     } on FormatException {
       return null;
     }
+  }
+
+  /// `GET /v1/terrain/position?npc=`: where a spawned NPC stands now.
+  FakeResponse _position(FakeRequest request, FakeToken token, List<String> _) {
+    final String? id = request.query['npc'];
+    if (id == null || id.isEmpty) throw ApiError('invalid-request', 'npc: an NPC id such as town/guard is required.');
+    final StoredDocument? stored = documents.find(DocumentKind.npc, id);
+    if (stored == null) throw ApiError('not-found', 'No NPC $id.');
+    final Object? json = _json(stored);
+    final ({String world, double x, double y, double z})? at = json is Map<String, Object?> && json['spawned'] == true ? live[id] : null;
+    return FakeResponse(200, body: <String, Object?>{
+      'npc': id,
+      'active': at != null,
+      if (at != null) ...<String, Object?>{'world': at.world, 'x': at.x, 'y': at.y, 'z': at.z},
+    });
   }
 
   static String _bearer(FakeRequest request) {
@@ -344,6 +380,7 @@ class FakeApi {
         'spawn': yes,
         'terrain': yes,
         'skins.texture': no('the server does not cache decoded skin textures; the editor loads them from the skin\'s texture URL'),
+        for (final String plugin in runningPlugins) plugin: yes,
       },
       'modules': <Object?>[],
     });
@@ -627,20 +664,7 @@ class FakeApi {
     for (final String scope in const <String>['apply:npcs', 'apply:behaviors', 'apply:gui']) {
       if (!token.has(scope)) throw ApiError('scope-missing', 'This token lacks $scope.');
     }
-    switch (segments[2]) {
-      case 'apply':
-        return FakeResponse(200, body: imports.apply(id));
-      case 'accept':
-        final Map<String, Object?> body = bodyObject(request);
-        fields(body, r'$', <String>{'categories'});
-        final Object? categories = body['categories'];
-        if (categories is! List<Object?> || categories.isEmpty || categories.any((Object? c) => c is! String)) {
-          throw invalid(r'$.categories: expected a non-empty array of review categories.');
-        }
-        return FakeResponse(200, body: imports.accept(id, categories.cast<String>()));
-      default:
-        return FakeResponse(200, body: imports.rollback(id));
-    }
+    return FakeResponse(200, body: segments[2] == 'apply' ? imports.apply(id) : imports.rollback(id));
   }
 
   FakeResponse _spawn(FakeRequest request, FakeToken token, List<String> segments) {

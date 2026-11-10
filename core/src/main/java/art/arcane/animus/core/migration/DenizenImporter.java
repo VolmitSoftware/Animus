@@ -1,5 +1,6 @@
 package art.arcane.animus.core.migration;
 
+import art.arcane.animus.core.behavior.catalog.ServerBehaviorList;
 import art.arcane.animus.core.npc.DefinitionBatch;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
@@ -30,13 +31,11 @@ import java.util.stream.Stream;
  * Stages and applies a Denizen import. The preview goes to {@code imports/denizen/<import-id>/}: generated behaviors
  * under {@code behaviors/denizen/}, chest GUIs under {@code guis/denizen/} (installed in {@code gui/inventories/denizen/}),
  * imported flag state under {@code state/behavior-state/}, and {@code report.json}
- * with the NPC bindings. Applying installs the behaviors and the state and records each binding on its NPC as
- * {@code modules["denizen:review"]}; accepting the {@code denizen} review lists the behaviors on the NPC. Rolling back
- * the transaction removes all of it.
+ * with the NPC bindings. Applying installs the behaviors and the state, lists the bound behaviors on their NPCs and adds
+ * the server behaviors to {@code server-behaviors.json}. Rolling back the transaction removes all of it.
  */
 public final class DenizenImporter {
     public static final String IMPORTS = "imports/denizen";
-    public static final String MODULE = "denizen:review";
     static final long MAXIMUM_FILE_BYTES = 1 << 20, MAXIMUM_TOTAL_BYTES = 32L << 20;
     private static final String STAGED_PATH = "(?:behaviors/denizen/[a-z0-9][a-z0-9_/-]*|guis/denizen/[a-z0-9][a-z0-9_/-]*|state/behavior-state/[a-z0-9_/-]+/animus/(?:flags|quests)/denizen)\\.json";
     /** Staged chest GUIs install into the chest GUI folder under the {@code denizen} namespace. */
@@ -55,11 +54,11 @@ public final class DenizenImporter {
         }
         public int flagsPreserved() { return report.getAsJsonObject("flags").get("preserved").getAsInt(); }
         public int preserved() { return report.getAsJsonArray("preserved").size(); }
-        /** Behaviors with a guard or stop that did not convert; accepting the review leaves them unbound and off. */
+        /** Behaviors with a guard or stop that did not convert; applying leaves them unbound and off. */
         public int held() { return report.has("heldBehaviors") && report.get("heldBehaviors").isJsonObject() ? report.getAsJsonObject("heldBehaviors").size() : 0; }
     }
 
-    public record Applied(String transaction, int behaviors, int states, int bound, List<String> problems) {
+    public record Applied(String transaction, int behaviors, int states, int bound, int servers, List<String> problems) {
         public Applied { problems = List.copyOf(problems); }
     }
 
@@ -163,7 +162,8 @@ public final class DenizenImporter {
         if (existing != null) {
             JsonObject recorded = JsonDocuments.object(existing);
             if (!recorded.has("transaction")) throw new IOException("This Denizen import was installed by an older Animus that did not record its transaction; run preview again");
-            return new Applied(recorded.get("transaction").getAsString(), recorded.get("behaviors").getAsInt(), recorded.get("states").getAsInt(), recorded.get("bound").getAsInt(), List.of());
+            return new Applied(recorded.get("transaction").getAsString(), recorded.get("behaviors").getAsInt(), recorded.get("states").getAsInt(), recorded.get("bound").getAsInt(),
+                    recorded.get("servers").getAsInt(), List.of());
         }
         List<DocumentStore.Change> changes = new ArrayList<>();
         int behaviors = 0, states = 0;
@@ -198,25 +198,26 @@ public final class DenizenImporter {
             }
             if (target.revision() == Long.MAX_VALUE) { problems.add(target.id() + ": revision exhausted"); continue; }
             JsonObject json = target.json();
-            JsonObject modules = json.has("modules") && json.get("modules").isJsonObject() ? json.getAsJsonObject("modules") : new JsonObject();
-            JsonObject module = new JsonObject();
-            module.add("behaviors", binding.getValue().getAsJsonArray().deepCopy());
-            module.addProperty("reviewAccepted", false);
-            modules.add(MODULE, module);
-            json.add("modules", modules);
+            JsonArray listed = json.has("behaviors") && json.get("behaviors").isJsonArray() ? json.getAsJsonArray("behaviors") : new JsonArray();
+            for (JsonElement behavior : binding.getValue().getAsJsonArray()) if (!listed.contains(behavior)) listed.add(behavior.deepCopy());
+            json.add("behaviors", listed);
             json.addProperty("revision", target.revision() + 1);
             edited.add(NpcDefinition.parse(JsonDocuments.write(json)));
             expected.put(target.path(), installed.expectedHash(target));
         }
+        List<String> servers = new ArrayList<>();
+        for (JsonElement server : serverBehaviors(preview.report())) servers.add(server.getAsString());
+        String before = store.read(ServerBehaviorList.PATH), after = ServerBehaviorList.append(before, servers);
+        if (!after.equals(before)) changes.add(new DocumentStore.Change(ServerBehaviorList.PATH, before == null ? "missing" : store.hash(ServerBehaviorList.PATH), after));
         JsonObject receipt = new JsonObject();
         receipt.addProperty("importId", id);
         receipt.addProperty("behaviors", behaviors);
         receipt.addProperty("states", states);
         receipt.addProperty("bound", edited.size());
-        receipt.add("serverBehaviors", serverBehaviors(preview.report()));
+        receipt.addProperty("servers", servers.size());
         receipt.addProperty("transaction", transaction);
         changes.add(new DocumentStore.Change(receiptPath, "missing", JsonDocuments.write(receipt)));
-        return new Applied(DefinitionBatch.commit(store, transaction, edited, expected, changes), behaviors, states, edited.size(), problems);
+        return new Applied(DefinitionBatch.commit(store, transaction, edited, expected, changes), behaviors, states, edited.size(), servers.size(), problems);
     }
 
     /** The commands that delete the {@code denizen} flags and quests an apply would otherwise overwrite. */
@@ -229,7 +230,7 @@ public final class DenizenImporter {
         return "Behavior state already stored at " + relative + "; delete the denizen flags and quests first with " + String.join(" and ", stateDeleteCommands());
     }
 
-    /** The report's server behaviors, which accepting the denizen review enables; empty for reports without the field. */
+    /** The report's server behaviors, which applying enables; empty for reports without the field. */
     static JsonArray serverBehaviors(JsonObject report) {
         JsonArray listed = new JsonArray();
         JsonElement field = report.get("serverBehaviors");
@@ -241,14 +242,5 @@ public final class DenizenImporter {
             if (!listed.contains(id)) listed.add(id.deepCopy());
         }
         return listed;
-    }
-
-    /** Lists a bound NPC's Denizen behaviors in its {@code behaviors}, once each, and marks the binding accepted. */
-    static void accept(JsonObject definition) {
-        JsonObject module = definition.getAsJsonObject("modules").getAsJsonObject(MODULE);
-        JsonArray listed = definition.has("behaviors") && definition.get("behaviors").isJsonArray() ? definition.getAsJsonArray("behaviors") : new JsonArray();
-        for (JsonElement behavior : module.getAsJsonArray("behaviors")) if (!listed.contains(behavior)) listed.add(behavior.deepCopy());
-        definition.add("behaviors", listed);
-        module.addProperty("reviewAccepted", true);
     }
 }

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "c058cceb-dd78-5e77-a628-309f9d5e3eda",
+  "id": "item",
+  "group": "types",
+  "name": "Body item",
+  "type": "minecraft:item",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  },
+  "droppedItem": {
+    "item": {
+      "id": "minecraft:golden_apple"
+    }
+  }
+}

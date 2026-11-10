@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "446d9d11-6e67-5593-9468-151a50b7da08",
+  "id": "spider",
+  "group": "types",
+  "name": "Body spider",
+  "type": "minecraft:spider",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 20,
+    "pitch": 0
+  }
+}

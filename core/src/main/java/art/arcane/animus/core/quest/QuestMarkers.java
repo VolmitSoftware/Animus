@@ -86,12 +86,13 @@ final class QuestMarkers<P> {
                     objective.npc().flatMap(service::npc).ifPresent((UUID npc) -> near(wanted, npc, TASK, pose));
             }
         }
+        if (!host.permitted(player, QuestPlay.USE)) return wanted;
         for (Map.Entry<String, List<String>> entry : catalog.byNpc().entrySet()) {
             Optional<UUID> npc = service.npc(entry.getKey());
-            if (npc.isEmpty() || wanted.containsKey(npc.get())) continue;
+            if (npc.isEmpty() || wanted.containsKey(npc.get()) || !near(npc.get(), pose)) continue;
             for (QuestDocument quest : catalog.offeredBy(entry.getKey())) {
                 if (record.active(quest.id()).isPresent() || service.play().refusal(player, quest).isPresent()) continue;
-                near(wanted, npc.get(), OFFER, pose);
+                wanted.put(npc.get(), OFFER);
                 break;
             }
         }
@@ -99,11 +100,14 @@ final class QuestMarkers<P> {
     }
 
     private void near(Map<UUID, String> wanted, UUID npc, String text, ScreenHost.Pose pose) {
-        if (wanted.containsKey(npc)) return;
+        if (!wanted.containsKey(npc) && near(npc, pose)) wanted.put(npc, text);
+    }
+
+    private boolean near(UUID npc, ScreenHost.Pose pose) {
         Optional<VirtualNpcState.Snapshot> state = service.living().state(npc);
-        if (state.isEmpty() || !pose.in(state.get().position().world())) return;
+        if (state.isEmpty() || !pose.in(state.get().position().world())) return false;
         double dx = state.get().position().point().x() - pose.x(), dz = state.get().position().point().z() - pose.z();
-        if (dx * dx + dz * dz <= RANGE * RANGE) wanted.put(npc, text);
+        return dx * dx + dz * dz <= RANGE * RANGE;
     }
 
     private static DisplayEntity entity(Shown shown) {

@@ -7,14 +7,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiPredicate;
+import java.util.function.Consumer;
 import me.pikamug.quests.BukkitQuestsPlugin;
 import me.pikamug.quests.dependencies.npc.BukkitNpcDependency;
 import me.pikamug.quests.listeners.BukkitNpcListener;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.HandlerList;
 import org.bukkit.plugin.Plugin;
 
 /**
@@ -27,12 +30,26 @@ final class QuestsBridge {
 
     private QuestsBridge() {}
 
-    /** Joins the running Quests plugin and listens for Animus NPC clicks and deaths on Animus's behalf. */
-    static void install(Plugin animus, Plugin quests, QuestNpcHost npcs) {
+    /**
+     * Joins the running Quests plugin and listens for Animus NPC clicks and deaths on Animus's behalf. Closing the
+     * result leaves Quests when Animus stops; Quests keeps its providers for as long as it runs.
+     */
+    static AutoCloseable install(Plugin animus, Plugin quests, QuestNpcHost npcs) {
         BukkitQuestsPlugin plugin = (BukkitQuestsPlugin) quests;
         Npcs provider = new Npcs(npcs);
-        plugin.getDependencies().addNpcDependency(provider);
-        animus.getServer().getPluginManager().registerEvents(new Clicks(animus, plugin, provider), animus);
+        join(plugin.getDependencies().getNpcDependencies(), provider, plugin.getDependencies()::addNpcDependency);
+        Clicks clicks = new Clicks(animus, plugin, provider);
+        animus.getServer().getPluginManager().registerEvents(clicks, animus);
+        return () -> {
+            plugin.getDependencies().getNpcDependencies().remove(provider);
+            HandlerList.unregisterAll(clicks);
+        };
+    }
+
+    /** Adds the provider after dropping one an earlier Animus left, so Quests never asks two Animus providers. */
+    static void join(Set<BukkitNpcDependency> providers, Npcs provider, Consumer<BukkitNpcDependency> add) {
+        providers.removeIf((BukkitNpcDependency earlier) -> earlier.getClass().getName().equals(Npcs.class.getName()));
+        add.accept(provider);
     }
 
     /** The quest click an Animus interaction is: right for use, left for attack; none for a preview. */

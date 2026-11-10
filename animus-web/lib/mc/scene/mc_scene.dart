@@ -34,10 +34,15 @@ final class McRigNode extends McSceneNode {
     required super.transform,
     this.pose = McRigPose.rest,
     this.tint = const <double>[1, 1, 1],
+    this.opacity = 1,
     super.glint,
   });
 
   final McRig rig;
+
+  /// How opaque the layer draws, 0 to 1: below 1 for the energy swirl of a
+  /// charged creeper or an armoured wither.
+  final double opacity;
   final McRigPose pose;
 
   /// A pack entity texture id, or a runtime skin id registered with the
@@ -74,15 +79,24 @@ final class McItemNode extends McSceneNode {
 }
 
 /// A block model the way a block display draws it: the default blockstate
-/// variant, the block's corner at the mesh origin, one block across.
+/// variant unless [state] names properties, the block's corner at the mesh
+/// origin, one block across.
 final class McBlockNode extends McSceneNode {
-  const McBlockNode({required super.key, required this.blockKey, required super.transform, super.glint});
+  const McBlockNode({required super.key, required this.blockKey, required super.transform, this.state, this.modelId, super.glint});
 
   /// Bare block key (`carved_pumpkin`), block state properties stripped.
   final String blockKey;
 
+  /// The block state with its properties (`oak_stairs[facing=east]`), drawn
+  /// from the pack's full blockstates; null or bare for the default variant.
+  final String? state;
+
+  /// A block model drawn as it is, for a model no blockstate names
+  /// (`block/item_frame`).
+  final String? modelId;
+
   @override
-  String get signature => 'block:$blockKey';
+  String get signature => 'block:$blockKey:${state ?? ''}:${modelId ?? ''}';
 }
 
 /// Elements that are not in the asset pack (an item model from the
@@ -134,6 +148,16 @@ final class McMeshNode extends McSceneNode {
   @override
   String get signature => 'mesh:$meshSignature';
 }
+
+/// [node] placed [by] further: its transform with [by] applied after it.
+McSceneNode mcMovedNode(McSceneNode node, McMat4 by) => switch (node) {
+      McRigNode() => McRigNode(key: node.key, rig: node.rig, textureId: node.textureId, transform: by.multiply(node.transform), pose: node.pose, tint: node.tint, glint: node.glint),
+      McItemNode() => McItemNode(key: node.key, itemId: node.itemId, pose: node.pose, transform: by.multiply(node.transform), leftHand: node.leftHand, glint: node.glint),
+      McBlockNode() => McBlockNode(key: node.key, blockKey: node.blockKey, transform: by.multiply(node.transform), glint: node.glint),
+      McModelNode() => McModelNode(key: node.key, model: node.model, textureId: node.textureId, modelSignature: node.modelSignature, transform: by.multiply(node.transform), glint: node.glint),
+      // Meshes are built in place (terrain) and never moved.
+      McMeshNode() => node,
+    };
 
 final class McScene {
   McScene(this.nodes, {this.frame = const <McVec3>[], this.glow, this.ground = true}) : byKey = <String, McSceneNode>{} {

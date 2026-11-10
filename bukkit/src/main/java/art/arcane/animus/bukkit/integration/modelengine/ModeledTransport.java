@@ -88,14 +88,6 @@ public final class ModeledTransport<P, I> implements BodyTransport<P, I> {
         }
     }
 
-    /** Looks the NPC's shape up again and redraws it for everyone who sees its body, as a runtime override needs. */
-    public void refresh(UUID npc) {
-        Npc<P> known = npcs.get(npc);
-        if (known == null) return;
-        detach(npc, known);
-        attach(npc, known, shapes.apply(npc));
-    }
-
     /** Whether the NPC shows a model right now. */
     public boolean modelled(UUID npc) {
         Npc<P> known = npcs.get(npc);

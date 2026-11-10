@@ -185,9 +185,9 @@ void main() {
 
   group('navigation sources', () {
     test('test_setNavigationRecording_dropsRouteFields', () {
-      final JsonMap module = <String, Object?>{'enabled': true, 'reviewAccepted': true, 'order': 'random', 'points': <Object?>[_point(0)], 'kept': 1};
+      final JsonMap module = <String, Object?>{'enabled': true, 'order': 'random', 'points': <Object?>[_point(0)], 'kept': 1};
       final JsonMap played = setNavigationRecording(module, 'market-loop');
-      expect(played, <String, Object?>{'enabled': true, 'reviewAccepted': true, 'kept': 1, 'recording': 'market-loop'});
+      expect(played, <String, Object?>{'enabled': true, 'kept': 1, 'recording': 'market-loop'});
       expect(navigationSource(played), NavigationSource.recording);
       final JsonMap routed = setNavigationRecording(<String, Object?>{'enabled': true, 'route': 'town'}, 'x', playback: 'pingpong');
       expect(routed, <String, Object?>{'enabled': true, 'recording': 'x', 'playback': 'pingpong'});
