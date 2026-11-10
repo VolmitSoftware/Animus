@@ -17,7 +17,7 @@ Supported on Paper, Spigot and Folia; Fabric, Forge and NeoForge are experimenta
 ## Getting started
 
 1. Put the jar in `plugins/` (or `mods/` on a mod server) and start the server.
-2. Follow [your first ten minutes](https://docs.volmitsoftware.com/animus/20-first-ten-minutes) to make, skin and walk a first NPC.
+2. Follow the [tutorial introduction](https://docs.volmitsoftware.com/animus/20-tutorial-introduction) to make, skin and walk a first NPC.
 3. Coming from Citizens? [Migrating from Citizens](https://docs.volmitsoftware.com/animus/13-migrating-from-citizens) imports your NPCs together with Sentinel, Denizen, dtlTraders and Shopkeepers data, and one command undoes it.
 
 Every command is listed under [commands and permissions](https://docs.volmitsoftware.com/animus/02-commands-permissions), and every `config.toml` setting under [configuration](https://docs.volmitsoftware.com/animus/03-configuration).

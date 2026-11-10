@@ -12,7 +12,7 @@ import java.util.List;
  * done without a click. A player gets click chips; the console gets each command written out.
  */
 public final class SetupGuide {
-    public static final String DOCS = ChatLine.docsUrl("20-first-ten-minutes", "");
+    public static final String DOCS = ChatLine.docsUrl("20-tutorial-introduction", "");
     public static final int MAXIMUM_LINES = 6;
     static final String SETUP = "/animus setup";
     static final String CREATE = "/animus create guard";

@@ -24,7 +24,7 @@ class SetupGuideTest {
                 "3. Edit NPCs in your browser [Pair editor]",
                 "Every step in the wiki [Docs]"), plain(lines));
         assertEquals(List.of("suggest_command /animus create guard", "run_command /animus tools", "run_command /animus editor pair",
-                "open_url https://docs.volmitsoftware.com/animus/20-first-ten-minutes"), clicks(lines));
+                "open_url https://docs.volmitsoftware.com/animus/20-tutorial-introduction"), clicks(lines));
     }
 
     @Test void foundCitizensDataPutsTheImportFirstAndKeepsSixLines() {
@@ -75,7 +75,7 @@ class SetupGuideTest {
                 "2. Create an NPC where you stand: /animus create guard, in game",
                 "3. Set a skin and placement: /animus tools, in game",
                 "4. Edit NPCs in your browser: /animus editor pair",
-                "Every step in the wiki: https://docs.volmitsoftware.com/animus/20-first-ten-minutes"), SetupGuide.console(new SetupState(0, FOUND, true, 0)));
+                "Every step in the wiki: https://docs.volmitsoftware.com/animus/20-tutorial-introduction"), SetupGuide.console(new SetupState(0, FOUND, true, 0)));
         assertEquals("3. Web editor is off; set editor.enabled = true in config.toml", SetupGuide.console(new SetupState(2, NOTHING, false, 0)).get(3));
     }
 
