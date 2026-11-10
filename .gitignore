@@ -22,3 +22,7 @@ service-account*.json
 /consumers/
 /.manager-state/
 /.multiplexor/
+
+# Markdown notes stay local; only README files are tracked
+*.md
+!README.md

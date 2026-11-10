@@ -28,7 +28,15 @@ Trusted Java modules add behavior actions, conditions, triggers and import conve
 
 ## Building from source
 
-See [building](dev/building.md). The other notes in `dev/` describe the internals for contributors.
+Building needs JDK 25. Set `JAVA_HOME` to it if `java -version` reports something older.
+
+```sh
+./gradlew build                                   # Core tests, Bukkit API matrix, artifact checks, converter archives
+./gradlew :converter:installDist                  # Runnable local converter
+./gradlew build -PincludeModDistributions=true    # Plugin jar plus every mod jar in build/distributions
+```
+
+The plugin jar is written to `build/distributions/`. The build uses a VolmLib checkout found beside or above the Animus checkout; point it elsewhere with `-PlocalVolmLibDirectory=/path/to/VolmLib`, or use the published dependency with `-PuseLocalVolmLib=false`.
 
 ## Support
 
