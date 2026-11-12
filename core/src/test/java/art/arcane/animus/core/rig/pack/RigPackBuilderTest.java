@@ -108,6 +108,22 @@ final class RigPackBuilderTest {
         assertTrue(entries(result.zip()).stream().noneMatch((String name) -> name.endsWith(".png")));
     }
 
+    @Test
+    void leavesOutModelEngineHitboxAndShadowGroups() throws IOException {
+        String extra = MODEL
+                .replace("\"elements\":[", "\"elements\":[{\"uuid\":\"e9\",\"type\":\"cube\",\"from\":[-12,0,-12],\"to\":[12,32,12],\"faces\":{\"north\":{\"uv\":[0,0,4,4],\"texture\":0}}},")
+                .replace("\"outliner\":[", "\"outliner\":[{\"name\":\"HitBox\",\"uuid\":\"g8\",\"origin\":[0,28,0],\"children\":[\"e9\"]},{\"name\":\"shadow\",\"uuid\":\"g9\",\"origin\":[0,0,0],\"children\":[]},")
+                .replace("\"animators\":{", "\"animators\":{\"g8\":{\"name\":\"HitBox\",\"type\":\"bone\",\"keyframes\":[{\"channel\":\"rotation\",\"time\":0,\"data_points\":[{\"x\":0,\"y\":45,\"z\":0}]}]},");
+        BlockbenchImport.Output output = BlockbenchImport.convert("town:golem", extra.getBytes(), RigPackBuilder.Limits.DEFAULT);
+        List<String> bones = new ArrayList<>();
+        output.rig().getAsJsonArray("bones").forEach((com.google.gson.JsonElement bone) -> bones.add(bone.getAsJsonObject().get("id").getAsString()));
+        assertEquals(List.of("body", "head", "head-blade"), bones);
+        assertTrue(output.resources().keySet().stream().noneMatch((String path) -> path.contains("hitbox") || path.contains("shadow")), output.resources().keySet().toString());
+        assertTrue(output.animations().getFirst().getAsJsonArray("tracks").asList().stream().noneMatch((com.google.gson.JsonElement track) -> track.getAsJsonObject().get("bone").getAsString().contains("hitbox")));
+        assertTrue(output.warnings().contains("Group HitBox is the Model Engine hitbox; it was left out and the NPC keeps its body's hitbox."), output.warnings().toString());
+        assertTrue(output.warnings().contains("Group shadow is the Model Engine shadow; it was left out."), output.warnings().toString());
+    }
+
     private static List<String> entries(Path zip) throws IOException {
         List<String> names = new ArrayList<>();
         try (ZipInputStream input = new ZipInputStream(Files.newInputStream(zip))) {

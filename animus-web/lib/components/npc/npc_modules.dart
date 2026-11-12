@@ -19,6 +19,7 @@ import 'npc_section.dart';
 import 'route_editor.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../logic/suggest/field_profiles.dart';
+import '../../logic/plural.dart';
 
 const String shopModule = 'animus:shop';
 const String mountModule = 'animus:mount';
@@ -393,7 +394,7 @@ class NavigationEditor extends StatelessWidget {
         labelFor: recordingId,
         help: recordings.isEmpty
             ? 'No recordings. Record with /animus record start <id>, or type an id.'
-            : (duration == null ? '' : '$duration ticks, ${(duration / 20).toStringAsFixed(1)} seconds.'),
+            : (duration == null ? '' : '${countOf(duration, 'tick')}, ${(duration / 20).toStringAsFixed(1)} seconds.'),
         problems: at('recording'),
         child: recordings.isEmpty
             ? GuiTextInput(id: recordingId, value: recording, label: 'Recording id', profile: idProfile(const ValueRef.document(DocumentKind.recording)), placeholder: 'market-loop', onChanged: (String id) => onChanged(<String, Object?>{...module, 'recording': id.trim()}))

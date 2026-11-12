@@ -21,6 +21,7 @@ import '../info_tip.dart';
 import '../rig/rig_actions.dart';
 import '../server/pair_page.dart';
 import 'offline_fields.dart';
+import '../../logic/plural.dart';
 
 /// The main element's id, shared with the shell's skip link.
 const String _mainId = 'animus-main';
@@ -84,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _createStarter() => _run('create the workspace', () async {
         final WorkspaceSnapshot made = await component.store.openFiles(_name.trim().isEmpty ? 'Example packs' : _name.trim(), starterWorkspaceFiles());
-        ArcaneSonner.success('Created ${made.name} (${made.documents.length} documents).');
+        ArcaneSonner.success('Created ${made.name} (${countOf(made.documents.length, 'document')}).');
         component.onNavigate(WorkspaceRoute(made.id));
         focusMainHeading();
       });
@@ -259,7 +260,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_deleting == summary.id) {
       return ConfirmRow(
         question: 'Delete ${summary.name}?',
-        detail: 'Removes its ${summary.documentCount} documents and undo history from this browser.',
+        detail: 'Removes its ${countOf(summary.documentCount, 'document')} and undo history from this browser.',
         confirmLabel: 'Delete workspace',
         onConfirm: () => _delete(summary),
         onCancel: () {

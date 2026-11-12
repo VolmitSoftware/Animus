@@ -30,6 +30,7 @@ import '../state/workspace_route.dart';
 import 'fold.dart';
 import 'info_tip.dart';
 import 'server/server_import_panel.dart';
+import '../logic/plural.dart';
 
 @JS('animusCitizensResult')
 external set _citizensResult(JSString? value);
@@ -87,6 +88,9 @@ Future<Map<String, String>?> _pickTextFolder() {
   return completer.future;
 }
 
+/// Which converter is running; the others only wait.
+enum _Conversion { citizens, denizen, shops }
+
 class CitizensScreen extends StatefulWidget {
   const CitizensScreen({required this.hub, this.store, this.onNavigate, super.key});
 
@@ -110,7 +114,9 @@ class _CitizensScreenState extends State<CitizensScreen> {
   /// The converted NPCs' names by Citizens id, for the warnings.
   Map<String, String> _names = const <String, String>{};
   String? _error;
-  bool _busy = false;
+  _Conversion? _converting;
+
+  bool get _busy => _converting != null;
   (String, Uint8List)? _shopSave;
   (String, Uint8List)? _shopConfig;
   ShopkeepersPreview? _shops;
@@ -162,7 +168,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
     final (String, Uint8List)? save = _shopSave;
     if (save == null) return;
     setState(() {
-      _busy = true;
+      _converting = _Conversion.shops;
       _shopError = null;
       _shops = null;
     });
@@ -192,7 +198,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
       _shopkeepersResult = jsonEncode(<String, Object?>{'error': '$failure'}).toJS;
       setState(() => _shopError = conversionProblem('Shopkeepers save.yml', 'The converter could not read the file'));
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _converting = null);
     }
   }
 
@@ -230,7 +236,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
     final DenizenFolder? folder = _denizen;
     if (folder == null || folder.empty) return;
     setState(() {
-      _busy = true;
+      _converting = _Conversion.denizen;
       _denizenError = null;
       _denizenPreview = null;
     });
@@ -265,7 +271,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
       _denizenResult = jsonEncode(<String, Object?>{'error': '$failure'}).toJS;
       setState(() => _denizenError = conversionProblem('Denizen folder', 'The converter could not read the scripts'));
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _converting = null);
     }
   }
 
@@ -293,7 +299,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
     final Uint8List? bytes = _bytes;
     if (bytes == null) return;
     setState(() {
-      _busy = true;
+      _converting = _Conversion.citizens;
       _error = null;
       _review = null;
     });
@@ -314,7 +320,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
       _citizensResult = jsonEncode(<String, Object?>{'error': '$failure'}).toJS;
       setState(() => _error = conversionProblem('Citizens saves.yml', 'The converter could not read the file'));
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _converting = null);
     }
   }
 
@@ -343,7 +349,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
         convertedWorkspaceFiles(citizens: _review?.preview, shops: _shops, denizen: _denizenPreview),
       );
       final int invalid = made.documents.where((AnimusDocument document) => !document.valid).length;
-      ArcaneSonner.success('Opened ${made.name}: ${made.documents.length} documents${invalid == 0 ? '' : ', $invalid to repair'}.');
+      ArcaneSonner.success('Opened ${made.name}: ${countOf(made.documents.length, 'document')}${invalid == 0 ? '' : ', $invalid to repair'}.');
       if (!send) {
         navigateTo(WorkspaceRoute(made.id));
       } else if (component.hub.servers.isEmpty) {
@@ -391,7 +397,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
         ),
         dom.div(classes: 'animus-row', <Widget>[
           Button(
-            label: _busy ? 'Converting' : 'Convert',
+            label: _converting == _Conversion.citizens ? 'Converting' : 'Convert',
             icon: ArcaneIcon.play(),
             variant: _variant(ConverterStep.convertCitizens),
             size: ButtonSize.small,
@@ -508,7 +514,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
       ]),
       if (folder != null && folder.skipped.isNotEmpty)
         Fold(attributes: const <String, String>{'data-testid': 'denizen-skipped'}, summary: <Widget>[
-          Component.text('${folder.skipped.length} file${folder.skipped.length == 1 ? '' : 's'} not read'),
+          Component.text('${countOf(folder.skipped.length, 'file')} not read'),
         ], children: <Widget>[
           const dom.p(classes: 'animus-muted', <Widget>[Component.text('Only .dsc and .yml under scripts/, server_flags.dat and player_flags/*.dat are read.')]),
           dom.ul(classes: 'animus-citizens-lines', <Widget>[for (final String path in folder.skipped.take(50)) dom.li(<Widget>[Component.text(path)])]),
@@ -519,7 +525,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
         ]),
       dom.div(classes: 'animus-row', <Widget>[
         Button(
-          label: _busy ? 'Converting' : 'Convert Denizen',
+          label: _converting == _Conversion.denizen ? 'Converting' : 'Convert Denizen',
           icon: ArcaneIcon.play(),
           variant: _variant(ConverterStep.convertDenizen),
           size: ButtonSize.small,
@@ -571,7 +577,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
       ]),
       dom.div(classes: 'animus-row', <Widget>[
         Button(
-          label: _busy ? 'Converting' : 'Convert shops',
+          label: _converting == _Conversion.shops ? 'Converting' : 'Convert shops',
           icon: ArcaneIcon.store(),
           variant: _variant(ConverterStep.convertShops),
           size: ButtonSize.small,

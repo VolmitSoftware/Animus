@@ -10,7 +10,7 @@ import 'dart:collection';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:archive/archive.dart';
+import '../data_folder_export.dart';
 
 import '../citizens/citizens_converter.dart' show importOutputHash;
 import '../citizens/java_json.dart';
@@ -94,17 +94,8 @@ class ShopkeepersPreview {
       });
 }
 
-/// The data-folder bundle as a reproducible zip: entries in path order, stored, one fixed timestamp.
-Uint8List shopkeepersBundleZip(ShopkeepersPreview preview) {
-  final Map<String, Uint8List> files = preview.bundle();
-  final Archive archive = Archive();
-  for (final String path in files.keys.toList()..sort()) {
-    archive.add(ArchiveFile.bytes(path, files[path]!)
-      ..lastModTime = 315532800
-      ..compression = CompressionType.none);
-  }
-  return Uint8List.fromList(ZipEncoder().encodeBytes(archive));
-}
+/// The data-folder bundle as a zip with entries in path order, stamped with [modified] (the export time by default).
+Uint8List shopkeepersBundleZip(ShopkeepersPreview preview, {DateTime? modified}) => zipFiles(preview.bundle(), modified: modified);
 
 /// Decodes a source file as the server reads it: strict UTF-8 of at most 16 MiB.
 String decodeShopkeepersSource(Uint8List bytes, String label) {

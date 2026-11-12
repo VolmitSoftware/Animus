@@ -10,6 +10,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/conversation/conversation_model.dart';
 import '../../logic/conversation/conversation_play.dart';
+import '../../logic/plural.dart';
 import '../gui/gui_fields.dart';
 import '../info_tip.dart';
 import 'conversation_fields.dart';
@@ -83,7 +84,7 @@ class _ConversationPreviewState extends State<ConversationPreview> {
         PlayLine(:final String text, :final int? delayTicks) => dom.li(classes: 'animus-conv-chat-npc', <Widget>[
             dom.span(classes: 'animus-conv-chat-name', <Widget>[Component.text('${component.npcName} »')]),
             GuiStyledText(text),
-            if (delayTicks != null) dom.span(classes: 'animus-muted animus-conv-chat-note', <Widget>[Component.text('after $delayTicks ticks')]),
+            if (delayTicks != null) dom.span(classes: 'animus-muted animus-conv-chat-note', <Widget>[Component.text('after ${countOf(delayTicks, 'tick')}')]),
           ]),
         PlayQuestion(:final ConversationChoices choices) => dom.li(classes: 'animus-conv-chat-npc is-question', <Widget>[
             dom.span(classes: 'animus-conv-chat-name', <Widget>[Component.text('${component.npcName} »')]),

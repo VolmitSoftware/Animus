@@ -252,8 +252,32 @@ class _McStageState extends State<McStage> {
     _postFramePending = true;
     context.binding.addPostFrameCallback(() {
       _postFramePending = false;
-      if (!_disposed) _attachToDom();
+      if (_disposed) return;
+      _attachToDom();
+      _keepTextsInside();
     });
+  }
+
+  /// Shifts each text marked `keepInside` back inside the stage's box, which
+  /// only the browser can measure; `translate` leaves the projected
+  /// `left`, `top` and `transform` alone.
+  void _keepTextsInside() {
+    final web.Element? stage = web.document.getElementById(_id);
+    if (stage == null) return;
+    final web.DOMRect frame = stage.getBoundingClientRect();
+    final web.NodeList kept = stage.querySelectorAll('[data-keep-inside]');
+    for (int index = 0; index < kept.length; index++) {
+      final web.HTMLElement text = kept.item(index)! as web.HTMLElement;
+      text.style.removeProperty('translate');
+      final web.DOMRect box = text.getBoundingClientRect();
+      final double dx = box.left < frame.left + _textInset
+          ? frame.left + _textInset - box.left
+          : (box.right > frame.right - _textInset ? frame.right - _textInset - box.right : 0);
+      final double dy = box.top < frame.top + _textInset
+          ? frame.top + _textInset - box.top
+          : (box.bottom > frame.bottom - _textInset ? frame.bottom - _textInset - box.bottom : 0);
+      if (dx != 0 || dy != 0) text.style.setProperty('translate', '${dx.toStringAsFixed(1)}px ${dy.toStringAsFixed(1)}px');
+    }
   }
 
   void _attachToDom() {
@@ -499,6 +523,9 @@ class _McStageState extends State<McStage> {
     return ((_numOf(a, 'clientX') + _numOf(b, 'clientX')) / 2, (_numOf(a, 'clientY') + _numOf(b, 'clientY')) / 2);
   }
 
+  /// The gap kept between a `keepInside` text and the stage's edge.
+  static const double _textInset = 4;
+
   // --- text layer ----------------------------------------------------------
 
   /// Each text block centred over its anchor, sized for its depth by
@@ -513,13 +540,14 @@ class _McStageState extends State<McStage> {
       final double stretch = text.scaleX / text.scaleY;
       out.add(dom.div(
         classes: 'animus-mc-text${text.nameplate ? ' is-nameplate' : ''}${text.dim ? ' is-dim' : ''}',
-        attributes: const <String, String>{'data-text': 'true'},
+        attributes: <String, String>{'data-text': 'true', if (text.keepInside) 'data-keep-inside': 'true'},
         styles: dom.Styles(raw: <String, String>{
           'left': '${at.x.toStringAsFixed(1)}px',
           'top': '${at.y.toStringAsFixed(1)}px',
           'font-size': '${fontPx.toStringAsFixed(2)}px',
           // The client wraps text displays at their line width (200 by default).
-          'max-width': '${(fontPx * text.lineWidth / 8).toStringAsFixed(1)}px',
+          'max-width': '${math.min(fontPx * text.lineWidth / 8, text.keepInside ? math.max(0, _widthPx - _textInset * 2) : double.infinity).toStringAsFixed(1)}px',
+          if (text.keepInside) ...<String, String>{'max-height': '${math.max(0, _heightPx - _textInset * 2).toStringAsFixed(1)}px', 'overflow': 'hidden'},
           'z-index': '${(1000 - at.z * 10).round().clamp(0, 1000)}',
           if (text.background != null) 'background': _argb(text.background!),
           if (text.alignment != McTextAlign.center) 'text-align': text.alignment.name,

@@ -7,7 +7,9 @@
 /// degrees about Y: pivots `(-x, y, -z) / 16`, rotations `(-x, y, -z)`. An
 /// item display draws its model turned 180 degrees about Y, which cancels
 /// that turn for the cubes, so element coordinates are the Blockbench ones
-/// relative to the group origin, plus 8. Cube rotations in 22.5-degree steps
+/// relative to the group origin, plus 8. Groups named `hitbox` and `shadow`
+/// (any case) are Model Engine's hitbox and shadow definitions, never drawn
+/// there, and are left out with their cubes. Cube rotations in 22.5-degree steps
 /// on one axis stay on the element; any other cube rotation becomes a bone of
 /// its own, where a display transform allows any angle.
 ///
@@ -215,6 +217,15 @@ class _Importer {
   void _group(JsonMap node, String? parent, int depth) {
     final String? uuid = node['uuid'] is String ? node['uuid']! as String : null;
     final JsonMap group = <String, Object?>{...?groups[uuid], ...node};
+    final String name = '${group['name'] ?? ''}';
+    switch (name.trim().toLowerCase()) {
+      case 'hitbox':
+        warnings.add('Group $name is the Model Engine hitbox; it was left out and the NPC keeps its body\'s hitbox.');
+        return;
+      case 'shadow':
+        warnings.add('Group $name is the Model Engine shadow; it was left out.');
+        return;
+    }
     final _Unit unit;
     if (depth > maximumBoneDepth && parent != null) {
       warnings.add('Group ${group['name']} nests deeper than $maximumBoneDepth; its cubes joined $parent.');
@@ -222,7 +233,7 @@ class _Importer {
     } else {
       final List<double> origin = _vector(group['origin'], const <double>[0, 0, 0]);
       unit = _Unit(
-        _free(sanitizeName('${group['name'] ?? ''}', 'bone')),
+        _free(sanitizeName(name, 'bone')),
         parent,
         javaBlock ? <double>[origin[0] - 8, origin[1], origin[2] - 8] : origin,
         _vector(group['rotation'], const <double>[0, 0, 0]),

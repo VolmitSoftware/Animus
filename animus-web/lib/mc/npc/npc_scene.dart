@@ -45,6 +45,7 @@ final class NpcText {
     this.scaleX = 1,
     this.scaleY = 1,
     this.brightness,
+    this.keepInside = false,
   });
 
   final McTextAlign alignment;
@@ -59,6 +60,10 @@ final class NpcText {
   /// How bright the text is drawn, 0 to 1, from a display's fixed block and
   /// sky light; null for full light.
   final double? brightness;
+
+  /// The stage shifts this text, and wraps it to the stage's width, so it
+  /// never leaves the stage: a speech bubble must stay readable at any pan.
+  final bool keepInside;
 
   /// A sneaking player's nameplate: the client draws it faded and hides it
   /// behind blocks.
@@ -101,6 +106,7 @@ final class NpcText {
         scaleX: scaleX,
         scaleY: scaleY,
         brightness: brightness,
+        keepInside: keepInside,
       );
 }
 

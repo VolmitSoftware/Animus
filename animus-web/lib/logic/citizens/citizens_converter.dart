@@ -9,7 +9,7 @@ library;
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:archive/archive.dart';
+import '../data_folder_export.dart';
 
 import '../npc/npc_paths.dart' show npcSchemaVersion;
 import 'citizens_stacks.dart';
@@ -76,17 +76,8 @@ class CitizensPreview {
       });
 }
 
-/// The data-folder bundle as a reproducible zip: entries in path order, stored, one fixed timestamp.
-Uint8List citizensBundleZip(CitizensPreview preview) {
-  final Map<String, Uint8List> files = preview.bundle();
-  final Archive archive = Archive();
-  for (final String path in files.keys.toList()..sort()) {
-    archive.add(ArchiveFile.bytes(path, files[path]!)
-      ..lastModTime = 315532800
-      ..compression = CompressionType.none);
-  }
-  return Uint8List.fromList(ZipEncoder().encodeBytes(archive));
-}
+/// The data-folder bundle as a zip with entries in path order, stamped with [modified] (the export time by default).
+Uint8List citizensBundleZip(CitizensPreview preview, {DateTime? modified}) => zipFiles(preview.bundle(), modified: modified);
 
 /// SHA-256 of `path + "\n" + sha256(bytes) + "\n"` for every file in `/` path order.
 String importOutputHash(Map<String, Uint8List> files) {
@@ -278,8 +269,10 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     if (citizensTargetable(reviewed)) {
       if (!modules.has('animus:combat')) modules.add('animus:combat', targetableCombat());
       (modules.get('animus:combat')! as JObject).addBool('targetableByMobs', true);
-      if (!modules.has(_healthModule)) modules.add(_healthModule, targetableHealth(record));
+      if (!modules.has(_healthModule)) modules.add(_healthModule, citizensHealth(record));
     }
+    // Citizens hurts an NPC left vulnerable (/npc vulnerable) whatever its traits, so it converts killable.
+    if (!modules.has(_healthModule) && citizensUnprotected(record)) modules.add(_healthModule, citizensHealth(record));
     final JObject? guard = citizensFollow(reviewed, npcUuids);
     if (guard != null) {
       if (!modules.has('animus:combat')) modules.add('animus:combat', targetableCombat());
@@ -367,7 +360,7 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     final JObject? mirror = citizensMirror(reviewed);
     if (mirror != null) modules.add('animus:mirror', mirror);
     final TraitsResult state = mapTraits(definition.get('type')!.asPrimitive.asString, record, reviewed, modules.has('animus:combat'),
-        modules.has(_healthModule), modules.has('animus:navigation'), runtime.navigation != null, references);
+        modules.has('animus:navigation'), runtime.navigation != null, references);
     if (runtime.navigation != null) patrols++;
     if (state.raisedFall) raisedFalls++;
     for (final MapEntry<String, JElement> field in state.fields.entries) {

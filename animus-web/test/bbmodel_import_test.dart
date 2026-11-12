@@ -161,6 +161,49 @@ void main() {
       final BbmodelImport solo = importBbmodel(bytesOf(model), rigId: 'town:solo');
       expect(boneById(solo.rig, 'solo')!['pivot'], <Object?>[0, 1, 0]);
     });
+
+    test('should leave out the Model Engine hitbox and shadow bones', () {
+      JsonMap slab(String uuid) => <String, Object?>{
+        'uuid': uuid,
+        'type': 'cube',
+        'from': <Object?>[-12, 0, -12],
+        'to': <Object?>[12, 32, 12],
+        'origin': <Object?>[0, 0, 0],
+        'faces': <String, Object?>{
+          'north': <String, Object?>{'uv': <Object?>[0, 0, 4, 4], 'texture': 0},
+        },
+      };
+      final JsonMap model = robotJson();
+      (model['elements']! as List<Object?>).addAll(<Object?>[slab('c-hitbox'), slab('c-shadow')]);
+      (model['outliner']! as List<Object?>).addAll(<Object?>[
+        <String, Object?>{'name': 'HitBox', 'uuid': 'g-hitbox', 'origin': <Object?>[0, 28, 0], 'children': <Object?>['c-hitbox']},
+        <String, Object?>{'name': 'shadow', 'uuid': 'g-shadow', 'origin': <Object?>[0, 0, 0], 'children': <Object?>['c-shadow']},
+      ]);
+      final JsonMap walk = (model['animations']! as List<Object?>).first! as JsonMap;
+      (walk['animators']! as JsonMap)['g-hitbox'] = <String, Object?>{
+        'name': 'HitBox',
+        'type': 'bone',
+        'keyframes': <Object?>[
+          <String, Object?>{
+            'channel': 'rotation',
+            'time': 0,
+            'data_points': <Object?>[
+              <String, Object?>{'x': 0, 'y': 45, 'z': 0},
+            ],
+          },
+        ],
+      };
+      final BbmodelImport hitbox = importBbmodel(bytesOf(model), rigId: 'town:robot');
+      expect(<String>[for (final JsonMap bone in bonesOf(hitbox.rig)) '${bone['id']}'], <String>['root', 'body', 'head', 'arm', 'arm-blade']);
+      expect(hitbox.resources.keys.where((String path) => path.contains('hitbox') || path.contains('shadow')), isEmpty);
+      for (final JsonMap clip in hitbox.animations) {
+        expect(validateAnimationStructure(clip, hitbox.rig), isEmpty, reason: '${clip['id']}');
+      }
+      expect(hitbox.warnings, containsAll(<String>[
+        'Group HitBox is the Model Engine hitbox; it was left out and the NPC keeps its body\'s hitbox.',
+        'Group shadow is the Model Engine shadow; it was left out.',
+      ]));
+    });
   });
 
   group('rig scene', () {
@@ -217,8 +260,8 @@ void main() {
     );
 
     test('should zip a workspace reproducibly and open it again', () {
-      final Uint8List first = zipFiles(workspaceFiles(workspace));
-      final Uint8List second = zipFiles(workspaceFiles(workspace));
+      final Uint8List first = zipFiles(workspaceFiles(workspace), modified: DateTime(2026, 5, 1));
+      final Uint8List second = zipFiles(workspaceFiles(workspace), modified: DateTime(2026, 5, 1));
       expect(first, second);
       final DataFolderResult opened = openDataFolder(filesFromZip(first), SharedSchemas.embedded);
       expect(opened.documents.map((AnimusDocument document) => document.id), containsAll(<String>['town:robot', 'town:robot/walk']));

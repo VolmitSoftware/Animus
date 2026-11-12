@@ -64,6 +64,7 @@ import 'inspect_fields.dart';
 import 'typed_values_editor.dart';
 import '../select/suggest_input.dart';
 import '../../logic/gui/gui_text.dart';
+import '../../logic/plural.dart';
 
 /// Keys the NPC inspector lays out itself; the rest show under kept fields.
 final Set<String> _laidOut = <String>{
@@ -761,7 +762,7 @@ class _NpcInspectorState extends State<NpcInspector> {
         ? (_group ? 'no route' : 'stands still')
         : asString(navigation['route']) != null
         ? 'route ${asString(navigation['route'])}'
-        : '${asList(navigation['points']).length} waypoints';
+        : countOf(asList(navigation['points']).length, 'waypoint');
     return NpcSection(
       id: 'behaviour',
       title: 'Behavior',

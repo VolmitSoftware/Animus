@@ -137,6 +137,9 @@ async function run(browser, width, height, label, scratch, theme) {
   assert.equal(await stat(page, 'NPCs installed'), '6');
   assert.ok((await control('state')).documents.length > before, 'apply installs documents on the server');
   await page.locator('[data-testid="import-lines"] li', {hasText: 'NPCs spawn with their patrols, schedules, combat, riding, shops and builds on'}).waitFor();
+  const appliedLines = await page.locator('[data-testid="import-lines"] li').allTextContents();
+  assert.match(appliedLines[0], new RegExp(`^Installed import ${importId.slice(0, 12)}; `), 'the result line reads as plain text');
+  for (const line of appliedLines) assert.doesNotMatch(line, /\u00a7|&#|^\[Animus\]/, `chat formatting in the import review: ${line}`);
   assert.equal(await page.locator('.animus-server-import').getByRole('button', {name: /Accept/}).count(), 0, 'apply leaves nothing to accept');
   assert.equal(await page.locator('.animus-server-import').getByRole('checkbox').count(), 0, 'no review categories');
   await page.locator('[data-testid="import-next"]').waitFor();

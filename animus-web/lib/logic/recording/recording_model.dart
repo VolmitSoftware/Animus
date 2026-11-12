@@ -12,6 +12,13 @@ import '../gui/gui_json.dart';
 /// Server ticks per second.
 const int recordingTicksPerSecond = 20;
 
+/// The playback tick after [elapsedMilliseconds] of wall time at [speed]
+/// recorded ticks per server tick, held at [durationTicks]. Playback adds the
+/// time since its last update, so late or skipped timer callbacks under load
+/// do not slow it down.
+double advanceRecordingTick(double tick, double elapsedMilliseconds, double speed, int durationTicks) =>
+    math.min(tick + math.max(0, elapsedMilliseconds) * recordingTicksPerSecond / 1000 * speed, durationTicks.toDouble());
+
 /// The `flags` bits of a frame, in bit order.
 const List<(int, String)> recordingFlags = <(int, String)>[
   (1, 'on ground'),

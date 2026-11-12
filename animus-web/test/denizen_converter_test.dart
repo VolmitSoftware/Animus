@@ -52,6 +52,8 @@ DenizenInput _folder(String folder, {String? citizens}) {
   );
 }
 
+final DateTime _fixed = DateTime(2026, 5, 1);
+
 void main() {
   group('shared Denizen golden fixtures', () {
     for (final Object? entry in _index()['cases']! as List<Object?>) {
@@ -131,7 +133,7 @@ void main() {
       final Archive archive = ZipDecoder().decodeBytes(denizenBundleZip(preview));
       final List<String> names = <String>[for (final ArchiveFile file in archive.files) file.name];
       expect(names, List<String>.of(names)..sort());
-      expect(denizenBundleZip(preview), denizenBundleZip(convertDenizen(_folder('town/Denizen', citizens: 'town/saves.yml'))));
+      expect(denizenBundleZip(preview, modified: _fixed), denizenBundleZip(convertDenizen(_folder('town/Denizen', citizens: 'town/saves.yml')), modified: _fixed));
     });
 
     test('aggregate counts', () {

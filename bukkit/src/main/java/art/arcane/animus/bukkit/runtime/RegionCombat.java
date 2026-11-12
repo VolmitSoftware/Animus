@@ -52,6 +52,8 @@ import org.bukkit.event.entity.ExplosionPrimeEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
+import org.bukkit.event.player.PlayerAnimationEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.world.EntitiesUnloadEvent;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
@@ -81,6 +83,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
     private final String protectionName;
     private final NamespacedKey helperKey, ownerKey;
     private final Map<UUID, Set<RegionActor>> guardians = new ConcurrentHashMap<>();
+    private final Map<UUID, CombatHits.Swing> swings = new ConcurrentHashMap<>();
     private final Set<RegionActor> watchers = ConcurrentHashMap.newKeySet();
     private final Set<RegionActor> combatants = ConcurrentHashMap.newKeySet();
     private final AtomicLong denials = new AtomicLong(), failures = new AtomicLong(), messages = new AtomicLong(), dropped = new AtomicLong(), deleted = new AtomicLong();
@@ -376,8 +379,13 @@ public final class RegionCombat implements Listener, AutoCloseable {
         ActorCombat combat = actor == null || !actor.owner.owned() ? null : actor.combat();
         if (combat == null) return;
         Player player = event.getViewer();
-        combat.playerAttack(player, CombatHits.attackDamage(player));
+        combat.playerAttack(player, CombatHits.attackDamage(player, swings.remove(player.getUniqueId())));
     }
+    /** On the player's region, before the server resets the charge. */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void swing(PlayerAnimationEvent event) { swings.put(event.getPlayer().getUniqueId(), CombatHits.Swing.of(event.getPlayer())); }
+    @EventHandler
+    public void quit(PlayerQuitEvent event) { swings.remove(event.getPlayer().getUniqueId()); }
     /** On the projectile's region: the hit is observed here and handed to the NPC that launched it. */
     @EventHandler(priority = EventPriority.LOWEST)
     public void helperHit(ProjectileHitEvent event) {

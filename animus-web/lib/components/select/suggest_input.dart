@@ -113,10 +113,22 @@ class _SuggestInputState extends State<SuggestInput> {
   void _show(SelectState next) {
     if (next.open && !_state.open) {
       final SelectRows rows = _rows;
-      _placement = placePopup(_baseId, popupHeight(options: rows.options.length, groups: 0, actions: rows.actionCount, search: false), sheet: false);
-      _stopWatching = watchOutside(_rootId, _popupId, _baseId, () {
-        if (mounted && _state.open) _show(const SelectState());
-      });
+      final double wanted = popupHeight(options: rows.options.length, groups: 0, actions: rows.actionCount, search: false);
+      _placement = placePopup(_baseId, wanted, sheet: false);
+      _stopWatching = watchOutside(
+        _rootId,
+        _popupId,
+        _baseId,
+        () {
+          if (mounted && _state.open) _show(const SelectState());
+        },
+        wanted: wanted,
+        sheet: false,
+        sheetOnPhones: false,
+        onMove: (PopupPlacement moved) {
+          if (mounted && _state.open) setState(() => _placement = moved);
+        },
+      );
     }
     if (!next.open) {
       _stopWatching?.call();

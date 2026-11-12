@@ -19,6 +19,7 @@ import 'brand_mark.dart';
 import 'fold.dart';
 import 'info_tip.dart';
 import 'shell_sidebar.dart' show listedKinds;
+import '../logic/plural.dart';
 
 class WorkspaceOverview extends StatelessWidget {
   const WorkspaceOverview({required this.workspace, required this.ignored, required this.onNavigate, this.upgraded = const <String>[], super.key});
@@ -85,7 +86,7 @@ class WorkspaceOverview extends StatelessWidget {
       if (ignored.isNotEmpty)
         dom.section(classes: 'animus-panel', <Widget>[
           Fold(
-            summary: <Widget>[Component.text('${ignored.length} files are not editor documents')],
+            summary: <Widget>[Component.text('${countOf(ignored.length, 'file')} ${ignored.length == 1 ? 'is' : 'are'} not ${ignored.length == 1 ? 'an editor document' : 'editor documents'}')],
             children: <Widget>[
               dom.ul(classes: 'animus-muted', <Widget>[
                 for (final String path in ignored.take(200)) dom.li(<Widget>[dom.code(<Widget>[Component.text(path)])]),

@@ -86,6 +86,14 @@ class ServerHub {
     return connection;
   }
 
+  /// Connects every saved server this browser holds a token for and that has
+  /// no live connection yet, so the home page shows where each one stands.
+  void connectIdle() {
+    for (final ServerProfile profile in _servers) {
+      if (hasToken(profile.id) && status(profile.id).phase == ConnectionPhase.offline) unawaited(connect(profile.id));
+    }
+  }
+
   /// Probes the direct path now on every connection that is on the relay.
   void probeDirect() {
     for (final ServerConnection connection in _connections.values) {

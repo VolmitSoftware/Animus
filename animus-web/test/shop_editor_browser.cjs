@@ -93,9 +93,14 @@ async function addByKeyboard(page, label) {
   await page.locator('#animus-shop-add').focus();
   await page.keyboard.press('Enter');
   await page.locator('#animus-shop-add-menu [role="menuitem"]').first().waitFor();
+  // Focus lands in the menu after it renders, and each arrow press moves it a
+  // frame later; checking before it has moved overshoots on a slow page.
+  await page.waitForFunction(() => document.activeElement && document.activeElement.closest('#animus-shop-add-menu'));
   for (let i = 0; i < 6; i++) {
-    if (await page.evaluate(text => document.activeElement && document.activeElement.textContent.trim().startsWith(text), label)) break;
+    const current = await page.evaluate(() => document.activeElement.textContent.trim());
+    if (current.startsWith(label)) break;
     await page.keyboard.press('ArrowDown');
+    await page.waitForFunction(previous => document.activeElement && document.activeElement.textContent.trim() !== previous, current);
   }
   await page.keyboard.press('Enter');
 }

@@ -174,6 +174,8 @@ void main() {
       expect(nodeSummary(<String, Object?>{'type': 'action', 'capability': 'animus:say', 'arguments': <String, Object?>{'text': 'Welcome'}}), 'Say: Welcome');
       expect(nodeSummary(<String, Object?>{'type': 'condition', 'capability': 'animus:flag-state', 'arguments': <String, Object?>{'name': 'met_guard', 'value': true}}), 'If flag met_guard is true');
       expect(nodeSummary(<String, Object?>{'type': 'while', 'expression': 'count < 3'}), 'While count < 3');
+      expect(nodeSummary(<String, Object?>{'type': 'action', 'capability': 'animus:say', 'arguments': <String, Object?>{'text': 'Welcome, &etraveller&f! <red>{player_name}'}}), 'Say: Welcome, traveller! {player_name}');
+      expect(nodeSummary(<String, Object?>{'type': 'action', 'capability': 'animus:choices', 'arguments': <String, Object?>{'prompt': '&6Where to?'}}), 'Ask: Where to?');
       expect(nodeSummary(<String, Object?>{'type': 'set', 'variable': 'count', 'value': <String, Object?>{'expression': 'count + 1'}}), 'Set count to count + 1');
     });
   });

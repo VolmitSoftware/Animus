@@ -153,6 +153,37 @@ async function run(browser, viewport, label, theme) {
   assert.equal(await page.locator('.animus-diagnostics li.is-error').count(), 0, 'a new action step leaves the document valid');
   await shot(page, `${label}-built`);
 
+  // Every step menu opens fully visible: each item is the topmost thing at
+  // its own centre, then Duplicate and Delete work from the last step of a block.
+  const rows = tab.locator('.animus-conv-row');
+  const rowCount = await rows.count();
+  for (let index = 0; index < rowCount; index++) {
+    const button = rows.nth(index).getByRole('button', {name: 'Step options'});
+    if (await button.count() === 0) continue;
+    await button.first().scrollIntoViewIfNeeded();
+    await button.first().click();
+    const menu = page.getByRole('menu');
+    await menu.waitFor();
+    await page.waitForFunction(() => /max-height: \d/.test(document.querySelector('[role="menu"]').getAttribute('style') || ''));
+    const hidden = await menu.evaluate(element => [...element.querySelectorAll('[role="menuitem"]')].filter(item => {
+      const box = item.getBoundingClientRect();
+      const top = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      return !top || !item.contains(top);
+    }).map(item => item.textContent.trim()));
+    assert.deepEqual(hidden, [], `${label}: step ${index} menu items covered or clipped`);
+    await page.keyboard.press('Escape');
+    await menu.waitFor({state: 'detached'});
+  }
+  const lastLine = tab.locator('[data-block="market"] li[data-kind="line"]').last();
+  await lastLine.scrollIntoViewIfNeeded();
+  const before = await tab.locator('[data-block="market"] li[data-kind]').count();
+  await lastLine.locator('.animus-conv-row').first().getByRole('button', {name: 'Step options'}).click();
+  await page.getByRole('menuitem', {name: /Duplicate/}).click();
+  await page.waitForFunction(([count]) => document.querySelectorAll('.animus-conv [data-block="market"] li[data-kind]').length === count, [before + 1]);
+  await tab.locator('[data-block="market"] li[data-kind="line"]').last().locator('.animus-conv-row').first().getByRole('button', {name: 'Step options'}).click();
+  await page.getByRole('menuitem', {name: 'Delete'}).click();
+  await page.waitForFunction(([count]) => document.querySelectorAll('.animus-conv [data-block="market"] li[data-kind]').length === count, [before]);
+
   // A step menu names its keys as the shortcut sheet does, and closes once
   // its line scrolls away instead of floating over the top bar.
   const mac = await page.evaluate(() => /Mac/.test(navigator.platform));

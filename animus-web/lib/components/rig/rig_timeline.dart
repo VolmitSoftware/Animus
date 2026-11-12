@@ -14,6 +14,7 @@ import 'package:web/web.dart' as web;
 import '../../config/docs_links.dart';
 import '../../logic/rig_edit.dart';
 import '../../logic/rig_sampler.dart';
+import '../../logic/plural.dart';
 import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
 import '../info_tip.dart';
@@ -273,7 +274,7 @@ class _RigTimelineState extends State<RigTimeline> {
       if (trim != null)
         dom.div(classes: 'animus-rig-trim', attributes: const <String, String>{'role': 'alert'}, <Widget>[
           dom.span(<Widget>[
-            Component.text('Shortening to $trim ticks drops ${beyond.keyframes} keyframe${beyond.keyframes == 1 ? '' : 's'}'
+            Component.text('Shortening to ${countOf(trim, 'tick')} drops ${beyond.keyframes} keyframe${beyond.keyframes == 1 ? '' : 's'}'
                 '${beyond.events > 0 ? ' and ${beyond.events} event${beyond.events == 1 ? '' : 's'}' : ''} after tick $trim.'),
           ]),
           Button.secondary(

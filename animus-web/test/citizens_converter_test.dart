@@ -21,6 +21,8 @@ Map<String, Object?> _index() => readFixture('$_root/index.json')! as Map<String
 
 String _source(String name) => File('${schemaDirectory.path}/fixtures/$_root/$name').readAsStringSync();
 
+final DateTime _fixed = DateTime(2026, 5, 1);
+
 void main() {
   group('shared Citizens golden fixtures', () {
     for (final Object? entry in _index()['cases']! as List<Object?>) {
@@ -72,7 +74,7 @@ void main() {
       final List<String> names = <String>[for (final ArchiveFile file in archive.files) file.name];
       expect(names, List<String>.of(names)..sort());
       expect(names, contains('imports/${preview.id}/report.json'));
-      expect(citizensBundleZip(preview), citizensBundleZip(convertCitizens(_source('absent.yml'), const <String, String>{})));
+      expect(citizensBundleZip(preview, modified: _fixed), citizensBundleZip(convertCitizens(_source('absent.yml'), const <String, String>{}), modified: _fixed));
     });
 
     test('world mapping lines and the review aggregate', () {
@@ -115,6 +117,39 @@ void main() {
         ..addString('type', 'minecraft:frog')
         ..addString('skin', 'a' * 64);
       expect(activationErrors(skinnedMob), <String>[r'$.skin: textures require a player body']);
+    });
+
+    test('a vulnerable NPC converts killable and a protected one keeps no damage, as on the server', () {
+      const String traders = '''
+npc:
+  '0':
+    name: Vulnerable
+    uuid: 0a1b2c3d-0000-4000-8000-000000000900
+    metadata: {protected: false}
+    traits:
+      type: PLAYER
+      spawned: true
+      location: {world: world, x: 6.5, y: 61.0, z: 6.5}
+      trader: {}
+  '1':
+    name: Protected
+    uuid: 0a1b2c3d-0000-4000-8000-000000000901
+    traits:
+      type: PLAYER
+      spawned: true
+      location: {world: world, x: -6.5, y: 61.0, z: 6.5}
+      trader: {}
+''';
+      final CitizensPreview preview = convertCitizens(traders, const <String, String>{});
+      Map<String, Object?> modules(String id) {
+        final String path = preview.files.keys.firstWhere((String file) => file.endsWith('/$id.json') && file.startsWith('npcs/'));
+        return (jsonDecode(preview.files[path]!) as Map<String, Object?>)['modules']! as Map<String, Object?>;
+      }
+
+      expect(modules('citizens-0')['animus:health'], <String, Object?>{'killable': true});
+      expect(modules('citizens-1').containsKey('animus:health'), isFalse);
+      final Map<String, Object?> report = jsonDecode(preview.files['reports/0.json']!) as Map<String, Object?>;
+      expect((report['fields']! as Map<String, Object?>)['/metadata/protected'], 'CONVERTED');
     });
 
     test('world mappings must be nonblank', () {

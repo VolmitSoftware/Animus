@@ -338,6 +338,47 @@ class CitizensDropInTest {
         assertEquals("Converted: 1 patrol routes (3 waypoints, 2 guide points), look-close on 2 NPCs, 0 text and 0 command behaviors", CitizensDropIn.converted(definitions));
     }
 
+    private static final String TRADERS = """
+            npc:
+              '0':
+                name: Vulnerable
+                uuid: 0a1b2c3d-0000-4000-8000-000000000900
+                metadata: {protected: false}
+                traits:
+                  type: PLAYER
+                  spawned: true
+                  location: {world: world, x: 6.5, y: 61.0, z: 6.5}
+                  trader: {}
+              '1':
+                name: Protected
+                uuid: 0a1b2c3d-0000-4000-8000-000000000901
+                traits:
+                  type: PLAYER
+                  spawned: true
+                  location: {world: world, x: -6.5, y: 61.0, z: 6.5}
+                  trader: {}
+            """;
+
+    /** Citizens' {@code /npc vulnerable} NPC takes damage after import; one left protected (the default) does not, and the review says so. */
+    @Test void aVulnerableCitizensNpcIsKillableAndTheReviewCountsProtectedOnes() throws Exception {
+        Files.createDirectories(root.resolve("plugins/Animus/imports"));
+        Files.writeString(root.resolve("plugins/Animus/imports/saves.yml"), TRADERS);
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            CitizensDropIn flow = dropIn(store, npcs);
+            String health = "Health: 1 NPC can be hurt and die; 1 NPC stays protected from damage as in Citizens (/animus npc health <npc> setting=killable value=on)";
+            String staged = joined(flow.preview("reject", Optional.empty(), Map.of(), false));
+            assertTrue(staged.contains(health), staged);
+            flow.applyStaged();
+            JsonObject vulnerable = npcs.find("citizens-0").orElseThrow().json().getAsJsonObject("modules");
+            assertTrue(vulnerable.getAsJsonObject("animus:health").get("killable").getAsBoolean(), vulnerable.toString());
+            assertTrue(art.arcane.animus.core.combat.CombatSettings.parse(npcs.find("citizens-0").orElseThrow().json()).isPresent(), "the vulnerable NPC takes hits");
+            JsonObject kept = npcs.find("citizens-1").orElseThrow().json().getAsJsonObject("modules");
+            assertFalse(kept.has("animus:health") && kept.getAsJsonObject("animus:health").get("killable").getAsBoolean(), kept.toString());
+            assertTrue(joined(flow.reviewApplied()).contains(health));
+        }
+    }
+
     @Test void patrolsRunAfterApplyAndGeneratedBehaviorsInstallAndRollBack() throws Exception {
         Files.createDirectories(root.resolve("plugins/Animus/imports"));
         Files.writeString(root.resolve("plugins/Animus/imports/saves.yml"), PATROLS);

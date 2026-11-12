@@ -25,7 +25,8 @@ import java.util.TreeSet;
  * its cubes one item model drawn by an item display; a cube rotation an item model cannot hold (one axis, 22.5 degree
  * steps up to 45) becomes a bone of its own. Blockbench models face -Z and rigs face +Z, so pivots and rotations turn
  * 180 degrees about Y: pivots {@code (-x, y, -z) / 16}, rotations {@code (-x, y, -z)}. Item displays draw their model
- * turned 180 degrees, which cancels that turn for the cubes. Only embedded PNG textures are read; nothing is fetched.
+ * turned 180 degrees, which cancels that turn for the cubes. Groups named {@code hitbox} and {@code shadow} (any case)
+ * are Model Engine's hitbox and shadow definitions, never drawn there, and are left out with their cubes. Only embedded PNG textures are read; nothing is fetched.
  * Pack source paths and ids follow the wiki page animus/06-rigs-animations, "Resource pack layout".
  */
 final class BlockbenchImport {
@@ -146,13 +147,19 @@ final class BlockbenchImport {
         JsonObject declared = uuid == null ? null : groups.get(uuid);
         if (declared != null) for (Map.Entry<String, JsonElement> entry : declared.entrySet()) group.add(entry.getKey(), entry.getValue());
         for (Map.Entry<String, JsonElement> entry : node.entrySet()) group.add(entry.getKey(), entry.getValue());
+        String name = display(group.get("name"));
+        switch (name.trim().toLowerCase(Locale.ROOT)) {
+            case "hitbox" -> { warnings.add("Group " + name + " is the Model Engine hitbox; it was left out and the NPC keeps its body's hitbox."); return; }
+            case "shadow" -> { warnings.add("Group " + name + " is the Model Engine shadow; it was left out."); return; }
+            default -> { }
+        }
         Unit unit;
         if (depth > MAXIMUM_DEPTH && parent != null) {
             warnings.add("Group " + display(group.get("name")) + " nests deeper than " + MAXIMUM_DEPTH + "; its cubes joined " + parent + ".");
             unit = units.stream().filter((Unit candidate) -> candidate.id.equals(parent)).findFirst().orElseThrow();
         } else {
             double[] origin = vector(group.get("origin"), new double[3]);
-            unit = new Unit(free(sanitize(display(group.get("name")), "bone")), parent,
+            unit = new Unit(free(sanitize(name, "bone")), parent,
                     javaBlock ? new double[]{origin[0] - 8, origin[1], origin[2] - 8} : origin, vector(group.get("rotation"), new double[3]));
             units.add(unit);
         }

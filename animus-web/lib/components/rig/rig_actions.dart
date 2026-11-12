@@ -12,6 +12,7 @@ import '../../config/docs_links.dart';
 
 import '../../logic/bbmodel_import.dart';
 import '../../logic/data_folder_export.dart';
+import '../../logic/plural.dart';
 import '../../logic/rig_edit.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
@@ -37,7 +38,7 @@ Future<String?> importBbmodelFile(EditorStore store, String namespace) async {
       ],
       resources: imported.resources,
     );
-    ArcaneSonner.success('Imported ${picked.$1} as $id: ${bonesOf(imported.rig).length} bones, ${imported.animations.length} animations.');
+    ArcaneSonner.success('Imported ${picked.$1} as $id: ${countOf(bonesOf(imported.rig).length, 'bone')}, ${countOf(imported.animations.length, 'animation')}.');
     for (final String warning in imported.warnings.take(4)) {
       ArcaneSonner.warning(warning);
     }
@@ -64,9 +65,7 @@ String importRigId(WorkspaceSnapshot? workspace, String namespace, String fileNa
 void exportWorkspace(WorkspaceSnapshot workspace) {
   final String name = '${sanitizeName(workspace.name, 'animus')}.zip';
   downloadBytes(name, zipFiles(workspaceFiles(workspace)));
-  ArcaneSonner.success(
-    'Saved $name: ${workspace.documents.length} documents, ${workspace.resources.length} pack files. Unzip over plugins/Animus.',
-  );
+  ArcaneSonner.success(exportSummary(name, workspace));
 }
 
 /// The rig editor's file buttons: Blockbench import and the server files

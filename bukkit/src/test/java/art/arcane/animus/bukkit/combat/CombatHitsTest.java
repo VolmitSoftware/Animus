@@ -38,6 +38,17 @@ class CombatHitsTest {
         assertEquals(.2, CombatHits.attackDamage(null, 0f), 1e-9, "no attack attribute hits for 1 at full charge");
     }
 
+    /** Paper resets the charge on the punch packet that follows an attack, before the virtual NPC hit is read on the main thread. */
+    @Test void aVirtualNpcHitLandsWithTheChargeReadAtItsSwing() {
+        long now = 1_000_000_000L;
+        CombatHits.Swing swing = new CombatHits.Swing(1, now - 20_000_000L);
+        assertEquals(1, CombatHits.charge(.04, swing, now), 1e-9, "the reset after the swing does not weaken the hit");
+        assertEquals(8, CombatHits.attackDamage(attack(8), CombatHits.charge(.04, swing, now)), 1e-9, "a full netherite sword hit");
+        assertEquals(.04, CombatHits.charge(.04, new CombatHits.Swing(1, now - CombatHits.SWING_NANOS - 1), now), 1e-9, "an old swing does not count");
+        assertEquals(.04, CombatHits.charge(.04, null, now), 1e-9);
+        assertEquals(.9, CombatHits.charge(.9, new CombatHits.Swing(.3, now), now), 1e-9, "the live charge counts when it is higher");
+    }
+
     @Test void damagerResolvesToThePlayerOrMobBehindIt() {
         Player player = entity(Player.class, PLAYER, null);
         Entity zombie = entity(Zombie.class, ZOMBIE, null);

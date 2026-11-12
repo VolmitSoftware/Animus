@@ -13,6 +13,7 @@ import '../../logic/gui/shop_entries.dart';
 import '../../logic/suggest/completion_sources.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../logic/suggest/field_profiles.dart';
+import '../../logic/plural.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import 'component_editor.dart' show withField;
@@ -164,7 +165,7 @@ class ShopSettings extends StatelessWidget {
       ),
       if (outside.isNotEmpty)
         dom.p(classes: 'animus-gui-problem is-warning', attributes: const <String, String>{'role': 'alert'}, <Widget>[
-          Component.text('${outside.length} ${outside.length == 1 ? 'offer is' : 'offers are'} outside $rows rows (${outside.join(', ')}). Add rows or move ${outside.length == 1 ? 'it' : 'them'}.'),
+          Component.text('${outside.length} ${outside.length == 1 ? 'offer is' : 'offers are'} outside ${countOf(rows, 'row')} (${outside.join(', ')}). Add rows or move ${outside.length == 1 ? 'it' : 'them'}.'),
         ]),
     ]);
   }

@@ -241,8 +241,10 @@ public final class CitizensImporter {
                     if (CitizensTraits.targetable(reviewed)) {
                         if (!modules.has("animus:combat")) modules.add("animus:combat", CitizensTraits.targetableCombat());
                         modules.getAsJsonObject("animus:combat").addProperty("targetableByMobs", true);
-                        if (!modules.has(HealthSettings.MODULE)) modules.add(HealthSettings.MODULE, CitizensTraits.targetableHealth(record));
+                        if (!modules.has(HealthSettings.MODULE)) modules.add(HealthSettings.MODULE, CitizensTraits.health(record));
                     }
+                    // Citizens hurts an NPC left vulnerable (/npc vulnerable) whatever its traits, so it converts killable.
+                    if (!modules.has(HealthSettings.MODULE) && CitizensTraits.unprotected(record)) modules.add(HealthSettings.MODULE, CitizensTraits.health(record));
                     CitizensTraits.follow(reviewed, npcUuids).ifPresent((JsonObject guard) -> {
                         if (!modules.has("animus:combat")) modules.add("animus:combat", CitizensTraits.targetableCombat());
                         if (!modules.getAsJsonObject("animus:combat").has("guard")) modules.getAsJsonObject("animus:combat").add("guard", guard);
@@ -304,7 +306,7 @@ public final class CitizensImporter {
                     CitizensTraits.home(reviewed, world).ifPresent((JsonObject home) -> modules.add(HomeSettings.MODULE, home));
                     CitizensTraits.mirror(reviewed).ifPresent((JsonObject mirror) -> modules.add("animus:mirror", mirror));
                     CitizensTraits.Result state = CitizensTraits.map(definition.get("type").getAsString(), record, reviewed, modules.has("animus:combat"),
-                            modules.has(HealthSettings.MODULE), modules.has("animus:navigation"), runtime.navigation().isPresent(), references);
+                            modules.has("animus:navigation"), runtime.navigation().isPresent(), references);
                     if (runtime.navigation().isPresent()) patrols++;
                     if (state.raisedFall()) raisedFalls++;
                     for (Map.Entry<String, JsonElement> field : state.fields().entrySet()) definition.add(field.getKey(), field.getValue());

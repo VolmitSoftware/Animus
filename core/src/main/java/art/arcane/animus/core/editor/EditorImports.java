@@ -4,6 +4,8 @@ import art.arcane.animus.core.migration.CitizensDropIn;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.text.Palette;
+import art.arcane.animus.core.text.RichText;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -49,6 +51,7 @@ public final class EditorImports {
     static final int MAXIMUM_LINES = 200, MAXIMUM_ISSUES = 100;
     private static final Set<String> CITIZENS_REPORT = Set.of("importId", "converterVersion", "notice", "records", "valid", "skins", "behaviors", "conversions",
             "traits", "types", "issues", "migrationWarnings", "remappedLocations", "resolvedReferences", "unresolvedReferences", "worldMap");
+    private static final String CHAT_PREFIX = RichText.plain(Palette.PREFIX);
     private static final Set<String> SHOP_REPORT = Set.of("importId", "importerVersion", "notice", "shops", "npcs", "types", "offers", "entries", "links", "currency", "issues");
 
     private final DocumentStore store;
@@ -139,7 +142,7 @@ public final class EditorImports {
     private JsonObject review(List<String> lines) throws IOException {
         JsonObject review = dropIn().status();
         JsonArray shown = new JsonArray();
-        lines.stream().limit(MAXIMUM_LINES).forEach((String line) -> shown.add(clip(line, 2048)));
+        lines.stream().limit(MAXIMUM_LINES).forEach((String line) -> shown.add(clip(plain(line), 2048)));
         review.add("lines", shown);
         JsonObject sources = new JsonObject();
         for (Upload upload : Upload.values()) {
@@ -173,6 +176,12 @@ public final class EditorImports {
             } else summary.add(entry.getKey(), value);
         }
         return Optional.of(summary);
+    }
+
+    /** The drop-in lines are written for chat; the editor shows the words without colour codes or the chat prefix. */
+    static String plain(String line) {
+        String text = RichText.plain(line);
+        return text.startsWith(CHAT_PREFIX) ? text.substring(CHAT_PREFIX.length()) : text;
     }
 
     private static String clip(String text, int length) { return text.length() > length ? text.substring(0, length) : text; }

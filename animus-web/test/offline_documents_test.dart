@@ -202,6 +202,27 @@ void main() {
       expect(errors(validate(DocumentKind.rig, 'a:b', applyFixes(rigDocument.json, fixesFor(rigDocument)))), isEmpty);
     });
 
+    test('should offer only event fixes the current server mode accepts', () {
+      JsonMap behavior(bool server) => <String, Object?>{
+            'schemaVersion': 1,
+            'id': 'a:b',
+            'revision': 1,
+            'server': server,
+            'triggers': <Object?>[
+              <String, Object?>{'id': 't', 'event': server ? 'interaction' : 'timer'},
+            ],
+            'entry': 'main',
+            'routines': <String, Object?>{'main': <String, Object?>{'type': 'sequence', 'steps': <Object?>[]}},
+          };
+      final AnimusDocument serverOn = validate(DocumentKind.behavior, 'a:b', behavior(true));
+      final List<DocumentFix> fixes = fixesFor(serverOn);
+      expect(fixes.single.label, 'Use "timer"');
+      expect(errors(validate(DocumentKind.behavior, 'a:b', applyFixes(serverOn.json, fixes))).map((Diagnostic d) => d.path), isNot(contains(r'$.triggers[0].event')));
+      final AnimusDocument serverOff = validate(DocumentKind.behavior, 'a:b', <String, Object?>{...behavior(false), 'triggers': <Object?>[<String, Object?>{'id': 't', 'event': 'player_join'}]});
+      expect(fixesFor(serverOff).map((DocumentFix f) => f.label), isNot(anyOf(contains('Set event to "interaction"'), contains('Use "player_join"'))));
+      expect(errors(validate(DocumentKind.behavior, 'a:b', applyFixes(serverOff.json, fixesFor(serverOff)))).map((Diagnostic d) => d.path), isNot(contains(r'$.triggers[0].event')));
+    });
+
     test('should parse diagnostic paths', () {
       expect(parseJsonPath(r'$.keys["#"].icon[2]'), <Object>['keys', '#', 'icon', 2]);
       expect(parseJsonPath(r'$'), isEmpty);

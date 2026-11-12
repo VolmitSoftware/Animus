@@ -105,6 +105,8 @@ node test/conversations_browser.cjs   # default --data
 node test/quick_edits_browser.cjs   # default --data
 node test/shape_browser.cjs
 node test/shop_editor_browser.cjs   # default --data
+node test/dry_run_bubble_browser.cjs
+node test/home_servers_browser.cjs   # --data=test/fixtures/server_behaviors_live
 ```
 
 `home_browser.cjs` checks the home page (one primary action, the three ways to start, the empty list), the skip link, renaming a workspace with Enter and Escape (focus goes back to Rename), deleting with Escape and Restore, the routes to a missing workspace or document (each names the cause and links back), then opens `../schema/fixtures/export` as a data folder: the listing, arrow keys in the document list, the document title as the page heading, the view tablist with arrow keys, a broken Code draft named in the header, and Split and Preview.
@@ -151,7 +153,7 @@ node test/shop_editor_browser.cjs   # default --data
 
 ## Connecting to a server
 
-`/animus editor pair` on a server prints a link to `#/pair/ANM1....`. Opening it (or pasting the link or code under Servers on the home page) shows the server's fingerprint and paths. Pair exchanges the one-time secret for a token over the first path that answers with that fingerprint, then replaces the address so the secret does not stay in history. The token is kept in sessionStorage, or in localStorage too when "Remember this browser" is ticked; saved servers are listed on the home page.
+`/animus editor pair` on a server prints a link to `#/pair/ANM1....`. Opening it (or pasting the link or code under Servers on the home page) shows the server's fingerprint and paths. Pair exchanges the one-time secret for a token over the first path that answers with that fingerprint, then replaces the address so the secret does not stay in history. The token is kept in sessionStorage, or in localStorage too when "Remember this browser" is ticked; saved servers are listed on the home page, and the list connects each one that has a token so its state is current.
 
 Each paired server has one connection (`lib/services/server/server_connection.dart`). It tries the direct path (`<directUrl>/animus/v1`, fetch and a WebSocket whose first frame is `event-auth`) and the relay (`<relayUrl>/app`, subscribed by fingerprint) in turn, the last good one first. Every `hello` must carry the pinned fingerprint, or the path is refused and nothing more is sent. When a path drops, the other is tried at once; after that it retries every 1, 2, 4 up to 30 seconds, and "Retry now" skips the wait. While online over the relay with a direct path paired, it probes the direct path (15, 30, then every 60 seconds, and at once when the browser comes back online or the tab becomes visible); once `hello` answers with the pinned fingerprint and a direct event stream has stayed open beside the relay stream for 2 seconds, new requests go direct, requests already sent finish over the relay, and events seen on both streams are delivered once. A failed probe leaves the relay session alone. A refused, expired or revoked token asks for a new pairing. Mutating requests carry `X-Animus-Counter`.
 

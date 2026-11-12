@@ -56,12 +56,12 @@ double topBarBottom() {
 /// scroll first, so a field near the bottom moves up and its list opens
 /// whole between the top bar and the window's bottom. Returns the fit and
 /// the anchor's box after any scroll.
-(PopupFit, web.DOMRect) fitBelowTopBar(web.Element anchor, double wanted) {
+(PopupFit, web.DOMRect) fitBelowTopBar(web.Element anchor, double wanted, {bool allowScroll = true}) {
   final double viewHeight = web.window.innerHeight.toDouble();
   PopupBox measure(web.DOMRect rect) =>
       PopupBox(top: rect.top.toDouble(), bottom: rect.bottom.toDouble(), viewHeight: viewHeight, topInset: topBarBottom());
   web.DOMRect rect = anchor.getBoundingClientRect();
-  PopupFit fit = fitPopup(measure(rect), wanted);
+  PopupFit fit = fitPopup(measure(rect), wanted, allowScroll: allowScroll);
   if (fit.scroll > 0) {
     web.window.scrollBy(web.ScrollToOptions(top: fit.scroll, behavior: 'instant'));
     rect = anchor.getBoundingClientRect();
@@ -73,14 +73,16 @@ double topBarBottom() {
 /// The placement for a popup about [wanted] px tall next to the element
 /// with [anchorId].
 /// Without [sheet] it stays anchored on phones too (a text field's
-/// suggestions, which sit under the field being typed in).
-PopupPlacement placePopup(String anchorId, double wanted, {bool sheet = true}) {
+/// suggestions, which sit under the field being typed in). With
+/// [allowScroll] false the page is left where it is and the popup takes the
+/// roomier side, for following the control while the page scrolls.
+PopupPlacement placePopup(String anchorId, double wanted, {bool sheet = true, bool allowScroll = true}) {
   final double viewWidth = web.window.innerWidth.toDouble();
   final double viewHeight = web.window.innerHeight.toDouble();
   if (sheet && viewWidth <= sheetWidth) return const PopupPlacement(sheet: true);
   final web.Element? anchor = web.document.getElementById(anchorId);
   if (anchor == null) return const PopupPlacement(sheet: false, left: 8, width: 240, edge: 8);
-  final (PopupFit fit, web.DOMRect rect) = fitBelowTopBar(anchor, wanted);
+  final (PopupFit fit, web.DOMRect rect) = fitBelowTopBar(anchor, wanted, allowScroll: allowScroll);
   final double width = math.min(math.max(rect.width, 220), viewWidth - popupMargin * 2);
   final double left = rect.left.clamp(popupMargin, math.max(popupMargin, viewWidth - width - popupMargin)).toDouble();
   return PopupPlacement(
@@ -97,12 +99,25 @@ PopupPlacement placePopup(String anchorId, double wanted, {bool sheet = true}) {
 double popupHeight({required int options, required int groups, required int actions, required bool search}) =>
     options * 32 + groups * 26 + actions * 34 + (search ? 46 : 0) + 8;
 
-/// Listens while a popup is open: a press outside [rootId], a scroll that
-/// moves the control [anchorId] (anything but the popup itself), or a
-/// window width change calls [onClose]. Returns the stop.
-void Function() watchOutside(String rootId, String popupId, String anchorId, void Function() onClose) {
-  final web.DOMRect? start = web.document.getElementById(anchorId)?.getBoundingClientRect();
-  final int width = web.window.innerWidth;
+/// Whether the box [rect] has left the part of the window under the top bar.
+bool _offscreen(web.DOMRect rect) => rect.bottom <= topBarBottom() || rect.top >= web.window.innerHeight;
+
+/// Listens while a popup is open: a press outside [rootId] or a window width
+/// change calls [onClose]. A scroll that moves the control [anchorId]
+/// (anything but the popup itself) calls [onMove] with the placement for the
+/// popup about [wanted] px tall at the control's new spot, and closes it only
+/// once the control has scrolled out of sight. A [sheet] ignores scrolling.
+/// Returns the stop.
+void Function() watchOutside(
+  String rootId,
+  String popupId,
+  String anchorId,
+  void Function() onClose, {
+  required double wanted,
+  required bool sheet,
+  required void Function(PopupPlacement placement) onMove,
+  bool sheetOnPhones = true,
+}) {
   bool inside(web.EventTarget? target, String id) {
     if (target == null || !target.isA<web.Node>()) return false;
     final web.Element? element = web.document.getElementById(id);
@@ -112,11 +127,29 @@ void Function() watchOutside(String rootId, String popupId, String anchorId, voi
   final JSFunction press = ((web.Event event) {
     if (!inside(event.target, rootId)) onClose();
   }).toJS;
+  bool queued = false;
+  // A scroll event can arrive for a scroll that ended before the popup
+  // opened; only a move of the control since the last look counts.
+  web.DOMRect? last = web.document.getElementById(anchorId)?.getBoundingClientRect();
+  void follow() {
+    queued = false;
+    final web.DOMRect? rect = web.document.getElementById(anchorId)?.getBoundingClientRect();
+    final web.DOMRect? before = last;
+    if (rect != null && before != null && (rect.top - before.top).abs() < 1 && (rect.left - before.left).abs() < 1) return;
+    last = rect;
+    if (rect == null || _offscreen(rect)) {
+      onClose();
+      return;
+    }
+    onMove(placePopup(anchorId, wanted, sheet: sheetOnPhones, allowScroll: false));
+  }
+
   final JSFunction scroll = ((web.Event event) {
-    if (inside(event.target, popupId)) return;
-    final web.DOMRect? now = web.document.getElementById(anchorId)?.getBoundingClientRect();
-    if (start == null || now == null || (now.top - start.top).abs() > 2 || (now.left - start.left).abs() > 2) onClose();
+    if (sheet || queued || inside(event.target, popupId)) return;
+    queued = true;
+    web.window.requestAnimationFrame(((JSNumber _) => follow()).toJS);
   }).toJS;
+  final int width = web.window.innerWidth;
   // A phone keyboard changes the height only; that keeps the list open.
   final JSFunction resize = ((web.Event _) {
     if (web.window.innerWidth != width) onClose();

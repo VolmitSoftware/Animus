@@ -105,6 +105,15 @@ class EditorImportsTest {
         JsonObject applied = ok(harness.send("POST", "/v1/imports/" + importId + "/apply", token, null));
         assertEquals("applied", applied.get("state").getAsString());
         assertEquals(6, applied.get("npcs").getAsInt());
+        String installed = applied.getAsJsonArray("lines").get(0).getAsString();
+        assertTrue(installed.startsWith("Installed import " + importId.substring(0, 12)), installed);
+        for (String step : List.of("staged", "applied")) {
+            JsonArray lines = (step.equals("staged") ? staged : applied).getAsJsonArray("lines");
+            for (JsonElement line : lines) {
+                String text = line.getAsString();
+                assertFalse(text.indexOf('\u00a7') >= 0 || text.contains("&#") || text.startsWith("[Animus]"), step + " line carries chat formatting: " + text);
+            }
+        }
         assertTrue(harness.host.applied.size() > before, "the platform reloads after apply");
         assertFalse(applied.has("pending"), "nothing waits once applied: " + applied);
         assertTrue(harness.npcs.all().stream().anyMatch((art.arcane.animus.core.npc.NpcDefinition npc) -> npc.imported() && npc.spawned()), "imported NPCs spawn on apply");

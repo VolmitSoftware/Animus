@@ -113,10 +113,21 @@ class _AnimusSelectState extends State<AnimusSelect> {
     if (opening) {
       final SelectRows rows = SelectRows(filterOptions(component.options, next.query), _actions(scope).length);
       final int groups = rows.options.map((SelectOption option) => option.group).whereType<String>().toSet().length;
-      _placement = placePopup(_baseId, popupHeight(options: rows.options.length, groups: groups, actions: rows.actionCount, search: _searchable));
-      _stopWatching = watchOutside(_rootId, _popupId, _baseId, () {
-        if (mounted && _state.open) setState(() => _close());
-      });
+      final double wanted = popupHeight(options: rows.options.length, groups: groups, actions: rows.actionCount, search: _searchable);
+      _placement = placePopup(_baseId, wanted);
+      _stopWatching = watchOutside(
+        _rootId,
+        _popupId,
+        _baseId,
+        () {
+          if (mounted && _state.open) setState(() => _close());
+        },
+        wanted: wanted,
+        sheet: _placement.sheet,
+        onMove: (PopupPlacement moved) {
+          if (mounted && _state.open) setState(() => _placement = moved);
+        },
+      );
       if (_searchable) _focus(_searchId);
     }
     if (closing) _close(keepState: true);

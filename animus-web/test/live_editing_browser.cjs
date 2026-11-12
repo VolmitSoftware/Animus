@@ -415,10 +415,14 @@ async function failures(browser, width, height, label, theme) {
   await second.locator('[data-testid="live-cause"]', {hasText: 'runs in another tab'}).waitFor({timeout: 20000});
   assert.ok(await second.getByRole('button', {name: 'Validate'}).isDisabled(), 'the waiting tab cannot validate');
   await shot(second, `${label}-f06-second-tab`);
+  // Taking over opens a fresh connection (hello, then the event socket); the revoke below must reach a session that finished it.
+  const events = second.waitForEvent('websocket', {predicate: (socket) => socket.url().endsWith('/events'), timeout: 20000});
   await page.close();
   page = second;
   await page.locator('.animus-live-log li', {hasText: 'This tab now runs live editing'}).waitFor({state: 'attached', timeout: 20000});
   await page.locator('[data-testid="live-cause"]').waitFor({state: 'detached'});
+  await events;
+  await status(page, 'online');
 
   // Revoked: one notice, a Pair again button that opens the field.
   await expectNotice(page, 'Pairing revoked on the server.', () => control('revoke', {tokenId: 'all'}));

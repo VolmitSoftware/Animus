@@ -142,7 +142,7 @@ class FakeImports {
     _state = 'applied';
     publish(changed, const <StoredDocument>[]);
     return review(<String>[
-      'Installed import ${importId.substring(0, 12)}; NPCs spawn with their patrols, schedules, combat, riding, shops and builds on; transaction ${_transactions.last}',
+      'Installed import ${importId.substring(0, 12)}; NPCs spawn with their patrols, schedules, combat, riding, shops and builds on; tx ${_transactions.last}',
       if (_commandNamespaces().isNotEmpty) 'Commands: added ${_commandNamespaces().join(', ')} to config.toml [behaviors.actions] commandNamespaces',
       'Next: /animus import citizens review lists what converted; /animus import citizens rollback undoes the import',
     ]);

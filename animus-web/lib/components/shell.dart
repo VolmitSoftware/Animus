@@ -48,6 +48,7 @@ import 'shortcut_sheet.dart';
 import 'shortcuts.dart';
 import 'shell_topbar.dart';
 import 'workspace_overview.dart';
+import '../logic/plural.dart';
 
 /// The id of every screen's `<main>`, the target of the skip link.
 const String mainId = 'animus-main';
@@ -264,11 +265,11 @@ class _EditorShellState extends State<EditorShell> {
       final WorkspaceSnapshot snapshot = await component.store.openFiles(picked.name, picked.files, requireDocuments: true, zip: zip);
       final int invalid = snapshot.documents.where((AnimusDocument document) => !document.valid).length;
       final int upgraded = component.store.upgraded.length;
-      final String upgrades = upgraded == 0 ? '' : ' Upgraded $upgraded ${upgraded == 1 ? 'file' : 'files'} to schemaVersion 2.';
+      final String upgrades = upgraded == 0 ? '' : ' Upgraded ${countOf(upgraded, 'file')} to schemaVersion 2.';
       if (invalid > 0) {
-        ArcaneSonner.warning('Opened ${snapshot.documents.length} documents; $invalid need repair.$upgrades');
+        ArcaneSonner.warning('Opened ${countOf(snapshot.documents.length, 'document')}; $invalid ${invalid == 1 ? 'needs' : 'need'} repair.$upgrades');
       } else {
-        ArcaneSonner.success('Opened ${snapshot.documents.length} documents.$upgrades');
+        ArcaneSonner.success('Opened ${countOf(snapshot.documents.length, 'document')}.$upgrades');
       }
       component.onNavigate(WorkspaceRoute(snapshot.id));
       focusMainHeading();
@@ -295,7 +296,7 @@ class _EditorShellState extends State<EditorShell> {
       return;
     }
     downloadBytes('${_fileStem(workspace)}.gloss-workspace.json', utf8.encode(exported.bundle), type: 'application/json');
-    ArcaneSonner.success('Exported ${exported.exported} documents as a Gloss bundle.'
+    ArcaneSonner.success('Exported ${countOf(exported.exported, 'document')} as a Gloss bundle.'
         '${exported.skipped.isEmpty ? '' : ' Skipped ${exported.skipped.length}: ${exported.skipped.join('; ')}'}');
   }
 
@@ -329,9 +330,9 @@ class _EditorShellState extends State<EditorShell> {
     final String skipped = imported.skipped.isEmpty ? '' : ' Skipped: ${imported.skipped.join('; ')}.';
     final String notes = imported.notes.isEmpty ? '' : ' ${imported.notes.join(' ')}';
     if (invalid > 0) {
-      ArcaneSonner.warning('Imported ${imported.documents.length} documents from $file; $invalid use features Animus refuses.$skipped$notes');
+      ArcaneSonner.warning('Imported ${countOf(imported.documents.length, 'document')} from $file; $invalid ${invalid == 1 ? 'uses' : 'use'} features Animus refuses.$skipped$notes');
     } else {
-      ArcaneSonner.success('Imported ${imported.documents.length} documents from $file.$skipped$notes');
+      ArcaneSonner.success('Imported ${countOf(imported.documents.length, 'document')} from $file.$skipped$notes');
     }
   }
 
@@ -341,7 +342,7 @@ class _EditorShellState extends State<EditorShell> {
     final String more = clashes.length > 5 ? ' and ${clashes.length - 5} more' : '';
     return ConfirmRow(
       key: const ValueKey<String>('gloss-confirm'),
-      question: 'Replace ${clashes.length} ${clashes.length == 1 ? 'document' : 'documents'} with the copies in ${pending.file}?',
+      question: 'Replace ${countOf(clashes.length, 'document')} with the copies in ${pending.file}?',
       detail: '$named$more. Undo brings them back.',
       confirmLabel: 'Replace and import',
       onConfirm: () => _commitGloss(pending.imported, pending.file),
@@ -533,7 +534,7 @@ class _EditorShellState extends State<EditorShell> {
             () => component.onNavigate(summary.serverId != null && component.hub.server(summary.serverId!) != null
                 ? ServerRoute(summary.serverId!, const <String>[])
                 : WorkspaceRoute(summary.id)),
-            hint: '${summary.documentCount} document${summary.documentCount == 1 ? '' : 's'}',
+            hint: countOf(summary.documentCount, 'document'),
           ),
       PaletteCommand('Workspaces', 'All workspaces', () => component.onNavigate(const HomeRoute()), keywords: const <String>['home']),
       PaletteCommand('App', 'Keyboard shortcuts', _openSheet, hint: '?', keywords: const <String>['keys', 'help', 'hotkeys']),

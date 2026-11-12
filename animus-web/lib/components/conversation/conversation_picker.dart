@@ -45,6 +45,9 @@ class MenuAction {
 abstract class _PopState<T extends StatefulWidget> extends State<T> {
   final String id = 'animus-pick-${_nextPickerId++}';
   bool open = false;
+
+  /// The inline style [_place] chose for the open list.
+  String popStyle = '';
   JSFunction? _outside;
   JSFunction? _scrolled;
 
@@ -78,6 +81,7 @@ abstract class _PopState<T extends StatefulWidget> extends State<T> {
   }
 
   void show({int focus = 0}) {
+    popStyle = '';
     setState(() => open = true);
     _outside = ((web.Event event) {
       final web.Element? root = web.document.getElementById('$id-wrap');
@@ -91,9 +95,21 @@ abstract class _PopState<T extends StatefulWidget> extends State<T> {
       if (!_anchored()) close(refocus: false);
     }).toJS;
     web.window.addEventListener('scroll', _scrolled, true.toJS);
-    web.window.setTimeout((() {
+    _whenRendered(() {
       _place();
       focusItem(focus);
+    });
+  }
+
+  /// Runs [action] once the open list is in the page, which the framework
+  /// renders after [show] returns.
+  void _whenRendered(void Function() action, [int tries = 20]) {
+    web.window.setTimeout((() {
+      if (web.document.getElementById(popId) != null) {
+        action();
+      } else if (tries > 0 && open) {
+        _whenRendered(action, tries - 1);
+      }
     }).toJS, 0.toJS);
   }
 
@@ -104,14 +120,33 @@ abstract class _PopState<T extends StatefulWidget> extends State<T> {
   }
 
   /// Keeps the list inside the window: it shifts left when it would pass
-  /// the right edge.
+  /// the right edge, and opens above its button when the room below is
+  /// smaller than the room above. It is as tall as its items unless neither
+  /// side has the room, then it scrolls inside the space it has. The result
+  /// is kept in [popStyle] so a rebuild does not lose it.
   void _place() {
     final web.HTMLElement? pop = web.document.getElementById(popId) as web.HTMLElement?;
-    if (pop == null) return;
-    pop.style.setProperty('--animus-pick-shift', '0px');
+    final web.Element? button = web.document.getElementById(id);
+    if (pop == null || button == null) return;
+    pop.setAttribute('style', 'max-height: none');
     final web.DOMRect box = pop.getBoundingClientRect();
-    final double room = web.document.documentElement!.clientWidth - 8 - box.right;
-    if (room < 0) pop.style.setProperty('--animus-pick-shift', '${room < -box.left + 8 ? -box.left + 8 : room}px');
+    final double edge = web.document.documentElement!.clientWidth - 8 - box.right;
+    final double shift = edge >= 0 ? 0 : (edge < -box.left + 8 ? -box.left + 8 : edge);
+    final double topBar = web.document.querySelector('.animus-topbar')?.getBoundingClientRect().bottom ?? 0;
+    const double gap = 6;
+    final double height = pop.offsetHeight.toDouble();
+    web.DOMRect anchor = button.getBoundingClientRect();
+    if (height > web.window.innerHeight - anchor.bottom - gap - 8 && height > anchor.top - topBar - gap - 8) {
+      // Neither side fits: lift the button under the top bar so the list opens below it whole.
+      web.window.scrollBy(web.ScrollToOptions(top: anchor.top - topBar - 8, behavior: 'instant'));
+      anchor = button.getBoundingClientRect();
+    }
+    final double below = web.window.innerHeight - anchor.bottom - gap - 8;
+    final double above = anchor.top - topBar - gap - 8;
+    final bool flip = height > below && above > below;
+    final double available = flip ? above : below;
+    popStyle = '--animus-pick-shift: ${shift}px; max-height: ${height <= available ? height : available}px;${flip ? ' top: auto; bottom: calc(100% + ${gap}px);' : ''}';
+    setState(() {});
   }
 
   List<web.HTMLElement> items() {
@@ -241,7 +276,7 @@ class _ConversationMenuState extends _PopState<ConversationMenu> {
           dom.div(
             id: popId,
             classes: 'animus-menu animus-pick-list',
-            attributes: <String, String>{'role': 'menu', 'aria-labelledby': id},
+            attributes: <String, String>{'role': 'menu', 'aria-labelledby': id, if (popStyle.isNotEmpty) 'style': popStyle},
             <Widget>[
               for (final MenuAction action in component.actions)
                 dom.button(

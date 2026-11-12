@@ -11,6 +11,7 @@ import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import '../state/workspace_repository.dart';
 import 'bbmodel_import.dart';
+import 'plural.dart';
 import 'rig_edit.dart';
 
 /// Every document at its data-folder path, then every resource.
@@ -19,19 +20,26 @@ Map<String, Uint8List> workspaceFiles(WorkspaceSnapshot workspace) => <String, U
   ...workspace.resources,
 };
 
-/// A reproducible zip: sorted entries, stored, one fixed timestamp.
-Uint8List zipFiles(Map<String, Uint8List> files, {String prefix = ''}) {
+/// A zip with entries in path order, stored, each stamped with [modified]
+/// (the moment of export by default).
+Uint8List zipFiles(Map<String, Uint8List> files, {String prefix = '', DateTime? modified}) {
+  final int stamp = (modified ?? DateTime.now()).millisecondsSinceEpoch ~/ 1000;
   final Archive archive = Archive();
   for (final String path in files.keys.toList()..sort()) {
     archive.add(ArchiveFile.bytes('$prefix$path', files[path]!)
-      ..lastModTime = _dosEpoch
+      ..lastModTime = stamp
       ..compression = CompressionType.none);
   }
   return Uint8List.fromList(ZipEncoder().encodeBytes(archive));
 }
 
-/// 1980-01-01, the earliest time a zip entry can hold.
-const int _dosEpoch = 315532800;
+/// The notice after a whole-workspace export: documents, and the resource
+/// pack files only when the zip holds any.
+String exportSummary(String name, WorkspaceSnapshot workspace) {
+  final int packFiles = workspace.resources.keys.where((String path) => path.startsWith('pack/')).length;
+  final String packs = packFiles == 0 ? '' : ', ${countOf(packFiles, 'pack file')}';
+  return 'Saved $name: ${countOf(workspace.documents.length, 'document')}$packs. Unzip over plugins/Animus.';
+}
 
 final RegExp _itemModel = RegExp(r'item_model\s*=\s*"([a-z0-9_.-]+:[a-z0-9_./-]+)"');
 

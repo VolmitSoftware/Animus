@@ -12,6 +12,7 @@ import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_layout.dart';
 import '../../logic/gui/gui_validation.dart';
+import '../../logic/plural.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../info_tip.dart';
@@ -316,7 +317,7 @@ class _InventoryEditorState extends State<InventoryEditor> {
       ),
       if (maskRows != rows && maskRows > 0)
         dom.p(classes: 'animus-gui-problem is-warning', <Widget>[
-          Component.text('Mask has $maskRows rows, window has $rows. They must match.'),
+          Component.text('Mask has ${countOf(maskRows, 'row')}, window has $rows. They must match.'),
         ]),
       guiFieldRow('Show when', r'$.show', d, help: 'False keeps it closed', (String id) => GuiTextInput(
             id: id,

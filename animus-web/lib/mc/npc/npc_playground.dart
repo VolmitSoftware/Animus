@@ -67,7 +67,7 @@ NpcScene npcPlaygroundScene(
       if (over > top) top = over;
     }
     final McVec3 anchor = McVec3(0, top + 0.35, 0);
-    texts.add(NpcText(anchor: anchor, lines: <String>[guiColorize(line)], nameplate: false));
+    texts.add(NpcText(anchor: anchor, lines: <String>[guiColorize(line)], nameplate: false, keepInside: true));
     // The camera frames the speech too, so a long body never pushes it off.
     frame.add(anchor + const McVec3(0, 0.3, 0));
   }

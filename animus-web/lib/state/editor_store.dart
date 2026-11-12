@@ -11,6 +11,7 @@ import '../model/document_kind.dart';
 import '../model/server_binding.dart';
 import 'workspace_coordination.dart';
 import 'workspace_repository.dart';
+import '../logic/plural.dart';
 
 typedef StoreListener = void Function();
 
@@ -67,8 +68,8 @@ String describeChanges(List<DocumentChange> documents, Iterable<String> resource
     if (change.source == null && change.update == null) return 'delete ${change.id}';
     return exists(change) ? 'edit ${change.id}' : 'create ${change.id}';
   }
-  if (documents.isEmpty) return resources.length == 1 ? 'change ${resources.single}' : 'change ${resources.length} files';
-  return 'change ${documents.length} documents';
+  if (documents.isEmpty) return resources.length == 1 ? 'change ${resources.single}' : 'change ${countOf(resources.length, 'file')}';
+  return 'change ${countOf(documents.length, 'document')}';
 }
 
 /// A picked folder or zip that holds no Animus documents; nothing was saved.

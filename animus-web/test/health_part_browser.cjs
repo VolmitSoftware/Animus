@@ -121,6 +121,17 @@ async function dummy(page, tag) {
   assert.deepEqual(module.respawn.points, [{world: 'world', x: 4, y: 64, z: -3}], `${tag} respawn point`);
 
   // Permadeath hides the delay, order and points, and keeps the points.
+  // The list opens on a click and stays open while the page scrolls under it.
+  health = await healthPart(page);
+  const after = health.getByLabel('health.respawn.afterDeath', {exact: true}).and(page.locator('button[role="combobox"]'));
+  await after.scrollIntoViewIfNeeded();
+  await after.click();
+  await page.locator('.animus-select-popup [role="option"][data-value="permadeath"]').waitFor();
+  await page.evaluate(() => window.scrollBy({top: 30, behavior: 'instant'}));
+  await settle(page);
+  assert.equal(await after.getAttribute('aria-expanded'), 'true', `${tag} After death stays open through a page scroll`);
+  await page.keyboard.press('Escape');
+  await page.locator('.animus-select-popup').waitFor({state: 'detached'});
   health = await healthPart(page);
   await choose(health.getByLabel('health.respawn.afterDeath', {exact: true}), 'permadeath');
   await settle(page);

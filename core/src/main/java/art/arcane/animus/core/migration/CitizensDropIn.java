@@ -1,5 +1,6 @@
 package art.arcane.animus.core.migration;
 
+import art.arcane.animus.core.combat.HealthSettings;
 import art.arcane.animus.core.shop.ShopDocument;
 import art.arcane.animus.core.npc.DefinitionBatch;
 import art.arcane.animus.core.npc.NpcDefinition;
@@ -571,6 +572,7 @@ public final class CitizensDropIn {
         if (citizens) {
             lines.add("Citizens import " + state.get("importId").getAsString().substring(0, 12) + ": " + imported(state).size() + " NPCs installed");
             lines.add(converted(imported(state).stream().map(NpcDefinition::json).toList()));
+            lines.add(health(imported(state).stream().map(NpcDefinition::json).toList()));
         }
         ShopkeepersDropIn.reviewLine(state).ifPresent(lines::add);
         DenizenDropIn.reviewLine(state).ifPresent(lines::add);
@@ -744,6 +746,20 @@ public final class CitizensDropIn {
         return "Converted: " + routes + " patrol routes (" + points + " waypoints, " + guides + " guide points), look-close on " + look + " NPCs, " + text + " text and " + commands + " command behaviors";
     }
 
+    /** How many NPCs take damage; Citizens protects an NPC unless {@code /npc vulnerable} turned that off. */
+    static String health(List<JsonObject> definitions) {
+        int killable = 0;
+        for (JsonObject definition : definitions) {
+            JsonElement modules = definition.get("modules");
+            JsonElement health = modules != null && modules.isJsonObject() ? modules.getAsJsonObject().get(HealthSettings.MODULE) : null;
+            JsonElement flag = health != null && health.isJsonObject() ? health.getAsJsonObject().get("killable") : null;
+            if (flag != null && flag.isJsonPrimitive() && flag.getAsJsonPrimitive().isBoolean() && flag.getAsBoolean()) killable++;
+        }
+        int kept = definitions.size() - killable;
+        return "Health: " + killable + (killable == 1 ? " NPC can" : " NPCs can") + " be hurt and die; " + kept + (kept == 1 ? " NPC stays" : " NPCs stay")
+                + " protected from damage as in Citizens (/animus npc health <npc> setting=killable value=on)";
+    }
+
     /** An {@code enabled} flag set to false; look-close is on when the flag is left out. */
     private static boolean off(JsonElement enabled) { return enabled != null && enabled.isJsonPrimitive() && enabled.getAsJsonPrimitive().isBoolean() && !enabled.getAsBoolean(); }
 
@@ -828,6 +844,7 @@ public final class CitizensDropIn {
         List<JsonObject> staged = GroupFactoring.staged(preview);
         List<String> lines = new ArrayList<>(GroupFactoring.reviewLine(summary).stream().toList());
         lines.add(converted(staged));
+        lines.add(health(staged));
         if (summary.has("companions")) lines.add("Also read beside the save: " + String.join(", ", names(summary.getAsJsonArray("companions")))
                 + "; " + preview.shops() + " Citizens shops install in shops/citizens/");
         Map<String, Integer> preserved = preserved(staged);

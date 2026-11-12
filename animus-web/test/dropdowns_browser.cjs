@@ -3,7 +3,7 @@
 // keyboard-only selection with the combobox and listbox roles, the search
 // filter, "+ New rig" making a rig in the NPC's folder and picking it back,
 // "Manage rigs", the phone sheet, placement above the control near the
-// bottom, closing on an outside press and on scroll, and a sidebar section
+// bottom, following the control through a page scroll (closing once it is out of sight), closing on an outside press, and a sidebar section
 // and NPC folder that stay collapsed across a reload. Square, flat, no
 // console errors and nothing scrolls sideways.
 //
@@ -189,10 +189,31 @@ async function run(browser, {viewport, touch, theme}) {
       return {up: document.querySelector('.animus-select-popup').classList.contains('is-up'), popupBottom: popup.bottom, triggerTop: trigger.top, popupTop: popup.top};
     });
     assert.ok(placed.up && placed.popupBottom <= placed.triggerTop + 1 && placed.popupTop >= 0, `${label}: opens above, got ${JSON.stringify(placed)}`);
+    // A page scroll keeps it open and moves it with the control; the control
+    // leaving the window closes it.
+    const gap = () => page.evaluate(() => {
+      const popup = document.querySelector('.animus-select-popup');
+      if (!popup) return null;
+      const box = popup.getBoundingClientRect();
+      const trigger = document.getElementById('animus-npc-add-module').getBoundingClientRect();
+      return {up: popup.classList.contains('is-up'), gap: popup.classList.contains('is-up') ? trigger.top - box.bottom : box.top - trigger.bottom, triggerTop: trigger.top};
+    });
     await page.mouse.move(viewport.width / 2, 100);
-    await page.mouse.wheel(0, -200);
+    await page.mouse.wheel(0, -30);
+    await page.waitForFunction(top => document.getElementById('animus-npc-add-module').getBoundingClientRect().top > top + 20, placed.triggerTop);
+    await moduleList.waitFor();
+    await page.waitForFunction(() => {
+      const popup = document.querySelector('.animus-select-popup');
+      const trigger = document.getElementById('animus-npc-add-module').getBoundingClientRect();
+      return popup && Math.abs(trigger.top - popup.getBoundingClientRect().bottom) < 6;
+    });
+    const moved = await gap();
+    assert.ok(moved && moved.up && moved.gap < 6, `${label}: stays open and follows the control, got ${JSON.stringify(moved)}`);
+    assert.equal(await modules.getAttribute('aria-expanded'), 'true');
+    await page.evaluate(() => { document.scrollingElement.scrollTop = 0; });
+    await page.waitForFunction(() => document.getElementById('animus-npc-add-module').getBoundingClientRect().bottom < 0 || document.getElementById('animus-npc-add-module').getBoundingClientRect().top > innerHeight);
     await moduleList.waitFor({state: 'detached'});
-    step(label, 'placement: above the control near the bottom; a page scroll closes it');
+    step(label, 'placement: above the control near the bottom; a page scroll keeps it open, follows the control, and closes it once the control is out of sight');
   }
 
   // "+ New rig" from the keyboard: the rig is made in the NPC's folder and picked.

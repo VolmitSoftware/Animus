@@ -330,7 +330,7 @@ class _SyncPageState extends State<SyncPage> {
               Component.text(
                 plan.where(SyncState.same).isEmpty
                     ? '${component.workspace.name} has no documents to send.'
-                    : 'All ${plan.where(SyncState.same).length} documents already match the server.',
+                    : '${plan.where(SyncState.same).length == 1 ? 'Its only document already matches' : 'All ${plan.where(SyncState.same).length} documents already match'} the server.',
               ),
             ],
           ),

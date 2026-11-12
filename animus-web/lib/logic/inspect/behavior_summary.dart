@@ -4,7 +4,9 @@ library;
 
 import 'dart:convert';
 
+import '../../mc/npc/mc_text.dart';
 import '../gui/gui_json.dart';
+import '../gui/gui_text.dart';
 import 'behavior_operands.dart';
 
 const int _maximumLength = 72;
@@ -40,6 +42,10 @@ String argumentWords(JsonMap node, String key) {
   }
 }
 
+/// [text] without colour codes and tags, so a summary never shows `&e`.
+/// Placeholders stay as written.
+String _plain(String text) => guiTextRuns(text, sample: false).map((McTextRun run) => run.text).join();
+
 String _flagName(JsonMap node) {
   final String name = argumentWords(node, 'name');
   final String scope = asString(asMap(node['arguments'])['scope']) ?? 'player';
@@ -64,15 +70,16 @@ String _action(JsonMap node) {
   final String? id = asString(node['capability']);
   final JsonMap arguments = asMap(node['arguments']);
   String argument(String key) => argumentWords(node, key);
+  String shown(String key) => _plain(argument(key));
   return switch (id) {
-    'animus:say' => 'Say: ${argument('text')}',
-    'animus:message' => 'Message: ${argument('text')}',
-    'animus:actionbar' => 'Action bar: ${argument('text')}',
-    'animus:title' => 'Title: ${<String>[argument('title'), argument('subtitle')].where((String part) => part.isNotEmpty).join(' / ')}',
+    'animus:say' => 'Say: ${shown('text')}',
+    'animus:message' => 'Message: ${shown('text')}',
+    'animus:actionbar' => 'Action bar: ${shown('text')}',
+    'animus:title' => 'Title: ${<String>[shown('title'), shown('subtitle')].where((String part) => part.isNotEmpty).join(' / ')}',
     'animus:set-flag' => arguments['clear'] != null ? 'Clear flag ${_flagName(node)}' : 'Set flag ${_flagName(node)} to ${arguments.containsKey('value') ? argument('value') : 'true'}',
     'animus:set-quest-state' => 'Set quest ${_flagName(node)} to ${argument('value')}',
     'animus:advance-quest-state' => 'Advance quest ${_flagName(node)} by ${arguments.containsKey('by') ? argument('by') : '1'}',
-    'animus:choices' => 'Ask: ${argument('prompt')}',
+    'animus:choices' => 'Ask: ${shown('prompt')}',
     'animus:navigate' => arguments['route'] != null ? 'Walk route ${argument('route')}' : 'Walk to ${argument('x')}, ${argument('y')}, ${argument('z')}',
     'animus:command' => 'Run command /${argument('command')}',
     'animus:give-item' => 'Give ${arguments.containsKey('amount') ? '${argument('amount')} ' : ''}${argument('item')}',

@@ -59,8 +59,8 @@ class TraitsResult {
 }
 
 /// [patrolled] means the route comes from Citizens waypoints; it then opens doors and drops at least [routeFall] blocks.
-TraitsResult mapTraits(String type, JObject record, JObject traits, bool combat, bool health, bool routed, bool patrolled, JArray references) {
-  final _Traits mapping = _Traits(type, record, traits, combat, health, routed, patrolled, references);
+TraitsResult mapTraits(String type, JObject record, JObject traits, bool combat, bool routed, bool patrolled, JArray references) {
+  final _Traits mapping = _Traits(type, record, traits, combat, routed, patrolled, references);
   mapping
     ..metadata()
     ..movement()
@@ -124,8 +124,8 @@ JObject targetableCombat() {
   return module;
 }
 
-/// `CitizensTraits.targetableHealth`: takes mob hits unless Citizens protected the NPC.
-JObject targetableHealth(JObject record) {
+/// `CitizensTraits.health`: an NPC without Sentinel is killable unless Citizens protected it, which is the default.
+JObject citizensHealth(JObject record) {
   final JObject? metadata = _object(record.get('metadata'));
   return JObject()..addBool('killable', (metadata == null ? null : _bool(metadata.get('protected'))) == false);
 }
@@ -255,13 +255,12 @@ double? _decimal(String text) {
 }
 
 class _Traits {
-  _Traits(this.type, this.record, this.traits, this.combat, this.health, this.routed, this.patrolled, this.references);
+  _Traits(this.type, this.record, this.traits, this.combat, this.routed, this.patrolled, this.references);
 
   final String type;
   final JObject record;
   final JObject traits;
   final bool combat;
-  final bool health;
   final bool routed;
   final bool patrolled;
   bool raisedFall = false;
@@ -308,11 +307,7 @@ class _Traits {
             kept(path, 'the NPC has no world to wander in');
           }
         case 'protected':
-          if (flag == true || flag == false && health) {
-            converted.add(path);
-          } else if (flag == false) {
-            kept(path, 'Animus NPCs take damage only through an animus:health module, which this NPC does not have');
-          }
+          if (flag != null) converted.add(path);
         case 'using-held-item':
           if (flag == null) break;
           if (flag) fields.addBool('usingItem', true);

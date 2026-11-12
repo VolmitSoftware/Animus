@@ -242,6 +242,12 @@ class _ServersPanelState extends State<ServersPanel> {
 
   static String _forgetId(String id) => 'animus-forget-$id';
 
+  @override
+  void initState() {
+    super.initState();
+    component.hub.connectIdle();
+  }
+
   Future<void> _forget(ServerProfile server) async {
     setState(() => _forgetting = null);
     await component.hub.forget(server.id);

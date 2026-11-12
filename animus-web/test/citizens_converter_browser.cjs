@@ -48,9 +48,18 @@ async function run(browser, viewport, label, theme) {
   await (await chooser).setFiles(path.resolve(saves));
   if (worlds) await page.getByRole('textbox').fill(worlds);
   const before = requests.length;
+  // Only the converter that runs reads "Converting"; the others keep their label.
+  await page.evaluate(() => {
+    window.animusConvertingSeen = 0;
+    new MutationObserver(() => {
+      const reading = [...document.querySelectorAll('button')].filter(button => /Converting/.test(button.textContent)).length;
+      window.animusConvertingSeen = Math.max(window.animusConvertingSeen, reading);
+    }).observe(document.body, {subtree: true, childList: true, characterData: true, attributes: true});
+  });
   // The icon font glyph is part of the button's name.
   await page.getByRole('button', {name: /^\W*Convert$/}).click();
   await page.waitForFunction(() => typeof window.animusCitizensResult === 'string');
+  assert.ok(await page.evaluate(() => window.animusConvertingSeen) === 1, `${label}: more than one button reads Converting`);
   const result = JSON.parse(await page.evaluate(() => window.animusCitizensResult));
   if (result.error) throw new Error(`${label}: not converted: ${result.error}`);
   await page.getByRole('heading', {name: 'Review'}).waitFor();

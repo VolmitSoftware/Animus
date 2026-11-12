@@ -12,11 +12,10 @@ class CitizensTraitsTest {
     private static JsonObject json(String text) { return JsonParser.parseString(text).getAsJsonObject(); }
     private static CitizensTraits.Result map(String type, String record, boolean combat) { return map(type, record, combat, false); }
     private static CitizensTraits.Result map(String type, String record, boolean combat, boolean routed) { return map(type, record, combat, routed, false); }
-    /** A Sentinel NPC converts with both combat and health modules. */
     private static CitizensTraits.Result map(String type, String record, boolean combat, boolean routed, boolean patrolled) {
         JsonObject source = json(record);
         JsonObject traits = source.has("traits") ? source.getAsJsonObject("traits") : new JsonObject();
-        return CitizensTraits.map("minecraft:" + type, source, traits, combat, combat, routed, patrolled, new JsonArray());
+        return CitizensTraits.map("minecraft:" + type, source, traits, combat, routed, patrolled, new JsonArray());
     }
 
     @Test void navigatorSettingsBecomeTheNpcsMovement() {
@@ -71,7 +70,7 @@ class CitizensTraitsTest {
             assertTrue(result.converted().contains(path), path);
         assertEquals(CitizensImporter.Status.CONVERTED, result.notes().get("/traits/rotationtrait/globalParameters/headOnly").status());
         assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, result.notes().get("/traitnames").status());
-        assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, map("player", "{\"metadata\":{\"protected\":false}}", false).notes().get("/metadata/protected").status());
+        assertTrue(map("player", "{\"metadata\":{\"protected\":false}}", false).converted().contains("/metadata/protected"), "a vulnerable NPC converts with a killable animus:health");
     }
 
     @Test void followBecomesAGuardThatProtectsOnlyWhenAsked() {
@@ -152,8 +151,8 @@ class CitizensTraitsTest {
         assertTrue(CitizensTraits.targetable(traits));
         assertFalse(CitizensTraits.targetable(json("{\"targetable\":{\"targetable\":false}}")));
         assertEquals(json("{\"enabled\":true,\"targeting\":{\"fightBack\":false}}"), CitizensTraits.targetableCombat());
-        assertEquals(json("{\"killable\":false}"), CitizensTraits.targetableHealth(json("{}")));
-        assertEquals(json("{\"killable\":true}"), CitizensTraits.targetableHealth(json("{\"metadata\":{\"protected\":false}}")));
+        assertEquals(json("{\"killable\":false}"), CitizensTraits.health(json("{}")));
+        assertEquals(json("{\"killable\":true}"), CitizensTraits.health(json("{\"metadata\":{\"protected\":false}}")));
         assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, map("player", "{\"traits\":{\"targetable\":{\"targetable\":true}}}", false)
                 .notes().get("/traits/targetable/targetable").status());
     }

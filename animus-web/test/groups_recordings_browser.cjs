@@ -6,7 +6,8 @@
 // group that set it), reordering by keyboard, "+ New group" from the search
 // text in one undo step; the group editor (description, member chips and
 // picker, values parts); revision read only in the header;
-// the recording view (facts, path, scrub, play, events), its details form
+// the recording view (facts, path, scrub, play keeping time on a throttled
+// CPU, events), its details form
 // (description, tags, playback, speed), trimming the start and end on the
 // scrub, Code Apply refusing a draft that breaks a recording rule and
 // applying a valid one, renaming it, making a route from it with each leg's
@@ -45,6 +46,16 @@ async function codeOf(page) {
   const text = await page.locator('.animus-code textarea').inputValue();
   await page.getByRole('tab', {name: 'Visual'}).click();
   return JSON.parse(text);
+}
+
+/** Reads the Code view until [done] holds, since commits queue behind slower saves under load. */
+async function codeWhen(page, done) {
+  let json = await codeOf(page);
+  for (let tries = 0; !done(json) && tries < 40; tries++) {
+    await page.waitForTimeout(250);
+    json = await codeOf(page);
+  }
+  return json;
 }
 
 /** Opens an inspector part (closed by default on phones) and returns it. */
@@ -247,6 +258,20 @@ async function run(browser, viewport, theme, tag) {
   assert.equal(await page.locator('#animus-recording-play').getAttribute('aria-pressed'), 'true');
   await page.locator('#animus-recording-play').click();
   assert.equal(await page.locator('#animus-recording-play').getAttribute('aria-pressed'), 'false');
+  // Playback keeps time on a slow page: a 40x slower CPU still plays about 20 ticks a second.
+  await page.locator('#animus-recording-scrub').fill('0');
+  await page.locator('[data-recording="readout"]').getByText('tick 0', {exact: false}).waitFor();
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', {rate: 40});
+  const played = await page.evaluate(() => new Promise((resolve) => {
+    const start = performance.now();
+    document.getElementById('animus-recording-play').click();
+    setTimeout(() => resolve({ms: performance.now() - start, tick: Number(/tick (\d+)/.exec(document.querySelector('[data-recording="readout"]').textContent)[1])}), 2000);
+  }));
+  await cdp.send('Emulation.setCPUThrottlingRate', {rate: 1});
+  await cdp.detach();
+  if (await page.locator('#animus-recording-play').getAttribute('aria-pressed') === 'true') await page.locator('#animus-recording-play').click();
+  assert.ok(played.tick >= (played.ms - 400) / 50 && played.tick <= played.ms / 50 + 2, `${tag}: tick ${played.tick} after ${Math.round(played.ms)} ms at speed 1`);
   await shot(page, `${tag}-05-recording`);
   await noSidewaysScroll(page, `${tag} recording`);
   assert.equal(await page.getByRole('button', {name: 'Duplicate'}).count(), 0);
@@ -264,8 +289,7 @@ async function run(browser, viewport, theme, tag) {
   await details.getByText('Use 0.25 to 4.').waitFor();
   await page.locator('#animus-recording-speed').fill('2');
   await page.locator('#animus-recording-speed').blur();
-  await settle(page);
-  let json = await codeOf(page);
+  let json = await codeWhen(page, (code) => code.speed === 2);
   assert.equal(json.description, 'Stall walk');
   assert.deepEqual(json.tags, ['market']);
   assert.equal(json.playback, 'once');

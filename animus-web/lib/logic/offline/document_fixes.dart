@@ -128,6 +128,35 @@ Object? _defaultFor(AnimusDocument document, List<JsonStep> steps, Map<String, O
 final RegExp _bound = RegExp(r'^expected (at least|at most) (-?[0-9.]+)$');
 final RegExp _oneOf = RegExp(r'^expected one of ');
 
+/// Whether writing [candidate] at [steps] leaves no error at [path], so a fix
+/// is never offered that the document's other rules (server mode, for one)
+/// reject again.
+bool _clears(AnimusDocument document, List<JsonStep> steps, String path, Object? candidate) {
+  final Object? json = document.json;
+  if (json == null) return false;
+  final Object? changed = writeIn(json, steps, candidate);
+  for (final Diagnostic diagnostic in SharedSchemas.embedded.validate(document.kind, changed)) {
+    if (diagnostic.severity == DiagnosticSeverity.error && diagnostic.path == path) return false;
+  }
+  return true;
+}
+
+/// The first choice that clears the diagnostic: the options the message lists
+/// (the ones allowed in the current mode), then the schema's own enum.
+Object? _firstChoice(AnimusDocument document, List<JsonStep> steps, Diagnostic diagnostic, Map<String, Object?>? schema) {
+  final List<Object?> options = <Object?>[];
+  try {
+    options.addAll(jsonDecode('[${diagnostic.message.substring('expected one of '.length)}]') as List<Object?>);
+  } on FormatException {
+    options.clear();
+  }
+  if (schema != null) options.addAll(asList(schema['enum']));
+  for (final Object? option in options) {
+    if (_clears(document, steps, diagnostic.path, option)) return option;
+  }
+  return null;
+}
+
 /// The fixes the editor can offer for [document]'s diagnostics, at most one
 /// per diagnostic path.
 List<DocumentFix> fixesFor(AnimusDocument document, {math.Random? random}) {
@@ -163,12 +192,12 @@ List<DocumentFix> fixesFor(AnimusDocument document, {math.Random? random}) {
     } else if (diagnostic.message.startsWith('does not match') && current is String && (field == 'id' || field == 'group' || field == 'tags')) {
       final String cleaned = slug(current, fallback: 'npc');
       if (cleaned != current) fix = DocumentFix(diagnostic.path, 'Use $cleaned', (Object? value) => writeIn(value, steps, cleaned));
-    } else if (diagnostic.message.startsWith('expected ') && schema != null && schema.containsKey('const')) {
+    } else if (diagnostic.message.startsWith('expected ') && schema != null && schema.containsKey('const') && _clears(document, steps, diagnostic.path, schema['const'])) {
       final Object? constant = schema['const'];
       fix = DocumentFix(diagnostic.path, 'Set $field to ${jsonEncode(constant)}', (Object? value) => writeIn(value, steps, constant));
-    } else if (_oneOf.hasMatch(diagnostic.message) && schema != null && asList(schema['enum']).isNotEmpty) {
-      final Object? first = asList(schema['enum']).first;
-      fix = DocumentFix(diagnostic.path, 'Use ${jsonEncode(first)}', (Object? value) => writeIn(value, steps, first));
+    } else if (_oneOf.hasMatch(diagnostic.message)) {
+      final Object? first = _firstChoice(document, steps, diagnostic, schema);
+      if (first != null) fix = DocumentFix(diagnostic.path, 'Use ${jsonEncode(first)}', (Object? value) => writeIn(value, steps, first));
     } else if (current is num) {
       final RegExpMatch? match = _bound.firstMatch(diagnostic.message);
       final num? limit = match == null ? null : num.tryParse(match.group(2)!);

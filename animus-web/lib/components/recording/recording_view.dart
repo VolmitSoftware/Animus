@@ -17,6 +17,7 @@ import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/recording/recording_edit.dart';
 import '../../logic/recording/recording_model.dart';
+import '../../logic/plural.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart' show JsonEdit, prefersReducedMotion;
 import '../info_tip.dart';
@@ -117,13 +118,17 @@ class _RecordingViewState extends State<RecordingView> {
       if (_tick >= recording.durationTicks) _tick = 0;
       _playing = true;
     });
+    double last = web.window.performance.now();
     _timer = Timer.periodic(const Duration(milliseconds: 1000 ~/ recordingTicksPerSecond), (Timer timer) {
       if (!mounted) {
         timer.cancel();
         return;
       }
+      final double now = web.window.performance.now();
+      final double elapsed = now - last;
+      last = now;
       setState(() {
-        _tick = math.min(_tick + RecordingDetails.read(asMap(component.document.json)).speed, recording.durationTicks.toDouble());
+        _tick = advanceRecordingTick(_tick, elapsed, RecordingDetails.read(asMap(component.document.json)).speed, recording.durationTicks);
         if (_tick >= recording.durationTicks) _stop();
       });
     });
@@ -337,7 +342,7 @@ class _RecordingViewState extends State<RecordingView> {
         dom.span(
           classes: 'animus-recording-readout',
           attributes: const <String, String>{'data-recording': 'trim-range', 'aria-live': 'polite'},
-          <Widget>[Component.text('Keep tick $from to $to: ${to - from} ticks, $frames of ${ticks.length} frames')],
+          <Widget>[Component.text('Keep tick $from to $to: ${countOf(to - from, 'tick')}, $frames of ${countOf(ticks.length, 'frame')}')],
         ),
         dom.div(classes: 'animus-row animus-recording-trim-actions', <Widget>[
           Button.secondary(

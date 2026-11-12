@@ -41,6 +41,8 @@ void main() {
     final NpcScene scene = npcPlaygroundScene(look, speech: '&eHello there');
     final NpcText speech = scene.texts.last;
     expect(speech.lines.single, '§eHello there');
+    expect(speech.keepInside, isTrue);
+    expect(scene.texts.first.keepInside, isFalse);
     expect(speech.anchor.y, greaterThan(scene.texts.first.anchor.y));
     expect(McBounds.of(scene.scene.frame).max.y, greaterThan(speech.anchor.y));
     expect(npcPlaygroundScene(look, speech: '  ').texts, hasLength(1));

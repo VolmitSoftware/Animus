@@ -20,6 +20,8 @@ String _source(String name) => File('${schemaDirectory.path}/fixtures/$_root/$na
 
 String? _optional(Map<String, Object?> definition, String key) => definition[key] == null ? null : _source(definition[key]! as String);
 
+final DateTime _fixed = DateTime(2026, 5, 1);
+
 void main() {
   group('shared Shopkeepers golden fixtures', () {
     for (final Object? entry in _index()['cases']! as List<Object?>) {
@@ -72,7 +74,7 @@ void main() {
       final List<String> names = <String>[for (final ArchiveFile file in archive.files) file.name];
       expect(names, List<String>.of(names)..sort());
       expect(names, contains('imports/shopkeepers/${preview.id}/report.json'));
-      expect(shopkeepersBundleZip(preview), shopkeepersBundleZip(convertShopkeepers(save, config: config)));
+      expect(shopkeepersBundleZip(preview, modified: _fixed), shopkeepersBundleZip(convertShopkeepers(save, config: config), modified: _fixed));
       expect(convertShopkeepers(_source('minimal.yml')).bundle().keys, isNot(contains('imports/shopkeepers/config.yml')));
     });
 

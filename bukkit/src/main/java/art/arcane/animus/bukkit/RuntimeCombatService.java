@@ -40,6 +40,7 @@ import java.util.OptionalDouble;
 import java.util.Set;
 import java.util.SplittableRandom;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import org.bukkit.FluidCollisionMode;
 import org.bukkit.World;
@@ -62,6 +63,8 @@ import org.bukkit.event.entity.ExplosionPrimeEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
+import org.bukkit.event.player.PlayerAnimationEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.world.EntitiesUnloadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
@@ -92,6 +95,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     private final Map<UUID, Registration> registrations = new HashMap<>();
     private final Map<UUID, BukkitCombatBridge.MobLease> leases = new HashMap<>();
     private final Map<UUID, Flying> flying = new HashMap<>();
+    private final Map<UUID, CombatHits.Swing> swings = new ConcurrentHashMap<>();
     private final SplittableRandom random = new SplittableRandom();
     private BukkitTask task;
     private long ticks;
@@ -285,8 +289,13 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     public void playerHit(VirtualNpcInteractionEvent event) {
         if (event.isPreview() || event.getAction() != VirtualNpcInteractionEvent.Action.ATTACK || !module.running() || !module.engine().registered(event.getNpcId())) return;
         Player player = event.getViewer();
-        module.engine().playerAttack(event.getNpcId(), new TargetRef(TargetKind.PLAYER, player.getUniqueId()), position(player.getLocation()), CombatHits.attackDamage(player));
+        module.engine().playerAttack(event.getNpcId(), new TargetRef(TargetKind.PLAYER, player.getUniqueId()), position(player.getLocation()),
+                CombatHits.attackDamage(player, swings.remove(player.getUniqueId())));
     }
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void swing(PlayerAnimationEvent event) { swings.put(event.getPlayer().getUniqueId(), CombatHits.Swing.of(event.getPlayer())); }
+    @EventHandler
+    public void quit(PlayerQuitEvent event) { swings.remove(event.getPlayer().getUniqueId()); }
     /** A player or mob fired a projectile that can hurt an NPC; it is followed from where it left. */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void launched(ProjectileLaunchEvent event) {

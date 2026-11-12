@@ -115,4 +115,22 @@ void main() {
     expect(Recording.parse(readFixture('recordings/bad-event.json'))!.events.single.type, 'jump');
     expect(Recording.parse(readFixture('recordings/too-many-frames.json'))!.frames, hasLength(5));
   });
+
+  group('advanceRecordingTick', () {
+    test('should advance by elapsed time, not by callbacks', () {
+      expect(advanceRecordingTick(0, 4500, 1, 200), 90);
+      double tick = 0;
+      for (final double gap in <double>[50, 120, 300, 30, 4000]) {
+        tick = advanceRecordingTick(tick, gap, 1, 200);
+      }
+      expect(tick, 90, reason: 'late or bunched timer callbacks add up to the same elapsed time');
+    });
+
+    test('should scale by speed and stop at the last tick', () {
+      expect(advanceRecordingTick(10, 1000, 2, 200), 50);
+      expect(advanceRecordingTick(10, 1000, 0.25, 200), 15);
+      expect(advanceRecordingTick(70, 1000, 1, 80), 80);
+      expect(advanceRecordingTick(30, -5, 1, 80), 30, reason: 'a clock that steps back does not rewind');
+    });
+  });
 }
