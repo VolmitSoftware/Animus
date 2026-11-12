@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:welcome",
+  "server": true,
+  "entry": "greet",
+  "variables": {
+    "joins": {"type": "integer", "initial": 0, "scope": "global", "lifetime": "persistent"},
+    "seen": {"type": "map", "initial": {}, "scope": "player", "lifetime": "persistent"}
+  },
+  "routines": {
+    "greet": {
+      "type": "sequence",
+      "steps": [
+        {"type": "set", "variable": "joins", "value": {"expression": "joins + 1"}},
+        {
+          "type": "condition",
+          "expression": "context.first",
+          "then": {
+            "type": "action",
+            "capability": "animus:message",
+            "arguments": {"text": null},
+            "templates": {"/text": "Welcome, {{ player.name }}. You are visitor {{ joins }}."}
+          },
+          "else": {
+            "type": "action",
+            "capability": "animus:title",
+            "arguments": {"title": "Welcome back", "subtitle": null},
+            "expressions": {"/subtitle": "player.name"}
+          }
+        }
+      ]
+    },
+    "tick": {"type": "wait", "ticks": 1}
+  },
+  "triggers": [
+    {"id": "join", "event": "player_join"},
+    {"id": "pulse", "event": "timer", "intervalTicks": 1200, "routine": "tick"},
+    {"id": "hello", "event": "command", "name": "hello", "description": "Says hello."}
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "2bebe259-5225-54b4-a864-83999b6a54eb",
+  "id": "spare-1",
+  "group": "spare",
+  "name": "Spare One",
+  "type": "minecraft:player",
+  "spawned": false,
+  "position": {
+    "world": "world",
+    "x": -4.5,
+    "y": 64,
+    "z": 8.5,
+    "yaw": 180,
+    "pitch": 0
+  },
+  "skin": "d4643371c856a3a4b31e61a3e596422bcb475136e93c4ae88da543505f522e73",
+  "tags": [
+    "spare"
+  ]
+}

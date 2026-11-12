@@ -1,0 +1,49 @@
+{
+  "id": "32-mythic-model",
+  "title": "Mythic mob with a Model Engine model",
+  "description": "Making an NPC from a MythicMobs mob that shows its Model Engine model",
+  "target": 20,
+  "client": {"packs": {"animus-modelengine.zip": "ModelEngine/resource pack.zip"}},
+  "stage": {
+    "world": "flat",
+    "plugins": ["ModelEngine", "MythicMobs"],
+    "files": {
+      "ModelEngine/blueprints/knight.bbmodel": {"from": "stage/assets/knight.bbmodel"},
+      "MythicMobs/Mobs/animus.yml": "AnimusMeg:\n  Type: ZOMBIE\n  Display: 'Knight'\n  Skills:\n  - model{mid=knight} @self ~onSpawn\n  - message{m=\"<caster.name> greets <trigger.name>\"} @trigger ~onInteract\nAnimusKing:\n  Type: SKELETON\n  Display: 'Skeleton King'\n  Equipment:\n  - GOLDEN_HELMET:4\n  - BOW HAND\n  Options:\n    Glowing: true\n  Skills:\n  - message{m=\"The Skeleton King nods at <trigger.name>\"} @trigger ~onInteract\n  - message{m=\"<trigger.name> struck the Skeleton King\"} @trigger ~onDamaged\n  - message{m=\"The Skeleton King watches the field\"} @PlayersInRadius{r=24} ~onTimer:160\n"
+    }
+  },
+  "cues": {
+    "made": ["animus npc model knight interact wave"]
+  },
+  "setup": [
+    {"run": "/gamemode creative"},
+    {"run": "/give @s minecraft:stick"},
+    {"run": "/clear @s"},
+    {"tp": [0.5, 61, 0.5, 180, 4]},
+    {"hotbar": 8},
+    {"wait": 600},
+    {"clearChat": true},
+    {"wait": 2500}
+  ],
+  "beats": [
+    {"wait": 400},
+    {"type": "/animus mythic knight AnimusMeg z=~3 folder=live"},
+    {"wait": 700, "note": "the NPC must exist before the cue sets its interact animation"},
+    {"cue": "made"},
+    {"result": "the reply line and the knight NPC appearing behind the player", "ms": 1800},
+    {"look": {"yaw": 0, "pitch": 12, "ms": 1300}},
+    {"result": "the Mythic mob as an NPC wearing its Model Engine knight", "ms": 2200},
+    {"lookAt": {"x": 0.5, "y": 62.3, "z": 3.5, "ms": 400}},
+    {"wait": 300},
+    {"useItem": true},
+    {"wait": 500},
+    {"result": "the knight waves and the Mythic skill says Knight greets the player", "ms": 2500},
+    {"move": "left", "ms": 400},
+    {"lookAt": {"x": 0.5, "y": 62.3, "z": 3.5, "ms": 400}},
+    {"wait": 300},
+    {"useItem": true},
+    {"wait": 300},
+    {"result": "the greeting again from the new angle", "ms": 2500}
+  ],
+  "closing": "The Mythic mob NPC shows its knight model and greets on click"
+}

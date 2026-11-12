@@ -1,0 +1,40 @@
+{
+  "id": "07-new-npc-body",
+  "title": "New NPC with a body type",
+  "description": "Making a llama NPC named trader",
+  "target": 22,
+  "stage": {"world": "town"},
+  "setup": [
+    {"run": "/gamemode creative"},
+    {"tp": [4.5, 64, -9.5, 0, 8]},
+    {"tp": [-14, 64, 8, -90, 5]},
+    {"perspective": "third-front"},
+    {"wait": 600},
+    {"clearChat": true},
+    {"wait": 3500}
+  ],
+  "beats": [
+    {"wait": 1100},
+    {"perspective": "first"},
+    {"wait": 900},
+    {"tp": [4.5, 64, -9.5, 0, 8]},
+    {"wait": 300},
+    {"palette": true},
+    {"click": "New NPC", "button": "right"},
+    {"screen": "Anvil"},
+    {"result": "An anvil titled Body type opens, prefilled with minecraft:player", "ms": 1500},
+    {"anvil": "minecraft:llama"},
+    {"wait": 500},
+    {"screen": "Anvil"},
+    {"wait": 500},
+    {"anvil": "trader"},
+    {"expect": "spawned it", "timeout": 6000},
+    {"closeScreen": true},
+    {"move": "back", "ms": 350},
+    {"result": "A llama named trader stands in front of you; chat: Created npcs/trader.json", "ms": 1500},
+    {"type": "/animus inspect trader"},
+    {"wait": 300},
+    {"result": "Inspect lists trader as minecraft:llama, rev 1, spawned, with its position", "ms": 2500}
+  ],
+  "closing": "New NPC with a body type made a llama named trader"
+}

@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:herald",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:look",
+          "arguments": {
+            "target": "player"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:choices",
+          "arguments": {
+            "id": "topic",
+            "prompt": "Hear ye! Fresh bread at the stall. What would you like to know?",
+            "options": [
+              {
+                "id": "post",
+                "text": "Where is the guard post?",
+                "hover": "&7Ask about the road east",
+                "color": "gold"
+              },
+              {
+                "id": "stall",
+                "text": "What is for sale?",
+                "hover": "&7Ask about the bakery",
+                "color": "aqua"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "post": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Follow the &egravel road east&f, about forty blocks. The guard walks it every day."
+      }
+    },
+    "stall": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "The &6baker&f trades bread, cookies and cake for emeralds. &7Right-click to browse."
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "cooldownTicks": 40
+    },
+    {
+      "id": "ask-post",
+      "event": "dialogue_choice",
+      "dialogue": "topic",
+      "choice": "post",
+      "routine": "post"
+    },
+    {
+      "id": "ask-stall",
+      "event": "dialogue_choice",
+      "dialogue": "topic",
+      "choice": "stall",
+      "routine": "stall"
+    }
+  ]
+}

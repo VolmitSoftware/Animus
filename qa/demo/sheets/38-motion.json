@@ -1,0 +1,87 @@
+{
+  "id": "38-motion",
+  "title": "Follow, route speed and pause",
+  "description": "A guard following the player and a ferryman crossing the river",
+  "target": 32,
+  "stage": {
+    "world": "flat",
+    "files": {
+      "Animus/behaviors/live/ferry.json": {"schemaVersion": 1, "revision": 1, "id": "live:ferry", "entry": "point-1", "routines": {"point-1": {"type": "action", "capability": "animus:message", "arguments": {"text": "The ferry has crossed", "to": "nearby", "radius": 64}}}, "triggers": [{"id": "point-1", "event": "waypoint", "waypoint": 1, "routine": "point-1"}]}
+    },
+    "console": [
+      "fill -2 60 -34 2 60 -16 minecraft:grass_block",
+      "fill -2 60 -31 2 60 -16 minecraft:water",
+      "animus create ferry type=minecraft:player world=world x=-5.5 y=61 z=-32.5 folder=live name=Ferryman",
+      "animus despawn ferry",
+      "animus edit ferry {\"behaviors\":[\"live:ferry\"],\"position\":{\"world\":\"world\",\"x\":-5.5,\"y\":61,\"z\":-32.5,\"yaw\":0,\"pitch\":0},\"modules\":{\"animus:navigation\":{\"enabled\":false,\"speed\":1,\"waitTicks\":10,\"loop\":false,\"points\":[{\"x\":-5.5,\"y\":61,\"z\":-32.5,\"speed\":5},{\"x\":-5.5,\"y\":61,\"z\":-22.5,\"teleport\":{\"x\":5.5,\"y\":61,\"z\":-27.5,\"yaw\":0}},{\"x\":5.5,\"y\":61,\"z\":-21.5}]}}}",
+      "animus spawn ferry",
+      "animus create porter type=minecraft:player world=world x=20.5 y=61 z=-31.5 folder=live name=Porter",
+      "animus despawn porter",
+      "animus edit porter {\"modules\":{\"animus:navigation\":{\"enabled\":false,\"speed\":2,\"waitTicks\":0,\"order\":\"pingpong\",\"pause\":{\"playerRange\":4,\"ticks\":40},\"points\":[{\"x\":20.5,\"y\":61,\"z\":-31.5},{\"x\":20.5,\"y\":61,\"z\":-8.5}]}}}",
+      "animus spawn porter"
+    ]
+  },
+  "cues": {
+    "prep": [
+      "animus create hound type=minecraft:player world=world x=-26.5 y=61 z=-30.5 folder=live name=Hound"
+    ],
+    "prep-body": [
+      "animus despawn hound",
+      "animus edit hound {\"position\":{\"world\":\"world\",\"x\":-26.5,\"y\":61,\"z\":-30.5,\"yaw\":-90,\"pitch\":0},\"modules\":{\"animus:combat\":{\"enabled\":true,\"targeting\":{\"fightBack\":false},\"guard\":{\"followDistance\":3,\"pointRange\":2.5,\"protect\":false}}}}"
+    ],
+    "prep-spawn": [
+      "animus spawn hound"
+    ],
+    "prep-guard": [
+      "animus combat guard hound {player}"
+    ],
+    "ferry": ["animus despawn hound", "animus edit ferry {\"modules\":{\"animus:navigation\":{\"enabled\":true,\"speed\":1,\"waitTicks\":10,\"loop\":false,\"points\":[{\"x\":-5.5,\"y\":61,\"z\":-32.5,\"speed\":5},{\"x\":-5.5,\"y\":61,\"z\":-22.5,\"teleport\":{\"x\":5.5,\"y\":61,\"z\":-27.5,\"yaw\":0}},{\"x\":5.5,\"y\":61,\"z\":-21.5}]}}}"],
+    "porter": ["animus edit porter {\"modules\":{\"animus:navigation\":{\"enabled\":true,\"speed\":2,\"waitTicks\":0,\"order\":\"pingpong\",\"pause\":{\"playerRange\":4,\"ticks\":40},\"points\":[{\"x\":20.5,\"y\":61,\"z\":-31.5},{\"x\":20.5,\"y\":61,\"z\":-8.5}]}}}"]
+  },
+  "setup": [
+    {"run": "/gamemode survival"},
+    {"run": "/give @s minecraft:stick"},
+    {"run": "/clear @s"},
+    {"tp": [-16.5, 61, -30.5, 90, 8]},
+    {"cue": "prep", "note": "makes the hound; the commands finish one at a time, so each step is its own cue"},
+    {"wait": 1500},
+    {"cue": "prep-body"},
+    {"wait": 1500},
+    {"cue": "prep-spawn"},
+    {"wait": 1500},
+    {"cue": "prep-guard", "note": "the hound guards the player; it needs the player online"},
+    {"wait": 9000, "note": "lets the hound walk up to the player before recording"},
+    {"hotbar": 8},
+    {"wait": 600},
+    {"clearChat": true},
+    {"wait": 2500},
+    {"tp": [-13.5, 61, -30.5, 90, 8], "note": "steps back last, so the hound starts a few blocks away"}
+  ],
+  "beats": [
+    {"wait": 2200},
+    {"move": "back", "ms": 1500},
+    {"result": "the guard follows the player", "ms": 1600},
+    {"move": "back", "ms": 1000},
+    {"move": "left", "ms": 700},
+    {"result": "the guard keeps close behind", "ms": 1800},
+    {"tp": [0.5, 61, -36.5, -8, 10]},
+    {"cue": "ferry", "note": "removes the hound and starts the ferry route"},
+    {"lookAt": {"x": -5.5, "y": 62.0, "z": -30, "ms": 500}},
+    {"wait": 1300},
+    {"lookAt": {"x": -4, "y": 62.0, "z": -24, "ms": 1200}},
+    {"wait": 500},
+    {"lookAt": {"x": 4, "y": 62.0, "z": -26, "ms": 900}},
+    {"wait": 1300},
+    {"lookAt": {"x": 5.5, "y": 62.0, "z": -22, "ms": 900}},
+    {"result": "the ferryman crossed fast and jumped the river; The ferry has crossed in chat", "ms": 1800},
+    {"tp": [23.5, 61, -20.5, 160, 8]},
+    {"cue": "porter"},
+    {"wait": 2900},
+    {"result": "the porter stops while the player stands near", "ms": 2500},
+    {"move": "right", "ms": 1300},
+    {"lookAt": {"x": 20.5, "y": 62.0, "z": -22, "ms": 700}},
+    {"wait": 1100},
+    {"result": "the player stepped away and the porter walks on", "ms": 2500}
+  ],
+  "closing": "The guard follows, the ferryman jumps the river and the porter waits"
+}

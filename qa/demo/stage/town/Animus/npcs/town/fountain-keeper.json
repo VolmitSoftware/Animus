@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "1146edfe-e0d9-5d41-9b84-456f54f61cc8",
+  "id": "fountain-keeper",
+  "group": "town",
+  "name": "Keeper",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 4.5,
+    "yaw": 180,
+    "pitch": 0
+  },
+  "skin": "9af128e8401932ffdf42ae6229234581459a9cd18d426b49b1c53b42184ebe04",
+  "tags": [
+    "keeper"
+  ],
+  "behaviors": [
+    "town:wave"
+  ],
+  "modules": {
+    "animus:look-close": {
+      "range": 8
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "id": "29-health-revive",
+  "title": "Health and revive",
+  "description": "Hitting a killable NPC until it dies and reviving it",
+  "target": 35,
+  "stage": {
+    "world": "town",
+    "console": [
+      "animus despawn town/guard",
+      "animus edit spare/spare-2 {\"position\":{\"world\":\"world\",\"x\":46.5,\"y\":64,\"z\":0.5,\"yaw\":90,\"pitch\":0}}",
+      "animus spawn spare/spare-2"
+    ]
+  },
+  "setup": [
+    {"run": "/gamemode creative"},
+    {"run": "/give @s wooden_sword"},
+    {"hotbar": 0},
+    {"wait": 300},
+    {"tp": [-14, 64, 8, -90, 5]},
+    {"perspective": "third-front"},
+    {"wait": 600},
+    {"clearChat": true},
+    {"wait": 3500}
+  ],
+  "beats": [
+    {"wait": 600},
+    {"perspective": "first"},
+    {"wait": 900},
+    {"tp": [43.5, 64, 0.5, -90, 8]},
+    {"wait": 300},
+    {"type": "/animus npc health spare/spare-2 setting=killable value=on"},
+    {"result": "chat: spare-2: killable = true, with [Undo]", "ms": 1500},
+    {"type": "/animus npc health spare/spare-2 setting=show-health value=on"},
+    {"result": "chat: spare-2: show-health = true", "ms": 1500},
+    {"lookAtEntity": "Spare Two", "ms": 600},
+    {"attackTarget": true},
+    {"result": "Spare Two flashes red; a health line appears under it", "ms": 1500},
+    {"attackTarget": true},
+    {"result": "the health line drops, out of 20", "ms": 1500},
+    {"attackTarget": true},
+    {"result": "still standing, most of 20 left", "ms": 1500},
+    {"type": "/animus npc health spare/spare-2 setting=maximum value=2"},
+    {"result": "chat: spare-2: maximum = 2.0; the line now reads out of 2", "ms": 1500},
+    {"lookAtEntity": "Spare Two", "ms": 500},
+    {"attackTarget": true},
+    {"result": "the health line falls to about 1 of 2", "ms": 1500},
+    {"attackTarget": true},
+    {"result": "almost gone, under 1 of 2", "ms": 1500},
+    {"attackTarget": true},
+    {"result": "the third hit kills it; Spare Two is gone", "ms": 1500},
+    {"type": "/animus npc revive spare/spare-2"},
+    {"wait": 500},
+    {"result": "chat says it was revived, and Spare Two is back at the gate", "ms": 2500}
+  ],
+  "closing": "With maximum 2, Spare Two died in three hits; revive brought it back"
+}

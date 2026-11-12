@@ -1,0 +1,36 @@
+plugins {
+    id 'java'
+    id 'net.fabricmc.fabric-loom' version '1.19.4'
+}
+
+group = 'com.volmit.animuscamera'
+version = '1.1.0'
+base { archivesName = 'animus-camera' }
+
+repositories {
+    maven { url = uri('https://maven.fabricmc.net/') }
+    mavenCentral()
+}
+
+dependencies {
+    minecraft 'com.mojang:minecraft:26.2'
+    implementation 'net.fabricmc:fabric-loader:0.20.1'
+    compileOnly 'net.fabricmc.fabric-api:fabric-api:0.161.0+26.2'
+    testImplementation platform('org.junit:junit-bom:5.13.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(25) }
+}
+tasks.withType(JavaCompile).configureEach { options.release.set(25) }
+
+test {
+    useJUnitPlatform()
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') { expand 'version': project.version }
+}

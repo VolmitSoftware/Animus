@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "animuscamera",
+  "version": "${version}",
+  "name": "Animus Camera",
+  "description": "Hidden scripted client for recording tutorial clips.",
+  "license": "All-Rights-Reserved",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["com.volmit.animuscamera.AnimusCamera"]
+  },
+  "mixins": ["animuscamera.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.20.0",
+    "minecraft": "26.2",
+    "java": ">=25"
+  }
+}

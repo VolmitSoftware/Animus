@@ -1,0 +1,36 @@
+{
+  "id": "06-new-npc",
+  "title": "New NPC by id",
+  "description": "Making an NPC named greeter from the palette",
+  "target": 18,
+  "stage": {"world": "town"},
+  "setup": [
+    {"run": "/gamemode creative"},
+    {"tp": [-2.5, 64, -9.5, 0, 8]},
+    {"tp": [-14, 64, 8, -90, 5]},
+    {"perspective": "third-front"},
+    {"wait": 600},
+    {"clearChat": true},
+    {"wait": 3500}
+  ],
+  "beats": [
+    {"wait": 700},
+    {"perspective": "first"},
+    {"wait": 900},
+    {"tp": [-2.5, 64, -9.5, 0, 8]},
+    {"wait": 300},
+    {"palette": true},
+    {"click": "New NPC"},
+    {"screen": "Anvil"},
+    {"result": "An anvil titled New NPC id opens with an empty name", "ms": 1500},
+    {"anvil": "greeter"},
+    {"expect": "spawned it", "timeout": 6000},
+    {"closeScreen": true},
+    {"move": "back", "ms": 350},
+    {"result": "greeter stands in front of you; chat: Created npcs/greeter.json and spawned it", "ms": 1500},
+    {"hoverChat": "[Undo]", "ms": 1800},
+    {"closeScreen": true},
+    {"result": "greeter stays selected, the Created line still carries [Undo]", "ms": 1500}
+  ],
+  "closing": "New NPC saved greeter in front of you, with an Undo chip"
+}

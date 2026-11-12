@@ -1,0 +1,71 @@
+{
+  "id": "40-citizens-economy",
+  "title": "Citizens shop and economy import",
+  "description": "Trading in an imported Citizens shop and using a paid command NPC",
+  "target": 35,
+  "stage": {
+    "world": "flat",
+    "files": {
+      "Animus/imports/saves.yml": "npc:\n  '0':\n    name: Trader\n    uuid: 0a1b2c3d-0000-4000-8000-000000000900\n    metadata: {protected: false}\n    traits:\n      type: PLAYER\n      spawned: true\n      location: {world: world, x: 6.5, y: 61.0, z: 6.5, yaw: 180.0, pitch: 0.0}\n      shop: {rightClickShop: Harbor}\n      dropstrait:\n        drops:\n          '0': {chance: 1.0, drop: {type: GOLD_INGOT, amount: 3}}\n  '1':\n    name: Toll\n    uuid: 0a1b2c3d-0000-4000-8000-000000000901\n    traits:\n      type: PLAYER\n      spawned: true\n      location: {world: world, x: -6.5, y: 61.0, z: 6.5, yaw: 180.0, pitch: 0.0}\n      commandtrait:\n        commands:\n          '0':\n            command: 'give <p> minecraft:diamond 1'\n            hand: RIGHT\n            n: 2\n            experienceCost: 1\n            itemCost:\n              '0': {type: EMERALD, amount: 1}\n",
+      "Animus/imports/shops.yml": "global:\n  Harbor:\n    title: Harbor Goods\n    type: DEFAULT\n    pages:\n      '0':\n        items:\n          '13':\n            cost:\n              '0': {type: items, items: {'0': {type: EMERALD, amount: 1}}}\n            result:\n              '0': {type: items, items: {'0': {type: BREAD, amount: 2}}}\n            display: {type: BREAD, amount: 2}\n"
+    },
+    "console": [
+      "animus import citizens preview",
+      "animus import citizens apply",
+      "animus npc health citizens-0 setting=maximum value=1"
+    ]
+  },
+  "setup": [
+    {"run": "/gamemode survival"},
+    {"run": "/give @s minecraft:stick"},
+    {"run": "/clear @s"},
+    {"run": "/xp set @s 5 levels"},
+    {"run": "/give @s minecraft:emerald 3"},
+    {"run": "/item replace entity @s hotbar.6 with minecraft:netherite_sword"},
+    {"run": "/advancement grant @s only minecraft:story/mine_diamond"},
+    {"tp": [0.5, 61, 1.5, 0, 8]},
+    {"hotbar": 8},
+    {"wait": 600},
+    {"clearChat": true},
+    {"wait": 2500}
+  ],
+  "beats": [
+    {"wait": 1800},
+    {"tp": [6.5, 61, 4.0, 0, 12]},
+    {"wait": 400},
+    {"lookAtEntity": "Trader", "ms": 300},
+    {"wait": 200},
+    {"useItem": true},
+    {"screen": "Harbor", "timeout": 6000},
+    {"result": "the imported Harbor Goods shop", "ms": 1500},
+    {"hover": "Bread", "ms": 2000, "note": "costs one emerald"},
+    {"clickSlot": 13},
+    {"result": "two bread bought for an emerald", "ms": 1500},
+    {"closeScreen": true},
+    {"wait": 1300},
+    {"tp": [-6.5, 61, 4.0, 0, 12]},
+    {"wait": 400},
+    {"lookAtEntity": "Toll", "ms": 300},
+    {"wait": 200},
+    {"useItem": true},
+    {"result": "a diamond for an emerald and a level", "ms": 2200},
+    {"useItem": true},
+    {"result": "the second paid use", "ms": 2200},
+    {"useItem": true},
+    {"wait": 100},
+    {"result": "the third click is refused at the use limit", "ms": 2500},
+    {"tp": [6.5, 61, 4.5, 0, 12]},
+    {"hotbar": 6},
+    {"wait": 500},
+    {"lookAtEntity": "Trader", "ms": 300},
+    {"wait": 200},
+    {"lookAtEntity": "Trader", "ms": 150},
+    {"attackTarget": true},
+    {"wait": 650},
+    {"move": "back", "ms": 450},
+    {"lookAt": {"x": 6.5, "y": 61.1, "z": 6.5, "ms": 500}},
+    {"wait": 300},
+    {"result": "the Trader dies and drops three gold ingots", "ms": 2400}
+  ],
+  "closing": "The imported shop, paid command and drops all work"
+}

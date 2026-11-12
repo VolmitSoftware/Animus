@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "f1164daa-80b4-5e2a-bd07-bb4eecf3d975",
+  "id": "cart",
+  "group": "town",
+  "name": "Cart",
+  "type": "minecraft:horse",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": -7.5,
+    "y": 64,
+    "z": -6.5,
+    "yaw": -90,
+    "pitch": 0
+  },
+  "tags": [
+    "mount"
+  ],
+  "horse": {
+    "color": "chestnut",
+    "markings": "white_dots"
+  },
+  "equipment": {
+    "saddle": {
+      "id": "minecraft:saddle"
+    }
+  },
+  "modules": {
+    "animus:riding": {
+      "enabled": true,
+      "speed": 4,
+      "leash": 64,
+      "lifetimeSeconds": 600
+    }
+  }
+}

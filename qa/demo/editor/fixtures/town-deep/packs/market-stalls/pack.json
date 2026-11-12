@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "market-stalls",
+  "name": "Market stalls",
+  "version": "1.0.0",
+  "description": "Stall keepers for the town market."
+}

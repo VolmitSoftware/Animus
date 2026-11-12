@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "ba72d300-a68e-5225-89a4-bcd09a68ded1",
+  "id": "dockhand",
+  "group": "harbor",
+  "name": "Dockhand",
+  "type": "minecraft:armor_stand",
+  "spawned": false,
+  "position": {
+    "world": "harbor",
+    "x": 34.5,
+    "y": 64,
+    "z": 2.5,
+    "yaw": 0,
+    "pitch": 0
+  }
+}

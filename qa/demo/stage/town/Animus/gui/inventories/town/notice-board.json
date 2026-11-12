@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "title": "&8Town notice board",
+  "resolution": "9x3",
+  "mask": [
+    "#########",
+    "# A B C #",
+    "####X####"
+  ],
+  "keys": {
+    "#": {
+      "type": "decoration",
+      "icon": {
+        "type": "item",
+        "item": "minecraft:oak_planks",
+        "name": " "
+      }
+    },
+    "A": {
+      "type": "button",
+      "icon": {
+        "type": "item",
+        "item": "minecraft:paper",
+        "name": "&eMarket day",
+        "lore": [
+          "&7The stall opens at noon."
+        ]
+      },
+      "actions": [
+        {
+          "type": "message",
+          "message": "&6Notice&7: The market stall opens at noon."
+        }
+      ]
+    },
+    "B": {
+      "type": "button",
+      "icon": {
+        "type": "item",
+        "item": "minecraft:bell",
+        "name": "&6Lost and found",
+        "lore": [
+          "&7One saddle, left at the cart."
+        ]
+      },
+      "actions": [
+        {
+          "type": "message",
+          "message": "&6Notice&7: A saddle was left by the cart."
+        }
+      ]
+    },
+    "C": {
+      "type": "button",
+      "icon": {
+        "type": "item",
+        "item": "minecraft:compass",
+        "name": "&bGuard post",
+        "lore": [
+          "&7Forty blocks east along the gravel road."
+        ]
+      },
+      "actions": [
+        {
+          "type": "message",
+          "message": "&6Notice&7: The guard post is forty blocks east."
+        }
+      ]
+    },
+    "X": {
+      "type": "button",
+      "icon": {
+        "type": "item",
+        "item": "minecraft:barrier",
+        "name": "&cClose"
+      },
+      "actions": [
+        {
+          "type": "close"
+        }
+      ]
+    }
+  },
+  "closeOnTeleport": true
+}

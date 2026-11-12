@@ -1,0 +1,65 @@
+{
+  "id": "39-presentation",
+  "title": "Presentation",
+  "description": "A sheared sheep, a boss bar, a speech bubble and a click redirect",
+  "target": 22,
+  "stage": {
+    "world": "flat",
+    "files": {
+      "Animus/behaviors/live/herald.json": {"schemaVersion": 1, "revision": 1, "id": "live:herald", "entry": "main", "routines": {"main": {"type": "action", "capability": "animus:say", "arguments": {"text": "Hear ye! The market opens at noon."}}}, "triggers": [{"id": "click", "event": "interaction", "cooldownTicks": 0}]},
+      "Animus/behaviors/live/bubble.json": {"schemaVersion": 1, "revision": 1, "id": "live:bubble", "entry": "main", "routines": {"main": {"type": "action", "capability": "animus:say", "arguments": {"text": "Fresh bread today!", "bubbleTicks": 70, "chat": false}}}, "triggers": [{"id": "click", "event": "interaction", "cooldownTicks": 0}]},
+      "Animus/npcs/live/looksherald.json": {"schemaVersion": 1, "revision": 1, "uuid": "00000000-0000-4000-8000-000000003904", "id": "looksherald", "group": "live", "name": "Herald", "type": "minecraft:player", "spawned": true, "position": {"world": "world", "x": 4.5, "y": 61, "z": 25.5, "yaw": 180, "pitch": 0}, "behaviors": ["live:herald"]}
+    },
+    "console": [
+      "animus create looksheep type=minecraft:sheep world=world x=-4.5 y=61 z=25.5 folder=live name=Sheep",
+      "animus despawn looksheep",
+      "animus edit looksheep {\"position\":{\"world\":\"world\",\"x\":-4.5,\"y\":61,\"z\":25.5,\"yaw\":150,\"pitch\":0},\"sheep\":{\"color\":\"red\",\"sheared\":true}}",
+      "animus spawn looksheep",
+      "animus create looksking type=minecraft:player world=world x=-1.5 y=61 z=25.5 folder=live name=King",
+      "animus despawn looksking",
+      "animus edit looksking {\"position\":{\"world\":\"world\",\"x\":-1.5,\"y\":61,\"z\":25.5,\"yaw\":180,\"pitch\":0},\"bossBar\":{\"title\":\"&6The King\",\"color\":\"yellow\",\"style\":\"segmented_6\",\"range\":20}}",
+      "animus spawn looksking",
+      "animus create lookstalker type=minecraft:villager world=world x=1.5 y=61 z=25.5 folder=live name=Talker",
+      "animus despawn lookstalker",
+      "animus edit lookstalker {\"position\":{\"world\":\"world\",\"x\":1.5,\"y\":61,\"z\":25.5,\"yaw\":180,\"pitch\":0},\"behaviors\":[\"live:bubble\"]}",
+      "animus spawn lookstalker",
+      "animus create lookspage type=minecraft:armor_stand world=world x=6.5 y=61 z=23.5 folder=live name=Page",
+      "animus despawn lookspage",
+      "animus edit lookspage {\"position\":{\"world\":\"world\",\"x\":6.5,\"y\":61,\"z\":23.5,\"yaw\":160,\"pitch\":0},\"clickRedirect\":\"00000000-0000-4000-8000-000000003904\"}",
+      "animus spawn lookspage"
+    ]
+  },
+  "setup": [
+    {"run": "/gamemode creative"},
+    {"run": "/give @s minecraft:stick"},
+    {"run": "/clear @s"},
+    {"tp": [0.5, 61, 19.5, 0, 6]},
+    {"hotbar": 8},
+    {"wait": 600},
+    {"clearChat": true},
+    {"wait": 2500}
+  ],
+  "beats": [
+    {"wait": 2200},
+    {"lookAt": {"x": -4.5, "y": 61.6, "z": 25.5, "ms": 900}},
+    {"result": "a sheared red sheep", "ms": 1600},
+    {"lookAt": {"x": -1.5, "y": 62.6, "z": 25.5, "ms": 700}},
+    {"result": "The King boss bar at the top of the screen", "ms": 1800},
+    {"tp": [1.5, 61, 22.5, 0, 6]},
+    {"wait": 400},
+    {"lookAtEntity": "Villager", "ms": 400},
+    {"wait": 200},
+    {"useItem": true},
+    {"wait": 900},
+    {"result": "Fresh bread today! in a bubble over the Talker, not in chat", "ms": 2500},
+    {"tp": [5.5, 61, 21.0, 0, 6]},
+    {"wait": 400},
+    {"lookAt": {"x": 6.5, "y": 62.2, "z": 23.5, "ms": 500}},
+    {"wait": 1000},
+    {"useItem": true},
+    {"result": "the Page was clicked and the Herald line shows in chat", "ms": 1500},
+    {"lookAt": {"x": 4.5, "y": 62.6, "z": 25.5, "ms": 700}},
+    {"result": "the Herald that answered for the Page", "ms": 2400}
+  ],
+  "closing": "Body settings, a boss bar, a speech bubble and a click redirect"
+}

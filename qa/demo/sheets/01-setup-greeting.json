@@ -1,0 +1,31 @@
+{
+  "id": "01-setup-greeting",
+  "title": "Setup greeting",
+  "description": "The join greeting, the setup list and the status line",
+  "target": 21,
+  "stage": {"world": "town", "titleScreen": true, "files": {"Animus/npcs": null, "Animus/gui/holograms/town/mayor-sign.json": null}},
+  "setup": [
+    {"wait": 1500}
+  ],
+  "beats": [
+    {"wait": 500},
+    {"clickButton": "Multiplayer"},
+    {"screen": "Multiplayer"},
+    {"result": "the Multiplayer screen, before joining the stage by address", "ms": 1500},
+    {"join": "{address}"},
+    {"expect": "joined the game", "timeout": 120000},
+    {"waitForWorld": true, "timeout": 120000},
+    {"result": "the world loads and chat shows the join line", "ms": 1500},
+    {"perspective": "third-front"},
+    {"wait": 1500},
+    {"perspective": "first"},
+    {"wait": 1500},
+    {"type": "/animus setup"},
+    {"wait": 900},
+    {"result": "Setup | no NPCs, then three steps with [Create], [Toolkit] and [Pair editor]", "ms": 2500},
+    {"type": "/animus status"},
+    {"wait": 1000},
+    {"result": "the status line: version, Paper, 0 NPCs, runtime ready, with [Details]", "ms": 2500}
+  ],
+  "closing": "With no NPCs, joining offers [Setup]; setup lists the first steps"
+}

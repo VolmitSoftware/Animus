@@ -1,0 +1,48 @@
+{
+  "id": "33-mythic-skills",
+  "title": "Mythic skills on an NPC",
+  "description": "A Skeleton King NPC running its Mythic timer, click and damage skills",
+  "target": 22,
+  "stage": {
+    "world": "flat",
+    "plugins": ["MythicMobs"],
+    "files": {
+      "MythicMobs/Mobs/animus.yml": "AnimusMeg:\n  Type: ZOMBIE\n  Display: 'Knight'\n  Skills:\n  - model{mid=knight} @self ~onSpawn\n  - message{m=\"<caster.name> greets <trigger.name>\"} @trigger ~onInteract\nAnimusKing:\n  Type: SKELETON\n  Display: 'Skeleton King'\n  Equipment:\n  - GOLDEN_HELMET:4\n  - BOW HAND\n  Options:\n    Glowing: true\n  Skills:\n  - message{m=\"The Skeleton King nods at <trigger.name>\"} @trigger ~onInteract\n  - message{m=\"<trigger.name> struck the Skeleton King\"} @trigger ~onDamaged\n  - message{m=\"The Skeleton King watches the field\"} @PlayersInRadius{r=24} ~onTimer:160\n"
+    },
+    "console": [
+      "difficulty easy",
+      "animus mythic king AnimusKing world=world x=0.5 y=61 z=5.5 folder=live"
+    ]
+  },
+  "setup": [
+    {"run": "/gamemode survival"},
+    {"run": "/give @s minecraft:stick"},
+    {"run": "/clear @s"},
+    {"tp": [0.5, 61, 8.5, 180, 8]},
+    {"hotbar": 8},
+    {"wait": 600},
+    {"clearChat": true},
+    {"wait": 2500}
+  ],
+  "beats": [
+    {"wait": 400},
+    {"wait": 100},
+    {"result": "the glowing Skeleton King with its golden helmet and bow", "ms": 2500},
+    {"lookAtEntity": "Skeleton", "ms": 500},
+    {"wait": 400},
+    {"useItem": true},
+    {"wait": 500},
+    {"result": "The Skeleton King nods at the player", "ms": 2500},
+    {"attackTarget": true},
+    {"wait": 500},
+    {"result": "the player struck the Skeleton King", "ms": 2500},
+    {"move": "right", "ms": 250},
+    {"lookAtEntity": "Skeleton", "ms": 500},
+    {"wait": 1000},
+    {"result": "the timer skill line: The Skeleton King watches the field", "ms": 2500, "note": "the timer fires every 8 seconds"},
+    {"useItem": true},
+    {"wait": 1100},
+    {"result": "the click skill answers again", "ms": 2500}
+  ],
+  "closing": "The Skeleton King NPC runs its Mythic click, damage and timer skills"
+}

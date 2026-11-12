@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "21af0865-df0b-587f-bcc6-7da8b33ef19a",
+  "id": "ferryman",
+  "group": "harbor",
+  "name": "Ferryman",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "harbor",
+    "x": 30.5,
+    "y": 64,
+    "z": 2.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "tags": [
+    "quest"
+  ],
+  "skin": "dc33741fb113d5f1f3876ba48fb235adefc63628862c1e659f4061d8c7c18717",
+  "behaviors": [
+    "harbor:ferryman"
+  ]
+}

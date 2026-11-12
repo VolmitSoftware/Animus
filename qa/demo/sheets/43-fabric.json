@@ -1,0 +1,68 @@
+{
+  "id": "43-fabric",
+  "title": "Fabric server",
+  "description": "A fox body, an item display, a schedule walk, an anchor and the quest journal on Fabric",
+  "target": 30,
+  "stage": {
+    "world": "flat",
+    "platform": "fabric",
+    "files": {
+      "Animus/quests/live/rescue.json": {"schemaVersion": 1, "revision": 1, "id": "live:rescue", "title": "&aRescue the farm", "description": "The healer needs wheat.", "icon": {"id": "minecraft:wheat"}, "givers": ["baker"], "turnIn": "baker", "stages": [{"description": "Bring wheat to the baker.", "objectives": [{"type": "bring", "npc": "baker", "item": {"id": "minecraft:wheat"}, "amount": 3}]}]}
+    },
+    "console": [
+      "setblock 7 61 9 minecraft:barrel[facing=up]",
+      "setblock -7 61 9 minecraft:red_bed[part=head,facing=west]",
+      "setblock -6 61 9 minecraft:red_bed[part=foot,facing=west]",
+      "animus create fox type=minecraft:player world=world x=-2.5 y=61 z=5.5 folder=live name=Snowy",
+      "animus despawn fox",
+      "animus edit fox {\"type\":\"minecraft:fox\",\"fox\":{\"type\":\"snow\"},\"position\":{\"world\":\"world\",\"x\":-2.5,\"y\":61,\"z\":5.5,\"yaw\":160,\"pitch\":0}}",
+      "animus spawn fox",
+      "animus create shown type=minecraft:player world=world x=2.5 y=61 z=5.5 folder=live name=Display",
+      "animus despawn shown",
+      "animus edit shown {\"type\":\"minecraft:item_display\",\"itemDisplay\":{\"item\":{\"id\":\"minecraft:diamond_sword\"},\"billboard\":\"vertical\"},\"position\":{\"world\":\"world\",\"x\":2.5,\"y\":61,\"z\":5.5,\"yaw\":180,\"pitch\":0}}",
+      "animus spawn shown",
+      "animus create baker type=minecraft:player world=world x=6.5 y=61 z=8.5 folder=live name=Baker",
+      "animus despawn baker",
+      "animus edit baker {\"position\":{\"world\":\"world\",\"x\":6.5,\"y\":61,\"z\":8.5,\"yaw\":180,\"pitch\":0},\"modules\":{\"animus:schedule\":{\"speed\":3,\"locations\":[{\"name\":\"shop\",\"time\":1000,\"x\":6,\"y\":61,\"z\":8},{\"name\":\"home\",\"time\":13000,\"x\":-5,\"y\":61,\"z\":8,\"yaw\":90}]}}}",
+      "animus spawn baker"
+    ]
+  },
+  "setup": [
+    {"run": "/gamemode creative"},
+    {"run": "/give @s minecraft:stick"},
+    {"run": "/clear @s"},
+    {"tp": [0.5, 61, 0.5, 0, 12]},
+    {"run": "/animus quest start live:rescue"},
+    {"wait": 1500},
+    {"hotbar": 8},
+    {"wait": 600},
+    {"clearChat": true},
+    {"wait": 2500}
+  ],
+  "beats": [
+    {"wait": 1200},
+    {"lookAt": {"x": -2.5, "y": 61.4, "z": 5.5, "ms": 900}},
+    {"result": "Snowy has a snow fox body", "ms": 1600},
+    {"lookAt": {"x": 2.5, "y": 62.0, "z": 5.5, "ms": 900}},
+    {"result": "a floating diamond sword item display", "ms": 1600},
+    {"lookAt": {"x": 6.0, "y": 61.8, "z": 8.5, "ms": 900}},
+    {"wait": 400},
+    {"type": "/time set 13000"},
+    {"wait": 1000},
+    {"lookAt": {"x": 1, "y": 61.8, "z": 8.5, "ms": 1300}},
+    {"wait": 300},
+    {"lookAt": {"x": -5.5, "y": 61.8, "z": 8.5, "ms": 1300}},
+    {"result": "the Baker walked home to the bed for the night", "ms": 2200},
+    {"type": "/animus npc anchor baker action=add name=dock"},
+    {"wait": 100},
+    {"result": "the reply adds the dock anchor", "ms": 2500},
+    {"type": "/animus quest journal"},
+    {"screen": "Quests", "timeout": 6000},
+    {"result": "the quest journal", "ms": 1500},
+    {"hover": "Rescue", "ms": 2000},
+    {"wait": 300},
+    {"closeScreen": true},
+    {"wait": 800}
+  ],
+  "closing": "Bodies, a schedule, an anchor and the journal on Fabric"
+}

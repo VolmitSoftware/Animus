@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:wave",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:look",
+          "arguments": {
+            "target": "player"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Good day! This fountain was here before the town was."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:spawn-particle",
+          "arguments": {
+            "particle": "minecraft:happy_villager",
+            "count": 6,
+            "spread": 0.4
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "cooldownTicks": 40
+    }
+  ]
+}

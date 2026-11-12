@@ -1,0 +1,63 @@
+{
+  "id": "31-model-engine",
+  "title": "Model Engine NPC",
+  "description": "Giving an NPC a Model Engine knight that walks, waves and swings",
+  "target": 29,
+  "client": {"packs": {"animus-modelengine.zip": "ModelEngine/resource pack.zip"}},
+  "stage": {
+    "world": "flat",
+    "plugins": ["ModelEngine"],
+    "files": {
+      "ModelEngine/blueprints/knight.bbmodel": {"from": "stage/assets/knight.bbmodel"},
+      "Animus/behaviors/live/hits.json": {"schemaVersion": 1, "revision": 1, "id": "live:hits", "entry": "main", "routines": {"main": {"type": "action", "capability": "animus:say", "arguments": {"text": "Hello there"}}, "attacked": {"type": "sequence", "steps": [{"type": "action", "capability": "animus:say", "arguments": {"text": "Ouch!"}}, {"type": "wait", "ticks": 9}, {"type": "action", "capability": "animus:animate", "arguments": {"animation": "swing"}}]}}, "triggers": [{"id": "click", "event": "interaction", "action": "interact", "cooldownTicks": 0}, {"id": "attack", "event": "interaction", "action": "attack", "routine": "attacked", "cooldownTicks": 0}]}
+    },
+    "console": [
+      "animus create drake type=minecraft:player world=world x=0.5 y=61 z=6.5 folder=live name=Drake",
+      "animus despawn drake",
+      "animus edit drake {\"behaviors\":[\"live:hits\"],\"position\":{\"world\":\"world\",\"x\":0.5,\"y\":61,\"z\":6.5,\"yaw\":180,\"pitch\":0},\"modules\":{\"animus:health\":{\"killable\":true}}}",
+      "animus spawn drake"
+    ]
+  },
+  "cues": {
+    "mset": ["animus npc model drake nametag-bone tag_name", "animus npc model drake attack attack", "animus npc model drake interact wave", "animus npc model drake hurt hurt"],
+    "walk": ["animus navigation go drake 5.5 61 9.5"],
+    "back": ["animus navigation go drake 0.5 61 3.5"]
+  },
+  "setup": [
+    {"run": "/gamemode creative"},
+    {"run": "/give @s minecraft:stick"},
+    {"run": "/clear @s"},
+    {"tp": [0.5, 61, 0.5, 0, 8]},
+    {"hotbar": 8},
+    {"wait": 600},
+    {"clearChat": true},
+    {"wait": 2500}
+  ],
+  "beats": [
+    {"wait": 1100},
+    {"type": "/animus npc model drake model knight"},
+    {"cue": "mset", "note": "sets the name tag bone and the attack, interact and hurt animations"},
+    {"wait": 100},
+    {"result": "Drake turns into the knight model with its name on the tag bone", "ms": 2500},
+    {"cue": "walk", "note": "the knight walks off to the right"},
+    {"wait": 1700},
+    {"result": "the knight walks with its walk animation", "ms": 2500},
+    {"cue": "back", "note": "the knight walks back in front of the player"},
+    {"wait": 3800},
+    {"lookAt": {"x": 0.5, "y": 62.6, "z": 3.5, "ms": 500}},
+    {"wait": 400},
+    {"useItem": true},
+    {"wait": 300},
+    {"result": "the knight waves and says Hello there", "ms": 2500},
+    {"attackTarget": true},
+    {"wait": 500},
+    {"result": "the knight flashes red, says Ouch! and swings back", "ms": 2500},
+    {"move": "left", "ms": 450},
+    {"lookAt": {"x": 0.5, "y": 62.4, "z": 3.5, "ms": 500}},
+    {"wait": 500},
+    {"attackTarget": true},
+    {"wait": 300},
+    {"result": "a second hit: Ouch! and the swing again", "ms": 2500}
+  ],
+  "closing": "The knight walks, waves on click and swings back when hit"
+}

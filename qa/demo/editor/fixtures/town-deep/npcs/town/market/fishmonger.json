@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "6e2a9c41-5d7f-4b38-8e10-2f9a7c3d5b62",
+  "id": "fishmonger",
+  "group": "town/market",
+  "name": "Fishmonger",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 8.5,
+    "y": 64,
+    "z": -2.5,
+    "yaw": 90,
+    "pitch": 0
+  },
+  "tags": [
+    "merchant"
+  ]
+}

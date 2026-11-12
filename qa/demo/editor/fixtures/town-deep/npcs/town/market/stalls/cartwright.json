@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "9a4c7e12-3b6d-4f85-a2c9-7d1e0b4f6a83",
+  "id": "cartwright",
+  "group": "town/market/stalls",
+  "name": "Cartwright",
+  "type": "minecraft:player",
+  "spawned": false,
+  "position": {
+    "world": "world",
+    "x": 10.5,
+    "y": 64,
+    "z": -6.5,
+    "yaw": 90,
+    "pitch": 0
+  }
+}

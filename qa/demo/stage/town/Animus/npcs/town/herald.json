@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "5a60579a-4077-5a37-b0ca-80c367c483c1",
+  "id": "herald",
+  "group": "town",
+  "name": "Herald",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 6.5,
+    "y": 64,
+    "z": 3.5,
+    "yaw": 90,
+    "pitch": 0
+  },
+  "skin": "fbc9a147de229919daa5e097ec5618c9c232e37437afec12fa52b17de3c4b4d3",
+  "tags": [
+    "herald"
+  ],
+  "behaviors": [
+    "town:herald"
+  ],
+  "modules": {
+    "animus:look-close": {
+      "range": 8
+    }
+  }
+}

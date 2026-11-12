@@ -1,0 +1,62 @@
+{
+  "id": "34-disguises",
+  "title": "LibsDisguises bodies",
+  "description": "Player NPCs turning into a baby zombie, sand, a diamond, a pig, an emerald and text",
+  "target": 29,
+  "stage": {
+    "world": "flat",
+    "plugins": ["LibsDisguises", "packetevents"],
+    "console": [
+      "difficulty easy",
+      "animus create ghoul world=world x=-7.5 y=61 z=7.5 folder=live name=Ghoul",
+      "animus create sandy world=world x=-4.5 y=61 z=7.5 folder=live name=Sandy",
+      "animus create gem world=world x=-1.5 y=61 z=7.5 folder=live name=Gem",
+      "animus create porky world=world x=1.5 y=61 z=7.5 folder=live name=Porky",
+      "animus create shown world=world x=4.5 y=61 z=7.5 folder=live name=Emerald",
+      "animus create sign world=world x=7.5 y=61 z=7.5 folder=live name=Sign"
+    ]
+  },
+  "cues": {
+    "d2": ["animus npc disguise sandy \"falling_block sand\""],
+    "d3": ["animus npc disguise gem \"dropped_item diamond\""],
+    "d4": ["animus npc disguise porky \"pig\""],
+    "d5": ["animus npc disguise shown \"item_display setItemStack emerald\""],
+    "d6": ["animus npc disguise sign \"text_display setText Welcome\""]
+  },
+  "setup": [
+    {"run": "/gamemode creative"},
+    {"run": "/give @s minecraft:stick"},
+    {"run": "/clear @s"},
+    {"tp": [0.5, 61, 13.5, 180, 8]},
+    {"hotbar": 8},
+    {"wait": 600},
+    {"clearChat": true},
+    {"wait": 2500}
+  ],
+  "beats": [
+    {"wait": 1000},
+    {"lookAt": {"x": -7.5, "y": 61.8, "z": 7.5, "ms": 800}},
+    {"wait": 100},
+    {"type": "/animus npc disguise ghoul \"zombie setBaby true setGlowing true setItemInMainHand iron_sword\""},
+    {"result": "Ghoul is a glowing baby zombie holding an iron sword", "ms": 2400},
+    {"lookAt": {"x": -4.5, "y": 61.5, "z": 7.5, "ms": 600}},
+    {"cue": "d2"},
+    {"result": "Sandy is a falling sand block", "ms": 2000},
+    {"lookAt": {"x": -1.5, "y": 61.4, "z": 7.5, "ms": 600}},
+    {"cue": "d3"},
+    {"result": "Gem is a dropped diamond", "ms": 2000},
+    {"lookAt": {"x": 1.5, "y": 61.5, "z": 7.5, "ms": 600}},
+    {"cue": "d4"},
+    {"result": "Porky is a pig", "ms": 2000},
+    {"lookAt": {"x": 4.5, "y": 61.8, "z": 7.5, "ms": 600}},
+    {"cue": "d5"},
+    {"result": "Emerald is an emerald item display", "ms": 2000},
+    {"lookAt": {"x": 7.5, "y": 62.0, "z": 7.5, "ms": 600}},
+    {"cue": "d6"},
+    {"result": "Sign is floating Welcome text", "ms": 2200},
+    {"tp": [0.5, 61, 16.5, 180, 9]},
+    {"wait": 700},
+    {"result": "the whole row of six disguised NPCs", "ms": 2500}
+  ],
+  "closing": "Six player NPCs now wear LibsDisguises bodies"
+}

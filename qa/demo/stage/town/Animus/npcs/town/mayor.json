@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "revision": 3,
+  "uuid": "c4c75100-e5b4-5d32-a46d-df6cdd8932f7",
+  "id": "mayor",
+  "group": "town",
+  "name": "Mayor",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 4.5,
+    "y": 64,
+    "z": -4.5,
+    "yaw": 45,
+    "pitch": 0
+  },
+  "skin": "72282553d9731d5b800c2c2d48ab110d4e091bb02a10fdf052cd489e0702bebd",
+  "tags": [
+    "mayor"
+  ],
+  "groups": [
+    "town-folk"
+  ],
+  "modules": {
+    "animus:gui": {
+      "open": {
+        "kind": "inventory",
+        "id": "town:notice-board",
+        "openOn": "right"
+      },
+      "hologram": {
+        "id": "town:mayor-sign",
+        "offset": [
+          0,
+          2.7,
+          0
+        ]
+      }
+    }
+  }
+}

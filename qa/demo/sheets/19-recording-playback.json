@@ -1,0 +1,60 @@
+{
+  "id": "19-recording-playback",
+  "title": "Recording playback",
+  "description": "The greeter replaying the recording and changing its playback mode",
+  "target": 30,
+  "stage": {
+    "world": "town",
+    "after": ["18-recording"],
+    "console": [
+      "animus edit greeter {\"x\":null,\"y\":null,\"z\":null,\"yaw\":null,\"pitch\":null,\"position\":{\"world\":\"world\",\"x\":-4.5,\"y\":64,\"z\":7,\"yaw\":-90,\"pitch\":0}}",
+      "animus despawn greeter",
+      "animus spawn greeter"
+    ]
+  },
+  "setup": [
+    {"run": "/gamemode creative"},
+    {"tp": [-4.5, 64, 10, 180, 5]},
+    {"wait": 600},
+    {"run": "/give @s minecraft:blaze_rod"},
+    {"run": "/clear @s"},
+    {"run": "/animus tools wand"},
+    {"wait": 700},
+    {"hotbar": 0},
+    {"wait": 500},
+    {"lookAtEntity": "greeter", "ms": 500},
+    {"wait": 300},
+    {"attackTarget": true},
+    {"wait": 700},
+    {"hotbar": 8},
+    {"wait": 300},
+    {"tp": [-1.5, 64, 11, 98, 8]},
+    {"perspective": "third-back"},
+    {"wait": 11000},
+    {"clearChat": true}
+  ],
+  "beats": [
+    {"wait": 1300},
+    {"perspective": "first"},
+    {"wait": 300},
+    {"palette": true},
+    {"click": "Recordings"},
+    {"result": "Recordings lists wave-dance; the selection button reads 1 selected", "ms": 1500},
+    {"hover": "wave-dance", "ms": 1500},
+    {"click": "wave-dance"},
+    {"wait": 300},
+    {"closeScreen": true},
+    {"wait": 3500},
+    {"result": "chat reads Recording wave-dance on greeter; the greeter replays the moves", "ms": 2500},
+    {"palette": true},
+    {"click": "Recordings"},
+    {"wait": 600},
+    {"click": "wave-dance", "button": "right"},
+    {"result": "chat reads Playback pingpong for wave-dance on greeter", "ms": 1500},
+    {"click": "wave-dance", "button": "right"},
+    {"result": "chat reads Playback once for wave-dance on greeter", "ms": 1500},
+    {"closeScreen": true},
+    {"result": "the greeter plays wave-dance through once", "ms": 2500}
+  ],
+  "closing": "The greeter plays wave-dance; two right clicks set its playback to once"
+}

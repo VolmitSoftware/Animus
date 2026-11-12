@@ -1,0 +1,41 @@
+{
+  "id": "02-help-menu",
+  "title": "Help menu",
+  "description": "The grouped help menu, a group page and a refused command",
+  "target": 27,
+  "stage": {"world": "town"},
+  "client": {"options": {"chatWidth": "1.0", "chatHeightUnfocused": "0.95"}},
+  "setup": [
+    {"run": "/gamemode creative"},
+    {"run": "/give @s minecraft:blaze_rod"},
+    {"run": "/clear @s"},
+    {"tp": [-14, 64, 8, -90, 5]},
+    {"wait": 11000},
+    {"clearChat": true}
+  ],
+  "beats": [
+    {"perspective": "third-front"},
+    {"wait": 2200},
+    {"perspective": "first"},
+    {"tp": [56.5, 64, 0.5, 90, 5]},
+    {"wait": 700},
+    {"type": "/animus"},
+    {"result": "/animus lists commands by group, each group with a [Docs] link", "ms": 1500},
+    {"caption": "Hover a name for its usage", "ms": 2200},
+    {"hoverChat": "create", "ms": 1500},
+    {"closeScreen": true},
+    {"result": "chat closes; the help page stays on screen", "ms": 1500},
+    {"type": "/animus help 2"},
+    {"wait": 300},
+    {"result": "page 2 of help: the next topics, each heading with its [Docs] link", "ms": 2500},
+    {"type": "/animus shop"},
+    {"result": "only the shop commands, under a 〈 Back link", "ms": 2400},
+    {"type": "/animus nope"},
+    {"wait": 500},
+    {"result": "red: Unknown command \"nope\" in /animus, then the usage", "ms": 2500},
+    {"type": "/animus spawn"},
+    {"wait": 700},
+    {"result": "red: Missing argument \"npc\", then Usage: /animus spawn <npc>", "ms": 2500}
+  ],
+  "closing": "Help lists every command group; a wrong command gets a red reply"
+}

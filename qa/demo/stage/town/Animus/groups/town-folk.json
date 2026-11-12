@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town-folk",
+  "description": "Townspeople without a glow",
+  "values": {
+    "tags": [
+      "townsfolk"
+    ],
+    "glowing": false
+  }
+}

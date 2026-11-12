@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "3d1d32c6-70ca-59d2-8d64-a63e3382e785",
+  "id": "baker",
+  "group": "town",
+  "name": "Baker",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": -7.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": -90,
+    "pitch": 0
+  },
+  "skin": "d4643371c856a3a4b31e61a3e596422bcb475136e93c4ae88da543505f522e73",
+  "tags": [
+    "baker",
+    "stall"
+  ],
+  "groups": [
+    "town-folk"
+  ],
+  "equipment": {
+    "main_hand": {
+      "id": "minecraft:bread"
+    }
+  },
+  "modules": {
+    "animus:shop": {
+      "shop": "town:bakery",
+      "openOn": "right",
+      "style": "chest"
+    }
+  }
+}

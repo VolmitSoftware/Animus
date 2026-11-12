@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:bells",
+  "entry": "ring",
+  "routines": {
+    "ring": {
+      "type": "sequence",
+      "steps": [
+        {"type": "action", "capability": "animus:message", "arguments": {"text": "The harbor bell rings the hour."}}
+      ]
+    }
+  },
+  "triggers": [
+    {"id": "hourly", "event": "timer", "intervalTicks": 72000}
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "id": "35b-commands-plugins",
+  "title": "Commands follow their plugin",
+  "description": "NPC command completion with MythicMobs, Model Engine and LibsDisguises",
+  "target": 16,
+  "client": {"packs": {"animus-modelengine.zip": "ModelEngine/resource pack.zip"}},
+  "stage": {
+    "world": "flat",
+    "plugins": ["ModelEngine", "MythicMobs", "LibsDisguises", "packetevents"],
+    "console": ["difficulty easy"],
+    "files": {
+      "MythicMobs/Mobs/animus.yml": "AnimusMeg:\n  Type: ZOMBIE\n  Display: 'Knight'\n  Skills:\n  - model{mid=knight} @self ~onSpawn\n  - message{m=\"<caster.name> greets <trigger.name>\"} @trigger ~onInteract\nAnimusKing:\n  Type: SKELETON\n  Display: 'Skeleton King'\n  Equipment:\n  - GOLDEN_HELMET:4\n  - BOW HAND\n  Options:\n    Glowing: true\n  Skills:\n  - message{m=\"The Skeleton King nods at <trigger.name>\"} @trigger ~onInteract\n  - message{m=\"<trigger.name> struck the Skeleton King\"} @trigger ~onDamaged\n  - message{m=\"The Skeleton King watches the field\"} @PlayersInRadius{r=24} ~onTimer:160\n"
+    }
+  },
+  "setup": [
+    {"run": "/gamemode creative"},
+    {"run": "/give @s minecraft:stick"},
+    {"run": "/clear @s"},
+    {"tp": [0.5, 61, 0.5, 0, 6]},
+    {"hotbar": 8},
+    {"wait": 600},
+    {"clearChat": true},
+    {"wait": 2500}
+  ],
+  "beats": [
+    {"wait": 400},
+    {"caption": "Animus with MythicMobs, Model Engine and LibsDisguises", "ms": 6000},
+    {"wait": 1200},
+    {"type": "/animus npc ", "send": false, "hold": 3200},
+    {"wait": 700},
+    {"type": "/animus mythic king AnimusKing x=~2 z=~4"},
+    {"wait": 1100},
+    {"result": "model and disguise in the completion, and the mythic command makes the Skeleton King", "ms": 2500}
+  ],
+  "closing": "With the plugins installed, the mythic command makes the NPC"
+}

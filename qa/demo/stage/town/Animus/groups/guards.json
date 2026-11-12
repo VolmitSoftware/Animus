@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "guards",
+  "description": "Guards turn to nearby players",
+  "values": {
+    "tags": [
+      "guards"
+    ],
+    "modules": {
+      "animus:look-close": {
+        "range": 6
+      }
+    }
+  }
+}

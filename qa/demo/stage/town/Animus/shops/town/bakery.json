@@ -1,0 +1,173 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:bakery",
+  "title": "&6Bakery",
+  "style": "chest",
+  "modes": [
+    "trade"
+  ],
+  "defaultMode": "trade",
+  "pages": [
+    {
+      "name": "Bakery",
+      "rows": 3,
+      "trade": {
+        "11": {
+          "id": "bread",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:bread",
+            "count": 4
+          },
+          "display": {
+            "name": "&eFour loaves",
+            "lore": [
+              "&7Baked this morning."
+            ]
+          },
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:emerald"
+              },
+              "amount": 1
+            }
+          ],
+          "gives": [
+            {
+              "item": {
+                "id": "minecraft:bread"
+              },
+              "amount": 4
+            }
+          ]
+        },
+        "12": {
+          "id": "cookies",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:cookie",
+            "count": 8
+          },
+          "display": {
+            "name": "&6Cookies",
+            "lore": [
+              "&7Eight for one emerald."
+            ]
+          },
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:emerald"
+              },
+              "amount": 1
+            }
+          ],
+          "gives": [
+            {
+              "item": {
+                "id": "minecraft:cookie"
+              },
+              "amount": 8
+            }
+          ]
+        },
+        "13": {
+          "id": "cake",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:cake",
+            "count": 1
+          },
+          "display": {
+            "name": "&dCelebration cake",
+            "lore": [
+              "&7One per player each day."
+            ]
+          },
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:emerald"
+              },
+              "amount": 3
+            }
+          ],
+          "gives": [
+            {
+              "item": {
+                "id": "minecraft:cake"
+              },
+              "amount": 1
+            }
+          ],
+          "limit": {
+            "perPlayer": 1,
+            "resetSeconds": 86400
+          }
+        },
+        "14": {
+          "id": "pie",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:pumpkin_pie",
+            "count": 2
+          },
+          "display": {
+            "name": "&6Pumpkin pies",
+            "lore": [
+              "&7Still warm."
+            ]
+          },
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:emerald"
+              },
+              "amount": 2
+            }
+          ],
+          "gives": [
+            {
+              "item": {
+                "id": "minecraft:pumpkin_pie"
+              },
+              "amount": 2
+            }
+          ]
+        },
+        "15": {
+          "id": "berries",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:sweet_berries",
+            "count": 16
+          },
+          "display": {
+            "name": "&cSweet berries",
+            "lore": [
+              "&7Picked by the herald's cousin."
+            ]
+          },
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:emerald"
+              },
+              "amount": 1
+            }
+          ],
+          "gives": [
+            {
+              "item": {
+                "id": "minecraft:sweet_berries"
+              },
+              "amount": 16
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "mode": "walk",
+  "speed": 2,
+  "loop": true,
+  "order": "sequence",
+  "waitTicks": 20,
+  "points": [
+    {
+      "x": 6,
+      "y": 64,
+      "z": 6
+    },
+    {
+      "x": 6,
+      "y": 64,
+      "z": -6
+    },
+    {
+      "x": -5,
+      "y": 64,
+      "z": -6
+    },
+    {
+      "x": -5,
+      "y": 64,
+      "z": 6
+    }
+  ]
+}

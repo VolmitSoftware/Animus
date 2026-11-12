@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "901a1e54-67d1-56e2-ba8a-4177221d97bf",
+  "id": "guard-north",
+  "group": "town",
+  "name": "North Guard",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 4.5,
+    "y": 64,
+    "z": -6.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "tags": [
+    "guard",
+    "patrol"
+  ],
+  "equipment": {
+    "main_hand": {
+      "id": "minecraft:iron_sword"
+    },
+    "head": {
+      "id": "minecraft:iron_helmet"
+    },
+    "chest": {
+      "id": "minecraft:iron_chestplate"
+    }
+  },
+  "modules": {
+    "animus:combat": {
+      "enabled": true,
+      "targets": {
+        "categories": [
+          "monsters"
+        ]
+      },
+      "squad": {
+        "name": "town",
+        "alertRange": 16
+      },
+      "melee": {
+        "enabled": true,
+        "damage": 5,
+        "reach": 3
+      }
+    },
+    "animus:navigation": {
+      "enabled": true,
+      "mode": "walk",
+      "speed": 2,
+      "order": "sequence",
+      "loop": true,
+      "waitTicks": 20,
+      "points": [
+        {
+          "x": 4,
+          "y": 64,
+          "z": -6
+        },
+        {
+          "x": 12,
+          "y": 64,
+          "z": -6,
+          "waitTicks": 60
+        },
+        {
+          "x": 12,
+          "y": 64,
+          "z": 4
+        },
+        {
+          "x": 4,
+          "y": 64,
+          "z": 4
+        }
+      ]
+    }
+  }
+}

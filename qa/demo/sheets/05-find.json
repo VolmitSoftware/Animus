@@ -1,0 +1,41 @@
+{
+  "id": "05-find",
+  "title": "Find",
+  "description": "Teleporting to an NPC and selecting another from Find",
+  "target": 30,
+  "stage": {"world": "town"},
+  "setup": [
+    {"run": "/give @s minecraft:blaze_rod"},
+    {"run": "/clear @s"},
+    {"tp": [-14, 64, 8, -90, 5]},
+    {"wait": 11000},
+    {"clearChat": true}
+  ],
+  "beats": [
+    {"perspective": "third-front"},
+    {"wait": 2200},
+    {"perspective": "first"},
+    {"tp": [44.5, 64, 0.5, -90, 5]},
+    {"wait": 1200},
+    {"palette": true},
+    {"click": "Find"},
+    {"screen": "Nearest"},
+    {"wait": 500},
+    {"hover": "guard", "ms": 1500},
+    {"hover": "herald", "ms": 1500},
+    {"click": "baker"},
+    {"result": "you stand beside the Baker; chat says Teleported to baker", "ms": 2400},
+    {"palette": true},
+    {"click": "Find"},
+    {"screen": "Nearest"},
+    {"wait": 500},
+    {"hover": "guard", "ms": 1000},
+    {"click": "guard", "button": "right"},
+    {"result": "the action bar reads Selected guard", "ms": 1500},
+    {"closeScreen": true},
+    {"wait": 600},
+    {"type": "/animus selection"},
+    {"result": "chat: Selected guard", "ms": 2500}
+  ],
+  "closing": "Find teleports to the Baker and selects the guard"
+}

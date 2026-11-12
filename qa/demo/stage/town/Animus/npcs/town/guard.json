@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "90270252-4cf3-5acb-8f16-77ddf77e74ec",
+  "id": "guard",
+  "group": "town",
+  "name": "Guard",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 12.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": -90,
+    "pitch": 0
+  },
+  "skin": "72282553d9731d5b800c2c2d48ab110d4e091bb02a10fdf052cd489e0702bebd",
+  "tags": [
+    "guard",
+    "patrol"
+  ],
+  "groups": [
+    "guards"
+  ],
+  "equipment": {
+    "main_hand": {
+      "id": "minecraft:iron_sword"
+    },
+    "head": {
+      "id": "minecraft:iron_helmet"
+    },
+    "chest": {
+      "id": "minecraft:iron_chestplate"
+    },
+    "legs": {
+      "id": "minecraft:leather_leggings"
+    },
+    "feet": {
+      "id": "minecraft:leather_boots"
+    }
+  },
+  "modules": {
+    "animus:navigation": {
+      "enabled": true,
+      "route": "patrol"
+    }
+  }
+}

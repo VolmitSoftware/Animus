@@ -1,0 +1,53 @@
+{
+  "id": "42-betonquest",
+  "title": "BetonQuest",
+  "description": "Relinking a BetonQuest package to an imported NPC",
+  "target": 23,
+  "stage": {
+    "world": "flat",
+    "plugins": ["BetonQuest", "packetevents"],
+    "files": {
+      "Citizens/saves.yml": "npc:\n  '7':\n    uuid: 00000000-0000-4000-8000-000000000007\n    name: Innkeeper\n    traits:\n      type: PLAYER\n      spawned: true\n      location: {world: world, x: 4.5, y: 61, z: 6.5, yaw: 180, pitch: 0}\n",
+      "BetonQuest/QuestPackages/inn/package.yml": "npcs:\n  innkeeper: \"citizens 7\"\nnpc_conversations:\n  innkeeper: innTalk\nconversations:\n  innTalk:\n    quester: Innkeeper\n    conversationIO: tellraw\n    first: hello\n    NPC_options:\n      hello:\n        text: \"Welcome back to the inn, traveler.\"\n        pointers: room,news\n      roomAnswer:\n        text: \"Upstairs, second door on the left.\"\n      newsAnswer:\n        text: \"The bandits are back on the north road.\"\n    player_options:\n      room:\n        text: \"Do you have a room?\"\n        pointers: roomAnswer\n      news:\n        text: \"Any news?\"\n        pointers: newsAnswer\n"
+    },
+    "console": [
+      "animus import citizens preview",
+      "animus import citizens apply",
+      "animus spawn citizens-7"
+    ]
+  },
+  "cues": {
+    "rl": ["bq reload"]
+  },
+  "setup": [
+    {"run": "/gamemode survival"},
+    {"run": "/give @s minecraft:stick"},
+    {"run": "/clear @s"},
+    {"tp": [2.0, 61, 1.5, 15, 10]},
+    {"hotbar": 8},
+    {"wait": 600},
+    {"clearChat": true},
+    {"wait": 2500}
+  ],
+  "beats": [
+    {"wait": 1000},
+    {"type": "/animus import betonquest preview"},
+    {"wait": 300},
+    {"result": "the preview lists the package line that names citizens 7", "ms": 2500},
+    {"type": "/animus import betonquest apply"},
+    {"wait": 1200, "note": "lets the apply finish writing the package before BetonQuest reloads it"},
+    {"cue": "rl"},
+    {"result": "the apply reply: the package now names the imported NPC", "ms": 1800},
+    {"tp": [4.5, 61, 4.0, 0, 10]},
+    {"wait": 400},
+    {"lookAtEntity": "Innkeeper", "ms": 300},
+    {"wait": 200},
+    {"useItem": true},
+    {"wait": 100},
+    {"result": "Welcome back to the inn, traveler. with two options", "ms": 2500},
+    {"clickChat": "Do you have a room?"},
+    {"wait": 100},
+    {"result": "Upstairs, second door on the left.", "ms": 2500}
+  ],
+  "closing": "The BetonQuest conversation now opens on the imported NPC"
+}

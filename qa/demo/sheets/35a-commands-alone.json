@@ -1,0 +1,30 @@
+{
+  "id": "35a-commands-alone",
+  "title": "Commands follow their plugin",
+  "description": "NPC command completion without MythicMobs, Model Engine and LibsDisguises",
+  "target": 16,
+  "stage": {
+    "world": "flat"
+  },
+  "setup": [
+    {"run": "/gamemode creative"},
+    {"run": "/give @s minecraft:stick"},
+    {"run": "/clear @s"},
+    {"tp": [0.5, 61, 0.5, 0, 6]},
+    {"hotbar": 8},
+    {"wait": 600},
+    {"clearChat": true},
+    {"wait": 2500}
+  ],
+  "beats": [
+    {"wait": 400},
+    {"caption": "Animus only", "ms": 6000},
+    {"wait": 1200},
+    {"type": "/animus npc ", "send": false, "hold": 3200},
+    {"wait": 700},
+    {"type": "/animus mythic king AnimusKing x=~2 z=~4"},
+    {"wait": 1100},
+    {"result": "no model or disguise in the completion, and /animus mythic says it needs MythicMobs", "ms": 2500}
+  ],
+  "closing": "Without MythicMobs, the mythic command says what it needs"
+}

@@ -1,0 +1,55 @@
+{
+  "id": "37-schedule",
+  "title": "NPC schedule",
+  "description": "The Baker walking home to sleep, then to a newly added place",
+  "target": 25,
+  "stage": {
+    "world": "flat",
+    "console": [
+      "setblock 8 61 1 minecraft:barrel[facing=up]",
+      "setblock 8 61 -1 minecraft:crafting_table",
+      "setblock 8 62 1 minecraft:lantern",
+      "setblock -8 61 0 minecraft:red_bed[part=head,facing=west]",
+      "setblock -7 61 0 minecraft:red_bed[part=foot,facing=west]",
+      "setblock 0 61 7 minecraft:water_cauldron[level=3]",
+      "setblock -1 61 7 minecraft:cobblestone_wall",
+      "setblock 1 61 7 minecraft:cobblestone_wall",
+      "animus create baker type=minecraft:player world=world x=6.5 y=61 z=0.5 folder=live name=Baker",
+      "animus despawn baker",
+      "animus edit baker {\"modules\":{\"animus:schedule\":{\"speed\":4,\"locations\":[{\"name\":\"shop\",\"time\":1000,\"x\":6,\"y\":61,\"z\":0},{\"name\":\"bed\",\"time\":12500,\"x\":-6,\"y\":61,\"z\":0,\"yaw\":90,\"pose\":\"sleeping\",\"equipment\":{\"head\":{\"id\":\"minecraft:leather_helmet\"}}}]}},\"position\":{\"world\":\"world\",\"x\":6.5,\"y\":61,\"z\":0.5,\"yaw\":0,\"pitch\":0}}",
+      "animus spawn baker"
+    ]
+  },
+  "setup": [
+    {"run": "/gamemode creative"},
+    {"run": "/give @s minecraft:stick"},
+    {"run": "/clear @s"},
+    {"tp": [0.5, 61, -5.5, -40, 18]},
+    {"hotbar": 8},
+    {"wait": 600},
+    {"clearChat": true},
+    {"wait": 2500}
+  ],
+  "beats": [
+    {"wait": 1300},
+    {"type": "/time set 12500"},
+    {"wait": 700},
+    {"lookAt": {"x": 3, "y": 61.6, "z": 0.5, "ms": 1100}},
+    {"wait": 400},
+    {"lookAt": {"x": -2, "y": 61.6, "z": 0.5, "ms": 1200}},
+    {"wait": 300},
+    {"lookAt": {"x": -5.5, "y": 61.2, "z": 0.5, "ms": 900}},
+    {"wait": 500},
+    {"result": "the Baker lies down to sleep beside his bed", "ms": 2500},
+    {"type": "/animus schedule add baker noon 0 61 5 name=well"},
+    {"result": "the reply adds the well place at noon", "ms": 1800},
+    {"type": "/time set 6000"},
+    {"wait": 800},
+    {"lookAt": {"x": -3, "y": 61.6, "z": 3, "ms": 1200}},
+    {"wait": 300},
+    {"lookAt": {"x": 0.5, "y": 61.4, "z": 5.5, "ms": 1200}},
+    {"wait": 300},
+    {"result": "the Baker stands at the well", "ms": 2500}
+  ],
+  "closing": "The Baker sleeps at night and walks to the new well at noon"
+}

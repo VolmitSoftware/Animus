@@ -1,0 +1,24 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.volmit.animuscamera.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "AbstractContainerScreenAccessor",
+    "AnvilScreenAccessor",
+    "ChatComponentMixin",
+    "ChatScreenAccessor",
+    "GlxMixin",
+    "GuiMixin",
+    "InputConstantsMixin",
+    "KeyMappingAccessor",
+    "MinecraftAccessor",
+    "MinecraftMixin",
+    "MouseHandlerAccessor",
+    "ToastManagerMixin",
+    "WindowMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

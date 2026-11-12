@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "3b5d1f0e-8c2a-4e7b-9a61-0c4d2e8f1a35",
+  "id": "crier",
+  "group": "",
+  "name": "Town Crier",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 4.5,
+    "yaw": 180,
+    "pitch": 0
+  },
+  "tags": [
+    "herald"
+  ]
+}

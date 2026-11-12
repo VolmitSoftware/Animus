@@ -1,0 +1,45 @@
+{
+  "id": "17-navigation-command",
+  "title": "Navigation commands",
+  "description": "Walking an NPC to the player and turning it to face him",
+  "target": 32,
+  "stage": {
+    "world": "town",
+    "console": [
+      "animus create greeter name=greeter world=world x=-2.5 y=64 z=-9.5",
+      "animus create trader type=minecraft:llama name=trader world=world x=4.5 y=64 z=-9.5",
+      "animus spawn greeter",
+      "animus spawn trader",
+      "animus edit town/fountain-keeper {\"position\":{\"world\":\"world\",\"x\":0.5,\"y\":64,\"z\":4.5,\"yaw\":180,\"pitch\":0}}",
+      "animus edit town/fountain-keeper {\"modules\":{\"animus:look-close\":{\"range\":1}}}",
+      "animus despawn town/fountain-keeper",
+      "animus spawn town/fountain-keeper"
+    ]
+  },
+  "setup": [
+    {"run": "/gamemode creative"},
+    {"tp": [-7.5, 64, 12.5, -135.0, 5]},
+    {"perspective": "third-front"},
+    {"wait": 11000},
+    {"clearChat": true}
+  ],
+  "beats": [
+    {"wait": 2600},
+    {"perspective": "first"},
+    {"wait": 300},
+    {"type": "/animus navigation go town/fountain-keeper ~ ~ ~-3 speed=1.5"},
+    {"result": "chat reads fountain-keeper heading to -7.5 64 9.5 (walk); the Keeper sets off", "ms": 1500},
+    {"type": "/animus navigation status town/fountain-keeper"},
+    {"result": "the status line: moving to -7.5 64 9.5, and where the Keeper is now", "ms": 1500},
+    {"wait": 1500},
+    {"result": "the Keeper arrives and stands three blocks in front of you", "ms": 1500},
+    {"type": "/animus navigation status town/fountain-keeper"},
+    {"result": "the status line now reads arrived at -7.5 64 9.5", "ms": 1800},
+    {"tp": [-0.5, 64, 9.5, 104.3, 5]},
+    {"wait": 600},
+    {"type": "/animus navigation look town/fountain-keeper"},
+    {"wait": 2100},
+    {"result": "chat reads fountain-keeper looks at -0.5 64 9.5; the Keeper turns to you", "ms": 2500}
+  ],
+  "closing": "The Keeper walked to the player and turned to face him"
+}

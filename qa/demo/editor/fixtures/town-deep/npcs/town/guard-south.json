@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 2,
+  "revision": 1,
+  "uuid": "3bb9ae92-99be-5f6b-97c8-fc08d5ced0f5",
+  "id": "guard-south",
+  "group": "town",
+  "name": "South Guard",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 4.5,
+    "y": 64,
+    "z": 10.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "tags": [
+    "guard"
+  ],
+  "modules": {
+    "animus:combat": {
+      "enabled": true,
+      "targets": {
+        "categories": [
+          "monsters"
+        ],
+        "squads": [
+          "raiders"
+        ]
+      },
+      "squad": {
+        "name": "town"
+      },
+      "ranged": {
+        "enabled": true,
+        "weapon": "arrow",
+        "range": 20
+      }
+    },
+    "animus:health": {
+      "killable": true,
+      "respawn": {
+        "delayTicks": 100
+      }
+    },
+    "animus:navigation": {
+      "enabled": true,
+      "route": "town-patrol"
+    }
+  }
+}
