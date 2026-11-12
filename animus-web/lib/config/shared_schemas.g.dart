@@ -142,7 +142,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   },
   "pairing": {
     "prefix": "ANM1.",
-    "linkTemplate": "https://animus-editor.web.app/#/pair/{code}",
+    "linkTemplate": "https://animus.volmitsoftware.com/#/pair/{code}",
     "secretMinutes": 10,
     "defaultTokenDays": 7,
     "defaultScopes": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs", "terrain"],

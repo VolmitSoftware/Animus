@@ -22,7 +22,7 @@ class SplashScreenTest {
         assertEquals(SplashScreen.ART.getFirst(), lines.getFirst());
         assertTrue(lines.get(1).endsWith("   Animus, Virtual NPCs, behaviors & shops [0.1 RELEASE]"), lines.get(1));
         assertTrue(lines.get(2).endsWith("   Version: 0.1.0"), lines.get(2));
-        assertTrue(lines.get(3).endsWith("   By: Volmit Software (Arcane Arts) | Web Editor: https://animus-editor.web.app | Startup: READY"), lines.get(3));
+        assertTrue(lines.get(3).endsWith("   By: Volmit Software (Arcane Arts) | Web Editor: https://animus.volmitsoftware.com | Startup: READY"), lines.get(3));
         assertTrue(lines.get(4).endsWith("   Server: Paper 26.3-12-abc1234 | MC Support: " + BuildIdentity.MINECRAFT_VERSIONS.getFirst() + " - "
                 + BuildIdentity.MINECRAFT_VERSIONS.getLast()), lines.get(4));
         assertTrue(lines.get(5).endsWith("   Java: 25 | Date: 2026-11-07"), lines.get(5));

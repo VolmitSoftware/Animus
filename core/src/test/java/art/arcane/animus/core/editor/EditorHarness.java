@@ -39,7 +39,7 @@ import java.util.stream.Stream;
 /** A data folder copied from schema/fixtures/export with the editor API over it and a recording platform. */
 final class EditorHarness implements AutoCloseable {
     static final UUID ADMIN = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
-    static final String ORIGIN = "https://animus-editor.web.app";
+    static final String ORIGIN = "https://animus.volmitsoftware.com";
 
     /** A clock tests move by hand. */
     static final class TestClock extends Clock {

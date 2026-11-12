@@ -9,6 +9,7 @@ void main() {
     expect(settings.port, 8080);
     expect(settings.address, '0.0.0.0');
     expect(settings.allowedAppOrigins, <String>[
+      'https://animus.volmitsoftware.com',
       'https://animus-editor.web.app',
     ]);
     expect(settings.limits.maxFrameBytes, 1024 * 1024);

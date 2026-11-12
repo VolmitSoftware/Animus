@@ -11,7 +11,7 @@ import java.util.Objects;
  */
 public final class SplashScreen {
     public static final String TAGLINE = "Virtual NPCs, behaviors & shops";
-    public static final String EDITOR_URL = "https://animus-editor.web.app";
+    public static final String EDITOR_URL = "https://animus.volmitsoftware.com";
     static final String FILL = "#b0185f";
     static final String EDGE = "#ff4fa3";
     static final String META = "#9a9a9a";

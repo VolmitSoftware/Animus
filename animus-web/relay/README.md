@@ -80,7 +80,7 @@ All settings are environment variables.
 | `PORT` | `8080` | Listener port |
 | `BIND_ADDRESS` | `0.0.0.0` | Listener address |
 | `TRUSTED_PROXY_HOPS` | `1` | Proxies in front of the relay that append to `X-Forwarded-For`; 0 when browsers connect directly |
-| `ALLOWED_APP_ORIGINS` | `https://animus-editor.web.app` | Comma-separated exact browser origins (`scheme://host[:port]`, no wildcards) |
+| `ALLOWED_APP_ORIGINS` | `https://animus.volmitsoftware.com,https://animus-editor.web.app` | Comma-separated exact browser origins (`scheme://host[:port]`, no wildcards) |
 | `MAX_FRAME_BYTES` | `1048576` | Largest text frame in UTF-8 bytes |
 | `MAX_APP_MESSAGES_PER_SECOND` | `120` | Frames per second from one browser |
 | `MAX_AGENT_MESSAGES_PER_SECOND` | `2000` | Frames per second from one server |
@@ -106,7 +106,7 @@ The image is a compiled Dart binary on distroless, running as the non-root user.
 ```sh
 cd animus-web/relay
 docker build -t animus-relay .
-docker run --rm -p 8080:8080 -e ALLOWED_APP_ORIGINS=https://animus-editor.web.app animus-relay
+docker run --rm -p 8080:8080 -e ALLOWED_APP_ORIGINS=https://animus.volmitsoftware.com animus-relay
 ```
 
 To deploy (replace the project, region and repository):
@@ -123,7 +123,7 @@ gcloud run deploy animus-relay \
   --concurrency 1000 \
   --cpu 1 --memory 512Mi \
   --no-cpu-throttling \
-  --set-env-vars ALLOWED_APP_ORIGINS=https://animus-editor.web.app
+  --set-env-vars ALLOWED_APP_ORIGINS=https://animus.volmitsoftware.com
 ```
 
 - Keep exactly one instance. Routing is in memory, so a second instance would not see the first one's servers.

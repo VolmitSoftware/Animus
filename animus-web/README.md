@@ -1,6 +1,6 @@
 # Animus Editor
 
-The browser editor for Animus. It is a client-mode Jaspr app on arcane_jaspr, hosted on Firebase as `animus-editor.web.app` (project `animus-editor`).
+The browser editor for Animus. It is a client-mode Jaspr app on arcane_jaspr, served at `animus.volmitsoftware.com` from Firebase Hosting (project `animus-editor`, also reachable as `animus-editor.web.app`).
 
 The first screen starts a workspace: blank and named, seeded with the example packs from `../examples/packs` (embedded at build time by `tool/embed_starter_packs.dart`), or opened from a data folder (`plugins/Animus`, or `config/animus` on mod servers) as a directory pick or a zip. Workspaces are listed there with Rename, Duplicate, Export zip and Delete (confirmed; Restore brings the last one back until you close the tab). Every document is checked against the schemas in `../schema` in the browser, and the workspace and its undo steps (50) are kept in IndexedDB. Each document has Visual, Preview, Code and Split views. Nothing is uploaded, and no server is needed for any of it.
 
@@ -249,7 +249,7 @@ Browser checks beyond the schemas are in `lib/logic/gui/gui_validation.dart`. Th
 
 ## Deploying
 
-The editor is live at https://animus-editor.web.app. To deploy a new build from this folder:
+The editor is live at https://animus.volmitsoftware.com. To deploy a new build from this folder:
 
 ```sh
 dart run tool/extract_minecraft_world_assets.dart --jar=<26.3 client jar> --version=26.3

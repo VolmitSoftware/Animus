@@ -67,7 +67,7 @@ class PluginSettingsTest {
     }
     @Test void theShippedEditorOriginsAreOnlyTheHostedEditor() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
-            assertEquals(java.util.List.of("https://animus-editor.web.app", "https://animus-editor.firebaseapp.com"), PluginSettings.load(store).editor().allowedOrigins());
+            assertEquals(java.util.List.of("https://animus.volmitsoftware.com", "https://animus-editor.web.app", "https://animus-editor.firebaseapp.com"), PluginSettings.load(store).editor().allowedOrigins());
             assertFalse(Files.readString(root.resolve("config.toml")).contains("8098"));
         }
     }

@@ -2,7 +2,7 @@
 
 NPCs for Minecraft servers, defined in JSON.
 
-Every NPC is a JSON file you can edit by hand, through `/animus` commands, or in the [web editor](https://animus-editor.web.app). NPCs walk routes, carry riders, fight, build schematics, run behaviors, open shops and chest GUIs, and play rig animations. They are drawn with packets for each player, so players join with an unmodified client and other plugins never see an NPC as an entity.
+Every NPC is a JSON file you can edit by hand, through `/animus` commands, or in the [web editor](https://animus.volmitsoftware.com). NPCs walk routes, carry riders, fight, build schematics, run behaviors, open shops and chest GUIs, and play rig animations. They are drawn with packets for each player, so players join with an unmodified client and other plugins never see an NPC as an entity.
 
 | | |
 |---|---|

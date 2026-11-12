@@ -33,7 +33,7 @@ void main() {
   });
 
   test('should take the code out of a pasted link', () {
-    expect(extractPairingCode('  https://animus-editor.web.app/#/pair/ANM1.abc  '), 'ANM1.abc');
+    expect(extractPairingCode('  https://animus.volmitsoftware.com/#/pair/ANM1.abc  '), 'ANM1.abc');
     expect(extractPairingCode('ANM1.abc'), 'ANM1.abc');
   });
 

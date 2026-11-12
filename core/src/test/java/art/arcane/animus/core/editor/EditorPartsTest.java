@@ -120,7 +120,7 @@ class EditorPartsTest {
             try {
                 service.start();
                 EditorService.PairingLink link = service.pair(EditorHarness.grant(EditorScope.DEFAULT_PAIRING));
-                assertTrue(link.link().startsWith("https://animus-editor.web.app/#/pair/ANM1."));
+                assertTrue(link.link().startsWith("https://animus.volmitsoftware.com/#/pair/ANM1."));
                 PairingCode code = PairingCode.decode(link.link().substring(link.link().indexOf("ANM1.")));
                 // Port 0 binds a free port, and the link carries the one actually bound.
                 String direct = code.directUrl().orElseThrow();

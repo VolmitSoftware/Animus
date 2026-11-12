@@ -16,8 +16,9 @@ import 'package:stream_channel/stream_channel.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-/// The browser origin the hosted editor uses (`animus-editor.web.app`).
+/// The browser origins of the hosted editor: its own domain and the Firebase host behind it.
 const List<String> defaultAllowedAppOrigins = <String>[
+  'https://animus.volmitsoftware.com',
   'https://animus-editor.web.app',
 ];
 
