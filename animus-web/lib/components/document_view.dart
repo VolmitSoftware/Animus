@@ -773,7 +773,7 @@ List<(String, String)> previewFacts(DocumentKind kind, Map<String, Object?> json
       final Object? position = json['position'];
       final Map<String, Object?> at = position is Map<String, Object?> ? position : const <String, Object?>{};
       return <(String, String)>[
-        ('Name', text(json['name'])),
+        ('Name', json['name'] is String ? guiPlainText(json['name']! as String) : text(json['name'])),
         ('Type', text(json['type'])),
         ('Spawned', text(json['spawned'])),
         ('Position', '${text(at['world'])} ${text(at['x'])}, ${text(at['y'])}, ${text(at['z'])}'),

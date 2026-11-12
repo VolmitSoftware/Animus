@@ -7,6 +7,7 @@ library;
 import '../../logic/minecraft_ids.dart';
 import '../../logic/npc/npc_appearance.dart';
 import '../../logic/npc/npc_attributes.dart';
+import '../../logic/gui/gui_text.dart';
 import '../rigs/mc_rigs.dart';
 import 'mc_text.dart';
 
@@ -237,6 +238,7 @@ final class NpcLook {
     this.scale = 1,
     this.settings = const <String, Object?>{},
     this.glowColor,
+    this.teamCode,
     this.disguise,
     this.baby = false,
   });
@@ -245,7 +247,6 @@ final class NpcLook {
   static const int maxText = 256;
   static const int maxLines = 16;
 
-  static final RegExp _formatted = RegExp(r'[&§][0-9a-fk-orA-FK-OR]');
   static final RegExp _skin = RegExp(r'^[a-f0-9]{64}$');
 
   factory NpcLook.fromDefinition(Map<String, Object?> json) {
@@ -286,6 +287,7 @@ final class NpcLook {
       yawDeg: yaw is num && yaw.isFinite ? yaw.toDouble() : 0,
       scale: definitionScale(json),
       glowColor: json['glowing'] == true ? _teamColor(json['teamColor']) : null,
+      teamCode: _teamCode(json['teamColor']),
       settings: switch (json[bodySettingsField(type) ?? '']) {
         final Map<String, Object?> own => own,
         _ => const <String, Object?>{},
@@ -339,6 +341,10 @@ final class NpcLook {
   /// white without one, as the client draws it. Null when it does not glow.
   final int? glowColor;
 
+  /// The `teamColor` as a colour code (`c` for red), or null without one;
+  /// the server writes it before the name.
+  final String? teamCode;
+
   /// The definition's LibsDisguises text, or null.
   final String? disguise;
 
@@ -350,6 +356,11 @@ final class NpcLook {
     'black', 'dark_blue', 'dark_green', 'dark_aqua', 'dark_red', 'dark_purple', 'gold', 'gray', //
     'dark_gray', 'blue', 'green', 'aqua', 'red', 'light_purple', 'yellow', 'white',
   ];
+
+  static String? _teamCode(Object? name) {
+    final int index = name is String ? teamColors.indexOf(name) : -1;
+    return index < 0 ? null : index.toRadixString(16);
+  }
 
   static int _teamColor(Object? name) {
     final int index = teamColors.indexOf(name is String ? name : 'white');
@@ -367,15 +378,13 @@ final class NpcLook {
 
   /// A player whose name fits a profile and carries no formatting shows the
   /// client's own nameplate (`BodyLook.nativeName`).
-  bool get nativeName => isPlayer && nameplateVisible && fitsProfile(name) && !_formatted.hasMatch(name);
+  bool get nativeName => isPlayer && nameplateVisible && fitsProfile(name) && !guiFormatted(name);
 
-  /// The text display's lines: the hologram, then the name when the client
-  /// does not draw it itself.
+  /// The text display's lines, section-coded as `BodyLook` sends them: the
+  /// hologram, then the name (after its team colour) when the client does
+  /// not draw it itself.
   List<String> get textLines => <String>[
-    for (final String line in hologram) legacy(line),
-    if (nameplateVisible && !nativeName) legacy(name),
+    for (final String line in hologram) guiColorize(line),
+    if (nameplateVisible && !nativeName) guiColorize(teamCode == null ? name : '&$teamCode$name'),
   ];
-
-  /// `&` codes as the section signs the client reads.
-  static String legacy(String text) => text.replaceAllMapped(RegExp('&([0-9a-fk-orA-FK-OR])'), (Match m) => '§${m.group(1)}');
 }

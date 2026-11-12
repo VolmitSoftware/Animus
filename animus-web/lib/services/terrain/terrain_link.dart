@@ -10,6 +10,7 @@ import 'dart:js_interop';
 
 import 'package:web/web.dart' as web;
 
+import '../../logic/terrain/terrain_access.dart';
 import '../server/server_connection.dart';
 import 'terrain_client.dart';
 
@@ -90,7 +91,7 @@ abstract final class TerrainLink {
   /// The client while the server is online and reads terrain, else null.
   static TerrainClient? get client {
     final ServerConnection? connection = _connection;
-    if (connection == null || !connection.status.online || !_offers(connection)) return null;
+    if (connection == null || _absence(connection) != null) return null;
     return _client ??= TerrainClient(server: _server!, send: connection.request, cache: IndexedDbTerrainCache())..worlds = TerrainWorlds.names;
   }
 
@@ -101,19 +102,11 @@ abstract final class TerrainLink {
   /// is there or when no server is paired (the views stay as they were).
   static String get absence {
     final ServerConnection? connection = _connection;
-    if (connection == null) return '';
-    if (!connection.status.online) return 'Terrain shows once the server is connected.';
-    if (!_offers(connection)) return 'This server does not share terrain. Update Animus or pair again with the terrain scope.';
-    return '';
+    return connection == null ? '' : _absence(connection) ?? '';
   }
 
-  static bool _offers(ServerConnection connection) {
-    final Object? features = connection.capabilities?['features'];
-    final Object? terrain = features is Map<String, Object?> ? features['terrain'] : null;
-    final bool available = terrain is Map<String, Object?> && terrain['available'] == true;
-    final List<String> scopes = connection.token?.scopes ?? const <String>[];
-    return available && scopes.contains('terrain');
-  }
+  static String? _absence(ServerConnection connection) =>
+      terrainAbsence(online: connection.status.online, capabilities: connection.capabilities, scopes: connection.token?.scopes ?? const <String>[]);
 
   static void addListener(void Function() listener) => _listeners.add(listener);
 

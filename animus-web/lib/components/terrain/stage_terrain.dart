@@ -1,8 +1,8 @@
 /// Terrain for one stage: whether it shows, its radius, the blocks loaded
 /// along a path (a place by default) and the line under the stage that
-/// says what is missing.
-/// Without a paired server that shares terrain, the stage keeps its grass
-/// patch.
+/// says what is missing, drawn on the stage.
+/// Only without a paired server does the stage keep its grass patch
+/// silently; with one, the note says why the blocks are not there.
 library;
 
 import 'dart:async';
@@ -35,6 +35,7 @@ final class StageTerrain {
   int radius;
   TerrainWindowResult? result;
   bool loading = false;
+  String? _failure;
   String? _place;
   (String, McVec3, TerrainPath?)? _at;
   TerrainClient? _client = TerrainLink.client;
@@ -81,6 +82,7 @@ final class StageTerrain {
     if (place == _place) return;
     _place = place;
     loading = true;
+    _failure = null;
     unawaited(_window.load(client, world, terrainPathPlan(along, radius: radius), origin: origin, keyPrefix: keyPrefix).then((TerrainWindowResult? loaded) {
       if (loaded == null) return;
       result = loaded;
@@ -88,6 +90,7 @@ final class StageTerrain {
       _changed();
     }, onError: (Object error) {
       web.console.warn('terrain: $error'.toJS);
+      _failure = 'Terrain failed to load: $error';
       loading = false;
       _place = null;
       _changed();
@@ -123,11 +126,12 @@ final class StageTerrain {
     if (!on) return null;
     final String absence = TerrainLink.absence;
     if (absence.isNotEmpty) return absence;
+    if (_failure != null) return _failure;
     final TerrainWindowResult? shown = result;
     if (loading && shown == null) return 'Loading terrain.';
     if (shown == null) return null;
     final List<String> parts = <String>[
-      if (shown.unloaded > 0) '${shown.unloaded} of ${shown.chunks} chunks are not loaded on the server and show empty',
+      if (shown.unloaded > 0) '${shown.unloaded} of ${shown.chunks} chunks are not loaded on the server, as no player is near them, and show empty',
       if (shown.forbidden > 0) '${shown.forbidden} of ${shown.chunks} chunks are outside the terrain radius of this token',
       if (shown.truncated) 'the path is longer than one view loads, so terrain shows along its first ${shown.chunks} chunks',
       if (!shown.fullStates) 'this site\'s model pack has no blockstates.json, so stairs, slabs and fences show their default shape',

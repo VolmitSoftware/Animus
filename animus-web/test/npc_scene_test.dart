@@ -465,16 +465,7 @@ void main() {
     });
   });
 
-  group('legacy text', () {
-    test('colour codes reset decorations; reset clears all', () {
-      expect(mcLegacyRuns('§6§lQuest §7Giver§r!'), <McTextRun>[
-        const McTextRun('Quest ', color: 0xFFAA00, bold: true),
-        const McTextRun('Giver', color: 0xAAAAAA),
-        const McTextRun('!'),
-      ]);
-      expect(mcLegacyRuns('plain'), <McTextRun>[const McTextRun('plain')]);
-      expect(mcLegacyRuns('§x§'), <McTextRun>[const McTextRun('§')]);
-      expect(const McTextRun('a', color: 0x55FF55).cssColor, '#55ff55');
-    });
+  test('should write a run colour as CSS', () {
+    expect(const McTextRun('a', color: 0x55FF55).cssColor, '#55ff55');
   });
 }

@@ -1,6 +1,5 @@
-/// Section-sign formatting (`§a`, `§l`) as styled runs, the way the client's
-/// legacy text reads it: a colour code resets every decoration, `§r` resets
-/// everything, unknown codes are dropped.
+/// Styled text runs and the client's legacy colours. Text is parsed into
+/// runs by `logic/gui/gui_text.dart`, the editor's one formatter.
 library;
 
 /// `ChatFormatting` colours by code.
@@ -64,58 +63,4 @@ String mcObfuscate(String text) {
     out.write(text[i] == ' ' ? ' ' : _obfuscatedGlyphs[(unit * 31 + i * 17) % _obfuscatedGlyphs.length]);
   }
   return out.toString();
-}
-
-List<McTextRun> mcLegacyRuns(String text) {
-  final List<McTextRun> runs = <McTextRun>[];
-  final StringBuffer buffer = StringBuffer();
-  int color = mcDefaultTextColor;
-  bool bold = false, italic = false, underlined = false, strikethrough = false, obfuscated = false;
-  void flush() {
-    if (buffer.isEmpty) return;
-    runs.add(McTextRun(
-      buffer.toString(),
-      color: color,
-      bold: bold,
-      italic: italic,
-      underlined: underlined,
-      strikethrough: strikethrough,
-      obfuscated: obfuscated,
-    ));
-    buffer.clear();
-  }
-
-  for (int i = 0; i < text.length; i++) {
-    final String c = text[i];
-    if (c != '§' || i + 1 >= text.length) {
-      buffer.write(c);
-      continue;
-    }
-    final String code = text[i + 1].toLowerCase();
-    i++;
-    flush();
-    final int? next = mcLegacyColors[code];
-    if (next != null) {
-      color = next;
-      bold = italic = underlined = strikethrough = obfuscated = false;
-    } else {
-      switch (code) {
-        case 'k':
-          obfuscated = true;
-        case 'l':
-          bold = true;
-        case 'm':
-          strikethrough = true;
-        case 'n':
-          underlined = true;
-        case 'o':
-          italic = true;
-        case 'r':
-          color = mcDefaultTextColor;
-          bold = italic = underlined = strikethrough = obfuscated = false;
-      }
-    }
-  }
-  flush();
-  return runs;
 }

@@ -14,6 +14,7 @@ import '../scene/mc_math.dart';
 import '../scene/mc_scene.dart';
 import 'npc_look.dart';
 import 'npc_scene.dart';
+import '../../logic/gui/gui_text.dart';
 
 /// The object body types [npcObject] draws.
 const List<String> mcObjectBodyTypes = <String>[
@@ -125,7 +126,7 @@ NpcObject? npcObject(NpcLook look) {
     case 'minecraft:text_display':
       final String text = settings['text'] is String ? settings['text']! as String : '';
       final int lineWidth = settings['lineWidth'] is int ? (settings['lineWidth']! as int).clamp(1, 1024) : 200;
-      final List<String> lines = <String>[for (final String line in text.split('\n')) NpcLook.legacy(line)];
+      final List<String> lines = <String>[for (final String line in text.split('\n')) guiColorize(line)];
       final String billboard = _choice(settings, 'billboard', const <String>['fixed', 'vertical', 'horizontal', 'center']);
       return (
         nodes: const <McSceneNode>[],

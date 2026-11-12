@@ -1,10 +1,12 @@
-/// GUI text as styled runs, read exactly as the server's `RichText` reads it
-/// (wiki animus/11-guis-holograms-menus): `&` and section-sign codes,
-/// `&#RRGGBB`, `&x&R&R&G&G&B&B`, Gloss's `[RRGGBB]`, backslash-u escapes and
-/// the common MiniMessage colour and decoration tags. Tags become codes, so a
-/// colour tag clears the decorations before it and a closing tag resets, then
-/// reopens the tags still open, as in game. Holes are filled with sample
-/// values first. Unknown tags and codes stay as text.
+/// Player-facing text as styled runs, read exactly as the server's `RichText`
+/// reads it (wiki animus/11-guis-holograms-menus): `&` and section-sign codes,
+/// `&#RRGGBB`, `&x&R&R&G&G&B&B`, Gloss's `[RRGGBB]`, backslash-u escapes, the
+/// common MiniMessage colour and decoration tags and `<gradient>`. Tags become
+/// codes, so a colour tag clears the decorations before it and a closing tag
+/// resets, then reopens the tags still open, as in game. GUI holes are filled
+/// with sample values first. Unknown tags and codes stay as text. GUIs, NPC
+/// nameplates, holograms, speech and text displays on the stage all read text
+/// here, and lists show [guiPlainText].
 library;
 
 import '../../mc/npc/mc_text.dart';
@@ -28,6 +30,16 @@ List<McTextRun> guiTextRuns(String text, {int defaultColor = mcDefaultTextColor,
 
 /// The text without codes or tags, for labels and tooltips' accessible names.
 String guiPlainText(String text) => guiTextRuns(text).map((McTextRun run) => run.text).join();
+
+/// True when [text] carries any colour or format code once colorized, as the
+/// server's `RichText.formatted`.
+bool guiFormatted(String text) {
+  final String coloured = guiColorize(text);
+  for (int index = 0; index + 1 < coloured.length; index++) {
+    if (coloured[index] == _section && (_codes.contains(coloured[index + 1]) || coloured[index + 1] == 'x')) return true;
+  }
+  return false;
+}
 
 /// [runs] split into lines at each newline, styles carried over.
 List<List<McTextRun>> guiTextLines(List<McTextRun> runs) {
@@ -82,6 +94,15 @@ String guiColorize(String text) {
     }
     if (glyph == '<') {
       final int end = source.indexOf('>', index);
+      final List<int>? gradient = end > index + 1 ? _gradientColours(source.substring(index + 1, end).toLowerCase()) : null;
+      if (gradient != null) {
+        final int close = source.toLowerCase().indexOf('</gradient>', end + 1);
+        out.write(_gradient(source.substring(end + 1, close < 0 ? source.length : close), gradient));
+        if (close < 0) break;
+        out.write(_reopen(open));
+        index = close + '</gradient>'.length;
+        continue;
+      }
       if (end > index + 1) {
         final String? code = _tag(source.substring(index + 1, end).toLowerCase(), open);
         if (code != null) {
@@ -175,11 +196,7 @@ String? _tag(String tag, List<String> open) {
     final String name = tag.substring(1);
     if (!_tags.containsKey(name) && !name.startsWith('#') && !name.startsWith('color') && !name.startsWith('colour')) return null;
     open.remove(name);
-    final StringBuffer rebuilt = StringBuffer('${_section}r');
-    for (final String still in open.reversed) {
-      rebuilt.write(_tag(still, <String>[]) ?? '');
-    }
-    return rebuilt.toString();
+    return _reopen(open);
   }
   if (tag.startsWith('#') && tag.length == 7 && _hex(tag, 1, 6)) {
     open.insert(0, tag);
@@ -195,6 +212,89 @@ String? _tag(String tag, List<String> open) {
     open.insert(0, tag);
   }
   return '$_section$code';
+}
+
+/// A reset, then the tags in [open] again.
+String _reopen(List<String> open) {
+  final StringBuffer rebuilt = StringBuffer('${_section}r');
+  for (final String still in open.reversed) {
+    rebuilt.write(_tag(still, <String>[]) ?? '');
+  }
+  return rebuilt.toString();
+}
+
+/// The colours of a `gradient` tag: white to black without any, null when
+/// [tag] is no gradient or names one colour or an unknown one. A phase
+/// number is accepted and ignored.
+List<int>? _gradientColours(String tag) {
+  if (tag != 'gradient' && !tag.startsWith('gradient:')) return null;
+  final List<int> colours = <int>[];
+  for (final String argument in tag.split(':').skip(1)) {
+    if (argument.startsWith('#') && argument.length == 7 && _hex(argument, 1, 6)) {
+      colours.add(int.parse(argument.substring(1), radix: 16));
+    } else if (_tags[argument] case final String code when _colours.contains(code)) {
+      colours.add(mcLegacyColors[code]!);
+    } else if (double.tryParse(argument) == null) {
+      return null;
+    }
+  }
+  if (colours.isEmpty) return const <int>[0xFFFFFF, 0x000000];
+  return colours.length < 2 ? null : colours;
+}
+
+/// [inner] coloured letter by letter from the first of [colours] to the
+/// last, as MiniMessage spreads a gradient; decorations inside stay on each
+/// letter and colours inside give way to the gradient.
+String _gradient(String inner, List<int> colours) {
+  final String coloured = guiColorize(inner);
+  final List<(String, String)> letters = <(String, String)>[];
+  String decorations = '';
+  int index = 0;
+  while (index < coloured.length) {
+    final String glyph = coloured[index];
+    if (glyph == _section && index + 1 < coloured.length) {
+      final String code = coloured[index + 1];
+      if (code == 'x' && _repeatedHex(coloured, index, _section)) {
+        decorations = '';
+        index += 14;
+        continue;
+      }
+      if (_colours.contains(code) || code == 'r') {
+        decorations = '';
+      } else if (_decorations.contains(code)) {
+        if (!decorations.contains(code)) decorations += code;
+      } else {
+        letters.add((glyph, decorations));
+        index++;
+        continue;
+      }
+      index += 2;
+      continue;
+    }
+    letters.add((glyph, decorations));
+    index++;
+  }
+  final StringBuffer out = StringBuffer();
+  for (int at = 0; at < letters.length; at++) {
+    final double t = letters.length == 1 ? 0 : at / (letters.length - 1);
+    out
+      ..write(_hexCode(_lerpColour(colours, t).toRadixString(16).padLeft(6, '0')))
+      ..write(letters[at].$2.split('').map((String code) => '$_section$code').join())
+      ..write(letters[at].$1);
+  }
+  return out.toString();
+}
+
+int _lerpColour(List<int> colours, double t) {
+  final double scaled = t * (colours.length - 1);
+  final int segment = scaled.floor().clamp(0, colours.length - 2);
+  final double local = scaled - segment;
+  final int from = colours[segment], to = colours[segment + 1];
+  int channel(int shift) {
+    final int a = (from >> shift) & 0xFF, b = (to >> shift) & 0xFF;
+    return (a + (b - a) * local).round() & 0xFF;
+  }
+  return channel(16) << 16 | channel(8) << 8 | channel(0);
 }
 
 String _unescape(String text) {

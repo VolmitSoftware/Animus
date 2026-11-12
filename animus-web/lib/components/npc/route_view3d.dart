@@ -7,7 +7,6 @@ library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/npc/route_model.dart';
 import '../../logic/terrain/terrain_path.dart';
@@ -98,14 +97,12 @@ class _RouteView3dState extends State<RouteView3d> {
 
   @override
   Widget build(BuildContext context) {
-    final String? note = _terrain.note;
     return dom.div(classes: 'animus-route-3d', attributes: <String, String>{'data-route-3d': '', 'data-terrain-meshes': '${_terrain.on ? _terrain.result?.nodes.length ?? 0 : 0}'}, <Widget>[
       dom.div(classes: 'animus-npc-preview-bar', <Widget>[
         Button.ghost(label: 'Reset view', size: ButtonSize.small, onPressed: _stage.resetCamera),
         _terrain.controls('route-3d-terrain'),
       ]),
-      McStage(controller: _stage, label: '3D route view'),
-      if (note != null) dom.p(classes: 'animus-muted', attributes: const <String, String>{'data-terrain-note': ''}, <Widget>[Component.text(note)]),
+      McStage(controller: _stage, label: '3D route view', terrainNote: _terrain.note),
     ]);
   }
 }

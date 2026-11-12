@@ -22,11 +22,11 @@ import '../assets/mc_display_pose.dart';
 import '../assets/mc_ids.dart';
 import '../assets/mc_model_json.dart';
 import '../assets/mc_model_resolver.dart';
-import '../npc/npc_look.dart';
 import '../npc/npc_scene.dart';
 import '../scene/mc_camera.dart';
 import '../scene/mc_math.dart';
 import '../scene/mc_scene.dart';
+import '../../logic/gui/gui_text.dart';
 
 /// A runtime image id for a texture resource; the caller registers the
 /// image under it.
@@ -132,7 +132,7 @@ RigScene rigScene(
         final String text = visual['text'] is String ? visual['text']! as String : '';
         texts.add(NpcText(
           anchor: originOf(at),
-          lines: NpcLook.legacy(text).split('\n'),
+          lines: guiColorize(text).split('\n'),
           nameplate: false,
           lineWidth: visual['lineWidth'] is int ? visual['lineWidth']! as int : 200,
           background: visual['background'] is String ? visual['background']! as String : null,

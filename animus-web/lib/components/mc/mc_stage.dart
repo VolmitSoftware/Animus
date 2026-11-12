@@ -35,6 +35,7 @@ import '../info_tip.dart';
 import 'mc_gl_renderer.dart';
 import '../shortcut_sheet.dart' show platformKeys;
 import '../typing_pause.dart' show typingPause;
+import '../../logic/gui/gui_text.dart';
 
 /// Pixels of drag one arrow key press stands for.
 const double mcStageKeyStepPx = 24;
@@ -148,11 +149,15 @@ String mcItemNote(String item, String reason) {
 }
 
 class McStage extends StatefulWidget {
-  const McStage({required this.controller, this.label = 'NPC preview', this.overlay, super.key});
+  const McStage({required this.controller, this.label = 'NPC preview', this.overlay, this.terrainNote, super.key});
 
   final McStageController controller;
   final String label;
   final McStageOverlay? overlay;
+
+  /// Why the server's blocks are missing or partial, drawn over the foot of
+  /// the stage so it is read together with the grass patch it explains.
+  final String? terrainNote;
 
   @override
   State<McStage> createState() => _McStageState();
@@ -522,7 +527,7 @@ class _McStageState extends State<McStage> {
           if (text.brightness != null) 'filter': 'brightness(${text.brightness!.toStringAsFixed(3)})',
         }),
         <Widget>[
-          for (final List<McTextRun> runs in text.styled ?? <List<McTextRun>>[for (final String line in text.lines) mcLegacyRuns(line)])
+          for (final List<McTextRun> runs in text.styled ?? <List<McTextRun>>[for (final String line in text.lines) guiSectionRuns(line)])
             dom.div(classes: 'animus-mc-text-line', <Widget>[
               for (final McTextRun run in runs)
                 dom.span(
@@ -587,7 +592,7 @@ class _McStageState extends State<McStage> {
           'role': 'img',
           'tabindex': '0',
           'aria-label': component.label,
-          'aria-describedby': '$_id-keys $_id-status',
+          'aria-describedby': '$_id-keys $_id-status${component.terrainNote == null ? '' : ' $_id-terrain'}',
           'data-webgl': _c.webGlAvailable ? 'ready' : 'unavailable',
           'data-pack': loading ? 'loading' : (McAssetLoader.failure?.name ?? (McAssetLoader.loaded == null ? 'waiting' : 'ready')),
         },
@@ -596,6 +601,27 @@ class _McStageState extends State<McStage> {
           dom.div(classes: 'animus-mc-text-layer', _textLayer()),
           if (component.overlay != null && _widthPx > 0 && _heightPx > 0)
             dom.div(classes: 'animus-mc-overlay', component.overlay!(_c.camera, _widthPx, _heightPx)),
+          if (component.terrainNote case final String note)
+            dom.p(
+              id: '$_id-terrain',
+              attributes: const <String, String>{'data-terrain-note': ''},
+              // Inline so the stage stylesheet stays as it is.
+              styles: const dom.Styles(raw: <String, String>{
+                'position': 'absolute',
+                'bottom': '0.5rem',
+                'left': '0.5rem',
+                'right': '0.5rem',
+                'z-index': '1001',
+                'margin': '0',
+                'padding': '0.4rem 0.6rem',
+                'font-size': '0.8125rem',
+                'line-height': '1.35',
+                'background': 'color-mix(in srgb, var(--animus-panel) 90%, transparent)',
+                'border': '1px solid var(--animus-warning)',
+                'pointer-events': 'none',
+              }),
+              <Widget>[Component.text(note)],
+            ),
           if (loading)
             const dom.div(classes: 'animus-mc-loading', attributes: <String, String>{'aria-hidden': 'true'}, <Widget>[
               dom.span(classes: 'animus-mc-spinner', <Widget>[]),

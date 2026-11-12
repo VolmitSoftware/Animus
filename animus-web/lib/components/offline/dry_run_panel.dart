@@ -24,6 +24,7 @@ import '../../services/skin_images.dart';
 import '../gui/gui_fields.dart';
 import '../info_tip.dart';
 import '../mc/mc_stage.dart';
+import '../../logic/gui/gui_text.dart';
 
 class DryRunPanel extends StatefulWidget {
   const DryRunPanel({
@@ -157,14 +158,14 @@ class _DryRunPanelState extends State<DryRunPanel> {
               GuiSelect(
                 value: actor.id,
                 options: <String>[for (final AnimusDocument npc in _npcs) npc.id],
-                labels: <String, String>{for (final AnimusDocument npc in _npcs) npc.id: npc.title},
+                labels: <String, String>{for (final AnimusDocument npc in _npcs) npc.id: guiPlainText(npc.title)},
                 onChanged: (String? value) => setState(() {
                   _npc = value;
                   _staged = null;
                 }),
               )
             else
-              dom.p(classes: 'animus-muted', <Widget>[Component.text('${NpcLook.legacy(actor.title).replaceAll(RegExp('§.'), '')} runs this behavior.')]),
+              dom.p(classes: 'animus-muted', <Widget>[Component.text('${guiPlainText(actor.title)} runs this behavior.')]),
           ])
         else
           dom.p(classes: 'animus-muted animus-dryrun-nostage', <Widget>[

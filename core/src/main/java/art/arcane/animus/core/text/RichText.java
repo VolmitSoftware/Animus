@@ -12,8 +12,8 @@ import java.util.OptionalInt;
 
 /**
  * The one formatter for player-facing text on every platform. Source text may use {@code &} colour and style codes,
- * {@code &#RRGGBB}, {@code &x&R&R&G&G&B&B}, Gloss's {@code [RRGGBB]}, section codes, backslash-u escapes such as {@code \\u2764}, literal Unicode symbols and the
- * common MiniMessage colour and decoration tags. {@link #colorize} turns it into section-coded text and
+ * {@code &#RRGGBB}, {@code &x&R&R&G&G&B&B}, Gloss's {@code [RRGGBB]}, section codes, backslash-u escapes such as {@code \\u2764}, literal Unicode symbols, the
+ * common MiniMessage colour and decoration tags and {@code <gradient:a:b>}, which becomes one hex colour per letter. {@link #colorize} turns it into section-coded text and
  * {@link #runs} splits that into styled runs a platform maps onto its native chat components.
  */
 public final class RichText {
@@ -70,6 +70,15 @@ public final class RichText {
             }
             if (glyph == '<') {
                 int end = source.indexOf('>', index);
+                int[] gradient = end > index + 1 ? gradientColours(source.substring(index + 1, end).toLowerCase(Locale.ROOT)) : null;
+                if (gradient != null) {
+                    int close = source.toLowerCase(Locale.ROOT).indexOf("</gradient>", end + 1);
+                    out.append(gradient(source.substring(end + 1, close < 0 ? source.length() : close), gradient));
+                    if (close < 0) break;
+                    out.append(reopen(open));
+                    index = close + "</gradient>".length();
+                    continue;
+                }
                 if (end > index + 1) {
                     String tag = source.substring(index + 1, end).toLowerCase(Locale.ROOT);
                     String code = tag(tag, open);
@@ -241,9 +250,7 @@ public final class RichText {
             String name = tag.substring(1);
             if (!TAGS.containsKey(name) && !name.startsWith("#") && !name.startsWith("color") && !name.startsWith("colour")) return null;
             open.remove(name);
-            StringBuilder rebuilt = new StringBuilder().append(SECTION).append('r');
-            open.descendingIterator().forEachRemaining((String still) -> rebuilt.append(tag(still, new ArrayDeque<>())));
-            return rebuilt.toString();
+            return reopen(open);
         }
         if (tag.startsWith("#") && tag.length() == 7 && hex(tag, 1)) { open.push(tag); return hexCode(tag.substring(1)); }
         if (tag.startsWith("color:")) return tag(tag.substring(6), open);
@@ -252,6 +259,75 @@ public final class RichText {
         if (code == null) return null;
         if (code != 'r') open.push(tag); else open.clear();
         return String.valueOf(SECTION) + code;
+    }
+
+    /** A reset, then the tags still open again. */
+    private static String reopen(Deque<String> open) {
+        StringBuilder rebuilt = new StringBuilder().append(SECTION).append('r');
+        open.descendingIterator().forEachRemaining((String still) -> rebuilt.append(tag(still, new ArrayDeque<>())));
+        return rebuilt.toString();
+    }
+
+    /** A gradient tag's colours: white to black without any; null for another tag, one colour or an unknown one. A phase number is ignored. */
+    private static int[] gradientColours(String tag) {
+        if (!tag.equals("gradient") && !tag.startsWith("gradient:")) return null;
+        List<Integer> colours = new ArrayList<>();
+        String[] arguments = tag.split(":");
+        for (int at = 1; at < arguments.length; at++) {
+            String argument = arguments[at];
+            Character code = TAGS.get(argument);
+            if (argument.length() == 7 && argument.charAt(0) == '#' && hex(argument, 1)) colours.add(Integer.parseInt(argument.substring(1), 16));
+            else if (code != null && COLOURS.indexOf(code) >= 0) colours.add(PALETTE[COLOURS.indexOf(code)]);
+            else if (!number(argument)) return null;
+        }
+        if (colours.isEmpty()) return new int[] {0xFFFFFF, 0x000000};
+        return colours.size() < 2 ? null : colours.stream().mapToInt(Integer::intValue).toArray();
+    }
+
+    private static boolean number(String text) {
+        try { Double.parseDouble(text); return true; }
+        catch (NumberFormatException notNumber) { return false; }
+    }
+
+    /** {@code inner} coloured letter by letter across {@code colours}; decorations inside stay on each letter, colours inside give way. */
+    private static String gradient(String inner, int[] colours) {
+        String coloured = colorize(inner);
+        List<String> letters = new ArrayList<>();
+        List<String> styles = new ArrayList<>();
+        String decorations = "";
+        int index = 0;
+        while (index < coloured.length()) {
+            char glyph = coloured.charAt(index);
+            if (glyph == SECTION && index + 1 < coloured.length()) {
+                char code = coloured.charAt(index + 1);
+                if (code == 'x' && sectionHex(coloured, index)) { decorations = ""; index += 14; continue; }
+                if (COLOURS.indexOf(code) >= 0 || code == 'r') { decorations = ""; index += 2; continue; }
+                if ("klmno".indexOf(code) >= 0) { if (decorations.indexOf(code) < 0) decorations += code; index += 2; continue; }
+            }
+            letters.add(String.valueOf(glyph));
+            styles.add(decorations);
+            index++;
+        }
+        StringBuilder out = new StringBuilder();
+        for (int at = 0; at < letters.size(); at++) {
+            double t = letters.size() == 1 ? 0 : (double) at / (letters.size() - 1);
+            out.append(hexCode(String.format("%06x", lerp(colours, t))));
+            for (char code : styles.get(at).toCharArray()) out.append(SECTION).append(code);
+            out.append(letters.get(at));
+        }
+        return out.toString();
+    }
+
+    private static int lerp(int[] colours, double t) {
+        double scaled = t * (colours.length - 1);
+        int segment = Math.max(0, Math.min((int) Math.floor(scaled), colours.length - 2));
+        double local = scaled - segment;
+        int from = colours[segment], to = colours[segment + 1], rgb = 0;
+        for (int shift = 16; shift >= 0; shift -= 8) {
+            int a = from >> shift & 0xFF, b = to >> shift & 0xFF;
+            rgb |= ((int) Math.round(a + (b - a) * local) & 0xFF) << shift;
+        }
+        return rgb;
     }
 
     private static boolean repeatedHex(String text, int from, char marker) {

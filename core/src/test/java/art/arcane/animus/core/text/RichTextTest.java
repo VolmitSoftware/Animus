@@ -49,6 +49,21 @@ class RichTextTest {
         assertFalse(RichText.formatted("Tom & Jerry"));
     }
 
+    @Test void miniMessageGradientColoursEachLetter() {
+        assertEquals("§x§f§f§0§0§0§0a§x§8§0§0§0§8§0b§x§0§0§0§0§f§fc§r", RichText.colorize("<gradient:#ff0000:#0000ff>abc</gradient>"));
+        assertEquals("§x§f§f§5§5§5§5a§x§5§5§5§5§f§fb§r", RichText.colorize("<gradient:red:blue>ab</gradient>"));
+        assertEquals("§x§0§0§0§0§0§0§la§x§f§f§f§f§f§f§lb§r after", RichText.colorize("<gradient:#000000:#ffffff><bold>ab</bold></gradient> after"));
+        assertEquals("Charts & Clocks", RichText.plain("<gradient:#ff0000:#0000ff>Charts & Clocks</gradient>"));
+        assertEquals("<gradient:#ff0000>x</gradient>", RichText.colorize("<gradient:#ff0000>x</gradient>"));
+    }
+
+    @Test void perLetterHexGradientNamesColourEveryLetter() {
+        List<RichText.Run> runs = RichText.runs("&#1d976cT&#259e72h&#2ea577e &#36ac7cC");
+        assertEquals("The C", RichText.plain("&#1d976cT&#259e72h&#2ea577e &#36ac7cC"));
+        assertEquals(OptionalInt.of(0x1d976c), runs.getFirst().rgb());
+        assertEquals(OptionalInt.of(0x36ac7c), runs.getLast().rgb());
+    }
+
     @Test void colourNamesCodesAndHexResolve() {
         assertEquals(Optional.of("§a"), RichText.colourCode("green"));
         assertEquals(Optional.of("§c"), RichText.colourCode("c"));

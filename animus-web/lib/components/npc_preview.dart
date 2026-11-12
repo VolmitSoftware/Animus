@@ -39,6 +39,7 @@ import 'mc/mc_asset_loader.dart';
 import 'mc/mc_stage.dart';
 import 'terrain/live_position.dart';
 import 'terrain/stage_terrain.dart';
+import '../logic/gui/gui_text.dart';
 
 class NpcPreview extends StatefulWidget {
   const NpcPreview({
@@ -364,7 +365,7 @@ class _NpcPreviewState extends State<NpcPreview> {
           ),
         ],
       ]),
-      McStage(controller: _stage, label: 'Preview of ${component.document.title}'),
+      McStage(controller: _stage, label: 'Preview of ${guiPlainText(component.document.title)}', terrainNote: _terrain.note),
       dom.dl(classes: 'animus-npc-facts', <Widget>[
         ..._fact('Body', scene.presentable ? look.type : '${look.type} (not presented)'),
         if (component.rig != null)
@@ -389,9 +390,8 @@ class _NpcPreviewState extends State<NpcPreview> {
         ..._fact('Text', look.textLines.isEmpty ? (look.nativeName ? 'nameplate only' : 'none') : '${look.textLines.length} line${look.textLines.length == 1 ? '' : 's'}'),
         if (live != null) ..._fact('Now at', '${live.x.floor()}, ${live.y.floor()}, ${live.z.floor()} in ${live.world}'),
       ]),
-      if (scene.notes.isNotEmpty || _terrain.note != null)
+      if (scene.notes.isNotEmpty)
         dom.ul(classes: 'animus-npc-notes', <Widget>[
-          if (_terrain.note != null) dom.li(attributes: const <String, String>{'data-terrain-note': ''}, <Widget>[Component.text(_terrain.note!)]),
           for (final String note in scene.notes) dom.li(<Widget>[Component.text(note)]),
         ]),
     ]);
