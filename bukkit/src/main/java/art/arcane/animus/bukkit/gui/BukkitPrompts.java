@@ -99,9 +99,24 @@ final class BukkitPrompts implements Listener {
         Inventory top = view.getTopInventory();
         if (!top.equals(player.getOpenInventory().getTopInventory())) return false;
         prompts.start(player.getUniqueId(), new TextPrompts.Waiting(prompt, TextPrompts.Input.ANVIL, top, owner(player, top)));
+        name(view, prompt.initial());
         top.setItem(INPUT, paper(prompt.initial()));
         view.setRepairCost(0);
         return true;
+    }
+
+    /**
+     * Gives a fresh anvil its rename text before the paper goes in. Until the client types, the server holds no name,
+     * so getRenameText() is null in the PrepareAnvilEvent that placing the paper fires, and listeners in other plugins
+     * that assume a name (CMI's anvil colours) throw. Servers without the menu's setItemName keep the old behaviour.
+     */
+    private static void name(AnvilView view, String text) {
+        try {
+            Object menu = view.getClass().getMethod("getHandle").invoke(view);
+            menu.getClass().getMethod("setItemName", String.class).invoke(menu, text);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError unsupported) {
+            // The prompt still works; only a listener that assumes a name sees null.
+        }
     }
 
     /** The chat fallback: the next line the player sends answers. */

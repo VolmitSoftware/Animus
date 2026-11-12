@@ -78,4 +78,16 @@ TaskProvider<JavaExec> compatibility = tasks.register('apiCompatibility', JavaEx
     argumentProviders.add({ ['--old', baselineJar.get().archiveFile.get().asFile.absolutePath, '--new', current.get().archiveFile.get().asFile.absolutePath,
         '--only-incompatible', '--error-on-binary-incompatibility'] } as CommandLineArgumentProvider)
 }
-tasks.named('check').configure { dependsOn(compatibility) }
+// Builds from a copy without git history (Multiplexor sandboxes, source archives) cannot read the tag, so they skip it.
+Provider<Boolean> baselineAvailable = providers.exec {
+    workingDir(animusRoot)
+    commandLine('git', 'rev-parse', '--verify', '--quiet', "${apiBaseline}^{commit}")
+    ignoreExitValue = true
+}.result.map { ExecResult result -> result.exitValue == 0 }
+tasks.named('check').configure {
+    if (baselineAvailable.get()) {
+        dependsOn(compatibility)
+    } else {
+        logger.lifecycle("Skipping apiCompatibility: git tag ${apiBaseline} is not available here.")
+    }
+}

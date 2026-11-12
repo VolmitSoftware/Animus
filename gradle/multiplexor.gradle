@@ -47,7 +47,7 @@ gradle.projectsEvaluated {
             artifacts: []
         ])
     }
-    for (String loader : (providers.gradleProperty('includeModDistributions').getOrElse('false').toBoolean() ? ['fabric', 'forge', 'neoforge'] : [])) {
+    for (String loader : ['fabric', 'forge', 'neoforge']) {
         minecraftTargets.each { String minecraft, Map<String, Object> properties ->
             if (loader == 'neoforge' && properties.neoforgeUsesForge) {
                 return
