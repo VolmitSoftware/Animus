@@ -1,10 +1,13 @@
 /// The editor's one control system, emitted after the Ascii stylesheet so it
 /// wins by order. arcane_jaspr sets button and field heights inline, so the
-/// size rules carry `!important`; nothing else does.
+/// size rules (and the icon sizes, set inline too) carry `!important`;
+/// nothing else does.
 ///
 /// Shape: every corner is `--animus-radius` (0). No inset or offset shadow,
 /// no one-sided accent border, no accent gradient. Selection is a raised grey
-/// fill with a full 1 px pink border; focus is a 2 px pink outline.
+/// fill with a full 1 px pink border; focus is a 2 px pink outline
+/// (`--animus-focus-ring`; arcane draws it on every control) 2 px outside,
+/// or 2 px inside in clipped containers.
 ///
 /// Buttons: primary, secondary (also `outline`), ghost, destructive, each in
 /// small (`sm`, `iconSm`) and default (`md`, `lg`, `iconMd`, `iconLg`). The
@@ -14,14 +17,19 @@
 ///
 /// | size    | height | padding  | font      | icon    |
 /// |---------|--------|----------|-----------|---------|
-/// | small   | 28 px  | 0 0.625r | 13 px     | 14 px   |
-/// | default | 36 px  | 0 0.875r | 14 px     | 16 px   |
+/// | small   | 28 px  | 0 0.625r | 13 px     | 20 px   |
+/// | default | 36 px  | 0 0.875r | 14 px     | 20 px   |
 /// | phone   | 44 px  | as above | as above  | as above|
 ///
-/// Primary and destructive are weight 600, the rest 400; every button has a
-/// 1 px border (transparent where the fill carries the edge) so all
-/// variants of a size measure the same. Text inputs and selects take the
-/// default height, so a field and a button in one row line up.
+/// The `--animus-control-*` tokens live on `:root` in
+/// web/styles/01-foundations.css. Primary and destructive are weight 600,
+/// the rest 400; every button has a 1 px border (transparent where the fill
+/// carries the edge) so all variants of a size measure the same.
+///
+/// Every field (TextInput, `.animus-gui-input`, the select trigger, the
+/// suggest inputs) is the default height. A small button whose parent also
+/// holds a field takes the default size, so a field and its buttons share
+/// one height; small buttons stay small only in rows of buttons.
 const String controlCss = r'''
 #arcane-root {
   --radius: var(--animus-radius);
@@ -38,21 +46,6 @@ const String controlCss = r'''
   --shadow-xl: none;
   --shadcn-focus-ring: none;
   --shadcn-control-shadow: none;
-  --animus-control-h: 2.25rem;
-  --animus-control-h-sm: 1.75rem;
-  --animus-control-pad: 0.875rem;
-  --animus-control-pad-sm: 0.625rem;
-  --animus-control-font: 0.875rem;
-  --animus-control-font-sm: 0.8125rem;
-  --animus-control-icon: 1rem;
-  --animus-control-icon-sm: 0.875rem;
-  --animus-control-border: 1px;
-}
-@media (max-width: 760px), (pointer: coarse) {
-  #arcane-root {
-    --animus-control-h: 2.75rem;
-    --animus-control-h-sm: 2.75rem;
-  }
 }
 #arcane-root :where(*, *::before, *::after) {
   border-radius: var(--animus-radius);
@@ -114,15 +107,25 @@ const String controlCss = r'''
   width: var(--animus-control-h-sm) !important;
   min-width: var(--animus-control-h-sm) !important;
 }
-#arcane-root.arcane-theme-ascii :is(.arcane-button, .arcane-cycle-button) :is(svg, .arcane-icon) {
-  width: var(--animus-control-icon);
-  height: var(--animus-control-icon);
-  font-size: var(--animus-control-icon);
+#arcane-root.arcane-theme-ascii :is(.arcane-button, .arcane-cycle-button) :is(svg, .arcane-icon, [data-arcane-semantic-icon] > i) {
+  width: var(--animus-button-icon) !important;
+  height: var(--animus-button-icon) !important;
+  font-size: var(--animus-button-icon) !important;
 }
-#arcane-root.arcane-theme-ascii :is(.arcane-button, .arcane-cycle-button):is([data-size='sm'], [data-size='iconSm']) :is(svg, .arcane-icon) {
-  width: var(--animus-control-icon-sm);
-  height: var(--animus-control-icon-sm);
-  font-size: var(--animus-control-icon-sm);
+
+/* A small button beside a field (same parent) is the default size. A
+   TextInput sits in a bare div. */
+#arcane-root.arcane-theme-ascii :has(> :is(.arcane-text-input-container, .animus-gui-input, .animus-gui-text, .animus-ac, .animus-select, .animus-select-trigger), > div > :is(.arcane-text-input, .arcane-text-input-container)) > :is(.arcane-button, .arcane-cycle-button):is([data-size='sm'], [data-size='iconSm']) {
+  height: var(--animus-control-h) !important;
+  min-height: var(--animus-control-h) !important;
+  padding: 0 var(--animus-control-pad) !important;
+  gap: 0.5rem !important;
+  font-size: var(--animus-control-font) !important;
+}
+#arcane-root.arcane-theme-ascii :has(> :is(.arcane-text-input-container, .animus-gui-input, .animus-gui-text, .animus-ac, .animus-select, .animus-select-trigger), > div > :is(.arcane-text-input, .arcane-text-input-container)) > .arcane-button[data-size='iconSm'] {
+  width: var(--animus-control-h) !important;
+  min-width: var(--animus-control-h) !important;
+  padding: 0 !important;
 }
 
 /* Button colours: rest, hover, active and pressed per variant. */
@@ -233,7 +236,8 @@ const String controlCss = r'''
   border-color: var(--ring) !important;
 }
 
-/* Checkboxes, radios and ranges are square. */
+/* Checkboxes, radios and ranges are square. Native boxes match arcane's
+   Checkbox (14 px at every width); their label or cell is the tap target. */
 #arcane-root.arcane-theme-ascii :is(input[type='checkbox'], input[type='radio']) {
   appearance: none;
   -webkit-appearance: none;
@@ -241,8 +245,8 @@ const String controlCss = r'''
   display: inline-grid;
   place-content: center;
   flex: none;
-  width: 1.125rem;
-  height: 1.125rem;
+  width: var(--animus-control-icon-sm);
+  height: var(--animus-control-icon-sm);
   margin: 0;
   border: 1px solid var(--input);
   background: var(--card);
@@ -253,8 +257,8 @@ const String controlCss = r'''
 }
 #arcane-root.arcane-theme-ascii input[type='checkbox']:checked::before {
   content: '';
-  width: 0.375rem;
-  height: 0.625rem;
+  width: 0.25rem;
+  height: 0.5rem;
   margin-top: -0.125rem;
   border: solid var(--primary-foreground);
   border-width: 0 2px 2px 0;
@@ -262,8 +266,8 @@ const String controlCss = r'''
 }
 #arcane-root.arcane-theme-ascii input[type='radio']:checked::before {
   content: '';
-  width: 0.5rem;
-  height: 0.5rem;
+  width: 0.375rem;
+  height: 0.375rem;
   background: var(--primary-foreground);
 }
 #arcane-root.arcane-theme-ascii :is(input[type='checkbox'], input[type='radio']):disabled {
@@ -314,7 +318,10 @@ const String controlCss = r'''
 #arcane-root.arcane-theme-ascii a:not([class]):hover {
   color: var(--animus-pink-deep);
 }
-#arcane-root.arcane-theme-ascii :is(.animus-sidebar, .animus-menu, .animus-palette, .animus-tabs, .animus-segmented, .animus-inset-focus) :is(button, a, input, textarea, select, summary, [tabindex]):focus-visible {
-  outline-offset: -2px;
+#arcane-root.arcane-theme-ascii :is(button, a, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline-offset: var(--animus-focus-offset);
+}
+#arcane-root.arcane-theme-ascii :is(.animus-sidebar, .animus-menu, .animus-palette, .animus-tabs, .animus-segmented, .animus-select-popup, .animus-inset-focus) :is(button, a, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline-offset: var(--animus-focus-inset);
 }
 ''';

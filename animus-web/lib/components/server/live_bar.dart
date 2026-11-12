@@ -141,10 +141,9 @@ class _LiveBarState extends State<LiveBar> {
             onChanged: (String value) => setState(() => _code = value),
             onSubmitted: (String _) => _pairWith(),
           ),
-          Button.primary(label: 'Pair', size: ButtonSize.small, onPressed: _pairWith),
+          Button.primary(label: 'Pair', onPressed: _pairWith),
           Button.ghost(
             label: 'Cancel',
-            size: ButtonSize.small,
             onPressed: () {
               setState(() => _pairing = false);
               focusSoon(_pairId);
@@ -169,21 +168,18 @@ class _LiveBarState extends State<LiveBar> {
           ]),
           Button.secondary(
             label: 'Validate',
-            size: ButtonSize.small,
             disabled: !online || !idle,
             onPressed: () => session.validate(only: drafts.isEmpty && focus != null ? <String>{focus} : null),
           ),
           Button.secondary(
             label: preview != null && preview.running ? 'Update preview' : 'Preview',
-            size: ButtonSize.small,
             disabled: !online || !idle || (drafts.isEmpty && !focusIsNpc),
             onPressed: () => session.startPreview(focus: focusIsNpc ? <String>{focus} : null),
           ),
           if (preview != null && preview.running)
-            Button.ghost(label: 'End preview', size: ButtonSize.small, disabled: !online || !idle, onPressed: session.endPreview),
+            Button.secondary(label: 'End preview', disabled: !online || !idle, onPressed: session.endPreview),
           Button.primary(
             label: drafts.isEmpty ? 'Apply' : 'Apply ${drafts.length}',
-            size: ButtonSize.small,
             disabled: !online || !idle || drafts.isEmpty,
             attributes: const <String, String>{'id': 'animus-live-apply'},
             onPressed: () async {
@@ -203,7 +199,6 @@ class _LiveBarState extends State<LiveBar> {
         if (undoable.isNotEmpty && !_confirmUndo)
           Button.ghost(
             label: 'Undo last apply',
-            size: ButtonSize.small,
             disabled: !online || !idle,
             attributes: <String, String>{'id': _undoId, 'title': 'Undo change ${undoable.first.changeId} on the server'},
             onPressed: () => setState(() => _confirmUndo = true),

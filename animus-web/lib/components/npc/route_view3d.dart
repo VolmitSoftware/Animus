@@ -99,7 +99,7 @@ class _RouteView3dState extends State<RouteView3d> {
   Widget build(BuildContext context) {
     return dom.div(classes: 'animus-route-3d', attributes: <String, String>{'data-route-3d': '', 'data-terrain-meshes': '${_terrain.on ? _terrain.result?.nodes.length ?? 0 : 0}'}, <Widget>[
       dom.div(classes: 'animus-npc-preview-bar', <Widget>[
-        Button.ghost(label: 'Reset view', size: ButtonSize.small, onPressed: _stage.resetCamera),
+        Button.ghost(label: 'Reset view', onPressed: _stage.resetCamera),
         _terrain.controls('route-3d-terrain'),
       ]),
       McStage(controller: _stage, label: '3D route view', terrainNote: _terrain.note),

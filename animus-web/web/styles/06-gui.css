@@ -82,9 +82,9 @@
 }
 
 .animus-gui-component-list [aria-pressed="true"] {
-  background: var(--secondary, var(--animus-panel));
-  color: var(--foreground, inherit);
-  border-color: var(--primary, #ff5fa8);
+  background: var(--secondary);
+  color: var(--foreground);
+  border-color: var(--primary);
 }
 
 .animus-chest-slot {
@@ -113,14 +113,12 @@ button.animus-chest-slot:focus-visible {
 
 button.animus-chest-slot:focus-visible {
   z-index: 2;
-  outline: 3px solid var(--ring, #ffb3d6);
-  outline-offset: 0;
 }
 
 /* The one pink in the window: the slot being edited. */
 .animus-chest-slot.is-selected {
   border-color: #0d0d0f;
-  outline: 2px solid var(--primary, #ff5fa8);
+  outline: 2px solid var(--primary);
   outline-offset: -4px;
 }
 
@@ -295,6 +293,8 @@ button.animus-chest-slot:focus-visible {
   flex-wrap: wrap;
   gap: 0.25rem 0.5rem;
   align-items: flex-start;
+  /* Rows stretched by a taller grid neighbour keep their lines at the top. */
+  align-content: flex-start;
 }
 
 .animus-gui-row > :first-child {
@@ -308,7 +308,7 @@ button.animus-chest-slot:focus-visible {
 
 .animus-gui-label {
   padding-top: 0.375rem;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   color: var(--animus-muted);
   overflow-wrap: anywhere;
 }
@@ -322,12 +322,12 @@ button.animus-chest-slot:focus-visible {
 }
 
 .animus-gui-help {
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   color: var(--animus-muted);
 }
 
 .animus-gui-problem {
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   overflow-wrap: anywhere;
 }
 
@@ -348,16 +348,24 @@ button.animus-chest-slot:focus-visible {
   flex: 1 1 16rem;
 }
 
+/* The native field: TextInput's height, border, text inset and font.
+   Textareas keep their own height above the minimum. */
 .animus-gui-input {
   width: 100%;
   box-sizing: border-box;
-  min-height: 2rem;
-  padding: 0.3rem 0.5rem;
-  border: 1px solid var(--animus-border);
-  background: var(--background, #0d0d0f);
-  color: var(--foreground, inherit);
+  min-height: var(--animus-control-h);
+  padding: 0.375rem var(--animus-field-pad);
+  border: var(--animus-control-border) solid var(--input);
+  background: var(--background);
+  color: var(--foreground);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: var(--animus-control-font);
+  line-height: 1.25rem;
+}
+
+.animus-gui-input:not(textarea) {
+  height: var(--animus-control-h);
+  padding-block: 0;
 }
 
 .animus-gui-input::placeholder {
@@ -365,26 +373,29 @@ button.animus-chest-slot:focus-visible {
   opacity: 1;
 }
 
-.animus-gui-input:hover {
+.animus-gui-input:hover:not(:disabled) {
   border-color: var(--animus-muted);
+}
+
+.animus-gui-input:disabled {
+  color: var(--muted-foreground);
+  background: var(--muted);
+  border-color: var(--border);
+  cursor: not-allowed;
 }
 
 .animus-gui-input.is-code {
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 .animus-gui-input.is-number {
   /* As wide as the widest value the field allows, plus padding and the
      step arrows; --animus-digits comes from the field's range. The 100%
-     cap lets a narrow cell shrink it instead of being pushed open. */
-  width: min(100%, calc(var(--animus-digits, 8) * 1ch + 2.75rem));
+     cap lets a narrow cell shrink it instead of being pushed open. A
+     context sets --animus-digits or a grid track, never its own width. */
+  width: min(100%, calc(var(--animus-digits, 8) * 1ch + 2.25rem + 2 * var(--animus-field-pad)));
   flex: 0 0 auto;
-}
-
-.animus-gui-input:focus-visible {
-  outline: 2px solid var(--ring, #ff5fa8);
-  outline-offset: 1px;
 }
 
 .animus-gui-input.is-invalid {
@@ -392,9 +403,9 @@ button.animus-chest-slot:focus-visible {
 }
 
 .animus-gui-sample {
-  padding: 0.2rem 0.4rem;
+  padding: 0.25rem 0.375rem;
   background: #1f1f1f;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   overflow-wrap: anywhere;
 }
 
@@ -407,20 +418,34 @@ button.animus-chest-slot:focus-visible {
   min-width: 0;
 }
 
-.animus-gui-xyz .animus-gui-input.is-number {
-  width: 5.5rem;
+/* A field with a sample or problem under it: the controls beside it line up
+   with the field itself, not with the field plus its notes. */
+.animus-gui-line {
+  align-items: flex-start;
+}
+
+/* x, y and z share the row as equal tracks of 6 to 7rem, room for a value
+   such as -12.5; under three tracks' width the last one wraps. */
+.animus-gui-xyz {
+  gap: 0.25rem;
+}
+
+.animus-gui-xyz > .animus-gui-input.is-number {
+  flex: 1 1 0;
+  min-width: 6rem;
+  max-width: 7rem;
 }
 
 .animus-gui-section {
   border: 1px solid var(--animus-border);
-  padding: 0.375rem 0.625rem;
+  padding: 0.375rem 0.5rem;
   min-width: 0;
 }
 
 .animus-gui-section > summary {
   cursor: pointer;
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: var(--animus-text-md);
   padding: 0.25rem 0;
 }
 
@@ -465,14 +490,14 @@ button.animus-chest-slot:focus-visible {
 
 .animus-gui-refused {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   color: var(--animus-error);
   overflow-wrap: anywhere;
 }
 
 .animus-gui-note {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   color: var(--animus-warning);
 }
 
@@ -520,10 +545,6 @@ button.animus-chest-slot:focus-visible {
      than shrinking slots below 44 px. */
   .animus-chest-screen {
     --animus-slot: 2.75rem;
-  }
-
-  .animus-gui-input {
-    min-height: 2.75rem;
   }
 
   .animus-gui-label {
@@ -578,7 +599,7 @@ button.animus-chest-slot:focus-visible {
 }
 
 .animus-gui-pick.is-selected {
-  border: 2px solid var(--primary, #ff5fa8);
+  border: 2px solid var(--primary);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -605,7 +626,7 @@ button.animus-chest-slot:focus-visible {
 .animus-gui-fix {
   display: grid;
   gap: 0.5rem;
-  padding: 0.5rem 0.625rem;
+  padding: 0.5rem 0.75rem;
   border: 1px solid var(--animus-error);
 }
 

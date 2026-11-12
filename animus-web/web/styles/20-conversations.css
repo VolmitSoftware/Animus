@@ -52,18 +52,14 @@
 
 .animus-conv-title {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--animus-text-lg);
 }
 
 .animus-conv-errors {
   padding: 0 0.375rem;
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   background: var(--animus-error);
   color: var(--animus-error-foreground);
-}
-
-.animus-conv-start .animus-gui-input.is-number {
-  width: 6rem;
 }
 
 .animus-conv-tree {
@@ -131,7 +127,7 @@
 .animus-conv-kind {
   flex: none;
   width: 3rem;
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   color: var(--animus-muted);
 }
 
@@ -170,7 +166,7 @@
   display: flex;
   gap: 0.25rem;
   align-items: center;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 .animus-conv-branches {
@@ -212,7 +208,7 @@
 }
 
 .animus-conv-fields > .animus-gui-input.is-number {
-  width: 5rem;
+  --animus-digits: 3;
 }
 
 .animus-conv-args {
@@ -277,7 +273,7 @@
 
 .animus-pick-list .animus-menu-item[aria-selected="true"] {
   font-weight: 600;
-  background: var(--card-hover, #222024);
+  background: var(--card-hover);
 }
 
 .animus-pick-list .animus-menu-item[aria-selected="true"]::after {
@@ -297,7 +293,7 @@
 
 .animus-conv-preview-head h3 {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--animus-text-md);
 }
 
 .animus-conv-chat {
@@ -305,12 +301,12 @@
   gap: 0.375rem;
   max-height: 32rem;
   margin: 0;
-  padding: 0.625rem;
+  padding: 0.75rem;
   overflow-y: auto;
   list-style: none;
   background: #1b1a1c;
   color: #ffffff;
-  font-size: 0.875rem;
+  font-size: var(--animus-text-md);
 }
 
 .animus-conv-chat > li {
@@ -338,7 +334,7 @@
 .animus-conv-chat-note,
 .animus-conv-chat-end,
 .animus-conv-chat .animus-muted {
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   color: #c4bfc3;
 }
 
@@ -356,7 +352,7 @@
 .animus-conv-chat-if,
 .animus-conv-chat-if label {
   color: #ffffff;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 .animus-conv-targets {

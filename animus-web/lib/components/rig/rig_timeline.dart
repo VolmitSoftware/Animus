@@ -187,14 +187,13 @@ class _RigTimelineState extends State<RigTimeline> {
         ]),
         dom.div(classes: 'animus-row', <Widget>[
           TextInput(
-            size: ComponentSize.sm,
             placeholder: 'new animation name',
             value: component.newName,
             attributes: const <String, String>{'aria-label': 'Name for a new animation'},
             onChanged: component.onNewName,
             onSubmitted: (String _) => component.onCreate(),
           ),
-          Button.secondary(label: 'New animation', icon: ArcaneIcon.plus(), size: ButtonSize.small, onPressed: component.onCreate),
+          Button.secondary(label: 'New animation', icon: ArcaneIcon.plus(), onPressed: component.onCreate),
         ]),
       ]),
       dom.div(classes: 'animus-rig-names-box', <Widget>[
@@ -232,7 +231,6 @@ class _RigTimelineState extends State<RigTimeline> {
         Button.primary(
           label: component.playing ? 'Pause' : 'Play',
           icon: component.playing ? ArcaneIcon.pause() : ArcaneIcon.play(),
-          size: ButtonSize.small,
           disabled: !component.valid,
           onPressed: component.onPlay,
         ),
@@ -262,7 +260,6 @@ class _RigTimelineState extends State<RigTimeline> {
         dom.label(classes: 'animus-rig-field is-inline', <Widget>[
           const dom.span(<Widget>[Component.text('Duration (ticks)')]),
           TextInput(
-            size: ComponentSize.sm,
             type: TextInputType.number,
             value: _duration ?? formatTick(duration),
             attributes: const <String, String>{'aria-label': 'Duration in ticks', 'min': '1', 'max': '1200'},
@@ -321,7 +318,7 @@ class _RigTimelineState extends State<RigTimeline> {
         ]),
         for (int index = 0; index < tracks.length; index++) _lane(tracks, index, span, time),
         if (tracks.isEmpty)
-          const dom.p(classes: 'animus-muted', <Widget>[Component.text('No tracks yet. Select a bone and add a keyframe.')]),
+          const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No tracks yet. Select a bone and add a keyframe.')]),
         _eventLane(events, span, time),
       ]),
       dom.div(classes: 'animus-rig-toolbar animus-rig-keybar', <Widget>[
@@ -351,14 +348,12 @@ class _RigTimelineState extends State<RigTimeline> {
         Button.secondary(
           label: 'Add keyframe',
           icon: ArcaneIcon.plus(),
-          size: ButtonSize.small,
           disabled: component.selectedBone == null,
           onPressed: component.onAddKeyframe,
         ),
-        Button.ghost(label: 'New track', size: ButtonSize.small, disabled: component.selectedBone == null, onPressed: component.onNewTrack),
+        Button.ghost(label: 'New track', disabled: component.selectedBone == null, onPressed: component.onNewTrack),
         Button.ghost(
           label: 'Add event',
-          size: ButtonSize.small,
           disabled: events.length >= maximumEvents,
           onPressed: () {
             final int tick = time.round().clamp(0, duration.round());

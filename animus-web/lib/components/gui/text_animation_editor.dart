@@ -113,7 +113,7 @@ class _TextAnimationPreviewState extends State<TextAnimationPreview> {
     return dom.div(classes: 'animus-gui-anim-preview', <Widget>[
       dom.div(classes: 'animus-gui-anim-stage', attributes: const <String, String>{'aria-live': 'off'}, <Widget>[
         if (frames.isEmpty)
-          const dom.p(classes: 'animus-muted', <Widget>[Component.text('No frames yet. Add one below.')])
+          const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No frames yet. Add one below.')])
         else if (hidden)
           const dom.p(classes: 'animus-muted', <Widget>[Component.text('Hidden: show is false for the sample viewer.')])
         else

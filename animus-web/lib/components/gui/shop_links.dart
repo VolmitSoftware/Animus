@@ -137,7 +137,7 @@ class _ShopLinksState extends State<ShopLinks> {
         withTip(Component.text(users.isEmpty ? 'Used by' : 'Used by (${users.length})'), 'NPCs and groups whose shop module opens this shop on click.'),
       ]),
       if (users.isEmpty)
-        const dom.p(classes: 'animus-muted', <Widget>[Component.text('No NPC opens it yet.')])
+        const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No NPC opens it yet.')])
       else
         dom.ul(classes: 'animus-shop-users', <Widget>[for (final AnimusDocument document in users) _user(document)]),
       if (others.isNotEmpty && _confirming && picked != null && replaces != null)

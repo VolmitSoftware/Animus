@@ -57,7 +57,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   color: var(--animus-muted);
 }
 
@@ -90,7 +90,7 @@
 
 .animus-npc-folders h3 {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--animus-muted);
@@ -116,13 +116,13 @@
   justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.3rem 0.5rem;
+  padding: 0.25rem 0.5rem;
   border: 1px solid transparent;
   background: none;
   color: inherit;
   font: inherit;
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   text-align: left;
   cursor: pointer;
 }
@@ -159,7 +159,7 @@
 .animus-npc-folder-where {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   overflow-wrap: anywhere;
 }
 
@@ -172,21 +172,17 @@
 
 .animus-npc-folder-new-npc {
   color: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   text-underline-offset: 0.2em;
 }
 
 .animus-npc-folder-new-npc:hover {
-  color: var(--primary, #ff5fa8);
+  color: var(--primary);
 }
 
-.animus-npc-folder-new-npc:focus-visible {
-  outline: 2px solid var(--ring, #ff5fa8);
-  outline-offset: 2px;
-}
 
 .animus-npc-folder-label {
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   color: var(--animus-muted);
 }
 
@@ -204,14 +200,10 @@
   border-color: var(--animus-border);
 }
 
-.animus-npc-tree-item:focus-visible {
-  outline: 2px solid var(--ring, #ff5fa8);
-  outline-offset: -2px;
-}
 
 .animus-npc-tree-item.is-selected {
   border-color: var(--animus-border);
-  background: color-mix(in srgb, var(--primary, #ff5fa8) 18%, transparent);
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
 }
 
 .animus-npc-tag-cloud {
@@ -220,21 +212,30 @@
   gap: 0.25rem;
 }
 
+/* A tag is a bordered word. One with a remove button is a control that
+   sits beside fields: text and button at the default control height, the
+   hairline drawn over them so it adds no height. */
 .animus-npc-tag {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 0.125rem;
   max-width: 100%;
-  padding: 0.0625rem 0.45rem;
-  border: 1px solid var(--animus-border);
-  font-size: 0.75rem;
+  padding: 0.125rem 0.375rem;
+  font-size: var(--animus-text-xs);
   overflow-wrap: anywhere;
 }
 
-.animus-npc-tag .arcane-button,
-.animus-npc-tag button {
-  min-height: 0;
-  padding: 0;
+.animus-npc-tag:has(button):not(.animus-chip) {
+  min-height: var(--animus-control-h);
+  padding: 0 0 0 var(--animus-control-pad-sm);
+}
+
+.animus-npc-tag::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--animus-border);
+  pointer-events: none;
 }
 
 .animus-tag.is-muted {
@@ -246,7 +247,7 @@
 .animus-npc-bulk {
   display: grid;
   gap: 0.5rem;
-  padding: 0.625rem;
+  padding: 0.5rem;
   border: 1px solid var(--animus-border);
   background: var(--animus-panel);
   min-width: 0;
@@ -268,7 +269,7 @@
 
 .animus-npc-bulk-label {
   min-width: 4.5rem;
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--animus-muted);
@@ -307,7 +308,7 @@
   grid-template-columns: 1.75rem minmax(9rem, 1.4fr) minmax(5rem, 0.7fr) minmax(4rem, 0.6fr) minmax(0, 1.6fr);
   gap: 0.5rem;
   align-items: center;
-  padding: 0.4rem 0.625rem;
+  padding: 0.375rem 0.5rem;
   border-top: 1px solid var(--animus-border);
   min-width: 0;
 }
@@ -317,34 +318,24 @@
 }
 
 .animus-npc-row.is-head {
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--animus-muted);
 }
 
 .animus-npc-row.is-selected {
-  background: color-mix(in srgb, var(--primary, #ff5fa8) 12%, transparent);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
 }
 
 .animus-npc-check {
   display: grid;
   place-items: center;
-  min-width: 1.75rem;
-  min-height: 1.75rem;
+  min-width: var(--animus-control-h-sm);
+  min-height: var(--animus-control-h-sm);
   cursor: pointer;
 }
 
-.animus-npc-row input[type="checkbox"] {
-  width: 1rem;
-  height: 1rem;
-  margin: 0;
-}
-
-.animus-npc-row input[type="checkbox"]:focus-visible {
-  outline: 2px solid var(--ring, #ff5fa8);
-  outline-offset: 1px;
-}
 
 .animus-npc-name {
   display: grid;
@@ -366,13 +357,13 @@
 }
 
 .animus-npc-name code {
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   overflow-wrap: anywhere;
 }
 
 .animus-npc-col-type,
 .animus-npc-col-world {
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   overflow-wrap: anywhere;
 }
 
@@ -396,21 +387,12 @@
   padding: 1rem;
 }
 
-.animus-npc-empty p {
-  margin: 0;
-  color: var(--animus-muted);
-}
-
 .animus-npc-empty-action {
-  color: var(--primary, #ff5fa8);
+  color: var(--primary);
   font-weight: 600;
   text-underline-offset: 0.2em;
 }
 
-.animus-npc-empty-action:focus-visible {
-  outline: 2px solid var(--ring, #ff5fa8);
-  outline-offset: 2px;
-}
 
 /* NPC Visual: inspector beside the stage */
 
@@ -469,7 +451,7 @@
 
 .animus-item-slot.is-drop-target {
   background: #a5a5a5;
-  outline: 2px dashed var(--primary, #ff5fa8);
+  outline: 2px dashed var(--primary);
   outline-offset: -4px;
 }
 
@@ -557,8 +539,8 @@
 }
 
 .animus-skin-card.is-selected {
-  border-color: color-mix(in srgb, var(--primary, #ff5fa8) 70%, var(--animus-border));
-  background: color-mix(in srgb, var(--primary, #ff5fa8) 14%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 70%, var(--animus-border));
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
 }
 
 .animus-skin-face {
@@ -577,7 +559,7 @@
   border: 1px solid var(--animus-border);
   background: color-mix(in srgb, var(--animus-border) 45%, transparent);
   color: var(--animus-muted);
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
 }
 
 .animus-skin-face.is-small {
@@ -593,7 +575,7 @@
 .animus-skin-card-text {
   display: grid;
   min-width: 0;
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
 }
 
 .animus-skin-card-text code {
@@ -612,7 +594,7 @@
 
 .animus-route-editor {
   display: grid;
-  gap: 0.625rem;
+  gap: 0.5rem;
   min-width: 0;
 }
 
@@ -710,7 +692,7 @@ html.light .animus-route-dot {
 }
 
 .animus-route-node.is-selected .animus-route-dot {
-  fill: var(--primary, #ff5fa8);
+  fill: var(--primary);
   stroke-width: 2px;
 }
 
@@ -725,7 +707,7 @@ html.light .animus-route-dot {
 }
 
 .animus-route-dot:focus-visible {
-  stroke: var(--ring, #ff5fa8);
+  stroke: var(--ring);
   stroke-width: 4px;
 }
 
@@ -751,7 +733,7 @@ html.light .animus-route-dot {
 .animus-route-legend {
   display: grid;
   gap: 0.125rem;
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   color: var(--animus-muted);
 }
 
@@ -790,7 +772,7 @@ html.light .animus-route-dot {
 .animus-route-coords label {
   display: grid;
   gap: 0.125rem;
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   color: var(--animus-muted);
 }
 
@@ -807,6 +789,8 @@ html.light .animus-route-dot {
 
 .animus-route-list-item {
   display: grid;
+  align-items: center;
+  min-height: var(--animus-control-h-sm);
   /* The point keeps its natural width; the wait note takes the rest and wraps. */
   grid-template-columns: 2rem 3.5rem auto minmax(0, 1fr);
   gap: 0.5rem;
@@ -816,7 +800,7 @@ html.light .animus-route-dot {
   background: none;
   color: inherit;
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   text-align: left;
   cursor: pointer;
 }
@@ -827,13 +811,9 @@ html.light .animus-route-dot {
 }
 
 .animus-route-list li.is-selected .animus-route-list-item {
-  background: color-mix(in srgb, var(--primary, #ff5fa8) 14%, transparent);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
 }
 
-.animus-route-list-item:focus-visible {
-  outline: 2px solid var(--ring, #ff5fa8);
-  outline-offset: -2px;
-}
 
 .animus-route-add {
   display: grid;
@@ -854,14 +834,15 @@ html.light .animus-route-dot {
 
 .animus-route-wait > .animus-gui-input,
 .animus-route-wait-end {
-  flex: 1 1 6rem;
+  /* Room for the five digits of the longest wait. */
+  flex: 1 1 7rem;
   min-width: 0;
 }
 
 .animus-route-wait-end {
   display: grid;
   gap: 0.125rem;
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   color: var(--animus-muted);
 }
 
@@ -890,7 +871,7 @@ html.light .animus-route-dot {
   flex: 1 1 7rem;
   gap: 0.125rem;
   min-width: 0;
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   color: var(--animus-muted);
 }
 
@@ -925,14 +906,10 @@ html.light .animus-route-dot {
   gap: 0.25rem 0.75rem;
 }
 
-.animus-npc-section > summary:focus-visible {
-  outline: 2px solid var(--ring, #ff5fa8);
-  outline-offset: 2px;
-}
 
 .animus-npc-section-summary {
   font-weight: 400;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   color: var(--animus-muted);
   overflow-wrap: anywhere;
   min-width: 0;
@@ -960,7 +937,7 @@ html.light .animus-route-dot {
 
 .animus-npc-subhead h4 {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   font-weight: 600;
 }
 
@@ -988,7 +965,7 @@ html.light .animus-route-dot {
   display: grid;
   justify-items: center;
   gap: 0.125rem;
-  padding: 0.625rem;
+  padding: 0.5rem;
   background: #0d0d0f;
   color: #f3f0f2;
   font-family: "Minecraft", var(--font-mono);
@@ -1004,6 +981,7 @@ html.light .animus-route-dot {
 .animus-armor-stand-parts {
   display: grid;
   gap: 0.375rem;
+  container-type: inline-size;
 }
 
 .animus-armor-stand-part {
@@ -1016,7 +994,7 @@ html.light .animus-route-dot {
 .animus-armor-stand-part label {
   display: grid;
   gap: 0.125rem;
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   color: var(--animus-muted);
 }
 
@@ -1027,11 +1005,22 @@ html.light .animus-route-dot {
 
 .animus-armor-stand-name {
   align-self: center;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 .animus-armor-stand-part > .animus-gui-problem {
   grid-column: 1 / -1;
+}
+
+/* Too narrow for the name beside three angles: the name goes above them. */
+@container (max-width: 26rem) {
+  .animus-armor-stand-part {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .animus-armor-stand-name {
+    grid-column: 1 / -1;
+  }
 }
 
 /* Skin and pack documents */
@@ -1060,7 +1049,7 @@ html.light .animus-route-dot {
 
 .animus-skin-facts dt {
   color: var(--animus-muted);
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 .animus-skin-facts dd {
@@ -1102,46 +1091,25 @@ html.light .animus-route-dot {
 @media (max-width: 520px), (pointer: coarse) {
   .animus-npc-tree-item,
   .animus-route-list-item {
-    min-height: 44px;
+    min-height: 2.75rem;
     align-items: center;
   }
 
   .animus-npc-check {
-    min-width: 44px;
-    min-height: 44px;
-  }
-
-  .animus-npc-folder-actions button,
-  .animus-npc-folder-actions .animus-select-trigger,
-  .animus-npc-folder-actions input,
-  .animus-npc-bulk button,
-  .animus-npc-bulk .animus-select-trigger,
-  .animus-npc-bulk input:not([type="checkbox"]) {
-    min-height: 44px;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
   }
 
   .animus-npc-folder-new-npc {
     display: inline-flex;
     align-items: center;
-    min-height: 44px;
+    min-height: 2.75rem;
   }
 
   .animus-npc-row {
-    grid-template-columns: 44px minmax(0, 1fr);
+    grid-template-columns: 2.75rem minmax(0, 1fr);
   }
 
-  .animus-npc-row input[type="checkbox"] {
-    width: 1.25rem;
-    height: 1.25rem;
-  }
-
-  .animus-armor-stand-part {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .animus-armor-stand-name {
-    grid-column: 1 / -1;
-  }
 }
 
 /* Skins are named by a 64-character hash: let the document header wrap a
@@ -1164,11 +1132,11 @@ html.light .animus-route-dot {
 }
 
 .animus-npc-attribute .animus-gui-input.is-number {
-  width: 7rem;
+  --animus-digits: 6;
 }
 
 .animus-npc-attribute-range {
   color: var(--animus-muted);
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   font-variant-numeric: tabular-nums;
 }

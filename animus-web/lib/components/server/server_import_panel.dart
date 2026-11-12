@@ -161,7 +161,7 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
         ),
       ]),
       if (servers.isEmpty)
-        const dom.p(<Widget>[
+        const dom.p(classes: 'animus-empty-line', <Widget>[
           InfoTip(tip: 'Run $importPairCommand and open its link.', docs: Docs.pairing, child: Component.text('No servers paired. Pair one with the import scope.')),
         ])
       else ...<Widget>[

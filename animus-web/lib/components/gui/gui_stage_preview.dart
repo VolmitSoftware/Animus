@@ -177,11 +177,10 @@ class _GuiStagePreviewState extends State<GuiStagePreview> {
     final bool hasTargets = component.scene.targets.isNotEmpty;
     return dom.div(classes: 'animus-gui-stage-3d', <Widget>[
       dom.div(classes: 'animus-npc-preview-bar', <Widget>[
-        Button.ghost(label: 'Reset view', size: ButtonSize.small, onPressed: _stage.resetCamera),
+        Button.ghost(label: 'Reset view', onPressed: _stage.resetCamera),
         if (_animated)
           Button.ghost(
             label: _playing ? 'Pause animations' : 'Play animations',
-            size: ButtonSize.small,
             attributes: <String, String>{'aria-pressed': '${!_playing}', 'data-anim': 'stage-toggle'},
             onPressed: _togglePlay,
           ),

@@ -182,7 +182,7 @@ class _ChestWindowState extends State<ChestWindow> {
         ),
       ]),
       dom.div(
-        classes: 'animus-chest${component.onPaint != null ? ' is-painting' : ''}',
+        classes: 'animus-chest animus-inset-focus${component.onPaint != null ? ' is-painting' : ''}',
         styles: dom.Styles(raw: <String, String>{'grid-template-columns': 'repeat(${layout.width}, var(--animus-slot))'}),
         // Always bound: an events map that only gains a key on a later build
         // never gets that listener.

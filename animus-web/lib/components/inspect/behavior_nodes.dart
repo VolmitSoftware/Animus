@@ -515,7 +515,7 @@ class _BehaviorNodeViewState extends State<BehaviorNodeView> {
     final JsonList items = asList(value[field.key]);
     final String noun = field.key == 'branches' ? 'branch' : 'step';
     return dom.div(classes: 'animus-node-children', attributes: <String, String>{'role': 'group', 'aria-label': '${humanizeKey(field.key)} of ${caption ?? 'step'}'}, <Widget>[
-      if (items.isEmpty) dom.p(classes: 'animus-muted', <Widget>[Component.text(noun == 'step' ? 'No steps yet.' : 'A parallel needs at least one branch.')]),
+      if (items.isEmpty) dom.p(classes: 'animus-empty-line', <Widget>[Component.text(noun == 'step' ? 'No steps yet.' : 'A parallel needs at least one branch.')]),
       for (int index = 0; index < items.length; index++)
         BehaviorNodeView(
           key: ValueKey<String>(formatPath(<JsonStep>[...at, index])),

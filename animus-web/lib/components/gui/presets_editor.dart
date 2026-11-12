@@ -133,7 +133,7 @@ class _PresetsEditorState extends State<PresetsEditor> {
               _write(<JsonStep>['presets', _kind, 'preset$n'], <String, Object?>{'extends': null, 'values': <String, Object?>{}});
             },
           ),
-          if (named.isEmpty) dom.p(classes: 'animus-muted', <Widget>[Component.text('No $_kind presets yet.')]),
+          if (named.isEmpty) dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No $_kind presets yet.')]),
           for (final MapEntry<String, Object?> entry in named.entries) _preset(named, entry.key, asMap(entry.value)),
         ]),
       ]),

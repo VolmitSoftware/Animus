@@ -72,7 +72,7 @@ class _MerchantWindowState extends State<MerchantWindow> {
       if (component.offers.isEmpty)
         const dom.p(classes: 'animus-merchant-empty', <Widget>[Component.text('No offers: every entry is static or its mode is off.')])
       else
-        dom.ol(classes: 'animus-merchant-offers', <Widget>[for (final ShopOffer offer in component.offers) _offer(offer)]),
+        dom.ol(classes: 'animus-merchant-offers animus-inset-focus', <Widget>[for (final ShopOffer offer in component.offers) _offer(offer)]),
     ]);
   }
 

@@ -13,17 +13,17 @@
 }
 
 .animus-field-label {
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   color: var(--animus-muted);
 }
 
 .animus-field-help {
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   color: var(--animus-muted);
 }
 
 .animus-field-error {
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-xs);
   color: var(--animus-error);
 }
 
@@ -35,7 +35,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   color: var(--animus-muted);
 }
 
@@ -54,8 +54,8 @@
   display: grid;
   gap: 0.125rem;
   align-content: start;
-  min-height: 44px;
-  padding: 0.5rem 0.625rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
   text-align: start;
   font: inherit;
   color: inherit;
@@ -65,25 +65,20 @@
 }
 
 .animus-option-card:hover {
-  border-color: color-mix(in srgb, var(--primary, #ff5fa8) 45%, var(--animus-border));
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--animus-border));
 }
 
 .animus-option-card:active {
-  background: color-mix(in srgb, var(--primary, #ff5fa8) 10%, transparent);
-}
-
-.animus-option-card:focus-visible {
-  outline: 2px solid var(--ring, #ff5fa8);
-  outline-offset: 1px;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
 .animus-option-card.is-selected {
-  border-color: color-mix(in srgb, var(--primary, #ff5fa8) 70%, var(--animus-border));
-  background: color-mix(in srgb, var(--primary, #ff5fa8) 14%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 70%, var(--animus-border));
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
 }
 
 .animus-option-card .animus-muted {
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 .animus-confirm {
@@ -102,9 +97,9 @@
 .animus-home {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 1.25rem;
+  gap: 1rem;
   width: min(52rem, calc(100% - 2rem));
-  margin: 2.5rem auto 3rem;
+  margin: 2rem auto;
 }
 
 .animus-start {
@@ -116,7 +111,7 @@
 
 .animus-start-head {
   display: flex;
-  gap: 1.25rem;
+  gap: 1rem;
   align-items: center;
 }
 
@@ -145,7 +140,7 @@
 }
 
 .animus-start-copy {
-  flex: 1 1 22rem;
+  flex: 1 1 16rem;
   min-width: 0;
 }
 
@@ -169,14 +164,14 @@
 
 .animus-start-way h2 {
   margin: 0 0 0.25rem;
-  font-size: 1rem;
+  font-size: var(--animus-text-lg);
   font-weight: 600;
 }
 
 .animus-start-copy p {
   margin: 0;
   max-width: 36rem;
-  font-size: 0.9375rem;
+  font-size: var(--animus-text-md);
 }
 
 .animus-start-row {
@@ -189,6 +184,11 @@
 .animus-start-row > .animus-field {
   flex: 1 1 14rem;
   max-width: 22rem;
+}
+
+/* A labelled field beside its buttons: the controls share the centre line. */
+.animus-rename {
+  align-items: end;
 }
 
 .animus-workspace-list .animus-workspace-row {
@@ -220,7 +220,7 @@
 }
 
 .animus-workspace-name .animus-muted {
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 .animus-workspace-actions {
@@ -248,7 +248,7 @@
 
 @media (max-width: 760px) {
   .animus-home {
-    margin-top: 1.25rem;
+    margin-top: 1rem;
     width: calc(100% - 1.5rem);
   }
 
@@ -290,29 +290,29 @@
 .animus-side-link {
   display: inline-flex;
   align-items: center;
-  min-height: var(--animus-control-h, 2.25rem);
+  min-height: var(--animus-control-h);
   box-sizing: border-box;
-  padding: 0 var(--animus-control-pad, 0.875rem);
-  border: 1px solid var(--animus-border);
-  background: var(--secondary, #222024);
-  color: var(--secondary-foreground, inherit);
+  padding: 0 var(--animus-control-pad);
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
   text-decoration: none;
-  font-size: var(--animus-control-font, 0.875rem);
+  font-size: var(--animus-control-font);
 }
 
 .animus-side-link:hover {
-  background: var(--accent, #2a272b);
-  border-color: var(--input, #7a747b);
+  background: var(--accent);
+  border-color: var(--input);
 }
 
 .animus-side-link:active {
-  background: var(--card-hover, #222024);
+  background: var(--card-hover);
 }
 
 .animus-side-link.is-selected {
-  background: var(--card-hover, #222024);
-  color: var(--foreground, inherit);
-  border-color: var(--primary, #ff5fa8);
+  background: var(--card-hover);
+  color: var(--foreground);
+  border-color: var(--primary);
 }
 
 /* The New page */
@@ -339,14 +339,14 @@
 .animus-kind-link {
   display: grid;
   gap: 0.125rem;
-  padding: 0.5rem 0.625rem;
+  padding: 0.5rem 0.75rem;
   border: 1px solid transparent;
   color: inherit;
   text-decoration: none;
 }
 
 .animus-kind-link .animus-muted {
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 .animus-kind-link:hover,
@@ -355,8 +355,8 @@
 }
 
 .animus-kind-link.is-selected {
-  border-color: color-mix(in srgb, var(--primary, #ff5fa8) 70%, var(--animus-border));
-  background: color-mix(in srgb, var(--primary, #ff5fa8) 14%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 70%, var(--animus-border));
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
 }
 
 .animus-new-page.has-kind .animus-kind-link .animus-muted {
@@ -365,7 +365,7 @@
 
 .animus-new-form {
   display: grid;
-  gap: 0.875rem;
+  gap: 0.75rem;
   max-width: 44rem;
 }
 
@@ -381,14 +381,14 @@
   display: grid;
   gap: 0.5rem;
   margin: 0;
-  padding: 0.625rem 0.75rem 0.75rem;
+  padding: 0.75rem;
   border: 1px solid var(--animus-border);
   min-width: 0;
 }
 
 .animus-position legend {
   padding: 0 0.25rem;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   color: var(--animus-muted);
 }
 
@@ -402,7 +402,7 @@
 
 .animus-preview-label {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   color: var(--animus-muted);
 }
 
@@ -413,7 +413,7 @@
 
 .animus-dryrun h3 {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--animus-text-lg);
 }
 
 .animus-dryrun-layout {
@@ -435,7 +435,7 @@
 
 .animus-dryrun-trace {
   display: grid;
-  gap: 0.625rem;
+  gap: 0.5rem;
   min-width: 0;
 }
 
@@ -454,7 +454,7 @@
 
 .animus-dryrun-run h4 {
   margin: 0 0 0.375rem;
-  font-size: 0.875rem;
+  font-size: var(--animus-text-md);
 }
 
 .animus-dryrun-step {
@@ -468,15 +468,15 @@
 }
 
 .animus-dryrun-step.is-current {
-  border-color: color-mix(in srgb, var(--primary, #ff5fa8) 70%, var(--animus-border));
-  background: color-mix(in srgb, var(--primary, #ff5fa8) 10%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 70%, var(--animus-border));
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
 .animus-dryrun-tag {
   justify-self: start;
-  padding: 0.0625rem 0.4rem;
+  padding: 0.125rem 0.5rem;
   border: 1px solid var(--animus-border);
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   white-space: nowrap;
 }
 
@@ -511,7 +511,7 @@
   padding: 0.25rem 0.5rem;
   background: #161518;
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 .animus-dryrun-answers {
@@ -519,8 +519,8 @@
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
-  padding: 0.5rem 0.625rem;
-  border: 1px solid color-mix(in srgb, var(--primary, #ff5fa8) 55%, var(--animus-border));
+  padding: 0.5rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 55%, var(--animus-border));
 }
 
 .animus-dryrun-summary {
@@ -593,14 +593,14 @@
   display: grid;
   gap: 0.5rem;
   margin: 0.75rem 0;
-  padding: 0.625rem 0.75rem;
+  padding: 0.75rem;
   border: 1px solid var(--animus-border);
   min-width: 0;
 }
 
 .animus-sync-group legend {
   padding: 0 0.25rem;
-  font-size: 0.875rem;
+  font-size: var(--animus-text-md);
   font-weight: 600;
 }
 
@@ -614,7 +614,7 @@
 
 .animus-sync-diagnostic {
   flex-basis: 100%;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 .animus-sync-diagnostic.is-error {
@@ -631,7 +631,7 @@
 
 .animus-try-group h3 {
   margin: 0 0 0.375rem;
-  font-size: 0.875rem;
+  font-size: var(--animus-text-md);
 }
 
 .animus-try-list {
@@ -675,7 +675,7 @@ html.light .animus-dryrun-speech {
 
   .animus-new-page.has-kind .animus-kind-link {
     border-color: var(--animus-border);
-    min-height: 44px;
+    min-height: 2.75rem;
     align-content: center;
   }
 }

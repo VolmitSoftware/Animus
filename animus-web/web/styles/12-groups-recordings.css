@@ -30,7 +30,8 @@
 }
 
 .animus-chip {
-  min-height: 1.75rem;
+  min-height: var(--animus-control-h);
+  padding: 0;
 }
 
 .animus-chip[draggable='true'] {
@@ -41,13 +42,16 @@
   opacity: 0.5;
 }
 
-.animus-chip.is-warning {
+.animus-chip.is-warning::after {
   border-style: dashed;
   border-color: var(--animus-warning);
 }
 
 .animus-chip-label {
-  padding: 0 0.125rem;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--animus-control-h);
+  padding: 0 var(--animus-control-pad-sm);
   border: 0;
   background: none;
   color: inherit;
@@ -61,22 +65,6 @@ button.animus-chip-label {
 
 button.animus-chip-label:hover {
   text-decoration: underline;
-}
-
-.animus-chip-label:focus-visible {
-  outline: 2px solid var(--ring, #ffb3d6);
-  outline-offset: 1px;
-}
-
-/* Phone widths and touch screens: 44 px tap targets. */
-@media (max-width: 520px), (pointer: coarse) {
-  .animus-chip {
-    min-height: 44px;
-  }
-
-  button.animus-chip-label {
-    min-height: 44px;
-  }
 }
 
 .animus-made-note {
@@ -96,7 +84,7 @@ button.animus-chip-label:hover {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 .animus-effective-table th,
@@ -132,13 +120,13 @@ button.animus-chip-label:hover {
   padding: 0.5rem;
   border: 1px solid var(--animus-border);
   background: var(--animus-panel);
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
 }
 
 .animus-npc-group-assign {
   display: grid;
   gap: 0.5rem;
-  padding: 0.625rem;
+  padding: 0.5rem;
   border: 1px solid var(--animus-border);
   background: var(--animus-panel);
   min-width: 0;
@@ -146,7 +134,7 @@ button.animus-chip-label:hover {
 
 .animus-npc-group-assign h3 {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--animus-text-md);
 }
 
 .animus-npc-group-assign-fields {
@@ -313,7 +301,7 @@ button.animus-chip-label:hover {
 }
 
 .animus-recording-marker {
-  fill: var(--primary, #ff5fa8);
+  fill: var(--primary);
   stroke: #0d0d0f;
   stroke-width: 1px;
   vector-effect: non-scaling-stroke;
@@ -324,14 +312,14 @@ html.light .animus-recording-marker {
 }
 
 .animus-recording-heading {
-  stroke: var(--primary, #ff5fa8);
+  stroke: var(--primary);
   stroke-width: 2px;
   vector-effect: non-scaling-stroke;
 }
 
 .animus-recording-legend {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 .animus-recording-scrub {
@@ -343,15 +331,15 @@ html.light .animus-recording-marker {
 
 .animus-recording-range {
   width: 100%;
-  min-height: 2rem;
+  min-height: var(--animus-control-h);
   margin: 0;
-  accent-color: var(--primary, #ff5fa8);
+  accent-color: var(--primary);
 }
 
 .animus-recording-readout {
   grid-column: 1 / -1;
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   overflow-wrap: anywhere;
 }
 
@@ -411,7 +399,7 @@ html.light .animus-recording-marker {
 
 .animus-recording-events h2 {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--animus-text-lg);
 }
 
 .animus-recording-events ol {
@@ -505,10 +493,6 @@ html.light .animus-recording-marker {
     margin-top: 0.5rem;
   }
 
-  .animus-recording-range {
-    min-height: 2.75rem;
-  }
-
   .animus-recording-table thead {
     position: absolute;
     width: 1px;
@@ -542,5 +526,5 @@ html.light .animus-recording-marker {
 }
 
 .animus-npc-group-assign [data-npc='group-assign-reach'] {
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }

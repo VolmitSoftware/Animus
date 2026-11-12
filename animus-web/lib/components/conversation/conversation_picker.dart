@@ -195,7 +195,7 @@ class ConversationPicker extends StatelessWidget {
 /// A button that opens a menu of [actions]. With [icon] and no visible
 /// text, [label] is its accessible name.
 class ConversationMenu extends StatefulWidget {
-  const ConversationMenu({required this.label, required this.actions, this.icon, this.text, super.key});
+  const ConversationMenu({required this.label, required this.actions, this.icon, this.text, this.size = ButtonSize.small, super.key});
 
   final String label;
   final List<MenuAction> actions;
@@ -203,6 +203,9 @@ class ConversationMenu extends StatefulWidget {
 
   /// Visible text; null shows the icon alone.
   final String? text;
+
+  /// Default size beside a field; small in a row of buttons.
+  final ButtonSize size;
 
   @override
   State<ConversationMenu> createState() => _ConversationMenuState();
@@ -230,7 +233,7 @@ class _ConversationMenuState extends _PopState<ConversationMenu> {
           id: id,
           label: component.text,
           icon: component.icon,
-          size: ButtonSize.small,
+          size: component.size,
           attributes: trigger,
           onPressed: () => open ? close(refocus: false) : show(),
         ),

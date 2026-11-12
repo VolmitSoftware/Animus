@@ -259,7 +259,6 @@ class _RigInspectorState extends State<RigInspector> {
     return dom.label(classes: 'animus-rig-field', <Widget>[
       dom.span(<Widget>[Component.text(label)]),
       TextInput(
-        size: ComponentSize.sm,
         type: number ? TextInputType.number : TextInputType.text,
         value: _drafts[key] ?? value,
         attributes: <String, String>{'aria-label': label, if (error != null) 'aria-invalid': 'true'},
@@ -293,7 +292,6 @@ class _RigInspectorState extends State<RigInspector> {
       dom.div(classes: 'animus-rig-vector', <Widget>[
         for (int axis = 0; axis < 3; axis++)
           TextInput(
-            size: ComponentSize.sm,
             type: TextInputType.number,
             value: _drafts['$key:$axis'] ?? '${_round(current[axis])}',
             attributes: <String, String>{'aria-label': '$label ${const <String>['X', 'Y', 'Z'][axis]}', 'step': 'any'},

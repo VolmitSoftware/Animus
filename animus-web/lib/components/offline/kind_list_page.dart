@@ -42,7 +42,7 @@ class KindListPage extends StatelessWidget {
       ]),
       if (documents.isEmpty)
         dom.div(classes: 'animus-row animus-doc-list-empty', attributes: const <String, String>{'data-testid': 'kind-list-empty'}, <Widget>[
-          dom.span(classes: 'animus-muted', <Widget>[Component.text('No ${kindPlural(kind)} yet. ${kindListPurpose(kind)}${elsewhere == null ? '' : ' $elsewhere'}')]),
+          dom.span(classes: 'animus-empty-line', <Widget>[Component.text('No ${kindPlural(kind)} yet. ${kindListPurpose(kind)}${elsewhere == null ? '' : ' $elsewhere'}')]),
           if (elsewhere == null) Button.primary(label: 'New ${kindNoun(kind)}', size: ButtonSize.small, href: newHref),
         ])
       else

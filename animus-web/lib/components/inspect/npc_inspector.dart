@@ -369,6 +369,7 @@ class _NpcInspectorState extends State<NpcInspector> {
                 GuiIconButton(
                   icon: ArcaneIcon.x(size: IconSize.sm),
                   label: 'Remove tag $tag',
+                  size: ButtonSize.icon,
                   onPressed: () => put(<String>[...tags]..remove(tag)),
                 ),
               ],

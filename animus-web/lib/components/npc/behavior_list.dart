@@ -54,7 +54,7 @@ class NpcBehaviorList extends StatelessWidget {
       attributes: const <String, String>{'role': 'group', 'aria-label': 'Behaviors'},
       <Widget>[
         NpcSubhead('Behaviors', help: help),
-        if (listed.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No behaviors. Add one below.')]),
+        if (listed.isEmpty) const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No behaviors. Add one below.')]),
         for (int index = 0; index < listed.length; index++)
           dom.div(key: ValueKey<String>('behavior-$index'), classes: 'animus-inspect-item', <Widget>[
             dom.div(classes: 'animus-gui-line', <Widget>[

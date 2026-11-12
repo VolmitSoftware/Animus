@@ -35,7 +35,7 @@
 
 .animus-inspect-const {
   padding-top: 0.375rem;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   overflow-wrap: anywhere;
 }
 
@@ -49,7 +49,7 @@
 }
 
 .animus-kept-json {
-  min-height: 2.25rem;
+  min-height: var(--animus-control-h);
   resize: vertical;
   white-space: pre;
   overflow: auto;
@@ -58,7 +58,7 @@
 .animus-tag {
   display: inline-flex;
   align-items: center;
-  padding: 0.0625rem 0.4rem;
+  padding: 0.0625rem 0.375rem;
   border: 1px solid var(--animus-border);
   font-size: 0.6875rem;
   text-transform: uppercase;
@@ -121,32 +121,30 @@
 }
 
 .animus-node-summary:focus-visible {
-  outline: 2px solid var(--ring, #ffb3d6);
-  outline-offset: 1px;
   background: rgba(255, 95, 168, 0.08);
 }
 
 .animus-node-caption {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   color: var(--animus-muted);
 }
 
 .animus-node-type {
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   font-weight: 600;
 }
 
 .animus-node-line {
   flex: 1 1 12rem;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   overflow-wrap: anywhere;
   min-width: 0;
 }
 
 .animus-node-flag {
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   font-weight: 600;
 }
 
@@ -179,7 +177,7 @@
 
 .animus-node-help {
   flex: 1 1 10rem;
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   color: var(--animus-muted);
   min-width: 0;
 }
@@ -251,7 +249,7 @@
 
 .animus-expr-input {
   width: 100%;
-  min-height: 2.25rem;
+  min-height: var(--animus-control-h);
   box-sizing: border-box;
   font-family: var(--font-mono);
   resize: none;
@@ -283,7 +281,7 @@
 .animus-value-key {
   padding-top: 0.375rem;
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   overflow-wrap: anywhere;
 }
 
@@ -295,7 +293,7 @@
 
 .animus-slots h5 {
   margin: 0.25rem 0 0;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 /* Rows already name their dropdowns; a dropdown's own caption stays for
@@ -332,13 +330,13 @@
 }
 
 .animus-server-item code {
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   overflow-wrap: anywhere;
 }
 
 .animus-server-item .animus-muted {
   flex: 1 1 14rem;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 .animus-code-syntax {
@@ -347,7 +345,7 @@
   gap: 0.5rem;
   align-items: center;
   color: var(--animus-error);
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -433,7 +431,7 @@
   padding: 0.5rem 0;
   border-inline-end: 1px solid var(--animus-border);
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   line-height: var(--animus-code-line);
   color: var(--animus-muted);
   text-align: end;
@@ -491,7 +489,7 @@
   background: transparent;
   color: inherit;
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   line-height: var(--animus-code-line);
   tab-size: 2;
   white-space: pre;
@@ -499,13 +497,8 @@
   resize: none;
 }
 
-.animus-code-area:focus-visible {
-  outline: 2px solid var(--ring, #ff5fa8);
-  outline-offset: -2px;
-}
-
 .animus-code-status {
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
 }
 
 .animus-code-problems {
@@ -524,7 +517,7 @@
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   min-width: 0;
 }
 
@@ -637,7 +630,7 @@
 
 .animus-typed-empty {
   padding-top: 0.375rem;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 /* A narrow editor (a phone, a split view, a nested object) puts the value

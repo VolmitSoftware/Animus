@@ -103,7 +103,7 @@ class _RigTreeState extends State<RigTree> {
     final String draft = _rename ?? selected ?? '';
     return dom.div(classes: 'animus-rig-tree', <Widget>[
       dom.h3(id: 'animus-rig-tree-heading', <Widget>[withTip(Component.text('Bones (${bones.length})'), 'The rig\'s bones, children under their parent. Arrow keys move the selection.', docs: Docs.rigs)]),
-      dom.ul(attributes: const <String, String>{'role': 'tree', 'aria-labelledby': 'animus-rig-tree-heading'}, <Widget>[
+      dom.ul(classes: 'animus-inset-focus', attributes: const <String, String>{'role': 'tree', 'aria-labelledby': 'animus-rig-tree-heading'}, <Widget>[
         for (final JsonMap bone in bones)
           dom.li(
             classes: 'animus-rig-bone${bone['id'] == selected ? ' is-selected' : ''}',
@@ -147,7 +147,6 @@ class _RigTreeState extends State<RigTree> {
           const dom.span(<Widget>[Component.text('Name')]),
           dom.div(classes: 'animus-row', <Widget>[
             TextInput(
-              size: ComponentSize.sm,
               value: draft,
               attributes: const <String, String>{'aria-label': 'Bone name'},
               onChanged: (String value) => setState(() => _rename = value),
@@ -155,7 +154,6 @@ class _RigTreeState extends State<RigTree> {
             ),
             Button.secondary(
               label: 'Rename',
-              size: ButtonSize.small,
               disabled: draft == selected,
               onPressed: () => component.onRename(selected, draft),
             ),

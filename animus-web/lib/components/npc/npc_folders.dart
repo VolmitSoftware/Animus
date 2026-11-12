@@ -233,7 +233,7 @@ class _NpcFolderPanelState extends State<NpcFolderPanel> {
         ),
       ]),
       dom.ul(
-        classes: 'animus-npc-tree',
+        classes: 'animus-npc-tree animus-inset-focus',
         attributes: const <String, String>{'role': 'tree', 'aria-labelledby': 'animus-npc-folders-title'},
         <Widget>[for (int index = 0; index < rows.length; index++) _item(rows, index, focus)],
       ),

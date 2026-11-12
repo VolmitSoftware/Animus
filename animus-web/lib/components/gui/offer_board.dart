@@ -149,7 +149,7 @@ class _OfferBoardState extends State<OfferBoard> {
   Widget build(BuildContext context) {
     final List<BoardOffer> offers = boardOffers(component.shop);
     if (offers.isEmpty) {
-      return const dom.p(classes: 'animus-muted animus-shop-empty', <Widget>[Component.text('No offers yet. Add one to start.')]);
+      return const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No offers yet. Add one to start.')]);
     }
     final JsonList pages = asList(component.shop['pages']);
     final List<Widget> groups = <Widget>[];
@@ -167,7 +167,7 @@ class _OfferBoardState extends State<OfferBoard> {
           withTip(Component.text(title), 'Offers in one mode on one page. Players switch between Trades, Buying and Selling in the window.', docs: Docs.shopEntries),
           if (!offers[start].modeOn) const dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text(' Mode off: players never see these.')]),
         ]),
-        dom.ol(classes: 'animus-shop-offers', <Widget>[
+        dom.ol(classes: 'animus-shop-offers animus-inset-focus', <Widget>[
           for (int index = start; index < end; index++) _row(offers[index], offers, index - start, end - start),
         ]),
       ]));

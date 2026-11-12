@@ -39,7 +39,7 @@ class AttributesEditor extends StatelessWidget {
     final JsonMap set = bareAttributes(value);
     final List<SelectOption> options = attributeOptions(specs, set, bodyType);
     return dom.div(classes: 'animus-npc-attributes', attributes: const <String, String>{'data-npc': 'attributes'}, <Widget>[
-      if (set.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No attributes set: the body has the vanilla defaults.')]),
+      if (set.isEmpty) const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No attributes set: the body has the vanilla defaults.')]),
       for (final MapEntry<String, Object?> entry in set.entries) _row(entry.key, entry.value, table[entry.key]),
       AnimusSelect(
         value: null,

@@ -206,7 +206,7 @@ class _RecordingViewState extends State<RecordingView> {
 
   Widget _path(Recording recording, double tick) {
     if (recording.frames.isEmpty) {
-      return const dom.p(classes: 'animus-muted', attributes: <String, String>{'data-recording': 'empty'}, <Widget>[Component.text('No readable frames to draw.')]);
+      return const dom.p(classes: 'animus-empty-line', attributes: <String, String>{'data-recording': 'empty'}, <Widget>[Component.text('No readable frames to draw.')]);
     }
     final (double minX, double minZ, double maxX, double maxZ) = recording.bounds();
     final double size = math.max(8, math.max(maxX - minX, maxZ - minZ) + 4);
@@ -378,7 +378,7 @@ class _RecordingViewState extends State<RecordingView> {
     return dom.div(classes: 'animus-recording-events', <Widget>[
       dom.h2(<Widget>[withTip(const Component.text('Events'), 'Swings, equipment changes and item use during the take. Click a tick to scrub there.', docs: Docs.recordings)]),
       if (recording.events.isEmpty)
-        const dom.p(classes: 'animus-muted', <Widget>[Component.text('No events recorded.')])
+        const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No events recorded.')])
       else
         dom.ol(
           attributes: const <String, String>{'aria-label': 'Recorded events', 'data-recording': 'events'},

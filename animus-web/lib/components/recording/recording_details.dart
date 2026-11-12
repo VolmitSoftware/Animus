@@ -168,6 +168,7 @@ class _RecordingDetailsFormState extends State<RecordingDetailsForm> {
                       GuiIconButton(
                         icon: ArcaneIcon.x(size: IconSize.sm),
                         label: 'Remove tag $tag',
+                        size: ButtonSize.icon,
                         onPressed: () => _write(details.copyWith(tags: <String>[...details.tags]..remove(tag)), 'tags'),
                       ),
                     ],

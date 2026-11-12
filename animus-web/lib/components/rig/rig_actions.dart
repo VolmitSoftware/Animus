@@ -89,8 +89,8 @@ class RigFileButtons extends StatelessWidget {
           ),
         ]),
         dom.div(classes: 'animus-row', <Widget>[
-          Button.secondary(label: 'Import .bbmodel', icon: ArcaneIcon.upload(), size: ButtonSize.small, disabled: busy, onPressed: onImport),
-          Button.secondary(label: 'Download server files', icon: ArcaneIcon.download(), size: ButtonSize.small, onPressed: onDownload),
+          Button.secondary(label: 'Import .bbmodel', icon: ArcaneIcon.upload(), disabled: busy, onPressed: onImport),
+          Button.secondary(label: 'Download server files', icon: ArcaneIcon.download(), onPressed: onDownload),
         ]),
       ]);
 }

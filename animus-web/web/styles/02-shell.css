@@ -15,13 +15,11 @@
   inset-inline-start: 0.5rem;
   top: -4rem;
   z-index: 60;
-  min-height: 44px;
-  padding: 0.5rem 0.875rem;
+  padding: 0 var(--animus-control-pad);
   font: inherit;
   font-weight: 600;
-  color: var(--foreground, inherit);
-  background: var(--card, #161518);
-  border: 1px solid var(--animus-border);
+  color: var(--foreground);
+  background: var(--card);
   cursor: pointer;
 }
 
@@ -41,7 +39,7 @@
   position: sticky;
   top: 0;
   z-index: 35;
-  background: var(--background, inherit);
+  background: var(--background);
   box-sizing: border-box;
 }
 
@@ -50,7 +48,7 @@
   align-items: center;
   flex: none;
   gap: 0.5rem;
-  min-height: 44px;
+  min-height: 2.75rem;
   font-weight: 600;
   color: inherit;
   text-decoration: none;
@@ -136,10 +134,9 @@
   min-width: 15rem;
   max-width: min(22rem, calc(100vw - 1.5rem));
   padding: 0.25rem;
-  background: var(--popover, #161518);
-  color: var(--popover-foreground, inherit);
-  border: 1px solid var(--animus-border);
-  border-color: var(--input, #7a747b);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--input);
   animation: animus-pop 120ms ease-out;
 }
 
@@ -148,9 +145,9 @@
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
-  min-height: 2.5rem;
-  padding: 0.375rem 0.625rem;
+  padding: 0.375rem 0.75rem;
   font: inherit;
+  font-size: var(--animus-text-md);
   text-align: start;
   color: inherit;
   background: transparent;
@@ -160,11 +157,11 @@
 
 .animus-menu-item:hover,
 .animus-menu-item:focus-visible {
-  background: var(--card-hover, #222024);
+  background: var(--card-hover);
 }
 
 .animus-menu-item:active {
-  background: var(--accent, #2a272b);
+  background: var(--accent);
 }
 
 .animus-menu-item:disabled {
@@ -177,7 +174,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   color: var(--animus-muted);
 }
 
@@ -198,7 +195,7 @@
   justify-content: space-between;
   gap: 0.5rem 1rem;
   margin: var(--animus-gap) 1rem 0;
-  padding: 0.625rem 1rem;
+  padding: 0.75rem 1rem;
   border: 1px solid var(--animus-border);
   background: var(--animus-panel);
 }
@@ -227,7 +224,7 @@
 .animus-panel h1,
 .animus-panel h2 {
   margin: 0 0 0.75rem;
-  font-size: 1.125rem;
+  font-size: var(--animus-text-xl);
   font-weight: 600;
 }
 
@@ -240,8 +237,8 @@
 }
 
 [id="animus-main-heading"]:focus-visible {
-  outline: 2px solid var(--ring, #ffb3d6);
-  outline-offset: 2px;
+  outline: var(--animus-focus-ring);
+  outline-offset: var(--animus-focus-offset);
 }
 
 .animus-row {
@@ -251,12 +248,21 @@
   gap: 0.5rem;
 }
 
+/* Helper, error and empty-state text: the one definition. Colour only;
+   the text keeps its context's size. */
 .animus-muted {
   color: var(--animus-muted);
 }
 
 .animus-error {
   color: var(--animus-error);
+}
+
+/* An empty-state, loading or "nothing here" line, everywhere. */
+.animus-empty-line {
+  margin: 0;
+  font-size: var(--animus-text-md);
+  color: var(--animus-muted);
 }
 
 .animus-empty {
@@ -354,11 +360,6 @@
   gap: 0.375rem;
 }
 
-.animus-doc-search-empty {
-  margin: 0;
-  font-size: 0.8125rem;
-}
-
 /* A server workspace with nothing opened from the catalog yet. */
 .animus-sidebar-empty {
   display: flex;
@@ -369,8 +370,6 @@
 
 .animus-sidebar-empty p {
   flex-basis: 100%;
-  margin: 0;
-  font-size: 0.8125rem;
 }
 
 .animus-tree {
@@ -390,7 +389,7 @@
   align-items: baseline;
   gap: 0.375rem;
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   font-weight: 600;
   color: var(--animus-muted);
 }
@@ -410,7 +409,7 @@
   min-height: var(--animus-control-h-sm);
   padding: 0 0.25rem;
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   font-weight: 600;
   text-align: start;
   color: var(--animus-muted);
@@ -420,7 +419,7 @@
 
 .animus-tree-toggle:hover {
   color: var(--foreground);
-  background: var(--card-hover, #222024);
+  background: var(--card-hover);
 }
 
 .animus-tree-toggle.is-folder {
@@ -460,7 +459,7 @@
 
 .animus-tree-tools-label {
   margin-inline-end: auto;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   color: var(--animus-muted);
 }
 
@@ -477,9 +476,9 @@
   margin-inline-start: auto;
   display: inline-flex;
   align-items: center;
-  min-height: 1.75rem;
+  min-height: var(--animus-control-h-sm);
   padding: 0 0.375rem;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   color: var(--animus-muted);
 }
 
@@ -505,12 +504,12 @@
 }
 
 .animus-tree-item:hover {
-  background: var(--card-hover, #222024);
+  background: var(--card-hover);
 }
 
 .animus-tree-item.is-selected {
-  background: color-mix(in srgb, var(--primary, #ff5fa8) 12%, transparent);
-  border-color: color-mix(in srgb, var(--primary, #ff5fa8) 45%, var(--animus-border));
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--animus-border));
 }
 
 .animus-tree-title {
@@ -521,7 +520,7 @@
 
 .animus-tree-id {
   grid-column: 1;
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   color: var(--animus-muted);
   font-family: var(--font-mono);
   overflow: hidden;
@@ -535,7 +534,7 @@
   align-self: center;
   min-width: 1.25rem;
   padding: 0 0.375rem;
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   text-align: center;
 }
 
@@ -609,10 +608,9 @@
   grid-template-rows: auto minmax(0, 1fr) auto;
   width: min(40rem, 100%);
   max-height: min(32rem, 80dvh);
-  background: var(--popover, #161518);
-  color: var(--popover-foreground, inherit);
-  border: 1px solid var(--animus-border);
-  border-color: var(--input, #7a747b);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--input);
   overflow: hidden;
   animation: animus-pop 140ms ease-out;
 }
@@ -622,12 +620,12 @@
   min-height: 3rem;
   padding: 0.75rem 1rem;
   font: inherit;
-  font-size: 1rem;
+  font-size: var(--animus-text-lg);
   color: inherit;
   background: transparent;
   border: 0;
   box-sizing: border-box;
-  caret-color: var(--primary, #ff5fa8);
+  caret-color: var(--primary);
 }
 
 .animus-palette-list {
@@ -639,8 +637,8 @@
 }
 
 .animus-palette-group {
-  padding: 0.625rem 0.75rem 0.25rem;
-  font-size: 0.75rem;
+  padding: 0.5rem 0.75rem 0.25rem;
+  font-size: var(--animus-text-xs);
   font-weight: 600;
   color: var(--animus-muted);
 }
@@ -650,8 +648,9 @@
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
-  min-height: 2.5rem;
+  min-height: var(--animus-control-h);
   padding: 0.375rem 0.75rem;
+  font-size: var(--animus-text-md);
   border: 1px solid transparent;
   cursor: pointer;
 }
@@ -664,8 +663,8 @@
 }
 
 .animus-palette-option.is-active {
-  background: var(--card-hover, #222024);
-  border-color: var(--primary, #ff5fa8);
+  background: var(--card-hover);
+  border-color: var(--primary);
 }
 
 .animus-palette-hint {
@@ -674,13 +673,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   color: var(--animus-muted);
 }
 
 .animus-palette-empty {
   margin: 0;
-  padding: 1.25rem 1rem;
+  padding: 1rem;
+  font-size: var(--animus-text-md);
   color: var(--animus-muted);
 }
 
@@ -701,7 +701,7 @@
 
 .animus-shortcuts-head h2 {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--animus-text-lg);
 }
 
 .animus-shortcuts-body {
@@ -715,12 +715,12 @@
 
 .animus-shortcuts-group h3 {
   margin: 0.75rem 0 0;
-  font-size: 0.875rem;
+  font-size: var(--animus-text-md);
 }
 
 .animus-shortcuts-group > p {
   margin: 0 0 0.375rem;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 .animus-shortcuts-group dl {
@@ -734,6 +734,7 @@
   grid-template-columns: minmax(7rem, auto) minmax(0, 1fr);
   gap: 0.75rem;
   align-items: baseline;
+  font-size: var(--animus-text-md);
 }
 
 .animus-shortcuts-row dt,
@@ -745,10 +746,10 @@
   display: inline-block;
   padding: 0 0.375rem;
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   font-variant-numeric: tabular-nums;
   border: 1px solid var(--animus-border);
-  background: var(--card-hover, #222024);
+  background: var(--card-hover);
   white-space: nowrap;
 }
 
@@ -760,7 +761,7 @@
   margin: 0;
   padding: 0.5rem 1rem;
   border-top: 1px solid var(--animus-border);
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 .animus-shortcuts-more {
@@ -791,7 +792,7 @@
     z-index: 45;
     width: min(21rem, 88vw);
     max-height: none;
-    background: var(--background, #0d0d0f);
+    background: var(--background);
     border-inline-end: 1px solid var(--animus-border);
     transform: translateX(-100%);
     visibility: hidden;
@@ -819,7 +820,7 @@
 
   .animus-drawer-title {
     margin: 0;
-    font-size: 1rem;
+    font-size: var(--animus-text-lg);
   }
 
   .animus-main {
@@ -834,28 +835,15 @@
     flex-direction: column;
   }
 
-  /* Thumb-sized targets in the shell and for every lane's buttons. */
+  /* Buttons, menu items, palette options and tree headers follow the control
+     height token, which is already 44 px here. */
   #arcane-root .arcane-button {
     max-width: 100%;
   }
 
-  #arcane-root .arcane-button,
-  .animus-tree-item,
-  .animus-tree-toggle,
-  .animus-tree-browse,
-  .animus-menu-item,
-  .animus-palette-option {
-    min-height: 44px;
-  }
-
   .animus-tree-item {
+    min-height: 2.75rem;
     align-content: center;
-  }
-
-  #arcane-root input[type="checkbox"],
-  #arcane-root input[type="radio"] {
-    width: 1.25rem;
-    height: 1.25rem;
   }
 
   .animus-palette-layer {

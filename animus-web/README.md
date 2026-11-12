@@ -84,6 +84,7 @@ node test/groups_recordings_browser.cjs
 node test/info_tip_browser.cjs
 node test/dropdowns_browser.cjs
 node test/layout_browser.cjs
+node test/consistency_browser.cjs   # default --data
 node test/document_forms_browser.cjs
 node test/skin_editing_browser.cjs
 node test/skin_picking_browser.cjs
@@ -109,6 +110,8 @@ node test/shop_editor_browser.cjs   # default --data
 `home_browser.cjs` checks the home page (one primary action, the three ways to start, the empty list), the skip link, renaming a workspace with Enter and Escape (focus goes back to Rename), deleting with Escape and Restore, the routes to a missing workspace or document (each names the cause and links back), then opens `../schema/fixtures/export` as a data folder: the listing, arrow keys in the document list, the document title as the page heading, the view tablist with arrow keys, a broken Code draft named in the header, and Split and Preview.
 
 `layout_browser.cjs` opens every document of the example packs, the test fixtures and `../schema/fixtures/export`, plus home, New document, the NPC and recording lists, Send to a server and the converter, at 1440, 1280, 1024, 768, 390 and 375 px in both themes, with every inspector part open. It fails on boxes overlapping a sibling, content clipped sideways, sideways scrolling, a shop chest window that scrolls instead of fitting, a border or divider through a control, an input too narrow for its value or placeholder, a hint that repeats the placeholder, text out of its box and a row label that focuses no control. A full run takes over 20 minutes and prints a line per width and theme. `ANIMUS_LAYOUT_WIDTHS` limits the widths and `ANIMUS_LAYOUT_SCREENS` (a regular expression) the screens it checks.
+
+`consistency_browser.cjs` walks the same screens at 1440 and 390 px in both themes, plus home with no server paired, a pairing link and a paired server, and measures every row of controls: a field, a dropdown, a tab or a button that sits beside another must share its height and centre line, and no control has a rounded corner. A small button beside a field takes the default size (`lib/config/control_css.dart`); small buttons are for rows that hold only buttons. `ANIMUS_CONSISTENCY_SCREENS` (a regular expression) limits the screens and `ANIMUS_CONSISTENCY_LIST=1` prints every problem.
 
 `offline_editor_browser.cjs` makes a blank workspace and one document of every kind from its guided step, duplicates and deletes with undo, follows the undo in a second tab, redoes and undoes from the keyboard (and leaves Ctrl+Z inside a text box alone), focuses the search with `/`, opens the drawer on phones, opens a document from the command palette, fixes a broken id, plays a rig animation on an NPC, dry-runs a dialogue (answering its prompt) and a shop (a server-only step), exports the zip, checks persistence across a reload and the starter workspace, then pairs with the fake server, pulls an NPC, changes it and pushes the workspace with that conflict resolved. A last pass deletes `window.indexedDB` and checks the storage banner. Both widths, no console errors and no sideways scrolling.
 

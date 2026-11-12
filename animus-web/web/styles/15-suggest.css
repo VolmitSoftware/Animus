@@ -54,7 +54,7 @@
   border: 1px solid var(--animus-border);
   border-radius: 0;
   background: var(--popover, var(--animus-panel));
-  color: var(--foreground, inherit);
+  color: var(--foreground);
   box-shadow: none;
 }
 
@@ -74,18 +74,18 @@
   column-gap: 0.5rem;
   min-height: 2rem;
   padding: 0.25rem 0.5rem;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   cursor: pointer;
 }
 
 .animus-suggest-list li.is-active {
-  background: var(--accent, rgba(128, 128, 128, 0.2));
-  outline: 1px solid var(--ring, #ff5fa8);
-  outline-offset: -1px;
+  background: var(--accent);
+  outline: var(--animus-focus-ring);
+  outline-offset: var(--animus-focus-inset);
 }
 
 .animus-suggest-list li:hover {
-  background: var(--accent, rgba(128, 128, 128, 0.2));
+  background: var(--accent);
 }
 
 .animus-suggest-kind {
@@ -114,8 +114,8 @@
 .animus-suggest-swatch {
   grid-area: label;
   justify-self: end;
-  width: 0.875rem;
-  height: 0.875rem;
+  width: var(--animus-control-icon-sm);
+  height: var(--animus-control-icon-sm);
   border: 1px solid var(--animus-border);
   border-radius: 0;
 }
@@ -127,7 +127,7 @@
 .animus-suggest-type {
   grid-area: type;
   color: var(--animus-muted);
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   white-space: nowrap;
 }
 
@@ -135,7 +135,7 @@
   grid-area: detail;
   min-width: 0;
   color: var(--animus-muted);
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -154,7 +154,7 @@
   }
 
   .animus-suggest-list li {
-    min-height: 44px;
+    min-height: 2.75rem;
     grid-template-columns: max-content minmax(0, 1fr) auto;
     grid-template-areas:
       'kind label type'

@@ -38,7 +38,7 @@
 
 .animus-shop-panel-title {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--animus-text-lg);
 }
 
 .animus-shop-board-groups {
@@ -53,7 +53,7 @@
 
 .animus-shop-group-title {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   font-weight: 600;
   color: var(--animus-muted);
 }
@@ -115,17 +115,6 @@
   cursor: pointer;
 }
 
-.animus-shop-check input[type="checkbox"] {
-  width: 1rem;
-  height: 1rem;
-  margin: 0;
-}
-
-.animus-shop-check input[type="checkbox"]:focus-visible {
-  outline: 2px solid var(--ring, #ff5fa8);
-  outline-offset: 1px;
-}
-
 .animus-shop-offer-main {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -147,13 +136,8 @@
   background: var(--secondary);
 }
 
-.animus-shop-offer-main:focus-visible {
-  outline: 2px solid var(--ring, #ff5fa8);
-  outline-offset: -2px;
-}
-
 .animus-shop-kind {
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   font-weight: 600;
   color: var(--animus-muted);
 }
@@ -236,13 +220,13 @@
 
 .animus-shop-sentence {
   min-width: 0;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   overflow-wrap: anywhere;
 }
 
 .animus-shop-where {
   grid-column: 1 / -1;
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   color: var(--animus-muted);
   white-space: nowrap;
 }
@@ -314,10 +298,6 @@
   padding: 0.5rem;
   border: 1px solid var(--animus-border);
   background: var(--secondary);
-}
-
-.animus-shop-empty {
-  margin: 0;
 }
 
 .animus-shop-previews,
@@ -398,11 +378,6 @@ button.animus-merchant-offer:hover {
   background: #b5b5b5;
 }
 
-button.animus-merchant-offer:focus-visible {
-  outline: 2px solid #1d1d1d;
-  outline-offset: -2px;
-}
-
 .animus-merchant-offer.is-selected {
   border-color: #fcfcfc;
 }
@@ -432,19 +407,13 @@ button.animus-merchant-offer:focus-visible {
   }
 
   .animus-shop-check {
-    min-width: 44px;
-    min-height: 44px;
-  }
-
-  .animus-shop-check input[type="checkbox"] {
-    width: 1.25rem;
-    height: 1.25rem;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
   }
 
   .animus-shop-offer-main {
     grid-template-columns: minmax(0, 1fr);
   }
-
 
   .animus-shop-offer-actions {
     grid-column: 1 / -1;

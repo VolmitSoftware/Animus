@@ -124,7 +124,6 @@ class _RouteWaitInputState extends State<RouteWaitInput> {
       Button(
         id: '${component.id}-range',
         label: 'Range',
-        size: ButtonSize.small,
         variant: ButtonVariant.ghost,
         attributes: <String, String>{'aria-pressed': '$ranged', 'aria-label': '$label wait range'},
         onPressed: _toggle,
@@ -990,7 +989,7 @@ class _RouteEditorState extends State<RouteEditor> {
           RouteStep() => '${node.recording.isEmpty ? 'no recording' : node.recording}, ticks ${node.fromTick} to ${node.toTick ?? 'end'}',
           RouteOther() => 'missing x, y or z',
         };
-    return dom.ol(classes: 'animus-route-list', attributes: const <String, String>{'aria-label': 'Route points'}, <Widget>[
+    return dom.ol(classes: 'animus-route-list animus-inset-focus', attributes: const <String, String>{'aria-label': 'Route points'}, <Widget>[
       for (int index = 0; index < spec.nodes.length; index++)
         dom.li(
           classes: picked != null && picked == _listKey(spec, index) ? 'is-selected' : null,

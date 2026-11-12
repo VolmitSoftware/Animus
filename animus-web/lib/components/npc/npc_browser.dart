@@ -279,7 +279,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
         ),
         dom.h3(<Widget>[withTip(const Component.text('Tags'), 'Every tag in the workspace with its NPC count. Pick one to filter the list.')]),
         if (tags.isEmpty)
-          const dom.p(classes: 'animus-muted', <Widget>[Component.text('No tags yet. Select NPCs and add one.')])
+          const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No tags yet. Select NPCs and add one.')])
         else
           dom.div(classes: 'animus-npc-tag-cloud', <Widget>[
             for (final (String tag, int count) in tags)
@@ -517,7 +517,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
             disabled: _busy || module == null || !toggleableModules.contains(module),
             onPressed: () => _bulk('Disabled $module on', setModuleEnabled(selected, module!, false)),
           ),
-          Button.ghost(
+          Button.secondary(
             label: 'Remove module',
             size: ButtonSize.small,
             disabled: _busy || module == null,
@@ -579,7 +579,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
     if (shown.isEmpty) {
       if (_all.isEmpty) {
         return dom.div(classes: 'animus-npc-empty', <Widget>[
-          const dom.p(<Widget>[Component.text('No NPCs yet.')]),
+          const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No NPCs yet.')]),
           dom.a(
             classes: 'animus-npc-empty-action',
             href: NewDocumentRoute(component.workspace.id, DocumentKind.npc).format(),
@@ -590,7 +590,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
       final String folder = _selectedFolder;
       if (folder.isNotEmpty && NpcQuery.parse(_search).terms.length == 1) {
         return dom.div(classes: 'animus-npc-empty', <Widget>[
-          dom.p(<Widget>[Component.text('npcs/$folder/ is empty.')]),
+          dom.p(classes: 'animus-empty-line', <Widget>[Component.text('npcs/$folder/ is empty.')]),
           dom.a(
             classes: 'animus-npc-empty-action',
             href: NewDocumentRoute.inFolder(component.workspace.id, DocumentKind.npc, folder).format(),
@@ -600,7 +600,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
         ]);
       }
       return dom.div(classes: 'animus-npc-empty', <Widget>[
-        dom.p(<Widget>[Component.text('No NPC matches "${_search.trim()}".')]),
+        dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No NPC matches "${_search.trim()}".')]),
         Button.secondary(label: 'Clear search', size: ButtonSize.small, onPressed: () => _setSearch('')),
       ]);
     }

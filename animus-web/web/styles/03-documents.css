@@ -13,6 +13,14 @@
   min-width: 0;
 }
 
+/* The tab strip is taller than its buttons by its padding and border:
+   aligning the two on their text baseline puts buttons and tabs on one
+   centre line, and the pair still sits at the bottom of the header. */
+.animus-document-header > .animus-row,
+.animus-document-header > .animus-tabs {
+  align-self: last baseline;
+}
+
 .animus-document-title {
   display: grid;
   gap: 0.125rem;
@@ -24,24 +32,24 @@
    the page sideways. */
 .animus-document-header h1 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: var(--animus-text-2xl);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
 .animus-document-path {
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   overflow-wrap: anywhere;
 }
 
 .animus-document-revision {
   align-self: center;
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   white-space: nowrap;
 }
 
 .animus-eyebrow {
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   color: var(--animus-muted);
 }
 
@@ -59,10 +67,10 @@
 }
 
 .animus-tab {
-  min-height: 2.25rem;
-  padding: 0.25rem 0.875rem;
+  padding: 0.25rem var(--animus-control-pad);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: var(--animus-control-font);
+  line-height: 1.25rem;
   color: var(--animus-muted);
   background: transparent;
   border: 1px solid transparent;
@@ -70,12 +78,12 @@
 }
 
 .animus-tab:hover {
-  color: var(--foreground, inherit);
-  background: color-mix(in srgb, var(--card-hover, #222024) 60%, transparent);
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--card-hover) 60%, transparent);
 }
 
 .animus-tab:active {
-  background: var(--accent, #2a272b);
+  background: var(--accent);
 }
 
 .animus-ok {
@@ -142,7 +150,7 @@
 }
 
 .animus-code textarea {
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   line-height: 1.45;
   tab-size: 2;
 }
@@ -170,6 +178,5 @@
 
   .animus-tab {
     flex: 1 1 0;
-    min-height: 44px;
   }
 }

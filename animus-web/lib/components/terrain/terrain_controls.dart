@@ -26,7 +26,6 @@ class TerrainControls extends StatelessWidget {
   Widget build(BuildContext context) => dom.div(classes: 'animus-terrain-controls', attributes: const <String, String>{'role': 'group', 'aria-label': 'Terrain'}, <Widget>[
         Button(
           label: 'Terrain',
-          size: ButtonSize.small,
           variant: ButtonVariant.ghost,
           disabled: disabled,
           attributes: <String, String>{'aria-pressed': '${on && !disabled}', 'data-terrain-toggle': ''},

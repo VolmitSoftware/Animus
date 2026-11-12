@@ -163,7 +163,7 @@ class _PairPageState extends State<PairPage> {
                   : 'Off: this tab only. A new tab, or this one after it closes, needs a new code from /animus editor pair.'),
             ]),
             dom.div(classes: 'animus-row', <Widget>[
-              Button.primary(label: _busy ? 'Pairing' : 'Pair', size: ButtonSize.small, loading: _busy, disabled: _busy, onPressed: _pair),
+              Button.primary(label: _busy ? 'Pairing' : 'Pair', loading: _busy, disabled: _busy, onPressed: _pair),
               const dom.a(href: '#/', classes: 'animus-pair-cancel', <Widget>[Component.text('Cancel')]),
             ]),
           ],
@@ -221,7 +221,7 @@ class _PairCodeFieldState extends State<PairCodeField> {
           onChanged: (String value) => setState(() => _code = value),
           onSubmitted: (String _) => _submit(),
         ),
-        Button.secondary(label: 'Use this code', size: ButtonSize.small, onPressed: _submit),
+        Button.secondary(label: 'Use this code', onPressed: _submit),
       ]);
 }
 
@@ -261,7 +261,7 @@ class _ServersPanelState extends State<ServersPanel> {
         ),
       ]),
       if (hub.servers.isEmpty)
-        const dom.p(classes: 'animus-muted', <Widget>[
+        const dom.p(classes: 'animus-empty-line', <Widget>[
           Component.text('No servers paired. Run /animus editor pair and open its link.'),
         ])
       else

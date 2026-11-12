@@ -117,6 +117,7 @@ class _ChipRowState extends State<ChipRow> {
           GuiIconButton(
             icon: ArcaneIcon.x(size: IconSize.sm),
             label: 'Remove ${component.noun} $text',
+            size: ButtonSize.icon,
             onPressed: () => component.onRemove!(index),
           ),
       ],

@@ -322,12 +322,11 @@ class _NpcPreviewState extends State<NpcPreview> {
         Component.text('Browser preview'),
       ]),
       dom.div(classes: 'animus-npc-preview-bar', <Widget>[
-        Button.ghost(label: 'Reset view', size: ButtonSize.small, onPressed: _stage.resetCamera),
+        Button.ghost(label: 'Reset view', onPressed: _stage.resetCamera),
         _terrain.controls('npc-preview-terrain-${component.document.id}'),
         if (component.route != null)
           Button(
             label: 'Route',
-            size: ButtonSize.small,
             variant: ButtonVariant.ghost,
             attributes: <String, String>{'aria-pressed': '$_showRoute'},
             onPressed: () {
@@ -358,7 +357,6 @@ class _NpcPreviewState extends State<NpcPreview> {
           ]),
           Button.secondary(
             label: _playing ? 'Pause' : 'Play',
-            size: ButtonSize.small,
             disabled: _animation == null,
             attributes: <String, String>{'aria-pressed': '$_playing'},
             onPressed: _play,

@@ -95,7 +95,6 @@ class _RigKeyframePanelState extends State<RigKeyframePanel> {
       ]),
       Button.ghost(
         label: 'Move up',
-        size: ButtonSize.small,
         disabled: index == 0,
         onPressed: () {
           component.onEdit((JsonMap json) => moveTrack(json, index, index - 1));
@@ -104,7 +103,6 @@ class _RigKeyframePanelState extends State<RigKeyframePanel> {
       ),
       Button.ghost(
         label: 'Move down',
-        size: ButtonSize.small,
         disabled: index + 1 >= tracks.length,
         onPressed: () {
           component.onEdit((JsonMap json) => moveTrack(json, index, index + 1));
@@ -113,7 +111,6 @@ class _RigKeyframePanelState extends State<RigKeyframePanel> {
       ),
       Button.ghost(
         label: 'Delete track',
-        size: ButtonSize.small,
         onPressed: () {
           component.onSelectTrack(null);
           component.onEdit((JsonMap json) => removeTrack(json, index));
@@ -140,7 +137,6 @@ class _RigKeyframePanelState extends State<RigKeyframePanel> {
         dom.label(classes: 'animus-rig-field is-inline', <Widget>[
           const dom.span(<Widget>[Component.text('Tick')]),
           TextInput(
-            size: ComponentSize.sm,
             type: TextInputType.number,
             value: _drafts['tick'] ?? _format(tick),
             attributes: const <String, String>{'aria-label': 'Keyframe tick', 'step': 'any'},
@@ -167,7 +163,6 @@ class _RigKeyframePanelState extends State<RigKeyframePanel> {
           dom.label(classes: 'animus-rig-field', <Widget>[
             const dom.span(<Widget>[Component.text('Curve')]),
             TextInput(
-              size: ComponentSize.sm,
               value: _drafts['bezier'] ?? easing,
               attributes: <String, String>{'aria-label': 'Bezier curve', if (_bezierError != null) 'aria-invalid': 'true'},
               onChanged: (String next) => _drafts['bezier'] = next,
@@ -194,7 +189,6 @@ class _RigKeyframePanelState extends State<RigKeyframePanel> {
           dom.div(classes: 'animus-rig-vector', <Widget>[
             for (int axis = 0; axis < 3 && axis < value.length; axis++)
               TextInput(
-                size: ComponentSize.sm,
                 type: TextInputType.number,
                 value: _drafts['$axis'] ?? _format(_number(value[axis])),
                 attributes: <String, String>{'aria-label': 'Keyframe value ${const <String>['X', 'Y', 'Z'][axis]}', 'step': 'any'},
@@ -205,13 +199,11 @@ class _RigKeyframePanelState extends State<RigKeyframePanel> {
           ]),
         Button.ghost(
           label: 'Copy to tick ${_format(playhead)}',
-          size: ButtonSize.small,
           disabled: playhead == tick || playhead > _number(component.animation['durationTicks']),
           onPressed: () => component.onEdit((JsonMap json) => copyKeyframe(json, selected.$1, selected.$2, playhead)),
         ),
         Button.ghost(
           label: 'Delete keyframe',
-          size: ButtonSize.small,
           onPressed: () => component.onEdit((JsonMap json) => removeKeyframe(json, selected.$1, selected.$2)),
         ),
       ]),

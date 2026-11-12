@@ -223,7 +223,7 @@ class _SyncPageState extends State<SyncPage> {
               attributes: const <String, String>{'data-testid': 'sync-no-server'},
               <Widget>[
                 const BrandMark(size: 48, classes: 'animus-server-mark'),
-                const dom.p(<Widget>[
+                const dom.p(classes: 'animus-empty-line', <Widget>[
                   Component.text(
                     'No server paired. Run /animus editor pair, then paste the link under Servers on the home page.',
                   ),
@@ -491,7 +491,7 @@ class _SyncPageState extends State<SyncPage> {
           ),
         ]),
         if (catalog != null && catalog.isEmpty)
-          const dom.p(classes: 'animus-muted', <Widget>[Component.text('The server has no documents yet.')]),
+          const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('The server has no documents yet.')]),
         if (catalog != null && catalog.isNotEmpty) ...<Widget>[
           dom.div(classes: 'animus-row', <Widget>[
             TextInput(

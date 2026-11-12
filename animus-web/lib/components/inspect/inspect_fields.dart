@@ -235,7 +235,7 @@ class InspectControl extends StatelessWidget {
           return dom.div(classes: 'animus-row', <Widget>[
             GuiSwitch(value: current == true, label: name, onChanged: onChanged),
             if (current != null && !field.required)
-              Button.ghost(label: 'Unset', size: ButtonSize.small, onPressed: () => onChanged(null)),
+              Button.ghost(label: 'Unset', onPressed: () => onChanged(null)),
           ]);
         }
       case FieldKind.integer || FieldKind.number:

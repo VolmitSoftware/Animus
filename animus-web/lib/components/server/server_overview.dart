@@ -132,7 +132,7 @@ class _ServerOverviewState extends State<ServerOverview> {
               child: Component.text('Server features'),
             ),
           ], children: <Widget>[
-            dom.ul(classes: 'animus-muted', <Widget>[
+            dom.ul(classes: 'animus-muted animus-features', <Widget>[
               for (final MapEntry<String, Object?> feature in features.entries)
                 if (feature.value is Map<String, Object?>)
                   dom.li(<Widget>[
@@ -181,11 +181,11 @@ class _ServerOverviewState extends State<ServerOverview> {
           if (status.online) Button.secondary(label: 'Try again', size: ButtonSize.small, onPressed: session.loadCatalog),
         ])
       else if (!session.catalogLoaded)
-        dom.p(classes: 'animus-muted', attributes: const <String, String>{'role': 'status'}, <Widget>[
+        dom.p(classes: 'animus-empty-line', attributes: const <String, String>{'role': 'status'}, <Widget>[
           Component.text(status.online ? 'Loading catalog...' : 'Connect to list documents.'),
         ])
       else if (session.catalog.isEmpty)
-        const dom.p(classes: 'animus-muted', attributes: <String, String>{'data-testid': 'catalog-empty'}, <Widget>[
+        const dom.p(classes: 'animus-empty-line', attributes: <String, String>{'data-testid': 'catalog-empty'}, <Widget>[
           Component.text('No documents yet. Send some from a workspace\'s Sync page.'),
         ])
       else ...<Widget>[
@@ -199,20 +199,18 @@ class _ServerOverviewState extends State<ServerOverview> {
           ),
           Button.primary(
             label: _selected.isEmpty ? 'Open selected' : 'Open ${_selected.length}',
-            size: ButtonSize.small,
             disabled: _selected.isEmpty || !status.online,
             onPressed: () => _open(<CatalogEntry>[for (final CatalogEntry entry in session.catalog) if (_selected.contains(entry.key)) entry]),
           ),
           Button.secondary(
             label: 'Open all shown',
-            size: ButtonSize.small,
             disabled: shown.isEmpty || !status.online,
             onPressed: () => _open(shown),
           ),
         ]),
         if (shown.isEmpty)
           dom.div(classes: 'animus-row', attributes: const <String, String>{'data-testid': 'catalog-no-match'}, <Widget>[
-            dom.span(classes: 'animus-muted', <Widget>[Component.text('No document matches "${_filter.trim()}".')]),
+            dom.span(classes: 'animus-empty-line', <Widget>[Component.text('No document matches "${_filter.trim()}".')]),
             Button.ghost(label: 'Clear the filter', size: ButtonSize.small, onPressed: () => setState(() => _filter = '')),
           ])
         else

@@ -413,17 +413,21 @@ class GuiLinesEditor extends StatelessWidget {
 }
 
 class GuiIconButton extends StatelessWidget {
-  const GuiIconButton({required this.icon, required this.label, required this.onPressed, this.disabled = false, super.key});
+  const GuiIconButton({required this.icon, required this.label, required this.onPressed, this.disabled = false, this.size = ButtonSize.iconSm, super.key});
 
   final ArcaneGlyph icon;
   final String label;
   final void Function() onPressed;
   final bool disabled;
 
+  /// Square: [ButtonSize.iconSm] in rows of buttons, [ButtonSize.icon] on a
+  /// removable chip or tag, which sits beside fields.
+  final ButtonSize size;
+
   @override
   Widget build(BuildContext context) => Button.ghost(
         icon: icon,
-        size: ButtonSize.small,
+        size: size,
         disabled: disabled,
         attributes: <String, String>{'aria-label': label, 'title': label},
         onPressed: onPressed,

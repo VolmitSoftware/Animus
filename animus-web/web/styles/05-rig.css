@@ -47,7 +47,7 @@
   align-self: center;
   padding-inline: 0.375rem;
   color: var(--animus-muted);
-  font-size: 0.875rem;
+  font-size: var(--animus-text-md);
 }
 
 .animus-rig-pane {
@@ -81,7 +81,7 @@
 .animus-rig-tree h3,
 .animus-rig-inspector h3 {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: var(--animus-text-md);
 }
 
 .animus-rig-tree ul {
@@ -97,7 +97,7 @@
   display: flex;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.35rem 0.5rem;
+  padding: 0.375rem 0.5rem;
   cursor: pointer;
 }
 
@@ -105,13 +105,8 @@
   background: color-mix(in srgb, var(--animus-muted) 14%, transparent);
 }
 
-.animus-rig-bone:focus-visible {
-  outline: 2px solid var(--ring, #ffb3d6);
-  outline-offset: -2px;
-}
-
 .animus-rig-bone.is-selected {
-  background: color-mix(in srgb, var(--primary, #ff5fa8) 22%, transparent);
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
 }
 
 .animus-rig-actions {
@@ -122,12 +117,25 @@
 
 .animus-rig-field {
   display: grid;
-  gap: 0.2rem;
+  gap: 0.25rem;
   min-width: 0;
-  font-size: 0.85rem;
+  font-size: var(--animus-text-md);
 }
 
+/* A field and its button stay on one line, the field taking the room; a
+   row of buttons only wraps. */
+.animus-rig-field > .animus-row:has(.arcane-text-input) {
+  flex-wrap: nowrap;
+}
+
+.animus-rig-field > .animus-row:has(.arcane-text-input) > :first-child {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* The caption reads as every other field label. */
 .animus-rig-field > span:first-child {
+  font-size: var(--animus-text-sm);
   color: var(--animus-muted);
 }
 
@@ -147,13 +155,14 @@
 
 .animus-rig-field.is-check > span:first-child,
 .animus-rig-field.is-check > span {
+  font-size: inherit;
   color: inherit;
 }
 
 .animus-rig-field.is-check input {
   width: 1.1rem;
   height: 1.1rem;
-  accent-color: var(--primary, #ff5fa8);
+  accent-color: var(--primary);
   cursor: pointer;
 }
 
@@ -165,7 +174,7 @@
 
 .animus-rig-hint {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: var(--animus-text-md);
 }
 
 .animus-mc-overlay,
@@ -198,7 +207,7 @@ html.light .animus-rig-bone-link {
 }
 
 .animus-rig-bone-dot.is-selected {
-  fill: var(--primary, #ff5fa8);
+  fill: var(--primary);
 }
 
 .animus-rig-axis {
@@ -216,7 +225,7 @@ html.light .animus-rig-bone-link {
 }
 
 .animus-rig-handle:focus-visible {
-  stroke: var(--ring, #ffb3d6);
+  stroke: var(--ring);
   stroke-width: 4;
 }
 
@@ -244,7 +253,7 @@ html.light .animus-rig-bone-link {
 .animus-rig-handle.is-x:focus-visible,
 .animus-rig-handle.is-y:focus-visible,
 .animus-rig-handle.is-z:focus-visible {
-  stroke: var(--ring, #ffb3d6);
+  stroke: var(--ring);
 }
 
 .animus-rig-timeline {
@@ -261,7 +270,7 @@ html.light .animus-rig-bone-link {
 }
 
 .animus-rig-names-toggle {
-  min-height: 2.25rem;
+  min-height: var(--animus-control-h);
   width: 100%;
   display: flex;
   gap: 0.5rem;
@@ -271,7 +280,7 @@ html.light .animus-rig-bone-link {
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 0.875rem;
+  font-size: var(--animus-text-md);
   text-align: left;
   cursor: pointer;
 }
@@ -284,11 +293,6 @@ html.light .animus-rig-bone-link {
   width: 1ch;
   font-family: var(--font-mono);
   color: var(--animus-muted);
-}
-
-.animus-rig-names-toggle:focus-visible {
-  outline: 2px solid var(--ring, #ffb3d6);
-  outline-offset: 2px;
 }
 
 .animus-rig-names {
@@ -317,7 +321,7 @@ html.light .animus-rig-bone-link {
 }
 
 .animus-rig-name.is-broken {
-  border-color: var(--animus-warning, #e2a336);
+  border-color: var(--animus-warning);
 }
 
 .animus-rig-name-head,
@@ -335,13 +339,13 @@ html.light .animus-rig-bone-link {
 }
 
 .animus-rig-name-role {
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
   color: var(--animus-muted);
 }
 
 .animus-rig-name-fix {
-  font-size: 0.8125rem;
-  color: var(--animus-warning, #e2a336);
+  font-size: var(--animus-text-sm);
+  color: var(--animus-warning);
 }
 
 .animus-rig-transport {
@@ -356,7 +360,7 @@ html.light .animus-rig-bone-link {
 .animus-rig-loop-note,
 .animus-rig-status {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 .animus-rig-trim {
@@ -365,7 +369,7 @@ html.light .animus-rig-bone-link {
   gap: 0.5rem 0.75rem;
   align-items: center;
   padding: 0.5rem 0.75rem;
-  border: 1px solid var(--animus-warning, #e2a336);
+  border: 1px solid var(--animus-warning);
 }
 
 .animus-rig-lanes {
@@ -380,16 +384,16 @@ html.light .animus-rig-bone-link {
   grid-template-columns: minmax(8rem, 12rem) minmax(0, 1fr);
   gap: 0.5rem;
   align-items: center;
-  font-size: 0.85rem;
+  font-size: var(--animus-text-md);
 }
 
 .animus-rig-lane-label {
   display: flex;
-  gap: 0.35rem;
+  gap: 0.375rem;
   align-items: center;
   min-width: 0;
   min-height: 1.75rem;
-  padding: 0 0.4rem;
+  padding: 0 0.375rem;
   border: 1px solid transparent;
   background: transparent;
   color: inherit;
@@ -407,11 +411,6 @@ button.animus-rig-lane-label:hover {
   border-color: var(--animus-border);
 }
 
-button.animus-rig-lane-label:focus-visible {
-  outline: 2px solid var(--ring, #ffb3d6);
-  outline-offset: 1px;
-}
-
 .animus-rig-lane-label > span:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -422,12 +421,12 @@ button.animus-rig-lane-label:focus-visible {
 }
 
 .animus-rig-lane.is-selected .animus-rig-lane-label {
-  border-color: var(--primary, #ff5fa8);
+  border-color: var(--primary);
 }
 
 .animus-rig-blend {
   flex: none;
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
   color: var(--animus-muted);
 }
 
@@ -443,7 +442,7 @@ button.animus-rig-lane-label:focus-visible {
   height: 1.4rem;
   background: color-mix(in srgb, var(--animus-muted) 20%, transparent);
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--animus-text-xs);
 }
 
 .animus-rig-ruler-mark {
@@ -452,13 +451,13 @@ button.animus-rig-lane-label:focus-visible {
   bottom: 0;
   display: flex;
   align-items: center;
-  padding-left: 0.2rem;
+  padding-left: 0.25rem;
   border-left: 1px solid var(--animus-muted);
   color: var(--animus-muted);
 }
 
 .animus-rig-ruler-mark.is-end {
-  padding: 0 0.2rem 0 0;
+  padding: 0 0.25rem 0 0;
   border-left: 0;
   border-right: 1px solid var(--animus-muted);
   transform: translateX(-100%);
@@ -486,13 +485,13 @@ button.animus-rig-lane-label:focus-visible {
 .animus-rig-range {
   width: 100%;
   min-height: 2rem;
-  accent-color: var(--primary, #ff5fa8);
+  accent-color: var(--primary);
   cursor: pointer;
 }
 
 .animus-rig-tick {
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--animus-text-sm);
 }
 
 .animus-rig-playhead {
@@ -501,7 +500,7 @@ button.animus-rig-lane-label:focus-visible {
   bottom: 0;
   width: 2px;
   margin-left: -1px;
-  background: var(--primary, #ff5fa8);
+  background: var(--primary);
   pointer-events: none;
   z-index: 1;
 }
@@ -525,6 +524,7 @@ button.animus-rig-lane-label:focus-visible {
   border: 1px solid var(--animus-panel);
   background: var(--animus-muted);
   transform: translate(-50%, -50%) rotate(45deg);
+  font-size: var(--animus-text-md);
   cursor: grab;
   touch-action: none;
 }
@@ -541,19 +541,13 @@ button.animus-rig-lane-label:focus-visible {
 
 .animus-rig-key:hover,
 .animus-rig-event:hover {
-  background: var(--secondary-foreground, var(--animus-muted));
-}
-
-.animus-rig-key:focus-visible,
-.animus-rig-event:focus-visible {
-  outline: 2px solid var(--ring, #ffb3d6);
-  outline-offset: 2px;
+  background: var(--secondary-foreground);
 }
 
 .animus-rig-key.is-selected,
 .animus-rig-event.is-selected {
-  background: var(--primary, #ff5fa8);
-  border-color: var(--primary, #ff5fa8);
+  background: var(--primary);
+  border-color: var(--primary);
 }
 
 .animus-rig-keybar {
@@ -612,7 +606,7 @@ button.animus-rig-lane-label:focus-visible {
 
   .animus-rig-lane {
     grid-template-columns: minmax(0, 1fr);
-    gap: 0.1rem;
+    gap: 0.125rem;
   }
 
   .animus-rig-lane.is-ruler .animus-rig-lane-label {
@@ -661,13 +655,13 @@ button.animus-rig-lane-label:focus-visible {
 
   .animus-rig-key:hover::before,
   .animus-rig-event:hover::before {
-    background: var(--secondary-foreground, var(--animus-muted));
+    background: var(--secondary-foreground);
   }
 
   .animus-rig-key.is-selected::before,
   .animus-rig-event.is-selected::before {
-    border-color: var(--primary, #ff5fa8);
-    background: var(--primary, #ff5fa8);
+    border-color: var(--primary);
+    background: var(--primary);
   }
 
   /* Gizmo handles stay round (they are the 3D gizmo) at a 44 px target. */
@@ -680,12 +674,8 @@ button.animus-rig-lane-label:focus-visible {
 }
 
 @media (max-width: 520px) {
-  .animus-rig-editor button:not(.animus-rig-key):not(.animus-rig-event),
-  .animus-rig-editor .animus-select-trigger,
-  .animus-rig-editor input:not([type="range"]):not([type="checkbox"]),
-  .animus-rig-names-toggle,
   button.animus-rig-lane-label {
-    min-height: 44px;
+    min-height: 2.75rem;
   }
 
   .animus-rig-panes > * {

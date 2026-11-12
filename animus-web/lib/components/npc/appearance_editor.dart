@@ -56,7 +56,7 @@ class HologramLinesEditor extends StatelessWidget {
           classes: 'animus-hologram-preview',
           attributes: const <String, String>{'aria-label': 'Hologram preview'},
           <Widget>[
-            if (lines.isEmpty) const dom.span(classes: 'animus-muted', <Widget>[Component.text('No lines yet.')]),
+            if (lines.isEmpty) const dom.span(classes: 'animus-empty-line', <Widget>[Component.text('No lines yet.')]),
             for (final Object? line in lines) dom.div(classes: 'animus-hologram-preview-line', <Widget>[GuiStyledText(hologramLineText(line))]),
           ],
         ),

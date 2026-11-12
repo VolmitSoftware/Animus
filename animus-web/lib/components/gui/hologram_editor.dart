@@ -208,7 +208,7 @@ class _HologramEditorState extends State<HologramEditor> {
             onPressed: () => setLines(<Object?>[...lines, newHologramLine(kind)]),
           ),
       ]),
-      if (lines.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No rows yet.')]),
+      if (lines.isEmpty) const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No rows yet.')]),
       for (int index = 0; index < lines.length; index++) _line(lines, index, '$base[$index]', setLines),
     ]);
   }

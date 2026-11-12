@@ -718,7 +718,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
   Widget _list(String title, List<String> lines, String empty) => dom.section(classes: 'animus-panel', <Widget>[
         Fold(open: lines.length <= 20 && lines.isNotEmpty, summary: <Widget>[Component.text('$title (${lines.length})')], children: <Widget>[
           if (lines.isEmpty)
-            dom.p(classes: 'animus-muted', <Widget>[Component.text(empty)])
+            dom.p(classes: 'animus-empty-line', <Widget>[Component.text(empty)])
           else
             dom.ul(classes: 'animus-citizens-lines', <Widget>[
               for (final String line in lines.take(500)) dom.li(<Widget>[Component.text(line)]),

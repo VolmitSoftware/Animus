@@ -286,7 +286,7 @@ class _ShellSidebarState extends State<ShellSidebar> {
             ),
           ]),
           if (nothingMatches)
-            dom.p(classes: 'animus-muted animus-doc-search-empty', attributes: const <String, String>{'role': 'status'}, <Widget>[
+            dom.p(classes: 'animus-empty-line', attributes: const <String, String>{'role': 'status'}, <Widget>[
               Component.text('Nothing matches "${_filter.trim()}".'),
             ]),
           if (groups.isNotEmpty)
@@ -326,7 +326,7 @@ class _ShellSidebarState extends State<ShellSidebar> {
     final LiveSession? session = component.session;
     final int count = session == null || !session.catalogLoaded ? 0 : session.catalog.length;
     return dom.div(classes: 'animus-sidebar-empty', attributes: const <String, String>{'data-testid': 'sidebar-nothing-open'}, <Widget>[
-      dom.p(classes: 'animus-muted', <Widget>[
+      dom.p(classes: 'animus-empty-line', <Widget>[
         Component.text(count == 0
             ? 'Nothing open yet. Documents join this workspace as you open them from the server catalog.'
             : 'Nothing open yet. The server has $count document${count == 1 ? '' : 's'}.'),
@@ -334,7 +334,6 @@ class _ShellSidebarState extends State<ShellSidebar> {
       if (count > 0)
         Button.secondary(
           label: 'Open all $count',
-          size: ButtonSize.small,
           disabled: !session!.online || !session.owned || session.busy != null,
           onPressed: () => session.openDocuments(session.catalog),
         ),

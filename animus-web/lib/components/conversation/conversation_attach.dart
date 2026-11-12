@@ -99,7 +99,7 @@ class _ConversationAttachState extends State<ConversationAttach> {
         ),
       ]),
       if (targets.isEmpty)
-        const dom.p(classes: 'animus-muted', <Widget>[Component.text('No NPCs or groups yet.')])
+        const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No NPCs or groups yet.')])
       else
         dom.ul(classes: 'animus-conv-targets', <Widget>[
           for (final AnimusDocument document in targets)

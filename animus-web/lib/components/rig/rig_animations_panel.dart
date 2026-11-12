@@ -108,7 +108,6 @@ class _RigAnimationsPanelState extends State<RigAnimationsPanel> {
         ]),
       dom.div(classes: 'animus-rig-name-add', <Widget>[
         TextInput(
-          size: ComponentSize.sm,
           placeholder: own.isEmpty ? 'idle' : freeAnimationName(component.rig, names.containsKey('idle') ? 'walk' : 'idle'),
           value: _newName,
           attributes: const <String, String>{'aria-label': 'New animation name'},
@@ -129,12 +128,11 @@ class _RigAnimationsPanelState extends State<RigAnimationsPanel> {
         Button.secondary(
           label: 'Add name',
           icon: ArcaneIcon.plus(),
-          size: ButtonSize.small,
           disabled: own.isEmpty || _newName.trim().isEmpty,
           onPressed: _add,
         ),
       ]),
-      if (own.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('Create an animation first.')]),
+      if (own.isEmpty) const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('Create an animation first.')]),
     ]);
   }
 
@@ -147,7 +145,6 @@ class _RigAnimationsPanelState extends State<RigAnimationsPanel> {
     return dom.li(classes: 'animus-rig-name${exists && !foreign ? '' : ' is-broken'}', attributes: <String, String>{'data-name': name}, <Widget>[
       dom.div(classes: 'animus-rig-name-head', <Widget>[
         TextInput(
-          size: ComponentSize.sm,
           value: draft,
           attributes: <String, String>{'aria-label': 'Name $name'},
           onChanged: (String value) => _names[name] = value,
@@ -169,14 +166,12 @@ class _RigAnimationsPanelState extends State<RigAnimationsPanel> {
         ]),
         Button.ghost(
           label: 'Open',
-          size: ButtonSize.small,
           disabled: !exists || foreign,
           attributes: <String, String>{'aria-label': 'Open $id'},
           onPressed: () => component.onOpen(id),
         ),
         Button.ghost(
           label: 'Remove',
-          size: ButtonSize.small,
           attributes: <String, String>{'aria-label': 'Remove the name $name'},
           onPressed: () => component.onEdit((JsonMap json) => removeAnimationName(json, name)),
         ),

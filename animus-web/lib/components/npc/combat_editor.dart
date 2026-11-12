@@ -481,7 +481,6 @@ class _CombatEditorState extends State<CombatEditor> {
                   ),
                   Button.ghost(
                     label: 'Add weapon',
-                    size: ButtonSize.small,
                     disabled: draft.isEmpty || map.containsKey(draft),
                     onPressed: () {
                       _put(at, <String, Object?>{...map, draft: 1});
@@ -703,7 +702,6 @@ class _CombatEditorState extends State<CombatEditor> {
                 ),
                 Button.ghost(
                   label: 'Add',
-                  size: ButtonSize.small,
                   disabled: draft.isEmpty || items.contains(draft),
                   attributes: <String, String>{'aria-label': 'Add to $label'},
                   onPressed: () {

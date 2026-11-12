@@ -142,7 +142,7 @@ class BehaviorEditor extends StatelessWidget {
     final List<String> names = variables.keys.toList();
     void put(JsonMap next) => _write(<JsonStep>['variables'], next.isEmpty ? null : next);
     return GuiSection(title: 'Variables', count: variables.length, open: variables.isNotEmpty, tip: _spec('variables').description, docs: Docs.behaviorVariables, children: <Widget>[
-      if (variables.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No variables yet.')]),
+      if (variables.isEmpty) const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No variables yet.')]),
       for (int index = 0; index < names.length; index++) _variable(doc, variables, names[index], index, put, server),
       Button.ghost(
         label: 'Add variable',

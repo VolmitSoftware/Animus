@@ -252,7 +252,7 @@ class NavigationEditor extends StatelessWidget {
               },
             ),
           ],
-          Button.ghost(
+          Button.secondary(
             id: 'animus-npc-add-recording',
             label: 'Play a recording',
             size: ButtonSize.small,

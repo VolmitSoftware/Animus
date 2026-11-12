@@ -167,7 +167,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 onChanged: (String value) => setState(() => _name = value),
                 onSubmit: busy ? null : _createBlank,
               ),
-              Button.primary(label: 'Create blank workspace', icon: ArcaneIcon.plus(), size: ButtonSize.small, disabled: busy, onPressed: _createBlank),
+              Button.primary(label: 'Create blank workspace', icon: ArcaneIcon.plus(), disabled: busy, onPressed: _createBlank),
             ]),
           ]),
           dom.li(classes: 'animus-start-way', <Widget>[
@@ -183,7 +183,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Component.text(packs.map(((String, String) pack) => pack.$1).join(', ')),
               ]),
             ]),
-            Button.secondary(label: 'Create with example packs', size: ButtonSize.small, disabled: busy, onPressed: _createStarter),
+            Button.secondary(label: 'Create with example packs', disabled: busy, onPressed: _createStarter),
           ]),
           dom.li(classes: 'animus-start-way', <Widget>[
             const dom.div(classes: 'animus-start-copy', <Widget>[
@@ -196,12 +196,11 @@ class _HomeScreenState extends State<HomeScreen> {
               ]),
             ]),
             dom.div(classes: 'animus-row', <Widget>[
-              Button.secondary(label: 'Open folder', icon: ArcaneIcon.folderOpen(), size: ButtonSize.small, disabled: busy, onPressed: component.onOpenFolder),
-              Button.secondary(label: 'Open zip', icon: ArcaneIcon.fileArchive(), size: ButtonSize.small, disabled: busy, onPressed: component.onOpenZip),
-              Button.ghost(
+              Button.secondary(label: 'Open folder', icon: ArcaneIcon.folderOpen(), disabled: busy, onPressed: component.onOpenFolder),
+              Button.secondary(label: 'Open zip', icon: ArcaneIcon.fileArchive(), disabled: busy, onPressed: component.onOpenZip),
+              Button.secondary(
                 label: converterTitle,
                 icon: ArcaneIcon.arrowRightLeft(),
-                size: ButtonSize.small,
                 disabled: busy,
                 onPressed: () => component.onNavigate(const CitizensRoute()),
               ),
@@ -244,9 +243,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (listProblem != null)
         dom.p(classes: 'animus-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(listProblem)])
       else if (!store.workspacesListed)
-        const dom.p(classes: 'animus-muted', attributes: <String, String>{'role': 'status'}, <Widget>[Component.text('Loading workspaces...')])
+        const dom.p(classes: 'animus-empty-line', attributes: <String, String>{'role': 'status'}, <Widget>[Component.text('Loading workspaces...')])
       else if (store.workspaces.isEmpty)
-        const dom.p(classes: 'animus-muted', <Widget>[Component.text('No workspaces yet. Start one above.')])
+        const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No workspaces yet. Start one above.')])
       else
         dom.ul(classes: 'animus-workspace-list', <Widget>[
           for (final WorkspaceSummary summary in store.workspaces) dom.li(classes: 'animus-workspace-row', <Widget>[_workspaceRow(summary, busy)]),
@@ -279,8 +278,8 @@ class _HomeScreenState extends State<HomeScreen> {
           onSubmit: () => _rename(summary.id),
           onCancel: () => _cancelRename(summary.id),
         ),
-        Button.primary(label: 'Rename', size: ButtonSize.small, disabled: busy || _renameTo.trim().isEmpty, onPressed: () => _rename(summary.id)),
-        Button.ghost(label: 'Cancel', size: ButtonSize.small, onPressed: () => _cancelRename(summary.id)),
+        Button.primary(label: 'Rename', disabled: busy || _renameTo.trim().isEmpty, onPressed: () => _rename(summary.id)),
+        Button.ghost(label: 'Cancel', onPressed: () => _cancelRename(summary.id)),
       ]);
     }
     return dom.div(classes: 'animus-workspace-entry', <Widget>[

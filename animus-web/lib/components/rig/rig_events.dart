@@ -166,7 +166,7 @@ class _RigEventEditorState extends State<RigEventEditor> {
             number: field.kind == FieldKind.integer || field.kind == FieldKind.number,
             help: field.bounds,
           ),
-      Button.ghost(label: 'Delete event', size: ButtonSize.small, onPressed: component.onRemove),
+      Button.ghost(label: 'Delete event', onPressed: component.onRemove),
     ]);
   }
 
@@ -175,7 +175,6 @@ class _RigEventEditorState extends State<RigEventEditor> {
     return dom.label(classes: 'animus-rig-field', <Widget>[
       dom.span(<Widget>[Component.text(label)]),
       TextInput(
-        size: ComponentSize.sm,
         type: number ? TextInputType.number : TextInputType.text,
         value: _drafts[key] ?? value,
         attributes: <String, String>{'aria-label': 'Event $label', 'step': 'any', if (error != null) 'aria-invalid': 'true'},

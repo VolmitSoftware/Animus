@@ -235,6 +235,7 @@ class _TreeBuilder {
   Widget _stepMenu(ConversationStep step, StepAt at, int count) => ConversationMenu(
         label: 'Step options',
         icon: ArcaneIcon.ellipsis(size: IconSize.sm),
+        size: ButtonSize.iconMd,
         actions: <MenuAction>[
           MenuAction('Add line below', () => edit((Conversation c) => insertStep(c, at.sibling(at.index + 1), ConversationLine('')), focus: lineId(at.sibling(at.index + 1)), focusValue: ''), hint: 'Enter'),
           ..._insertActions(at.sibling(at.index + 1), suffix: ' below'),
@@ -463,6 +464,7 @@ class _TreeBuilder {
           ConversationMenu(
             label: 'Answer options',
             icon: ArcaneIcon.ellipsis(size: IconSize.sm),
+            size: ButtonSize.iconMd,
             actions: <MenuAction>[
               MenuAction(next == null ? 'Add what follows' : 'Edit what follows', follow, hint: platformKeys('Mod+Enter')),
               MenuAction('Color, hover, target', () => scope.toggle(key)),
@@ -540,6 +542,7 @@ class PlaceholderMenu extends StatelessWidget {
   Widget build(BuildContext context) => ConversationMenu(
         label: 'Insert a placeholder',
         icon: ArcaneIcon.braces(size: IconSize.sm),
+        size: ButtonSize.iconMd,
         actions: <MenuAction>[
           MenuAction('Player name', () => insertAtCaret(field, playerNamePlaceholder), hint: playerNamePlaceholder),
           MenuAction('NPC name', () => insertAtCaret(field, npcNamePlaceholder), hint: npcNamePlaceholder),

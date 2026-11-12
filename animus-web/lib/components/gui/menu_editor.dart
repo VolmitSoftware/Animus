@@ -145,7 +145,7 @@ class _MenuEditorState extends State<MenuEditor> {
       ]),
       dom.section(classes: 'animus-panel animus-gui-inspector', <Widget>[
         if (components.isEmpty)
-          const dom.p(classes: 'animus-muted', <Widget>[Component.text('No components yet. Add one with Add component.')])
+          const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No components yet. Add one with Add component.')])
         else
           GuiSection(title: 'Component $selectedId', tip: 'The selected component. Click one in the stage or the list to pick it.', docs: Docs.menus, children: _component(components)),
         GuiSection(title: 'Menu', open: components.isEmpty, tip: 'Where the menu opens around the viewer and what closes it.', docs: Docs.menus, children: <Widget>[

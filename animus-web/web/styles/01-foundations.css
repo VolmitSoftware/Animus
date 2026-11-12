@@ -40,6 +40,50 @@
   --animus-panel: var(--card, #161518);
   --animus-border: var(--border, #343036);
   --animus-muted: var(--muted-foreground, #aba5aa);
+
+  /* Text sizes by role: xs captions, badges and hints; sm secondary and
+     dense text and small controls; md body and control text; lg and xl
+     headings; 2xl a document's title. */
+  --animus-text-xs: 0.75rem;
+  --animus-text-sm: 0.8125rem;
+  --animus-text-md: 0.875rem;
+  --animus-text-lg: 1rem;
+  --animus-text-xl: 1.125rem;
+  --animus-text-2xl: 1.25rem;
+
+  /* Control geometry (lib/config/control_css.dart applies it). Declared on
+     the root so popups and sheets read it too. */
+  --animus-control-h: 2.25rem;
+  --animus-control-h-sm: 1.75rem;
+  --animus-control-pad: 0.875rem;
+  --animus-control-pad-sm: 0.625rem;
+  --animus-control-font: var(--animus-text-md);
+  --animus-control-font-sm: var(--animus-text-sm);
+  /* The glyph in a button of either size. */
+  --animus-button-icon: 1.25rem;
+  /* Small marks inside controls: swatches, ticks, checkboxes. */
+  --animus-control-icon-sm: 0.875rem;
+  --animus-control-border: 1px;
+  /* Where a field's text starts, matching arcane's TextInput. */
+  --animus-field-pad: 0.75rem;
+
+  --animus-focus-offset: 2px;
+  /* For a control flush in a clipped container (lists, menus, tabs). */
+  --animus-focus-inset: -2px;
+}
+
+/* --ring differs on :root (the seed palette) and #arcane-root (the brand),
+   so the ring is resolved again on #arcane-root. */
+:root,
+#arcane-root {
+  --animus-focus-ring: 2px solid var(--ring);
+}
+
+@media (max-width: 760px), (pointer: coarse) {
+  :root {
+    --animus-control-h: 2.75rem;
+    --animus-control-h-sm: 2.75rem;
+  }
 }
 
 /* Semantic colours, one set per theme, each at 4.5:1 or better on the

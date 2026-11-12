@@ -195,13 +195,14 @@ class _KeyValueEditorState extends State<KeyValueEditor> {
                     onChanged: (Object? next) => _put(keys[index], next),
                   ),
             ]),
-            GuiIconButton(
+            Button.ghost(
               icon: ArcaneIcon.x(size: IconSize.sm),
-              label: 'Remove ${keys[index]}',
+              size: ButtonSize.iconMd,
+              attributes: <String, String>{'aria-label': 'Remove ${keys[index]}', 'title': 'Remove ${keys[index]}'},
               onPressed: () => component.onChanged(removeEntry(value, keys[index])),
             ),
           ]),
-        if (keys.isEmpty) const dom.span(classes: 'animus-muted animus-kv-empty', <Widget>[Component.text('No fields.')]),
+        if (keys.isEmpty) const dom.span(classes: 'animus-empty-line', <Widget>[Component.text('No fields.')]),
       ],
       dom.div(classes: 'animus-row animus-kv-tools', <Widget>[
         if (!_advanced)

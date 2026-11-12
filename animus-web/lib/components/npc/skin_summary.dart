@@ -150,7 +150,7 @@ class _SkinSummaryState extends State<SkinSummary> {
           count: wearers.length,
           children: <Widget>[
             if (wearers.isEmpty)
-              const dom.p(classes: 'animus-muted', <Widget>[Component.text('No NPC or group wears this skin. Set it under Appearance.')])
+              const dom.p(classes: 'animus-empty-line', <Widget>[Component.text('No NPC or group wears this skin. Set it under Appearance.')])
             else
               dom.ul(classes: 'animus-skin-wearers', <Widget>[
                 for (final AnimusDocument wearer in wearers)

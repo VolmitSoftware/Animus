@@ -374,11 +374,11 @@ class _DocumentPaneState extends State<DocumentPane> {
       return dom.div(classes: 'animus-row', attributes: const <String, String>{'role': 'group', 'aria-label': 'Manage document'}, <Widget>[
         ?_revision(document),
         if (component.onRename != null)
-          Button.ghost(id: 'animus-doc-rename', label: 'Rename', size: ButtonSize.small, onPressed: () => _startRename(copy: false)),
+          Button.ghost(id: 'animus-doc-rename', label: 'Rename', onPressed: () => _startRename(copy: false)),
         if (component.onDuplicate != null)
-          Button.ghost(id: 'animus-doc-duplicate', label: 'Duplicate', size: ButtonSize.small, onPressed: () => _startRename(copy: true)),
+          Button.ghost(id: 'animus-doc-duplicate', label: 'Duplicate', onPressed: () => _startRename(copy: true)),
         if (component.onDelete != null)
-          Button.ghost(id: 'animus-doc-delete', label: 'Delete', size: ButtonSize.small, onPressed: () => setState(() => _confirmDelete = true)),
+          Button.ghost(id: 'animus-doc-delete', label: 'Delete', onPressed: () => setState(() => _confirmDelete = true)),
       ]);
     }
     return dom.div(classes: 'animus-row animus-rename', <Widget>[
@@ -394,8 +394,8 @@ class _DocumentPaneState extends State<DocumentPane> {
         onSubmit: _submitRename,
         onCancel: _cancelRename,
       ),
-      Button.primary(label: _copying ? 'Copy' : 'Move', size: ButtonSize.small, onPressed: _submitRename),
-      Button.ghost(label: 'Cancel', size: ButtonSize.small, onPressed: _cancelRename),
+      Button.primary(label: _copying ? 'Copy' : 'Move', onPressed: _submitRename),
+      Button.ghost(label: 'Cancel', onPressed: _cancelRename),
     ]);
   }
 
