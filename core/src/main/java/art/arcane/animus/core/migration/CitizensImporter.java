@@ -56,6 +56,9 @@ public final class CitizensImporter {
         public int converterVersion() { return summary.get("converterVersion").getAsInt(); }
         public int warningCount() { return summary.has("migrationWarnings") ? summary.getAsJsonArray("migrationWarnings").size() : 0; }
     }
+    /** How every Denizen reason starts; {@code /animus import citizens} rewrites the rest once the Denizen scripts are converted. */
+    static final String DENIZEN_REASON = "Denizen data";
+    static final String DENIZEN_MISSING = DENIZEN_REASON + "; its scripts are not in the save, so rewrite them as Animus behaviors by hand";
     private static final Set<String> INTEGRATIONS = Set.of("sentinel", "denizen", "assignment", "denizen_flags", "denizenflags", "triggers", "constants");
     private static final Set<String> REVIEW = Set.of("skintrait", "location", "owner", "equipment", "inventory", "waypoints", "text", "hologramtrait", "poses", "lookclose", "type", "spawned", "mounttrait", "controllable",
             BuilderMapping.BUILDER_TRAIT, BuilderMapping.CONSTRUCTOR_TRAIT);
@@ -674,7 +677,7 @@ public final class CitizensImporter {
             case UNKNOWN -> new Note(Status.REQUIRES_INTEGRATION, "Sentinel field this converter does not know; kept in the combat review data");
         };
         if (trait.equals("assignment") || trait.equals("triggers") || trait.startsWith("denizen") || trait.equals("constants"))
-            return new Note(Status.REQUIRES_INTEGRATION, "Denizen data; its scripts are not in the save, so rewrite them as Animus behaviors by hand");
+            return new Note(Status.REQUIRES_INTEGRATION, DENIZEN_MISSING);
         if (INTEGRATIONS.contains(trait)) return new Note(Status.REQUIRES_INTEGRATION, "needs a plugin integration Animus does not have");
         if (trait.equals("skintrait")) return new Note(Status.CONVERTED, "");
         if (trait.equals("trader")) return parts.length > 1 && Set.of("guiName", "converted-to-v5").contains(parts[1]) ? new Note(Status.CONVERTED, "")

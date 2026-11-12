@@ -15,7 +15,10 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -97,14 +100,20 @@ public final class GlossExchange {
         return skipped.build().plus(importDocuments(batch.documents(), namespace, replace));
     }
 
-    /** Validates every document first, then writes the accepted ones into {@code gui/<kind>/<namespace>/}. */
+    /**
+     * Validates every document first, then writes the accepted ones into {@code gui/<kind>/<namespace>/}. Animations are
+     * checked first, so a hologram or menu may show an animation the same import brings; a refused one does not count.
+     */
     public Report importDocuments(List<GlossDocument> documents, String namespace, boolean replace) throws IOException {
         if (!namespace.matches("[a-z0-9_-]{1,64}")) throw new IOException("namespace must use lowercase letters, digits, _ and -");
         Report.Builder report = new Report.Builder();
         Map<String, String> claimed = new HashMap<>();
         Map<Path, String> accepted = new LinkedHashMap<>();
         Map<Path, String> labels = new HashMap<>();
-        for (GlossDocument document : documents) {
+        Map<GuiKind, Set<String>> pending = new EnumMap<>(GuiKind.class);
+        List<GlossDocument> ordered = new ArrayList<>(documents);
+        ordered.sort(Comparator.comparingInt((GlossDocument document) -> document.kind() == GuiKind.ANIMATION ? 0 : 1));
+        for (GlossDocument document : ordered) {
             String source = document.kind().word() + " " + document.id();
             Optional<String> mapped = GlossIds.toAnimus(document.id(), namespace);
             if (mapped.isEmpty()) { report.refused(source + ": the id cannot become an Animus id"); continue; }
@@ -115,9 +124,12 @@ public final class GlossExchange {
             JsonObject parsed;
             try { parsed = JsonDocuments.object(document.json()); }
             catch (IOException invalid) { report.refused(label + ": " + invalid.getMessage()); continue; }
+            int placeholders = GlossPlaceholders.translate(parsed);
             String text = JsonDocuments.write(parsed);
-            List<String> problems = validator.problems(document.kind(), id, text);
+            List<String> problems = validator.problems(document.kind(), id, text, pending);
             if (!problems.isEmpty()) { report.refused(label + ": " + String.join("; ", problems.stream().limit(8).toList())); continue; }
+            if (placeholders > 0) report.note(label + ": " + placeholders + " papi call" + (placeholders == 1 ? "" : "s") + " written as %placeholder% text");
+            pending.computeIfAbsent(document.kind(), (GuiKind ignored) -> new HashSet<>()).add(id);
             Path file = file(document.kind(), id);
             switch (GlossFolders.compare(file, text)) {
                 case SAME -> report.unchanged(label);

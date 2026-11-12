@@ -148,6 +148,18 @@ class EditorHotloadTest {
     }
 
     @Test
+    void listenerStateReportsTheBoundAddressOrWhyItIsNotBound() throws Exception {
+        try (ServerSocket taken = new ServerSocket(0, 50, InetAddress.getLoopbackAddress())) {
+            start(config(listener(taken.getLocalPort())));
+            String failed = service.listenerState();
+            assertTrue(failed.startsWith("not bound: cannot bind 127.0.0.1:" + taken.getLocalPort()), failed);
+        }
+        service.close(); service = null; runtime.close(); runtime = null;
+        int port = startListening();
+        assertEquals("127.0.0.1:" + port, service.listenerState());
+    }
+
+    @Test
     void portChange_rebindsListener_tokenStaysValid() throws Exception {
         int first = startListening();
         String token = token();

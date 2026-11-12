@@ -83,11 +83,11 @@ public record HoloCatalog(Map<String, HologramDocument> holograms, Map<String, M
     }
 
     /**
-     * Checks one document as {@link #load} and {@code ShopCatalog} would, against the animations already on disk.
-     * Imports call this before writing anything.
+     * Checks one document as {@link #load} and {@code ShopCatalog} would, against the animations already on disk and
+     * those the same import accepted. Imports call this before writing anything.
      */
     public static GuiValidator validator(Path data, Predicate<String> commandsAllowed) {
-        return (GuiKind kind, String id, String json) -> {
+        return (GuiKind kind, String id, String json, Map<GuiKind, Set<String>> pending) -> {
             if (!id.matches(ID)) return List.of("$: id '" + id + "' is not namespace:path with lowercase letters, digits, _, - and /");
             List<String> problems = new ArrayList<>();
             switch (kind) {
@@ -101,25 +101,26 @@ public record HoloCatalog(Map<String, HologramDocument> holograms, Map<String, M
                 case HOLOGRAM -> {
                     HologramDocument.Result result = HologramDocument.parse(id, json);
                     problems.addAll(result.problems());
-                    result.document().flatMap((HologramDocument document) -> refusal(id, document.hasCommands(), document.animations(), known(data, id, document.animations()), commandsAllowed)).ifPresent(problems::add);
+                    result.document().flatMap((HologramDocument document) -> refusal(id, document.hasCommands(), document.animations(), known(data, id, document.animations(), pending.getOrDefault(GuiKind.ANIMATION, Set.of())), commandsAllowed)).ifPresent(problems::add);
                 }
                 case MENU -> {
                     MenuDocument.Result result = MenuDocument.parse(id, json);
                     problems.addAll(result.problems());
-                    result.document().flatMap((MenuDocument document) -> refusal(id, document.hasCommands(), document.animations(), known(data, id, document.animations()), commandsAllowed)).ifPresent(problems::add);
+                    result.document().flatMap((MenuDocument document) -> refusal(id, document.hasCommands(), document.animations(), known(data, id, document.animations(), pending.getOrDefault(GuiKind.ANIMATION, Set.of())), commandsAllowed)).ifPresent(problems::add);
                 }
             }
             return List.copyOf(problems);
         };
     }
 
-    /** The referenced animations that exist as files, so an import with its animations validates in any order. */
-    private static Set<String> known(Path data, String from, Set<String> referenced) {
+    /** The referenced animations that exist as files or that the same import accepted. */
+    private static Set<String> known(Path data, String from, Set<String> referenced, Set<String> pending) {
         Set<String> found = new java.util.HashSet<>();
         for (String reference : referenced) {
             String id = GuiIds.relative(from, reference);
             int colon = id.indexOf(':');
-            if (colon > 0 && java.nio.file.Files.isRegularFile(data.resolve(GuiKind.ANIMATION.folder()).resolve(id.substring(0, colon)).resolve(id.substring(colon + 1) + ".json")))
+            if (pending.contains(id)) found.add(id);
+            else if (colon > 0 && java.nio.file.Files.isRegularFile(data.resolve(GuiKind.ANIMATION.folder()).resolve(id.substring(0, colon)).resolve(id.substring(colon + 1) + ".json")))
                 found.add(id);
         }
         return found;

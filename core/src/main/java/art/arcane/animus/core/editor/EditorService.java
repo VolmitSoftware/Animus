@@ -340,6 +340,13 @@ public final class EditorService implements AutoCloseable {
         return port.isEmpty() ? relayed : port + " + " + relayed;
     }
 
+    /** The address the listener is bound to, {@code off}, or {@code not bound: <reason>} when it is on but could not bind. */
+    public synchronized String listenerState() {
+        if (api == null || !settings.listenerEnabled()) return "off";
+        if (listener != null) return settings.listenAddress() + ":" + listener.port();
+        return "not bound" + (listenerProblem.isEmpty() ? "" : ": " + listenerProblem);
+    }
+
     /** The listener is on in config.toml but could not start. */
     public synchronized boolean listenerFailed() { return api != null && listener == null && settings.listenerEnabled(); }
 

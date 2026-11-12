@@ -59,6 +59,51 @@ final class DenizenDropIn {
         return lines;
     }
 
+    /**
+     * Rewrites the Denizen reasons in the staged Citizens reports under {@code citizens} once the Denizen part is staged:
+     * each NPC names the behaviors its scripts became, and the held ones; with no Denizen folder the scripts really are
+     * missing, and the converter's own reason stands.
+     */
+    static void reasons(DocumentStore store, Path citizens, JsonObject state) throws IOException {
+        Path reports = citizens.resolve("reports");
+        if (!Files.isDirectory(reports, LinkOption.NOFOLLOW_LINKS)) return;
+        String denizenReport = section(state).map((JsonObject part) -> part.get("report").getAsString()).orElse("");
+        String text = denizenReport.isEmpty() ? null : store.read(denizenReport);
+        Optional<JsonObject> denizen = text == null ? Optional.empty() : Optional.of(JsonDocuments.object(text));
+        Map<String, List<String>> bound = new java.util.HashMap<>(), held = new java.util.HashMap<>();
+        if (denizen.isPresent()) {
+            JsonObject bindings = denizen.get().getAsJsonObject("bindings");
+            for (Map.Entry<String, JsonElement> npc : bindings.entrySet())
+                for (JsonElement behavior : npc.getValue().getAsJsonArray()) bound.computeIfAbsent(npc.getKey(), (String ignored) -> new ArrayList<>()).add(behavior.getAsString());
+            JsonObject heldBehaviors = denizen.get().has("heldBehaviors") ? denizen.get().getAsJsonObject("heldBehaviors") : new JsonObject();
+            for (Map.Entry<String, JsonElement> behavior : new java.util.TreeMap<>(heldBehaviors.asMap()).entrySet())
+                for (JsonElement npc : behavior.getValue().getAsJsonObject().getAsJsonArray("npcs")) held.computeIfAbsent(npc.getAsString(), (String ignored) -> new ArrayList<>()).add(behavior.getKey());
+        }
+        List<Path> files;
+        try (java.util.stream.Stream<Path> listed = Files.list(reports)) { files = listed.filter((Path file) -> file.getFileName().toString().endsWith(".json")).sorted().toList(); }
+        for (Path file : files) {
+            String npc = "citizens-" + file.getFileName().toString().replaceFirst("\\.json$", "");
+            String reason = denizen.isEmpty() ? CitizensImporter.DENIZEN_MISSING : reason(bound.getOrDefault(npc, List.of()), held.getOrDefault(npc, List.of()), denizenReport);
+            JsonObject report = JsonDocuments.object(JsonDocuments.read(file));
+            JsonObject notes = report.has("reasons") && report.get("reasons").isJsonObject() ? report.getAsJsonObject("reasons") : new JsonObject();
+            boolean changed = false;
+            for (Map.Entry<String, JsonElement> note : notes.entrySet()) {
+                if (!note.getValue().isJsonPrimitive() || !note.getValue().getAsString().startsWith(CitizensImporter.DENIZEN_REASON) || note.getValue().getAsString().equals(reason)) continue;
+                note.setValue(new com.google.gson.JsonPrimitive(reason));
+                changed = true;
+            }
+            if (changed) DocumentStore.atomic(file, JsonDocuments.write(report));
+        }
+    }
+
+    private static String reason(List<String> bound, List<String> held, String denizenReport) {
+        if (bound.isEmpty() && held.isEmpty()) return CitizensImporter.DENIZEN_REASON + "; the Denizen import bound no behavior to this NPC, reasons in " + denizenReport;
+        List<String> parts = new ArrayList<>();
+        if (!bound.isEmpty()) parts.add("its scripts became " + String.join(", ", bound));
+        if (!held.isEmpty()) parts.add("held until released: " + String.join(", ", held) + ", see /animus import denizen held");
+        return CitizensImporter.DENIZEN_REASON + "; " + String.join("; ", parts);
+    }
+
     private static int scripts(JsonObject report) {
         int total = 0;
         for (Map.Entry<String, JsonElement> type : report.getAsJsonObject("containers").entrySet()) total += type.getValue().getAsJsonObject().get("total").getAsInt();

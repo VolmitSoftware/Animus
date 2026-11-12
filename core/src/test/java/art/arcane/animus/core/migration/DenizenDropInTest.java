@@ -228,6 +228,49 @@ class DenizenDropInTest {
         }
     }
 
+    @Test void denizenReasonsNameTheBehaviorsTheScriptsBecame() throws Exception {
+        leaveServerFolders();
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            dropIn(store, npcs).preview("reject", Optional.empty(), Map.of(), false);
+            String guard = reason("0", "/traits/assignment/assignment");
+            assertTrue(guard.contains("denizen:assignment/guard_assignment") && !guard.contains("not in the save"), guard);
+        }
+    }
+
+    @Test void denizenReasonsNameHeldBehaviors() throws Exception {
+        leaveServerFolders("guards");
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            dropIn(store, npcs).preview("reject", Optional.empty(), Map.of(), false);
+            String banker = reason("3", "/traits/assignment/assignment");
+            assertTrue(banker.contains("held") && banker.contains("denizen:interact/bank_interact") && !banker.contains("not in the save"), banker);
+        }
+    }
+
+    @Test void denizenReasonsSayTheScriptsAreMissingOnlyWithoutADenizenFolder() throws Exception {
+        leaveServerFolders();
+        try (Stream<Path> paths = Files.walk(root.resolve("plugins/Denizen"))) {
+            for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) Files.delete(path);
+        }
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            dropIn(store, npcs).preview("reject", Optional.empty(), Map.of(), false);
+            assertTrue(reason("0", "/traits/assignment/assignment").contains("not in the save"));
+        }
+    }
+
+    /** The per-NPC reason the staged Citizens import gives for one field. */
+    private String reason(String npc, String field) throws IOException {
+        try (Stream<Path> paths = Files.list(root.resolve("plugins/Animus/imports"))) {
+            for (Path folder : paths.toList()) {
+                Path report = folder.resolve("reports/" + npc + ".json");
+                if (Files.isRegularFile(report)) return art.arcane.animus.core.storage.JsonDocuments.object(Files.readString(report)).getAsJsonObject("reasons").get(field).getAsString();
+            }
+        }
+        throw new IOException("no staged Citizens report for NPC " + npc);
+    }
+
     private static NpcDefinition banker(NpcRepository npcs) {
         return npcs.all().stream().filter((NpcDefinition npc) -> npc.id().equals("citizens-3")).findFirst().orElseThrow();
     }

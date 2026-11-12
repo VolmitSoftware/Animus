@@ -83,6 +83,12 @@ public final class EditorCommands {
         });
     }
 
+    /** The editor listener for {@code /animus status}: its bound address, {@code off}, or why it is not bound. */
+    public String listenerState() {
+        EditorService editor = service.get();
+        return editor == null ? "off" : editor.listenerState();
+    }
+
     /** Token ids and {@code all}, for completion. */
     public List<String> revocable() {
         EditorService editor = service.get();

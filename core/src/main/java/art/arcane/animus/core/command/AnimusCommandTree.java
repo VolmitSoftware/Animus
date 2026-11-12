@@ -108,7 +108,7 @@ public final class AnimusCommandTree extends CommandGroup {
         try {
             services.files().execute(() -> {
                 List<String> lines;
-                try { lines = administration.status(); }
+                try { lines = administration.status(services.editor().listenerState()); }
                 catch (RuntimeException failure) { reply(actor, Palette.error("Status unavailable: " + failure.getMessage())); return; }
                 if (!stopping()) actor.reply(() -> { if (!stopping()) status(actor, lines, living().status()); });
             });

@@ -17,13 +17,13 @@ class AdministrationTest {
     @Test void statusShowsTheBudgetsInEffectAfterAHotload() throws Exception {
         try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
             runtime.start(); Administration admin = new Administration(runtime);
-            assertTrue(admin.status().getFirst().contains(" on Bukkit 26.3 | "), admin.status().getFirst());
-            assertTrue(admin.status().stream().anyMatch((String line) -> line.startsWith("Settings in effect:") && line.contains("packetsPerTick=512")));
+            assertTrue(admin.status("127.0.0.1:9797").getFirst().contains(" on Bukkit 26.3 | "), admin.status("127.0.0.1:9797").getFirst());
+            assertTrue(admin.status("127.0.0.1:9797").stream().anyMatch((String line) -> line.startsWith("Settings in effect:") && line.contains("packetsPerTick=512")));
             art.arcane.animus.core.config.SettingsEdit.apply(runtime, "npcs", (com.google.gson.JsonObject npcs) -> npcs.addProperty("packetsPerTick", 12));
             art.arcane.animus.core.config.SettingsEdit.apply(runtime, "editor", (com.google.gson.JsonObject editor) -> editor.addProperty("port", 9811));
-            String line = admin.status().stream().filter((String text) -> text.startsWith("Settings in effect:")).findFirst().orElseThrow();
+            String line = admin.status("not bound: cannot bind 127.0.0.1:9811 (Address already in use)").stream().filter((String text) -> text.startsWith("Settings in effect:")).findFirst().orElseThrow();
             assertTrue(line.contains("packetsPerTick=12"), line);
-            assertTrue(line.contains("127.0.0.1:9811"), line);
+            assertTrue(line.contains("editor listener not bound: cannot bind 127.0.0.1:9811 (Address already in use)"), line);
         }
     }
     @Test void reloadUpgradesVersionOneFilesCopiedInWhileRunning() throws Exception {

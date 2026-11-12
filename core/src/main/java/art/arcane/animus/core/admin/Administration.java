@@ -26,10 +26,12 @@ import java.util.*;
 public final class Administration {
     private final AnimusRuntime runtime;
     public Administration(AnimusRuntime runtime) { this.runtime = runtime; }
-    /** The main budgets of config.toml as they run now; a hotload changes this line without a restart. */
-    private String settingsInEffect() {
+    /**
+     * The main budgets of config.toml as they run now; a hotload changes this line without a restart. {@code editorListener}
+     * is the listener as it runs, since the configured port may not be bound.
+     */
+    private String settingsInEffect(String editorListener) {
         art.arcane.animus.core.config.NpcRuntimeSettings npcs = runtime.npcSettings();
-        art.arcane.animus.core.config.EditorSettings editor = runtime.editorSettings();
         art.arcane.animus.core.config.CombatBudgets combat = runtime.combatBudgets();
         return "Settings in effect: npcs " + (npcs.enabled() ? "on" : "off") + " viewDistance=" + npcs.viewDistance() + " packetsPerTick=" + npcs.packetsPerTick()
                 + " | navigation routesPerTick=" + runtime.navigationSettings().routesPerTick()
@@ -37,7 +39,7 @@ public final class Administration {
                 + " | behaviors " + (runtime.behaviorSettings().enabled() ? "on" : "off") + " operationsPerTick=" + runtime.behaviorSettings().operationsPerTick()
                 + " | builds " + (runtime.buildSettings().enabled() ? "on" : "off") + " maximumBuilds=" + runtime.buildSettings().maximumBuilds()
                 + " | files maximumOperations=" + runtime.fileSettings().maximumOperations()
-                + " | editor listener " + (editor.enabled() && editor.listenerEnabled() ? editor.listenAddress() + ":" + editor.port() : "off")
+                + " | editor listener " + editorListener
                 + " relay " + (runtime.editorRelaySettings().enabled() ? "on" : "off");
     }
 
@@ -45,12 +47,12 @@ public final class Administration {
      * The headline first: version, platform, definition and group counts and any file problems with the command that names
      * them. Then the settings in effect and the runtime line with the configured status message, for the details.
      */
-    public List<String> status() {
+    public List<String> status(String editorListener) {
         int problems = runtime.npcs().diagnostics().size() + runtime.npcs().groupProblems().size(), groups = runtime.npcs().groups().groups().size();
         String headline = "v" + art.arcane.animus.core.BuildIdentity.VERSION + " on " + runtime.environment().server() + " " + runtime.environment().minecraftVersion()
                 + " | " + runtime.npcs().all().size() + " NPCs" + (groups == 0 ? "" : ", " + groups + " groups")
                 + (problems == 0 ? "" : " | " + problems + " file problem" + (problems == 1 ? "" : "s") + ", see /animus validate");
-        return List.of(headline, settingsInEffect(), runtime.status());
+        return List.of(headline, settingsInEffect(editorListener), runtime.status());
     }
 
     /** Every definition as {@code id | name | revision}, in repository order. */

@@ -362,6 +362,7 @@ public final class CitizensDropIn {
         } else if (shopkeepers.isPresent()) lines.addAll(ShopkeepersDropIn.stage(store, shopkeepers.get(), Optional.of(save.path()), state));
         Optional<Found> denizen = DenizenDropIn.find(store, host.pluginsDirectory());
         if (denizen.isPresent()) lines.addAll(DenizenDropIn.stage(store, denizen.get(), save.path(), state));
+        DenizenDropIn.reasons(store, preview.directory(), state);
         List<String> commands = new ArrayList<>(commandBehaviors(GroupFactoring.staged(preview)));
         commands.addAll(shopCommands(preview.directory().resolve(CitizensShops.FOLDER)));
         commands.addAll(DenizenDropIn.stagedCommandBehaviors(store, state));
@@ -719,25 +720,32 @@ public final class CitizensDropIn {
         return ids;
     }
 
-    /** What converted into something Animus runs: routes, look-close and generated behaviors. */
+    /**
+     * What converted into something Animus runs: routes with their waypoints and the guide points random routes walk
+     * through, look-close that is on, and generated behaviors.
+     */
     static String converted(List<JsonObject> definitions) {
-        int routes = 0, points = 0, look = 0, text = 0, commands = 0;
+        int routes = 0, points = 0, guides = 0, look = 0, text = 0, commands = 0;
         for (JsonObject definition : definitions) {
             JsonObject modules = definition.has("modules") && definition.get("modules").isJsonObject() ? definition.getAsJsonObject("modules") : new JsonObject();
             if (modules.has("animus:navigation") && modules.get("animus:navigation").isJsonObject()) {
                 routes++;
                 JsonObject navigation = modules.getAsJsonObject("animus:navigation");
-                for (String field : List.of("points", "guides"))
-                    if (navigation.has(field) && navigation.get(field).isJsonArray()) points += navigation.getAsJsonArray(field).size();
+                if (navigation.has("points") && navigation.get("points").isJsonArray()) points += navigation.getAsJsonArray("points").size();
+                if (navigation.has("guides") && navigation.get("guides").isJsonArray()) guides += navigation.getAsJsonArray("guides").size();
             }
-            if (modules.has("animus:look-close")) look++;
+            JsonElement lookClose = modules.get("animus:look-close");
+            if (lookClose != null && lookClose.isJsonObject() && !off(lookClose.getAsJsonObject().get("enabled"))) look++;
             for (String id : behaviors(definition)) {
                 if (id.startsWith("citizens:text-")) text++;
                 else if (id.startsWith("citizens:commands-")) commands++;
             }
         }
-        return "Converted: " + routes + " patrol routes (" + points + " points), look-close on " + look + " NPCs, " + text + " text and " + commands + " command behaviors";
+        return "Converted: " + routes + " patrol routes (" + points + " waypoints, " + guides + " guide points), look-close on " + look + " NPCs, " + text + " text and " + commands + " command behaviors";
     }
+
+    /** An {@code enabled} flag set to false; look-close is on when the flag is left out. */
+    private static boolean off(JsonElement enabled) { return enabled != null && enabled.isJsonPrimitive() && enabled.getAsJsonPrimitive().isBoolean() && !enabled.getAsBoolean(); }
 
     /**
      * Adds the namespaces of the applied import's command behaviors to {@code [behaviors.actions] commandNamespaces}, so

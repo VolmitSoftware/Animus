@@ -40,7 +40,7 @@ class DefinitionRecoveryTest {
             assertTrue(runtime.npcs().diagnostics().getFirst().contains("$.position.y"));
             assertTrue(runtime.npcs().diagnostics().getFirst().contains("durable recovery"));
             assertEquals(broken, Files.readString(root.resolve(PATH)));
-            assertTrue(new Administration(runtime).status().stream().anyMatch(line -> line.contains("| 1 file problem, see /animus validate")));
+            assertTrue(new Administration(runtime).status("off").stream().anyMatch(line -> line.contains("| 1 file problem, see /animus validate")));
             Files.writeString(root.resolve(PATH), broken.replace("\"Guard\"", "\"Unread hand edit\""));
             assertThrows(IOException.class, () -> rename(runtime.npcs(), "guard", "Do not overwrite"), "a change nobody read yet is never overwritten");
             Files.writeString(root.resolve(PATH), broken);

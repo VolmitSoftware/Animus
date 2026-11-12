@@ -1,6 +1,7 @@
 package art.arcane.animus.core.gui.exchange;
 
 import art.arcane.animus.core.gui.GuiKind;
+import art.arcane.animus.core.gui.HoloCatalog;
 import art.arcane.animus.core.gui.GuiValidator;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonArray;
@@ -10,7 +11,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -20,7 +23,7 @@ class GlossExchangeTest {
     static final String HOLOGRAM = "{\"schemaVersion\":3,\"revision\":1,\"anchor\":{\"world\":\"world\",\"position\":[0,64,0]},\"lines\":[\"&dHello\"]}";
     static final String INVENTORY = "{\"schemaVersion\":1,\"revision\":1,\"title\":\"&8Shop\",\"resolution\":\"9x3\"}";
     static final String ANIMUS_ONLY = "{\"schemaVersion\":1,\"revision\":1,\"keys\":{\"B\":{\"type\":\"button\",\"actions\":[{\"type\":\"animus:open-shop\",\"shop\":\"shop:bakery\"}]}}}";
-    static final GuiValidator ACCEPT = (GuiKind kind, String id, String json) -> List.of();
+    static final GuiValidator ACCEPT = (GuiKind kind, String id, String json, Map<GuiKind, Set<String>> pending) -> List.of();
 
     @TempDir Path temporary;
 
@@ -53,7 +56,7 @@ class GlossExchangeTest {
         }
         workspace.add("documents", documents);
         write(source.resolve("workspace.json"), JsonDocuments.write(workspace));
-        GuiValidator refuseInventories = (GuiKind kind, String id, String json) -> kind == GuiKind.INVENTORY ? List.of("$.title: no") : List.of();
+        GuiValidator refuseInventories = (GuiKind kind, String id, String json, Map<GuiKind, Set<String>> pending) -> kind == GuiKind.INVENTORY ? List.of("$.title: no") : List.of();
         GlossExchange exchange = new GlossExchange(data, refuseInventories);
         GlossExchange.Report report = exchange.importDocuments(GlossSources.read(source), "gloss", false);
         assertEquals(List.of("hologram gloss:lobby"), report.written());
@@ -143,6 +146,44 @@ class GlossExchangeTest {
         List<GlossDocument> live = GlossFolders.readLive(gloss, Optional.of(GuiKind.HOLOGRAM), Optional.empty());
         assertEquals(1, live.size());
         assertEquals("lobby", live.get(0).id());
+    }
+
+    static final String ANIMATED = "{\"schemaVersion\":3,\"revision\":1,\"anchor\":{\"world\":\"world\",\"position\":[0,64,0]},\"lines\":[\"&dHi |animation.welcome|\"]}";
+    static final String WELCOME = "{\"schemaVersion\":1,\"revision\":1,\"mode\":\"ascend\",\"frameIntervalMs\":500,\"frames\":[\"a\",\"b\"]}";
+
+    @Test void aHologramMayShowAnAnimationFromTheSameImport(@TempDir Path data) throws IOException {
+        GlossExchange exchange = new GlossExchange(data, HoloCatalog.validator(data, (String id) -> false));
+        GlossExchange.Report report = exchange.importDocuments(List.of(new GlossDocument(GuiKind.HOLOGRAM, "spawn", ANIMATED),
+                new GlossDocument(GuiKind.ANIMATION, "welcome", WELCOME)), "gloss", false);
+        assertEquals(List.of(), report.refused());
+        assertTrue(report.written().containsAll(List.of("hologram gloss:spawn", "animation gloss:welcome")), report.written().toString());
+    }
+
+    @Test void aRefusedAnimationDoesNotCountForTheHologramsThatShowIt(@TempDir Path data) throws IOException {
+        GlossExchange exchange = new GlossExchange(data, HoloCatalog.validator(data, (String id) -> false));
+        GlossExchange.Report report = exchange.importDocuments(List.of(new GlossDocument(GuiKind.HOLOGRAM, "spawn", ANIMATED),
+                new GlossDocument(GuiKind.ANIMATION, "welcome", "{\"schemaVersion\":1}")), "gloss", false);
+        assertTrue(report.refused().stream().anyMatch((String line) -> line.startsWith("hologram gloss:spawn") && line.contains("'gloss:welcome', which is not loaded")), report.refused().toString());
+        assertTrue(report.written().isEmpty(), report.written().toString());
+    }
+
+    @Test void papiCallsBecomePlaceholders(@TempDir Path data) throws IOException {
+        String lines = "{\"schemaVersion\":3,\"revision\":1,\"anchor\":{\"world\":\"world\",\"position\":[0,64,0]},\"lines\":["
+                + "\"&7Rank {{ papi('vault_prefix') }}\",\"&7Bal {{papi(\\\"%vault_eco_balance%\\\", 'none')}}\",\"&7Ping {{ papiNumber('player_ping', 0) }}ms\","
+                + "\"&7Me {{ papi('viewer', 'player_name', '') }}\"]}";
+        GlossExchange exchange = new GlossExchange(data, HoloCatalog.validator(data, (String id) -> false));
+        GlossExchange.Report report = exchange.importDocuments(List.of(new GlossDocument(GuiKind.HOLOGRAM, "spawn-info", lines)), "gloss", false);
+        assertEquals(List.of("hologram gloss:spawn-info"), report.written(), report.refused().toString());
+        String written = Files.readString(data.resolve("gui/holograms/gloss/spawn-info.json"));
+        for (String expected : List.of("&7Rank %vault_prefix%", "&7Bal %vault_eco_balance%", "&7Ping %player_ping%ms", "&7Me %player_name%"))
+            assertTrue(written.contains(expected), written);
+        assertTrue(report.notes().stream().anyMatch((String line) -> line.contains("gloss:spawn-info") && line.contains("4 papi")), report.notes().toString());
+    }
+
+    @Test void papiInsideALargerExpressionIsStillRefused() {
+        assertEquals("{{ papiNumber('ping') < 80 ? '&a' : '&c' }}", GlossPlaceholders.translate("{{ papiNumber('ping') < 80 ? '&a' : '&c' }}").text());
+        assertEquals("{{ papi('sender', 'player_name', '') }}", GlossPlaceholders.translate("{{ papi('sender', 'player_name', '') }}").text(), "another role's value is not the viewer's");
+        assertEquals("%a% and %b_c%", GlossPlaceholders.translate("{{ papi('a') }} and {{ papi(\"%b_c%\") }}").text());
     }
 
     @Test void commandsImportFilesAndRefuseGlossWithoutIt(@TempDir Path data) throws IOException {

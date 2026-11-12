@@ -330,6 +330,14 @@ class CitizensDropInTest {
                       '0': {command: 'give <p> minecraft:torch 1', hand: RIGHT}
             """;
 
+    @Test void theConvertedLineCountsOnlyLookCloseThatIsOnAndKeepsGuidePointsApart() throws IOException {
+        List<JsonObject> definitions = List.of(
+                JsonDocuments.object("{\"modules\":{\"animus:look-close\":{\"enabled\":true},\"animus:navigation\":{\"points\":[{},{},{}],\"guides\":[{},{}]}}}"),
+                JsonDocuments.object("{\"modules\":{\"animus:look-close\":{\"enabled\":false}}}"),
+                JsonDocuments.object("{\"modules\":{\"animus:look-close\":{}}}"));
+        assertEquals("Converted: 1 patrol routes (3 waypoints, 2 guide points), look-close on 2 NPCs, 0 text and 0 command behaviors", CitizensDropIn.converted(definitions));
+    }
+
     @Test void patrolsRunAfterApplyAndGeneratedBehaviorsInstallAndRollBack() throws Exception {
         Files.createDirectories(root.resolve("plugins/Animus/imports"));
         Files.writeString(root.resolve("plugins/Animus/imports/saves.yml"), PATROLS);
@@ -337,7 +345,7 @@ class CitizensDropInTest {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
             String staged = joined(flow.preview("reject", Optional.empty(), Map.of(), false));
-            assertTrue(staged.contains("Converted: 1 patrol routes (2 points), look-close on 1 NPCs, 1 text and 1 command behaviors"), staged);
+            assertTrue(staged.contains("Converted: 1 patrol routes (2 waypoints, 0 guide points), look-close on 1 NPCs, 1 text and 1 command behaviors"), staged);
             assertTrue(staged.contains("Kept, not converted: nothing"), staged);
             assertTrue(staged.contains("Commands: 1 imported behaviors and shops run commands as they did before (such as citizens:commands-5); apply allows citizens in [behaviors.actions] commandNamespaces"), staged);
 
